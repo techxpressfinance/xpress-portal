@@ -1,0 +1,7 @@
+region         = "ap-southeast-2"
+instance_type  = "t3.micro"
+db_username    = "xpresstech"
+db_password    = "CHANGE_ME_TO_STRONG_PASSWORD"
+db_name        = "xpresstech"
+ssh_public_key = "ssh-rsa AAAA... your-key-here"
+project_name   = "xpress-tech"

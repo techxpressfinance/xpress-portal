@@ -1,0 +1,23 @@
+[Unit]
+Description=Xpress Tech Portal Backend (FastAPI)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=xpress
+Group=xpress
+WorkingDirectory=/opt/xpress-tech-portal/backend
+EnvironmentFile=/opt/xpress-tech-portal/backend/.env
+ExecStart=/opt/xpress-tech-portal/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/xpress-tech-portal/backend
+
+[Install]
+WantedBy=multi-user.target
