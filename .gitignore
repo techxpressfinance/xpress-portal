@@ -32,3 +32,6 @@ terraform/*.tfvars
 # Node
 node_modules/
 dist/
+
+#ssh
+login-ssh.pem

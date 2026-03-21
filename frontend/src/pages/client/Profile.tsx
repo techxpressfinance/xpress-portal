@@ -92,7 +92,7 @@ export default function Profile() {
                 <label className="block text-[13px] font-medium text-muted-foreground mb-2">
                   Phone <span className="text-muted-foreground font-normal">(optional)</span>
                 </label>
-                <Input placeholder="+91 98765 43210" {...register('phone')} />
+                <Input placeholder="+61 412 345 678" {...register('phone')} />
               </div>
               <Button type="submit" loading={isSubmitting} disabled={!isDirty} size="lg">
                 {isSubmitting ? 'Saving...' : 'Save Changes'}

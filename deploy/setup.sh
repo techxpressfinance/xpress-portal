@@ -147,6 +147,17 @@ chown $APP_USER:$APP_USER /opt/backups/xpress
 cp $APP_DIR/deploy/backup.sh /etc/cron.daily/xpress-backup
 chmod +x /etc/cron.daily/xpress-backup
 
+echo "=== 13. Set up SSL (HTTPS) ==="
+if [ -n "$DOMAIN" ]; then
+  echo ">> Requesting Let's Encrypt certificate for ${DOMAIN}..."
+  certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --register-unsafely-without-email --redirect
+  echo ">> SSL certificate installed. HTTPS is active."
+  echo ">> Auto-renewal is enabled via certbot systemd timer."
+else
+  echo ">> No domain provided — skipping SSL setup."
+  echo ">> Run manually later: sudo certbot --nginx -d yourdomain.com"
+fi
+
 echo ""
 echo "========================================="
 echo " Setup complete!"
@@ -160,11 +171,10 @@ echo ""
 echo "Next steps:"
 echo "  1. Review /opt/xpress-tech-portal/backend/.env"
 echo "  2. sudo systemctl restart xpress-backend"
-if [ -n "$DOMAIN" ]; then
-  echo "  3. Set up SSL: sudo certbot --nginx -d ${DOMAIN}"
+if [ -z "$DOMAIN" ]; then
+  echo "  3. Point your domain's DNS A record to this server's IP"
+  echo "  4. Set up SSL: sudo certbot --nginx -d yourdomain.com"
 else
-  echo "  3. Set up SSL: sudo certbot --nginx -d yourdomain.com"
+  echo "  3. Verify: curl https://${DOMAIN}/api/health"
 fi
-echo "  4. Point your domain's DNS A record to this server's IP"
-echo "  5. Test: curl https://${DOMAIN:-yourdomain.com}/api/health"
 echo ""
