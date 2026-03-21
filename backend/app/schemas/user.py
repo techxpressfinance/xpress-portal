@@ -51,6 +51,9 @@ class UserOut(BaseModel):
     is_active: bool
     email_verified: bool
     auth_method: str = "password"
+    employee_id: str | None = None
+    department: str | None = None
+    license_number: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -102,6 +105,29 @@ class InvitationCreate(BaseModel):
     def name_not_empty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Name cannot be empty")
+        return v.strip()
+
+
+class BrokerCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: str | None = None
+    employee_id: str
+    department: str | None = None
+    license_number: str | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v.strip()
+
+    @field_validator("employee_id")
+    @classmethod
+    def employee_id_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Employee ID cannot be empty")
         return v.strip()
 
 

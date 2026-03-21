@@ -18,6 +18,9 @@ export interface User {
   is_active: boolean;
   email_verified: boolean;
   auth_method: AuthMethod;
+  employee_id: string | null;
+  department: string | null;
+  license_number: string | null;
   created_at: string;
 }
 

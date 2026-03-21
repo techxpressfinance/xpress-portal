@@ -78,6 +78,10 @@ _MIGRATIONS = [
     # Account lockout
     ("users", "failed_login_attempts", "INTEGER DEFAULT 0 NOT NULL"),
     ("users", "locked_until", "TIMESTAMP"),
+    # Broker-specific fields
+    ("users", "employee_id", "VARCHAR(50)"),
+    ("users", "department", "VARCHAR(100)"),
+    ("users", "license_number", "VARCHAR(100)"),
 ]
 
 _logger = logging.getLogger(__name__)

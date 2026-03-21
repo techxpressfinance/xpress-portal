@@ -23,14 +23,18 @@ export default function ReviewApplication() {
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [client, setClient] = useState<User | null>(null);
+  const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null } | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState('');
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
-  const [noteTab, setNoteTab] = useState<'internal' | 'client'>('internal');
+  const [noteTab, setNoteTab] = useState<'internal' | 'client' | 'referrer'>('internal');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
+  const [referrerMsgSubject, setReferrerMsgSubject] = useState('');
+  const [referrerMsgContent, setReferrerMsgContent] = useState('');
+  const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
 
   // Broker edit draft state
@@ -114,6 +118,12 @@ export default function ReviewApplication() {
         const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
         setClient(clientUser || null);
         setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
+        // Fetch referrer info
+        if (appRes.data.user_id) {
+          api.get(`/users/${appRes.data.user_id}/referrer`)
+            .then(({ data }) => setReferrer(data.referrer || null))
+            .catch(() => {});
+        }
       })
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
@@ -125,6 +135,25 @@ export default function ReviewApplication() {
       const { data } = await api.get(`/applications/${id}`);
       setApplication(data);
     } catch { /* ignore */ }
+  };
+
+  const handleSendReferrerMessage = async () => {
+    if (!referrer || !referrerMsgSubject.trim() || !referrerMsgContent.trim()) return;
+    setSendingReferrerMsg(true);
+    try {
+      await api.post('/messages', {
+        recipient_id: referrer.id,
+        subject: referrerMsgSubject.trim(),
+        content: referrerMsgContent.trim(),
+      });
+      toast('Message sent to referrer', 'success');
+      setReferrerMsgSubject('');
+      setReferrerMsgContent('');
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to send message'), 'error');
+    } finally {
+      setSendingReferrerMsg(false);
+    }
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -528,6 +557,22 @@ export default function ReviewApplication() {
                   <dd className="mt-1"><Badge type="kyc" value={client.kyc_status} /></dd>
                 </div>
               </dl>
+
+              {/* Referrer Info */}
+              {referrer && (
+                <div className="mt-5 pt-5 border-t border-border">
+                  <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
+                      <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
+                      <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </GlassCard>
           )}
 
@@ -950,71 +995,125 @@ export default function ReviewApplication() {
                 >
                   Client Messages
                 </button>
+                {referrer && (
+                  <button
+                    onClick={() => {
+                      setNoteTab('referrer');
+                      if (!referrerMsgSubject) setReferrerMsgSubject(`Re: Referral - ${client?.full_name || 'Client'}`);
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all duration-200 ${
+                      noteTab === 'referrer'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Referrer
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Notes list */}
-            <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
-              {appNotes
-                .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
-                .length === 0 ? (
-                <div className="rounded-xl bg-secondary/50 p-4 text-center">
-                  <p className="text-[13px] text-muted-foreground">
-                    {noteTab === 'internal' ? 'No internal notes yet' : 'No client messages yet'}
-                  </p>
+            {noteTab === 'referrer' && referrer ? (
+              /* Referrer message compose */
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-xl bg-secondary/30 p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-chart-4/15">
+                    <span className="text-[11px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
+                    <p className="text-[11px] text-muted-foreground">{referrer.email}</p>
+                  </div>
                 </div>
-              ) : (
-                appNotes
-                  .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
-                  .map((note) => (
-                    <div key={note.id} className="rounded-xl bg-secondary/30 p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {formatDate(note.created_at)} {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p className="text-[13px] text-foreground whitespace-pre-wrap">{note.content}</p>
+                <input
+                  type="text"
+                  value={referrerMsgSubject}
+                  onChange={(e) => setReferrerMsgSubject(e.target.value)}
+                  placeholder="Subject..."
+                  className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[13px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                />
+                <textarea
+                  value={referrerMsgContent}
+                  onChange={(e) => setReferrerMsgContent(e.target.value)}
+                  rows={3}
+                  placeholder="Write a message to the referrer..."
+                  className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[13px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSendReferrerMessage}
+                  loading={sendingReferrerMsg}
+                  disabled={!referrerMsgSubject.trim() || !referrerMsgContent.trim()}
+                >
+                  Send to Referrer
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Notes list */}
+                <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
+                  {appNotes
+                    .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
+                    .length === 0 ? (
+                    <div className="rounded-xl bg-secondary/50 p-4 text-center">
+                      <p className="text-[13px] text-muted-foreground">
+                        {noteTab === 'internal' ? 'No internal notes yet' : 'No client messages yet'}
+                      </p>
                     </div>
-                  ))
-              )}
-            </div>
+                  ) : (
+                    appNotes
+                      .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
+                      .map((note) => (
+                        <div key={note.id} className="rounded-xl bg-secondary/30 p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatDate(note.created_at)} {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-[13px] text-foreground whitespace-pre-wrap">{note.content}</p>
+                        </div>
+                      ))
+                  )}
+                </div>
 
-            {/* Compose */}
-            <div className="border-t border-border pt-3">
-              <textarea
-                value={newNoteContent}
-                onChange={(e) => setNewNoteContent(e.target.value)}
-                rows={3}
-                className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[13px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                placeholder={noteTab === 'internal' ? 'Write an internal note...' : 'Write a message to the client...'}
-              />
-              <Button
-                className="mt-2"
-                size="sm"
-                loading={sendingNote}
-                disabled={!newNoteContent.trim()}
-                onClick={async () => {
-                  if (!id || !newNoteContent.trim()) return;
-                  setSendingNote(true);
-                  try {
-                    const { data } = await api.post(`/applications/${id}/notes`, {
-                      content: newNoteContent.trim(),
-                      is_internal: noteTab === 'internal',
-                    });
-                    setAppNotes((prev) => [...prev, data]);
-                    setNewNoteContent('');
-                    toast(noteTab === 'internal' ? 'Note added' : 'Message sent to client', 'success');
-                  } catch (err: any) {
-                    toast(getErrorMessage(err, 'Failed to add note'), 'error');
-                  } finally {
-                    setSendingNote(false);
-                  }
-                }}
-              >
-                {noteTab === 'internal' ? 'Add Note' : 'Send to Client'}
-              </Button>
-            </div>
+                {/* Compose */}
+                <div className="border-t border-border pt-3">
+                  <textarea
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[13px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                    placeholder={noteTab === 'internal' ? 'Write an internal note...' : 'Write a message to the client...'}
+                  />
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    loading={sendingNote}
+                    disabled={!newNoteContent.trim()}
+                    onClick={async () => {
+                      if (!id || !newNoteContent.trim()) return;
+                      setSendingNote(true);
+                      try {
+                        const { data } = await api.post(`/applications/${id}/notes`, {
+                          content: newNoteContent.trim(),
+                          is_internal: noteTab === 'internal',
+                        });
+                        setAppNotes((prev) => [...prev, data]);
+                        setNewNoteContent('');
+                        toast(noteTab === 'internal' ? 'Note added' : 'Message sent to client', 'success');
+                      } catch (err: any) {
+                        toast(getErrorMessage(err, 'Failed to add note'), 'error');
+                      } finally {
+                        setSendingNote(false);
+                      }
+                    }}
+                  >
+                    {noteTab === 'internal' ? 'Add Note' : 'Send to Client'}
+                  </Button>
+                </div>
+              </>
+            )}
           </GlassCard>
         </div>
 

@@ -261,6 +261,54 @@ def send_complete_application_email(
     _send_async(to_email, subject, body, html_body)
 
 
+def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> None:
+    """Send broker welcome email with login credentials. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping broker welcome email for %s", to_email)
+        return
+
+    login_url = f"{FRONTEND_URL}/login"
+    subject = "Welcome to Xpress Tech Portal - Broker Account"
+    body = (
+        f"Dear {name},\n\n"
+        f"An admin has created a broker account for you on Xpress Tech Portal.\n\n"
+        f"Your login credentials:\n"
+        f"Email: {to_email}\n"
+        f"Temporary Password: {temp_password}\n\n"
+        f"Please log in at {login_url} and change your password immediately.\n\n"
+        f"Best regards,\nXpress Tech Team"
+    )
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="margin: 0;">Xpress Tech Portal</h2>
+        </div>
+        <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
+            <p style="color: #374151; line-height: 1.6;">Dear {name},</p>
+            <p style="color: #374151; line-height: 1.6;">
+                An admin has created a <strong>broker account</strong> for you on Xpress Tech Portal.
+            </p>
+            <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0; color: #374151;"><strong>Email:</strong> {to_email}</p>
+                <p style="margin: 4px 0; color: #374151;"><strong>Temporary Password:</strong> <code style="background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1d4ed8; font-weight: 600;">{temp_password}</code></p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+                <a href="{login_url}" style="background: #2563eb; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Log In Now</a>
+            </div>
+            <p style="color: #dc2626; font-size: 13px; font-weight: 600;">Please change your password after your first login.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+            <p style="color: #9ca3af; font-size: 12px;">
+                This is an automated notification from Xpress Tech Portal.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_login_code_email(to_email: str, name: str, code: str) -> None:
     """Send a login code for code-based auth. Non-blocking."""
     if not EMAIL_ENABLED:

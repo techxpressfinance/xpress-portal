@@ -8,7 +8,8 @@ import type { User } from '../../types';
 
 type PendingAction =
   | { type: 'role'; userId: string; userName: string; from: string; to: string }
-  | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean };
+  | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean }
+  | { type: 'delete'; userId: string; userName: string };
 
 const ALLOWED_ROLE_OPTIONS: Record<string, { value: string; label: string }[]> = {
   client: [
@@ -53,6 +54,10 @@ export default function UserManagement() {
         const { data } = await api.patch(`/users/${pendingAction.userId}/role`, { role: pendingAction.to });
         setUsers((prev) => prev.map((u) => (u.id === pendingAction.userId ? data : u)));
         toast(`Role updated to ${pendingAction.to}`, 'success');
+      } else if (pendingAction.type === 'delete') {
+        await api.delete(`/users/${pendingAction.userId}`);
+        setUsers((prev) => prev.filter((u) => u.id !== pendingAction.userId));
+        toast('User deleted', 'success');
       } else {
         const { data } = await api.patch(`/users/${pendingAction.userId}/active`, { is_active: !pendingAction.isActive });
         setUsers((prev) => prev.map((u) => (u.id === pendingAction.userId ? data : u)));
@@ -227,13 +232,22 @@ export default function UserManagement() {
                             </Button>
                           )}
                           {currentUser?.role === 'admin' && !isSelf && (
-                            <Button
-                              variant={user.is_active ? 'danger' : 'success'}
-                              size="sm"
-                              onClick={() => requestToggleActive(user.id, user.full_name, user.is_active)}
-                            >
-                              {user.is_active ? 'Deactivate' : 'Activate'}
-                            </Button>
+                            <>
+                              <Button
+                                variant={user.is_active ? 'danger' : 'success'}
+                                size="sm"
+                                onClick={() => requestToggleActive(user.id, user.full_name, user.is_active)}
+                              >
+                                {user.is_active ? 'Deactivate' : 'Activate'}
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => setPendingAction({ type: 'delete', userId: user.id, userName: user.full_name })}
+                              >
+                                Delete
+                              </Button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -258,6 +272,11 @@ export default function UserManagement() {
                   <span className="font-semibold text-foreground capitalize">{pendingAction.from}</span> to{' '}
                   <span className="font-semibold text-foreground capitalize">{pendingAction.to}</span>?
                 </>
+              ) : pendingAction.type === 'delete' ? (
+                <>
+                  Permanently delete <span className="font-semibold text-foreground">{pendingAction.userName}</span>?
+                  {' '}This action cannot be undone.
+                </>
               ) : (
                 <>
                   {pendingAction.isActive ? 'Deactivate' : 'Activate'}{' '}
@@ -269,7 +288,7 @@ export default function UserManagement() {
             <div className="flex justify-end gap-3">
               <Button variant="secondary" size="sm" onClick={cancelAction}>Cancel</Button>
               <Button
-                variant={pendingAction.type === 'toggle_active' && pendingAction.isActive ? 'danger' : 'primary'}
+                variant={pendingAction.type === 'delete' || (pendingAction.type === 'toggle_active' && pendingAction.isActive) ? 'danger' : 'primary'}
                 size="sm"
                 onClick={confirmAction}
               >

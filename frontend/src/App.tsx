@@ -14,6 +14,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
 const InviteClients = lazy(() => import('./pages/admin/InviteClients'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
+const CreateBroker = lazy(() => import('./pages/admin/CreateBroker'));
 import ApplicationDetail from './pages/client/ApplicationDetail';
 import Applications from './pages/client/Applications';
 import ClientDashboard from './pages/client/Dashboard';
@@ -161,15 +162,23 @@ export default function App() {
               <Route
                 path="/admin/users"
                 element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
+                  <ProtectedRoute roles={['admin']}>
                     <UserManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/create-broker"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <CreateBroker />
                   </ProtectedRoute>
                 }
               />
               <Route
                 path="/admin/activity"
                 element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
+                  <ProtectedRoute roles={['admin']}>
                     <ActivityLogs />
                   </ProtectedRoute>
                 }

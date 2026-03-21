@@ -52,6 +52,11 @@ class User(Base):
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     invited_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
 
+    # Broker-specific fields
+    employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    license_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
     applications = relationship("LoanApplication", back_populates="user", foreign_keys="LoanApplication.user_id")
     assigned_applications = relationship(
         "LoanApplication", back_populates="assigned_broker", foreign_keys="LoanApplication.assigned_broker_id"

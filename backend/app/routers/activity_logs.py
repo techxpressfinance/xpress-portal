@@ -19,7 +19,7 @@ def list_activity_logs(
     entity_type: str | None = None,
     action: str | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    _current_user: User = Depends(require_role("admin")),
 ):
     query = db.query(ActivityLog)
 
