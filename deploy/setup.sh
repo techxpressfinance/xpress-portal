@@ -18,8 +18,15 @@ apt-get install -y \
   python3 python3-pip python3-venv \
   nginx certbot python3-certbot-nginx \
   tesseract-ocr \
-  git curl unzip \
-  awscli
+  git curl unzip
+
+# AWS CLI v2
+if ! command -v aws &>/dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -qo /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/awscliv2.zip /tmp/aws
+fi
 
 # PostgreSQL 16
 apt-get install -y postgresql postgresql-contrib libpq-dev

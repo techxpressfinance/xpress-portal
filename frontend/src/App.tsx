@@ -9,6 +9,7 @@ import { useAuth } from './hooks/useAuth';
 
 const ActivityLogs = lazy(() => import('./pages/admin/ActivityLogs'));
 const AllApplications = lazy(() => import('./pages/admin/AllApplications'));
+const KanbanBoard = lazy(() => import('./pages/admin/KanbanBoard'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
 const InviteClients = lazy(() => import('./pages/admin/InviteClients'));
@@ -122,6 +123,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <AllApplications />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/board"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <KanbanBoard />
                   </ProtectedRoute>
                 }
               />

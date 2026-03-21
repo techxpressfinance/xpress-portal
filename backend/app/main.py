@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
 
-from app.config import CORS_ORIGINS, ENVIRONMENT
+from app.config import CORS_ORIGINS, DATABASE_URL, ENVIRONMENT
 from app.database import Base, engine
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
@@ -113,7 +113,10 @@ if "application_brokers" in {t for t in _inspector.get_table_names()}:
 
 # Purge expired blacklisted tokens on startup
 with engine.begin() as conn:
-    conn.execute(text("DELETE FROM token_blacklist WHERE expires_at < datetime('now')"))
+    if DATABASE_URL.startswith("sqlite"):
+        conn.execute(text("DELETE FROM token_blacklist WHERE expires_at < datetime('now')"))
+    else:
+        conn.execute(text("DELETE FROM token_blacklist WHERE expires_at < NOW()"))
     _logger.info("Purged expired blacklisted tokens")
 
 app = FastAPI(title="Xpress Tech Portal", version="0.1.0")

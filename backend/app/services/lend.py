@@ -19,6 +19,19 @@ _picklist_cache: dict[str, tuple[list, float]] = {}
 _CACHE_TTL = 3600  # 1 hour
 
 
+import re
+
+
+def _normalize_au_phone(phone: str) -> str:
+    """Normalize phone to Australian 10-digit format (e.g. 0412345678)."""
+    digits = re.sub(r"\D", "", phone)
+    if digits.startswith("61") and len(digits) == 11:
+        digits = "0" + digits[2:]
+    if not digits.startswith("0") and len(digits) == 9:
+        digits = "0" + digits
+    return digits[:10]
+
+
 def _get_auth_headers() -> dict[str, str]:
     token = b64encode(f"{LEND_API_KEY}:{LEND_API_SECRET}".encode()).decode()
     return {
@@ -93,7 +106,7 @@ def build_lead_payload(app, user, extra_data: dict | None = None) -> dict:
         "first_name": first_name,
         "last_name": last_name,
         "middle_name": app.applicant_middle_name or "",
-        "contact_number": (user.phone or "")[:10],
+        "contact_number": _normalize_au_phone(user.phone or ""),
         "email": user.email,
         "consent": today,
     }
@@ -161,7 +174,7 @@ def build_lead_payload(app, user, extra_data: dict | None = None) -> dict:
         lead["sales_monthly"] = float(app.business_monthly_sales) if app.business_monthly_sales else 0
     else:
         # Consumer lead required placeholder fields
-        lead["lead_type"] = "Consumer"
+        lead["lead_type"] = "Commercial"
         lead["organisation_name"] = f"{first_name} {last_name}"
         lead["industry_id"] = 57
         lead["sales_monthly"] = 50
