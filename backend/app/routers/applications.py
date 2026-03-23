@@ -177,16 +177,6 @@ def update_application(
     if requested_status == "submitted":
         if not is_draft:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be submitted")
-        uploaded_types = {
-            doc.doc_type for doc in db.query(Document).filter(Document.application_id == app_id).all()
-        }
-        missing = REQUIRED_DOC_TYPES - uploaded_types
-        if missing:
-            missing_labels = [t.value.replace("_", " ").title() for t in missing]
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Missing required documents: {', '.join(missing_labels)}",
-            )
         updates["status"] = "submitted"
 
         # Track broker/admin completion on behalf of client

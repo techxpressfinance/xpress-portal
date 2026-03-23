@@ -10,7 +10,7 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, REQUIRED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
 import type { ApplicationNote, DocType, Document, LendSyncStatus, LoanApplication, LoanType, User } from '../../types';
 
 export default function ReviewApplication() {
@@ -26,7 +26,6 @@ export default function ReviewApplication() {
   const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null } | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notes, setNotes] = useState('');
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [noteTab, setNoteTab] = useState<'internal' | 'client' | 'referrer'>('internal');
   const [newNoteContent, setNewNoteContent] = useState('');
@@ -64,7 +63,7 @@ export default function ReviewApplication() {
     applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
     business_name: '', business_abn: '', business_registration_date: '', business_industry_id: '',
-    business_monthly_sales: '', loan_term_requested: '', loan_purpose_id: '', amount: '',
+    business_monthly_sales: '', loan_term_years: '', loan_term_months: '', loan_purpose_id: '', amount: '',
   });
   const updateLeadField = (field: string, value: string) => setLeadFields((prev) => ({ ...prev, [field]: value }));
 
@@ -82,7 +81,6 @@ export default function ReviewApplication() {
       .then(([appRes, docRes, usersRes, notesRes]) => {
         setApplication(appRes.data);
         setDocuments(docRes.data);
-        setNotes(appRes.data.notes || '');
         setAppNotes(notesRes.data);
         // Init broker edit fields
         setEditLoanType(appRes.data.loan_type);
@@ -106,7 +104,8 @@ export default function ReviewApplication() {
           business_registration_date: d.business_registration_date || '',
           business_industry_id: d.business_industry_id ? String(d.business_industry_id) : '',
           business_monthly_sales: d.business_monthly_sales ? String(d.business_monthly_sales) : '',
-          loan_term_requested: d.loan_term_requested ? String(d.loan_term_requested) : '',
+          loan_term_years: d.loan_term_requested ? String(Math.floor(d.loan_term_requested / 12)) : '',
+          loan_term_months: d.loan_term_requested ? String(d.loan_term_requested % 12) : '',
           loan_purpose_id: d.loan_purpose_id ? String(d.loan_purpose_id) : '',
           amount: d.amount ? String(d.amount) : '',
         });
@@ -179,17 +178,6 @@ export default function ReviewApplication() {
     if (updated) setApplication(updated);
   };
 
-  const handleSaveNotes = async () => {
-    if (!id) return;
-    try {
-      const { data } = await api.patch(`/applications/${id}`, { notes });
-      setApplication(data);
-      toast('Notes saved', 'success');
-    } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to save notes'), 'error');
-    }
-  };
-
   const handleDownloadDoc = (doc: Document) => downloadFile(doc.id, doc.original_filename);
 
   const handleVerifyDoc = async (docId: string) => {
@@ -212,7 +200,6 @@ export default function ReviewApplication() {
         notes: editNotes || null,
       });
       setApplication(data);
-      setNotes(data.notes || '');
       toast('Application fields saved', 'success');
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to save fields'), 'error');
@@ -300,7 +287,9 @@ export default function ReviewApplication() {
         business_registration_date: leadFields.business_registration_date || null,
         business_industry_id: leadFields.business_industry_id ? parseInt(leadFields.business_industry_id) : null,
         business_monthly_sales: leadFields.business_monthly_sales ? parseFloat(leadFields.business_monthly_sales) : null,
-        loan_term_requested: leadFields.loan_term_requested ? parseInt(leadFields.loan_term_requested) : null,
+        loan_term_requested: (leadFields.loan_term_years || leadFields.loan_term_months)
+          ? (parseInt(leadFields.loan_term_years || '0') * 12) + parseInt(leadFields.loan_term_months || '0')
+          : null,
         loan_purpose_id: leadFields.loan_purpose_id ? parseInt(leadFields.loan_purpose_id) : null,
         amount: leadFields.amount ? parseFloat(leadFields.amount) : undefined,
       });
@@ -344,7 +333,7 @@ export default function ReviewApplication() {
 
   const isDraft = application?.status === 'draft';
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
-  const missingDocs = REQUIRED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
+  const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
   const allDocsUploaded = missingDocs.length === 0;
 
   if (loading) {
@@ -454,6 +443,7 @@ export default function ReviewApplication() {
                     <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
                     <input
                       type="number"
+                      step="0.01"
                       value={editAmount}
                       onChange={(e) => setEditAmount(e.target.value)}
                       className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -476,9 +466,9 @@ export default function ReviewApplication() {
 
               {/* Required Documents Checklist */}
               <div className="mt-6 pt-5 border-t border-border">
-                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Required Documents</h3>
+                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Recommended Documents</h3>
                 <div className="grid gap-2 sm:grid-cols-2 mb-4">
-                  {REQUIRED_DOC_TYPES.map((type) => (
+                  {RECOMMENDED_DOC_TYPES.map((type) => (
                     <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}`}>
                       {uploadedDocTypes.has(type) ? (
                         <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -521,14 +511,14 @@ export default function ReviewApplication() {
                 </div>
 
                 <Button
-                  variant={allDocsUploaded ? 'success' : 'secondary'}
+                  variant={allDocsUploaded ? 'success' : 'primary'}
                   size="lg"
                   className="w-full"
                   onClick={handleBrokerSubmit}
-                  disabled={!allDocsUploaded || submittingOnBehalf}
+                  disabled={submittingOnBehalf}
                   loading={submittingOnBehalf}
                 >
-                  {allDocsUploaded ? 'Submit on Behalf of Client' : `${missingDocs.length} document${missingDocs.length > 1 ? 's' : ''} still required`}
+                  Submit on Behalf of Client
                 </Button>
               </div>
             </GlassCard>
@@ -844,11 +834,15 @@ export default function ReviewApplication() {
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div>
                       <label className="block text-[12px] text-muted-foreground mb-1">Amount</label>
-                      <input type="number" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
+                      <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     <div>
                       <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                      <input type="number" value={leadFields.loan_term_requested} onChange={(e) => updateLeadField('loan_term_requested', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     <div>
                       <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
@@ -956,20 +950,6 @@ export default function ReviewApplication() {
             </GlassCard>
           )}
 
-          {/* Internal Notes */}
-          <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-4">Internal Notes</h2>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={4}
-              className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-              style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
-              placeholder="Add internal notes about this application..."
-            />
-            <Button className="mt-3" onClick={handleSaveNotes}>Save Notes</Button>
-          </GlassCard>
-
           {/* Notes & Messages */}
           <GlassCard>
             <div className="flex items-center justify-between mb-4">
@@ -1066,7 +1046,14 @@ export default function ReviewApplication() {
                       .map((note) => (
                         <div key={note.id} className="rounded-xl bg-secondary/30 p-3">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                              {note.author_role && (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 text-primary capitalize">
+                                  {note.author_role}
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[11px] text-muted-foreground">
                               {formatDate(note.created_at)} {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>

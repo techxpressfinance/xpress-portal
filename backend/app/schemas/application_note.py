@@ -15,6 +15,7 @@ class ApplicationNoteOut(BaseModel):
     application_id: str
     author_id: str
     author_name: str | None = None
+    author_role: str | None = None
     content: str
     is_internal: bool
     created_at: datetime

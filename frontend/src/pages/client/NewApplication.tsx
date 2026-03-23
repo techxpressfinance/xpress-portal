@@ -13,7 +13,8 @@ interface FormData {
   amount: string;
   notes: string;
   loan_purpose_id: string;
-  loan_term_requested: string;
+  loan_term_years: string;
+  loan_term_months: string;
   // Personal
   applicant_title: string;
   applicant_first_name: string;
@@ -121,11 +122,6 @@ export default function NewApplication() {
 
   const stepFields: Record<number, (keyof FormData)[]> = {
     1: ['loan_type', 'amount'],
-    2: ['applicant_first_name', 'applicant_last_name', 'applicant_dob'],
-    3: ['applicant_address', 'applicant_suburb', 'applicant_state', 'applicant_postcode'],
-    4: isBusiness ? ['business_abn', 'business_name'] : ['employer_name', 'income_amount'],
-    5: isBusiness ? ['employer_name', 'income_amount'] : ['id_type'],
-    6: ['id_type'],
   };
 
   const goNext = async () => {
@@ -210,7 +206,8 @@ export default function NewApplication() {
         payload.applicant_state = data.applicant_state;
         payload.applicant_postcode = data.applicant_postcode;
         payload.loan_purpose_id = data.loan_purpose_id ? parseInt(data.loan_purpose_id) : null;
-        payload.loan_term_requested = data.loan_term_requested ? parseInt(data.loan_term_requested) : null;
+        const totalMonths = (data.loan_term_years ? parseInt(data.loan_term_years) * 12 : 0) + (data.loan_term_months ? parseInt(data.loan_term_months) : 0);
+        payload.loan_term_requested = totalMonths > 0 ? totalMonths : null;
 
         if (isBusiness) {
           payload.business_abn = data.business_abn || null;
@@ -372,15 +369,30 @@ export default function NewApplication() {
               {lendEnabled && (
                 <div>
                   <label className="block text-[13px] font-medium text-muted-foreground mb-2">
-                    Loan Term (months) <span className="text-muted-foreground font-normal">(optional)</span>
+                    Loan Term <span className="text-muted-foreground font-normal">(optional)</span>
                   </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="360"
-                    placeholder="12"
-                    {...register('loan_term_requested')}
-                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="30"
+                        placeholder="0"
+                        {...register('loan_term_years')}
+                      />
+                      <span className="text-[12px] text-muted-foreground mt-1 block">Years</span>
+                    </div>
+                    <div>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="11"
+                        placeholder="0"
+                        {...register('loan_term_months')}
+                      />
+                      <span className="text-[12px] text-muted-foreground mt-1 block">Months</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -428,7 +440,7 @@ export default function NewApplication() {
                 <Input
                   placeholder="First name"
                   error={errors.applicant_first_name?.message}
-                  {...register('applicant_first_name', { required: 'First name is required' })}
+                  {...register('applicant_first_name')}
                 />
               </div>
               <div>
@@ -436,7 +448,7 @@ export default function NewApplication() {
                 <Input
                   placeholder="Last name"
                   error={errors.applicant_last_name?.message}
-                  {...register('applicant_last_name', { required: 'Last name is required' })}
+                  {...register('applicant_last_name')}
                 />
               </div>
             </div>
@@ -452,7 +464,7 @@ export default function NewApplication() {
                 <Input
                   type="date"
                   error={errors.applicant_dob?.message}
-                  {...register('applicant_dob', { required: 'Date of birth is required' })}
+                  {...register('applicant_dob')}
                 />
               </div>
               <div>
@@ -476,7 +488,7 @@ export default function NewApplication() {
               <Input
                 placeholder="123 Main Street"
                 error={errors.applicant_address?.message}
-                {...register('applicant_address', { required: 'Address is required' })}
+                {...register('applicant_address')}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -485,13 +497,13 @@ export default function NewApplication() {
                 <Input
                   placeholder="Suburb"
                   error={errors.applicant_suburb?.message}
-                  {...register('applicant_suburb', { required: 'Suburb is required' })}
+                  {...register('applicant_suburb')}
                 />
               </div>
               <div>
                 <label className="block text-[13px] font-medium text-muted-foreground mb-2">State</label>
                 <select
-                  {...register('applicant_state', { required: 'State is required' })}
+                  {...register('applicant_state')}
                   className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
                   {AU_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -503,7 +515,7 @@ export default function NewApplication() {
                   placeholder="2000"
                   maxLength={4}
                   error={errors.applicant_postcode?.message}
-                  {...register('applicant_postcode', { required: 'Postcode is required', pattern: { value: /^\d{4}$/, message: 'Invalid postcode' } })}
+                  {...register('applicant_postcode', { pattern: { value: /^\d{4}$/, message: 'Invalid postcode' } })}
                 />
               </div>
             </div>
@@ -519,7 +531,7 @@ export default function NewApplication() {
                 <Input
                   placeholder="12 345 678 901"
                   error={errors.business_abn?.message}
-                  {...register('business_abn', { required: 'ABN is required' })}
+                  {...register('business_abn')}
                 />
               </div>
               <div>
@@ -527,7 +539,7 @@ export default function NewApplication() {
                 <Input
                   placeholder="Your Business Pty Ltd"
                   error={errors.business_name?.message}
-                  {...register('business_name', { required: 'Business name is required' })}
+                  {...register('business_name')}
                 />
               </div>
             </div>
@@ -554,7 +566,7 @@ export default function NewApplication() {
                 <Input
                   placeholder="Employer"
                   error={errors.employer_name?.message}
-                  {...register('employer_name', { required: 'Employer name is required' })}
+                  {...register('employer_name')}
                 />
               </div>
               <div>
@@ -584,7 +596,7 @@ export default function NewApplication() {
                   min="0"
                   placeholder="5000"
                   error={errors.income_amount?.message}
-                  {...register('income_amount', { required: 'Income amount is required' })}
+                  {...register('income_amount')}
                 />
               </div>
             </div>
@@ -737,6 +749,11 @@ export default function NewApplication() {
           ) : (
             <Button type="submit" loading={isSubmitting} size="lg">
               {isSubmitting ? 'Creating...' : 'Create Application'}
+            </Button>
+          )}
+          {lendEnabled && step > 1 && step < totalSteps && (
+            <Button type="button" variant="secondary" size="lg" onClick={() => setStep(totalSteps)}>
+              Skip to Review
             </Button>
           )}
           <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>

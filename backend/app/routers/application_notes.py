@@ -20,6 +20,7 @@ def _note_to_out(note: ApplicationNote) -> dict:
         "application_id": note.application_id,
         "author_id": note.author_id,
         "author_name": note.author.full_name if note.author else None,
+        "author_role": note.author.role.value if note.author else None,
         "content": note.content,
         "is_internal": note.is_internal,
         "created_at": note.created_at,

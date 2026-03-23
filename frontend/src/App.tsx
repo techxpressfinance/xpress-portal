@@ -24,6 +24,7 @@ import AdminMessages from './pages/admin/Messages';
 import ClientMessages from './pages/client/Messages';
 import Referrals from './pages/client/Referrals';
 import Login from './pages/Login';
+import EnterCode from './pages/EnterCode';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
@@ -44,6 +45,7 @@ export default function App() {
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/enter-code" element={<EnterCode />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/resend-verification" element={<ResendVerification />} />

@@ -160,6 +160,7 @@ export interface ApplicationNote {
   application_id: string;
   author_id: string;
   author_name: string | null;
+  author_role: string | null;
   content: string;
   is_internal: boolean;
   created_at: string;

@@ -119,7 +119,7 @@ export const CREDIT_HISTORY_OPTIONS = ['Clear', 'Minor Issues', 'Major Issues', 
 
 export const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'] as const;
 
-export const REQUIRED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'bank_statement', 'payslip', 'tax_return'];
+export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'bank_statement', 'payslip', 'tax_return'];
 
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['submitted'],

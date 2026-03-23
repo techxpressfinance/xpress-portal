@@ -177,7 +177,7 @@ def send_invitation_email(to_email: str, name: str, code: str, inviter_name: str
         f"{inviter_name} has invited you to Xpress Tech Portal.\n\n"
         f"Your one-time login code is: {code}\n\n"
         f"This code expires in 10 minutes.\n\n"
-        f"Go to {FRONTEND_URL}/login?method=code&email={to_email} to sign in.\n\n"
+        f"Go to {FRONTEND_URL}/enter-code?email={to_email} to sign in.\n\n"
         f"Best regards,\nXpress Tech Team"
     )
     html_body = _code_html(code, [

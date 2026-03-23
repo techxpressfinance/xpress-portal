@@ -8,7 +8,7 @@ import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, REQUIRED_DOC_TYPES } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import type { ApplicationNote, Document, LendSyncStatus, LoanApplication } from '../../types';
 
 export default function ApplicationDetail() {
@@ -30,7 +30,7 @@ export default function ApplicationDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
-  const missingDocs = REQUIRED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
+  const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
   const allDocsUploaded = missingDocs.length === 0;
 
   useEffect(() => {
@@ -218,9 +218,9 @@ export default function ApplicationDetail() {
 
             {application.status === 'draft' && (
               <div className="mt-6 pt-5 border-t border-border">
-                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Required Documents</h3>
+                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Recommended Documents</h3>
                 <div className="grid gap-2 sm:grid-cols-2 mb-4">
-                  {REQUIRED_DOC_TYPES.map((type) => (
+                  {RECOMMENDED_DOC_TYPES.map((type) => (
                     <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}`}>
                       {uploadedDocTypes.has(type) ? (
                         <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -231,15 +231,17 @@ export default function ApplicationDetail() {
                     </div>
                   ))}
                 </div>
+                {!allDocsUploaded && (
+                  <p className="text-[12px] text-muted-foreground mb-3">You can submit now — missing documents may be requested during review.</p>
+                )}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <Button
-                    variant={allDocsUploaded ? 'success' : 'secondary'}
+                    variant={allDocsUploaded ? 'success' : 'primary'}
                     size="lg"
                     onClick={handleSubmitApplication}
-                    disabled={!allDocsUploaded}
                     className="flex-1"
                   >
-                    {allDocsUploaded ? 'Submit for Review' : `Upload ${missingDocs.length} more doc${missingDocs.length > 1 ? 's' : ''} to submit`}
+                    Submit for Review
                   </Button>
                   <Button
                     variant="danger"
