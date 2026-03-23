@@ -216,3 +216,35 @@ export interface ReferralStats {
   signed_up: number;
   applied: number;
 }
+
+export interface KanbanColumn {
+  id: string;
+  board_id: string;
+  title: string;
+  mapped_status: ApplicationStatus | null;
+  position: number;
+  color: string | null;
+  application_count: number;
+}
+
+export interface KanbanBoard {
+  id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  created_by_id: string;
+  created_by_name: string | null;
+  columns: KanbanColumn[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KanbanBoardListItem {
+  id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  column_count: number;
+  created_at: string;
+  updated_at: string;
+}

@@ -5,5 +5,6 @@ from app.models.activity_log import ActivityLog
 from app.models.application_note import ApplicationNote
 from app.models.direct_message import DirectMessage
 from app.models.referral import Referral
+from app.models.kanban import KanbanBoard, KanbanColumn
 
-__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral"]
+__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn"]

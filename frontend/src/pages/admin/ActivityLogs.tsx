@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
-import type { ActivityLog } from '../../types';
+import type { ActivityLog, User } from '../../types';
 
 
 export default function ActivityLogs() {
@@ -11,7 +11,21 @@ export default function ActivityLogs() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [brokerFilter, setBrokerFilter] = useState('');
+  const [dateRangeFilter, setDateRangeFilter] = useState('');
+  const [clientsList, setClientsList] = useState<{ id: string; full_name: string }[]>([]);
+  const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const perPage = 20;
+
+  // Fetch users for the filter dropdowns
+  useEffect(() => {
+    api.get('/users').then(({ data }) => {
+      const users = data as User[];
+      setClientsList(users.filter((u) => u.role === 'client').map((u) => ({ id: u.id, full_name: u.full_name })));
+      setBrokersList(users.filter((u) => u.role === 'broker' || u.role === 'admin').map((u) => ({ id: u.id, full_name: u.full_name })));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -19,6 +33,9 @@ export default function ActivityLogs() {
     params.set('page', String(page));
     params.set('per_page', String(perPage));
     if (actionFilter) params.set('action', actionFilter);
+    if (clientFilter) params.set('user_id', clientFilter);
+    if (brokerFilter) params.set('user_id', brokerFilter);
+    if (dateRangeFilter) params.set('date_range', dateRangeFilter);
 
     api
       .get(`/activity-logs?${params}`)
@@ -28,7 +45,7 @@ export default function ActivityLogs() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page, actionFilter]);
+  }, [page, actionFilter, clientFilter, brokerFilter, dateRangeFilter]);
 
   const totalPages = Math.ceil(total / perPage);
 
@@ -48,9 +65,53 @@ export default function ActivityLogs() {
             <option value="created">Created</option>
             <option value="status_changed">Status Changed</option>
             <option value="broker_assigned">Broker Assigned</option>
+            <option value="broker_unassigned">Broker Removed</option>
             <option value="document_verified">Document Verified</option>
+            <option value="broker_completed">Broker Completed</option>
+            <option value="board_created">Board Created</option>
+            <option value="column_created">Column Created</option>
           </Select>
-          <div className="self-end pb-1">
+          <Select
+            label="Client"
+            value={clientFilter}
+            onChange={(e) => { setClientFilter(e.target.value); setBrokerFilter(''); setPage(1); }}
+          >
+            <option value="">All Clients</option>
+            {clientsList.map((u) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </Select>
+          <Select
+            label="Broker"
+            value={brokerFilter}
+            onChange={(e) => { setBrokerFilter(e.target.value); setClientFilter(''); setPage(1); }}
+          >
+            <option value="">All Brokers</option>
+            {brokersList.map((u) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </Select>
+          <Select
+            label="Period"
+            value={dateRangeFilter}
+            onChange={(e) => { setDateRangeFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">All Time</option>
+            <option value="this_month">This Month</option>
+            <option value="last_month">Last Month</option>
+            <option value="this_quarter">This Quarter</option>
+            <option value="last_quarter">Last Quarter</option>
+            <option value="this_year">This Year</option>
+          </Select>
+          <div className="self-end pb-1 flex items-center gap-3">
+            {(actionFilter || clientFilter || brokerFilter || dateRangeFilter) && (
+              <button
+                onClick={() => { setActionFilter(''); setClientFilter(''); setBrokerFilter(''); setDateRangeFilter(''); setPage(1); }}
+                className="text-[12px] font-medium text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Clear all
+              </button>
+            )}
             <span className="rounded-full bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground">
               {total} entries
             </span>

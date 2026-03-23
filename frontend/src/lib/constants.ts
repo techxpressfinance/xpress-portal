@@ -128,3 +128,13 @@ export const VALID_TRANSITIONS: Record<string, string[]> = {
   approved: [],
   rejected: [],
 };
+
+export const COLUMN_COLOR_OPTIONS = [
+  { value: 'muted-foreground', label: 'Gray' },
+  { value: 'primary', label: 'Blue' },
+  { value: 'chart-4', label: 'Orange' },
+  { value: 'success', label: 'Green' },
+  { value: 'destructive', label: 'Red' },
+  { value: 'chart-2', label: 'Teal' },
+  { value: 'chart-5', label: 'Purple' },
+] as const;
