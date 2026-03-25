@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
-import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS } from '../../lib/constants';
+import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, COLUMN_COLOR_BG } from '../../lib/constants';
 import { PageHeader, Input, Button } from '../../components/ui';
 import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, ApplicationStatus, User } from '../../types';
 
@@ -86,7 +86,7 @@ function BoardColumn({
   return (
     <div className="min-w-[260px] flex-1">
       <div className="flex items-center gap-2.5 mb-3 px-1 group">
-        <div className={`h-2.5 w-2.5 rounded-full bg-${col.color || 'muted-foreground'}`} />
+        <div className={`h-2.5 w-2.5 rounded-full ${COLUMN_COLOR_BG[col.color || 'muted-foreground'] || 'bg-muted-foreground'}`} />
         <span className="text-[13px] font-semibold text-foreground">{col.title}</span>
         {col.mapped_status && (
           <span className="text-[10px] text-muted-foreground/60">{col.mapped_status}</span>
@@ -171,6 +171,7 @@ export default function KanbanBoardPage() {
   const [draggedApp, setDraggedApp] = useState<LoanApplication | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const dragSourceColumn = useRef<string | null>(null);
+  const initialLoadDone = useRef(false);
 
   // Modal state
   const [showCreateBoard, setShowCreateBoard] = useState(false);
@@ -237,25 +238,31 @@ export default function KanbanBoardPage() {
 
   // Initial load
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const boardList = await fetchBoards();
+        if (cancelled) return;
         fetchFilterOptions();
         if (boardList.length > 0) {
           const defaultBoard = boardList.find((b) => b.is_default) || boardList[0];
           await loadBoard(defaultBoard.id);
         }
       } catch {
-        toast('Failed to load boards', 'error');
+        if (!cancelled) toast('Failed to load boards', 'error');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          initialLoadDone.current = true;
+        }
       }
     })();
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch apps when search or filters change (debounced)
   useEffect(() => {
-    if (!activeBoard) return;
+    if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
       fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter }).catch(() => {});
     }, 300);
@@ -695,7 +702,7 @@ export default function KanbanBoardPage() {
                 <button
                   key={opt.value}
                   onClick={() => setColColor(opt.value)}
-                  className={`h-6 w-6 rounded-full bg-${opt.value} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
+                  className={`h-6 w-6 rounded-full ${COLUMN_COLOR_BG[opt.value] || 'bg-muted-foreground'} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
                   title={opt.label}
                 />
               ))}
@@ -734,7 +741,7 @@ export default function KanbanBoardPage() {
                 <button
                   key={opt.value}
                   onClick={() => setColColor(opt.value)}
-                  className={`h-6 w-6 rounded-full bg-${opt.value} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
+                  className={`h-6 w-6 rounded-full ${COLUMN_COLOR_BG[opt.value] || 'bg-muted-foreground'} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
                   title={opt.label}
                 />
               ))}

@@ -15,7 +15,8 @@ from app.middleware.security import BodySizeLimitMiddleware, SecurityHeadersMidd
 from app.models.application_broker import ApplicationBroker  # noqa: F401 — ensure table is created
 from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure table is created
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
-from app.routers import activity_logs, application_notes, applications, auth, documents, invitations, kanban, lend, messages, referrals, users
+from app.constants import DEFAULT_KANBAN_COLUMNS
+from app.routers import activity_logs, application_notes, applications, auth, dashboard, documents, invitations, kanban, lend, messages, referrals, users
 
 # Configure logging
 logging.basicConfig(
@@ -130,27 +131,25 @@ try:
         board_count = conn.execute(text("SELECT COUNT(*) FROM kanban_boards")).scalar()
         if board_count == 0:
             import uuid as _uuid
+            from datetime import datetime as _dt, timezone as _tz
+            _now = _dt.now(_tz.utc)
             _board_id = str(_uuid.uuid4())
             # Find first admin user to set as creator
             _admin_row = conn.execute(text("SELECT id FROM users WHERE role='admin' LIMIT 1")).first()
-            _creator_id = _admin_row[0] if _admin_row else str(_uuid.uuid4())
-            conn.execute(text(
-                "INSERT INTO kanban_boards (id, name, description, created_by_id, is_default, created_at, updated_at) "
-                "VALUES (:id, :name, :desc, :creator, 1, datetime('now'), datetime('now'))"
-            ), {"id": _board_id, "name": "Default Pipeline", "desc": "Default application pipeline board", "creator": _creator_id})
-            _default_cols = [
-                ("Draft", "draft", 0, "muted-foreground"),
-                ("Submitted", "submitted", 1, "primary"),
-                ("Reviewing", "reviewing", 2, "chart-4"),
-                ("Approved", "approved", 3, "success"),
-                ("Rejected", "rejected", 4, "destructive"),
-            ]
-            for title, mapped_status, position, color in _default_cols:
+            if not _admin_row:
+                _logger.debug("Kanban board seeding skipped: no admin user exists yet")
+            else:
+                _creator_id = _admin_row[0]
                 conn.execute(text(
-                    "INSERT INTO kanban_columns (id, board_id, title, mapped_status, position, color, created_at) "
-                    "VALUES (:id, :board_id, :title, :mapped_status, :position, :color, datetime('now'))"
-                ), {"id": str(_uuid.uuid4()), "board_id": _board_id, "title": title, "mapped_status": mapped_status, "position": position, "color": color})
-            _logger.info("Seeded default Kanban board")
+                    "INSERT INTO kanban_boards (id, name, description, created_by_id, is_default, created_at, updated_at) "
+                    "VALUES (:id, :name, :desc, :creator, 1, :now, :now)"
+                ), {"id": _board_id, "name": "Default Pipeline", "desc": "Default application pipeline board", "creator": _creator_id, "now": _now})
+                for col_def in DEFAULT_KANBAN_COLUMNS:
+                    conn.execute(text(
+                        "INSERT INTO kanban_columns (id, board_id, title, mapped_status, position, color, created_at) "
+                        "VALUES (:id, :board_id, :title, :mapped_status, :position, :color, :now)"
+                    ), {"id": str(_uuid.uuid4()), "board_id": _board_id, **col_def, "now": _now})
+                _logger.info("Seeded default Kanban board")
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
@@ -188,6 +187,7 @@ app.include_router(documents.router)
 app.include_router(messages.router)
 app.include_router(referrals.router)
 app.include_router(activity_logs.router)
+app.include_router(dashboard.router)
 app.include_router(lend.router)
 app.include_router(kanban.router)
 

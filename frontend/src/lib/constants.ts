@@ -121,6 +121,7 @@ export const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'T
 
 export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'bank_statement', 'payslip', 'tax_return'];
 
+// NOTE: backend source of truth at backend/app/constants.py — keep in sync
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['submitted'],
   submitted: ['reviewing', 'rejected'],
@@ -138,3 +139,13 @@ export const COLUMN_COLOR_OPTIONS = [
   { value: 'chart-2', label: 'Teal' },
   { value: 'chart-5', label: 'Purple' },
 ] as const;
+
+export const COLUMN_COLOR_BG: Record<string, string> = {
+  'muted-foreground': 'bg-muted-foreground',
+  'primary': 'bg-primary',
+  'chart-4': 'bg-chart-4',
+  'success': 'bg-success',
+  'destructive': 'bg-destructive',
+  'chart-2': 'bg-chart-2',
+  'chart-5': 'bg-chart-5',
+};

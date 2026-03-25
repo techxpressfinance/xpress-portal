@@ -217,6 +217,17 @@ export interface ReferralStats {
   applied: number;
 }
 
+export interface DashboardStats {
+  status_counts: Record<string, number>;
+  volume_by_status: Record<string, number>;
+  count_by_loan_type: Record<string, number>;
+  volume_by_loan_type: Record<string, number>;
+  apps_this_week: number;
+  apps_last_week: number;
+  avg_turnaround_days: number | null;
+  monthly_trend: { month: string; count: number }[];
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;

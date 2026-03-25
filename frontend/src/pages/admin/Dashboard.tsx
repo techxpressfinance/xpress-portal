@@ -4,12 +4,25 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { GlassCard, StatCard, PageHeader, Badge, Button } from '../../components/ui';
 import { getInitials } from '../../lib/utils';
-import { ACTION_ICON_CONFIG, ACTION_LABELS, STATUS_BADGE } from '../../lib/constants';
-import type { ActivityLog, LoanApplication, User } from '../../types';
+import { ACTION_ICON_CONFIG, ACTION_LABELS, LOAN_TYPE_ICONS, STATUS_BADGE } from '../../lib/constants';
+import type { ActivityLog, DashboardStats, LoanApplication, User } from '../../types';
+
+
+function formatVolume(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toLocaleString()}`;
+}
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split('-');
+  return new Date(+y, +m - 1).toLocaleString('default', { month: 'short' });
+}
 
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [brokers, setBrokers] = useState<User[]>([]);
@@ -17,11 +30,13 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     Promise.all([
+      api.get('/dashboard/stats'),
       api.get('/applications?per_page=100'),
       api.get('/activity-logs?per_page=10'),
       api.get('/users'),
     ])
-      .then(([appRes, logRes, usersRes]) => {
+      .then(([statsRes, appRes, logRes, usersRes]) => {
+        setDashStats(statsRes.data);
         setApplications(appRes.data.items);
         setLogs(logRes.data.items);
         setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
@@ -30,14 +45,23 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Derive counts from stats endpoint (accurate across all data, not capped by per_page)
   const counts = {
-    total: applications.length,
-    draft: applications.filter((a) => a.status === 'draft').length,
-    submitted: applications.filter((a) => a.status === 'submitted').length,
-    reviewing: applications.filter((a) => a.status === 'reviewing').length,
-    approved: applications.filter((a) => a.status === 'approved').length,
-    rejected: applications.filter((a) => a.status === 'rejected').length,
+    total: dashStats ? Object.values(dashStats.status_counts).reduce((a, b) => a + b, 0) : 0,
+    draft: dashStats?.status_counts.draft ?? 0,
+    submitted: dashStats?.status_counts.submitted ?? 0,
+    reviewing: dashStats?.status_counts.reviewing ?? 0,
+    approved: dashStats?.status_counts.approved ?? 0,
+    rejected: dashStats?.status_counts.rejected ?? 0,
   };
+
+  const totalVolume = dashStats ? Object.values(dashStats.volume_by_status).reduce((a, b) => a + b, 0) : 0;
+
+  const weekDelta = dashStats
+    ? dashStats.apps_last_week > 0
+      ? Math.round(((dashStats.apps_this_week - dashStats.apps_last_week) / dashStats.apps_last_week) * 100)
+      : dashStats.apps_this_week > 0 ? 100 : 0
+    : 0;
 
   const stats = [
     { label: 'Total', value: counts.total, gradient: 'from-primary to-primary', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg> },
@@ -54,6 +78,10 @@ export default function AdminDashboard() {
   });
   const unassigned = applications.filter((a) => (!a.assigned_brokers || a.assigned_brokers.length === 0) && a.status !== 'draft');
 
+  const loanTypes = ['personal', 'home', 'business', 'vehicle'] as const;
+  const maxLoanTypeVolume = dashStats ? Math.max(...loanTypes.map((t) => dashStats.volume_by_loan_type[t] ?? 0), 1) : 1;
+  const maxMonthCount = dashStats ? Math.max(...dashStats.monthly_trend.map((m) => m.count), 1) : 1;
+
   return (
     <div>
       <PageHeader
@@ -67,7 +95,7 @@ export default function AdminDashboard() {
       />
 
       {/* Stats Grid */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5 mb-8">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5 mb-5">
         {stats.map((stat) => (
           <StatCard
             key={stat.label}
@@ -81,8 +109,114 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      {/* Metrics row: Total Volume, This Week, Avg Turnaround */}
+      <div className="grid gap-5 sm:grid-cols-3 mb-8">
+        <StatCard
+          label="Total Loan Volume"
+          value={loading ? 0 : formatVolume(totalVolume)}
+          loading={loading}
+          gradient="from-chart-5 to-chart-5"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+        />
+        <div className="rounded-2xl bg-card text-card-foreground shadow-[0_0_0_1px_var(--border),0_1px_3px_0_rgba(0,0,0,0.04),0_2px_8px_0_rgba(0,0,0,0.02)] relative overflow-hidden p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[13px] font-medium text-muted-foreground">This Week</p>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
+            </div>
+          </div>
+          {loading ? (
+            <div className="h-8 w-16 rounded-lg shimmer" />
+          ) : (
+            <div className="flex items-baseline gap-3">
+              <p className="text-[28px] font-semibold tracking-tight text-foreground">{dashStats?.apps_this_week ?? 0}</p>
+              <div className="flex items-center gap-1">
+                {weekDelta !== 0 && (
+                  <svg className={`h-3.5 w-3.5 ${weekDelta > 0 ? 'text-success' : 'text-destructive'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d={weekDelta > 0 ? 'M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25' : 'M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25'} />
+                  </svg>
+                )}
+                <span className={`text-[13px] font-medium ${weekDelta > 0 ? 'text-success' : weekDelta < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {weekDelta > 0 ? '+' : ''}{weekDelta}% vs last week
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+        <StatCard
+          label="Avg. Turnaround"
+          value={loading ? 0 : dashStats?.avg_turnaround_days != null ? `${dashStats.avg_turnaround_days}d` : '--'}
+          loading={loading}
+          gradient="from-chart-2 to-chart-2"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+        />
+      </div>
+
+      {/* Volume by Loan Type + Monthly Trend */}
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
-        {/* Status Breakdown */}
+        <GlassCard>
+          <h2 className="text-[15px] font-semibold text-foreground mb-5">Volume by Loan Type</h2>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map((i) => <div key={i} className="h-10 rounded-lg shimmer" />)}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {loanTypes.map((type) => {
+                const count = dashStats?.count_by_loan_type[type] ?? 0;
+                const volume = dashStats?.volume_by_loan_type[type] ?? 0;
+                const pct = (volume / maxLoanTypeVolume) * 100;
+                return (
+                  <div key={type}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[16px]">{LOAN_TYPE_ICONS[type]}</span>
+                        <span className="text-[14px] font-medium text-foreground capitalize">{type}</span>
+                        <span className="text-[12px] text-muted-foreground">{count} app{count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <span className="text-[14px] font-semibold text-foreground">{formatVolume(volume)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassCard>
+
+        <GlassCard>
+          <h2 className="text-[15px] font-semibold text-foreground mb-5">Monthly Applications</h2>
+          {loading ? (
+            <div className="h-36 rounded-lg shimmer" />
+          ) : (
+            <div className="flex items-end gap-2 h-36">
+              {dashStats?.monthly_trend.map(({ month, count }) => {
+                const height = Math.max((count / maxMonthCount) * 100, count > 0 ? 8 : 2);
+                return (
+                  <div key={month} className="flex-1 flex flex-col items-center gap-1.5">
+                    <span className="text-[12px] font-semibold text-foreground">{count}</span>
+                    <div className="w-full flex items-end" style={{ height: '100px' }}>
+                      <div
+                        className="w-full rounded-t-md bg-primary/80 transition-all duration-500"
+                        style={{ height: `${height}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">{monthLabel(month)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2 mb-8">
+        {/* Status Breakdown (enhanced with volume) */}
         <GlassCard>
           <h2 className="text-[15px] font-semibold text-foreground mb-5">Status Overview</h2>
           {loading ? (
@@ -96,6 +230,7 @@ export default function AdminDashboard() {
               {(['draft', 'submitted', 'reviewing', 'approved', 'rejected'] as const).map((status) => {
                 const count = counts[status];
                 const pct = counts.total > 0 ? (count / counts.total) * 100 : 0;
+                const volume = dashStats?.volume_by_status[status] ?? 0;
                 return (
                   <div key={status} className="flex items-center gap-4">
                     <div className="w-24">
@@ -109,7 +244,8 @@ export default function AdminDashboard() {
                         />
                       </div>
                     </div>
-                    <span className="text-[14px] font-semibold text-foreground w-10 text-right">{count}</span>
+                    <span className="text-[12px] text-muted-foreground w-16 text-right">{formatVolume(volume)}</span>
+                    <span className="text-[14px] font-semibold text-foreground w-8 text-right">{count}</span>
                   </div>
                 );
               })}

@@ -16,8 +16,11 @@ from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
 
 REQUIRED_DOC_TYPES = {DocType.id_proof, DocType.address_proof, DocType.bank_statement, DocType.payslip, DocType.tax_return}
+from app.constants import VALID_TRANSITIONS
+from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.serialization import app_with_user as _app_with_user
 from app.services.email import send_status_notification
 from app.schemas.loan_application import (
     LoanApplicationCreate,
@@ -27,37 +30,6 @@ from app.schemas.loan_application import (
 )
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
-
-
-def _app_with_user(app: LoanApplication) -> dict:
-    """Build response dict with user info and assigned brokers list."""
-    data = {c.name: getattr(app, c.name) for c in app.__table__.columns}
-    if app.user:
-        data["user_name"] = app.user.full_name
-        data["user_email"] = app.user.email
-    # Backward compat: first assigned broker populates the legacy fields
-    if app.brokers:
-        data["assigned_broker_id"] = app.brokers[0].id
-        data["assigned_broker_name"] = app.brokers[0].full_name
-    else:
-        data["assigned_broker_id"] = None
-        data["assigned_broker_name"] = None
-    data["assigned_brokers"] = [{"id": b.id, "full_name": b.full_name} for b in app.brokers]
-    # Completion info
-    if app.completed_by:
-        data["completed_by_name"] = app.completed_by.full_name
-    else:
-        data["completed_by_name"] = None
-    return data
-
-# Valid status transitions
-VALID_TRANSITIONS = {
-    "draft": ["submitted"],
-    "submitted": ["reviewing", "rejected"],
-    "reviewing": ["approved", "rejected"],
-    "approved": [],
-    "rejected": [],
-}
 
 
 @router.post("", response_model=LoanApplicationOut, status_code=status.HTTP_201_CREATED)
@@ -112,8 +84,9 @@ def list_applications(
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
     if search:
+        safe_search = escape_like(search)
         query = query.join(User, LoanApplication.user_id == User.id).filter(
-            User.full_name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%")
+            User.full_name.ilike(f"%{safe_search}%", escape="\\") | User.email.ilike(f"%{safe_search}%", escape="\\")
         )
 
     total = query.count()

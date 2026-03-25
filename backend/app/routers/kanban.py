@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
@@ -19,36 +21,28 @@ from app.schemas.kanban import (
     KanbanColumnOut,
     KanbanColumnUpdate,
 )
+from app.constants import DEFAULT_KANBAN_COLUMNS, VALID_TRANSITIONS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.date_filter import apply_date_range_filter
 from app.services.email import send_status_notification
+from app.services.query_utils import escape_like
+from app.services.serialization import app_with_user
 
 router = APIRouter(prefix="/api/kanban", tags=["kanban"])
 
-VALID_TRANSITIONS = {
-    "draft": ["submitted"],
-    "submitted": ["reviewing", "rejected"],
-    "reviewing": ["approved", "rejected"],
-    "approved": [],
-    "rejected": [],
-}
+_VALID_STATUSES = {s.value for s in ApplicationStatus}
 
-DEFAULT_COLUMNS = [
-    {"title": "Draft", "mapped_status": "draft", "position": 0, "color": "muted-foreground"},
-    {"title": "Submitted", "mapped_status": "submitted", "position": 1, "color": "primary"},
-    {"title": "Reviewing", "mapped_status": "reviewing", "position": 2, "color": "chart-4"},
-    {"title": "Approved", "mapped_status": "approved", "position": 3, "color": "success"},
-    {"title": "Rejected", "mapped_status": "rejected", "position": 4, "color": "destructive"},
-]
+
+def _validate_mapped_status(status: str) -> None:
+    if status not in _VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {status}")
 
 
 def _board_to_dict(board: KanbanBoard, db: Session) -> dict:
-    """Serialize board with columns and application counts."""
+    """Serialize board with columns."""
     cols = []
     for col in board.columns:
-        count = 0
-        if col.mapped_status:
-            count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status).count()
         cols.append({
             "id": col.id,
             "board_id": col.board_id,
@@ -56,7 +50,7 @@ def _board_to_dict(board: KanbanBoard, db: Session) -> dict:
             "mapped_status": col.mapped_status,
             "position": col.position,
             "color": col.color,
-            "application_count": count,
+            "application_count": 0,
         })
     return {
         "id": board.id,
@@ -103,12 +97,10 @@ def create_board(
     db.add(board)
     db.flush()
 
-    cols = data.columns if data.columns else [KanbanColumnCreate(**c) for c in DEFAULT_COLUMNS]
+    cols = data.columns if data.columns else [KanbanColumnCreate(**c) for c in DEFAULT_KANBAN_COLUMNS]
     for col_data in cols:
         if col_data.mapped_status:
-            valid = {s.value for s in ApplicationStatus}
-            if col_data.mapped_status not in valid:
-                raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {col_data.mapped_status}")
+            _validate_mapped_status(col_data.mapped_status)
         col = KanbanColumn(
             board_id=board.id,
             title=col_data.title,
@@ -185,9 +177,7 @@ def add_column(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     if data.mapped_status:
-        valid = {s.value for s in ApplicationStatus}
-        if data.mapped_status not in valid:
-            raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {data.mapped_status}")
+        _validate_mapped_status(data.mapped_status)
     max_pos = max((c.position for c in board.columns), default=-1)
     col = KanbanColumn(
         board_id=board_id,
@@ -219,9 +209,7 @@ def update_column(
         raise HTTPException(status_code=404, detail="Column not found")
     updates = data.model_dump(exclude_unset=True)
     if "mapped_status" in updates and updates["mapped_status"]:
-        valid = {s.value for s in ApplicationStatus}
-        if updates["mapped_status"] not in valid:
-            raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {updates['mapped_status']}")
+        _validate_mapped_status(updates["mapped_status"])
     for key, value in updates.items():
         setattr(col, key, value)
     log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates)
@@ -284,7 +272,8 @@ def get_board_applications(
     loan_type: str | None = None,
     broker_id: str | None = None,
     client_id: str | None = None,
-    date_range: str | None = None,
+    date_range: Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"] | None = None,
+    per_column: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
@@ -292,11 +281,10 @@ def get_board_applications(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    from sqlalchemy.orm import joinedload, selectinload
     query = db.query(LoanApplication).options(
         joinedload(LoanApplication.user),
         selectinload(LoanApplication.brokers),
-        selectinload(LoanApplication.completed_by),
+        joinedload(LoanApplication.completed_by),
     )
 
     # Broker access: only their assigned applications
@@ -308,8 +296,13 @@ def get_board_applications(
         )
 
     if search:
-        query = query.join(User, LoanApplication.user_id == User.id).filter(
-            User.full_name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%")
+        safe_search = escape_like(search)
+        query = query.filter(
+            LoanApplication.user_id.in_(
+                db.query(User.id).filter(
+                    User.full_name.ilike(f"%{safe_search}%", escape="\\") | User.email.ilike(f"%{safe_search}%", escape="\\")
+                )
+            )
         )
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
@@ -324,39 +317,15 @@ def get_board_applications(
 
     # Date range filter
     if date_range:
-        from datetime import datetime, timedelta, timezone
-        now = datetime.now(timezone.utc)
-        if date_range == "this_month":
-            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            query = query.filter(LoanApplication.created_at >= start)
-        elif date_range == "last_month":
-            first_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            start = (first_this_month - timedelta(days=1)).replace(day=1)
-            query = query.filter(LoanApplication.created_at >= start, LoanApplication.created_at < first_this_month)
-        elif date_range == "this_quarter":
-            quarter_month = ((now.month - 1) // 3) * 3 + 1
-            start = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-            query = query.filter(LoanApplication.created_at >= start)
-        elif date_range == "last_quarter":
-            quarter_month = ((now.month - 1) // 3) * 3 + 1
-            start_this_q = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-            if quarter_month > 3:
-                start_last_q = start_this_q.replace(month=quarter_month - 3)
-            else:
-                start_last_q = start_this_q.replace(year=now.year - 1, month=10)
-            query = query.filter(LoanApplication.created_at >= start_last_q, LoanApplication.created_at < start_this_q)
-        elif date_range == "this_year":
-            start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            query = query.filter(LoanApplication.created_at >= start)
+        query = apply_date_range_filter(query, LoanApplication.created_at, date_range)
 
     apps = query.order_by(LoanApplication.created_at.desc()).all()
 
     # Group by column
-    from app.routers.applications import _app_with_user
     result = {}
     for col in board.columns:
         if col.mapped_status:
-            col_apps = [_app_with_user(a) for a in apps if a.status.value == col.mapped_status]
+            col_apps = [app_with_user(a) for a in apps if a.status.value == col.mapped_status][:per_column]
         else:
             col_apps = []
         result[col.id] = col_apps
@@ -378,7 +347,10 @@ def move_card(
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).options(
+        selectinload(LoanApplication.brokers),
+        joinedload(LoanApplication.user),
+    ).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
     check_application_access(application, current_user)
@@ -400,13 +372,12 @@ def move_card(
         )
 
     old_status = current
-    application.status = new_status
+    application.status = ApplicationStatus(new_status)
     log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status})
     db.commit()
 
     # Email notification
-    client = db.query(User).filter(User.id == application.user_id).first()
-    if client:
-        send_status_notification(client.email, client.full_name, application.loan_type.value, new_status)
+    if application.user:
+        send_status_notification(application.user.email, application.user.full_name, application.loan_type.value, new_status)
 
     return {"status": "ok", "from": old_status, "to": new_status}

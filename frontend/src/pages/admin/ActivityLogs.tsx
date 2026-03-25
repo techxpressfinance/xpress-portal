@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
+import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import type { ActivityLog, User } from '../../types';
 
 
 export default function ActivityLogs() {
+  const { toast } = useToast();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -33,8 +35,8 @@ export default function ActivityLogs() {
     params.set('page', String(page));
     params.set('per_page', String(perPage));
     if (actionFilter) params.set('action', actionFilter);
-    if (clientFilter) params.set('user_id', clientFilter);
-    if (brokerFilter) params.set('user_id', brokerFilter);
+    const activeUserFilter = clientFilter || brokerFilter;
+    if (activeUserFilter) params.set('user_id', activeUserFilter);
     if (dateRangeFilter) params.set('date_range', dateRangeFilter);
 
     api
@@ -43,7 +45,7 @@ export default function ActivityLogs() {
         setLogs(data.items);
         setTotal(data.total);
       })
-      .catch(() => {})
+      .catch(() => toast('Failed to load activity logs', 'error'))
       .finally(() => setLoading(false));
   }, [page, actionFilter, clientFilter, brokerFilter, dateRangeFilter]);
 
