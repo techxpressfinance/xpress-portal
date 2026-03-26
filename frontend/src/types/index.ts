@@ -222,6 +222,31 @@ export interface DashboardStats {
   monthly_trend: { month: string; count: number }[];
 }
 
+export interface SearchResultApplication {
+  id: string;
+  loan_type: LoanType;
+  amount: number;
+  status: ApplicationStatus;
+  user_name: string | null;
+  user_email: string | null;
+  created_at: string | null;
+}
+
+export interface SearchResultUser {
+  id: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string | null;
+}
+
+export interface GlobalSearchResponse {
+  applications: SearchResultApplication[];
+  users: SearchResultUser[];
+  query: string;
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;

@@ -5,6 +5,7 @@ import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import PageTransition from './PageTransition';
+import GlobalSearch from './GlobalSearch';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
   `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2 text-[14px] font-medium transition-all duration-200 ${
@@ -109,6 +110,19 @@ export default function Layout() {
             </>
           ) : (
             <>
+              <button
+                onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2 text-[14px] font-medium transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-secondary/60 w-full`}
+                title="Search (⌘K)"
+              >
+                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left">Search</span>
+                    <kbd className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/70">⌘K</kbd>
+                  </>
+                )}
+              </button>
               <NavLink to="/admin" end className={linkClass} title="Dashboard">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" /></svg>
                 {!collapsed && 'Dashboard'}
@@ -255,6 +269,7 @@ export default function Layout() {
           </div>
         </main>
       </div>
+      <GlobalSearch />
       {showLogoutConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
