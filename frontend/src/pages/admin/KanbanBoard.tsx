@@ -11,14 +11,14 @@ import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn,
 
 // ── Card Component ──────────────────────────────────────────
 
-function KanbanCard({ app, onDragStart }: { app: LoanApplication; onDragStart: (e: DragEvent, app: LoanApplication) => void }) {
+function KanbanCard({ app, onDragStart, isDragging }: { app: LoanApplication; onDragStart: (e: DragEvent, app: LoanApplication) => void; isDragging?: boolean }) {
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(e, app)}
-      className="rounded-xl bg-background border border-border p-3.5 transition-all duration-200 hover:border-primary/30 hover:shadow-sm cursor-grab active:cursor-grabbing"
+      className={`rounded-xl bg-background border border-border p-3.5 transition-all duration-300 ease-out cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-40 scale-95 ring-2 ring-primary/50 ring-dashed bg-primary/5' : 'hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1'}`}
     >
-      <Link to={`/admin/applications/${app.id}`} className="block">
+      <Link to={`/admin/applications/${app.id}`} className="block" draggable={false} onClick={(e) => isDragging && e.preventDefault()}>
         <div className="flex items-center gap-2.5 mb-2.5">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary">
             <span className="text-[10px] font-semibold text-muted-foreground">
@@ -58,10 +58,14 @@ function KanbanCard({ app, onDragStart }: { app: LoanApplication; onDragStart: (
 
 // ── Column Component ────────────────────────────────────────
 
+type DropValidity = 'valid' | 'invalid' | 'same' | null;
+
 function BoardColumn({
   col,
   apps,
   dragOverColumn,
+  dropValidity,
+  draggedAppId,
   isAdmin,
   onDragStart,
   onDragOver,
@@ -73,19 +77,60 @@ function BoardColumn({
   col: KanbanColumn;
   apps: LoanApplication[];
   dragOverColumn: string | null;
+  dropValidity: DropValidity;
+  draggedAppId: string | null;
   isAdmin: boolean;
   onDragStart: (e: DragEvent, app: LoanApplication) => void;
   onDragOver: (e: DragEvent, columnId: string) => void;
   onDrop: (e: DragEvent, columnId: string) => void;
-  onDragLeave: () => void;
+  onDragLeave: (e: DragEvent, columnId: string) => void;
   onEditColumn: (col: KanbanColumn) => void;
   onDeleteColumn: (col: KanbanColumn) => void;
 }) {
   const isOver = dragOverColumn === col.id;
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = (e: DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      onDragOver(e, col.id);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      onDragLeave(e, col.id);
+    }
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    dragCounterRef.current = 0;
+    onDrop(e, col.id);
+  };
+
+  // Determine drop zone styling
+  let dropZoneClass = 'bg-secondary/20 border-2 border-transparent';
+  if (isOver && dropValidity === 'valid') {
+    dropZoneClass = 'bg-success/10 border-2 border-success/40 shadow-[inset_0_0_30px_rgba(var(--success),0.1)] scale-[1.02] ring-4 ring-success/10';
+  } else if (isOver && dropValidity === 'invalid') {
+    dropZoneClass = 'bg-destructive/10 border-2 border-destructive/30 ring-4 ring-destructive/10 opacity-80 mix-blend-luminosity';
+  } else if (isOver && dropValidity === 'same') {
+    dropZoneClass = 'bg-secondary/40 border-2 border-border scale-[1.01]';
+  } else if (draggedAppId) {
+    // While dragging but not over this column — subtle hint
+    dropZoneClass = 'bg-secondary/10 border-2 border-dashed border-border/50 ring-1 ring-border/20';
+  }
 
   return (
-    <div className="min-w-[260px] flex-1">
-      <div className="flex items-center gap-2.5 mb-3 px-1 group">
+    <div className="min-w-[280px] flex-1 shrink-0">
+      <div className="flex items-center gap-2.5 mb-3 px-2 group">
         <div className={`h-2.5 w-2.5 rounded-full ${COLUMN_COLOR_BG[col.color || 'muted-foreground'] || 'bg-muted-foreground'}`} />
         <span className="text-[13px] font-semibold text-foreground">{col.title}</span>
         {col.mapped_status && (
@@ -106,17 +151,35 @@ function BoardColumn({
         )}
       </div>
       <div
-        className={`space-y-2.5 rounded-xl p-2.5 min-h-[200px] transition-colors duration-200 ${isOver ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-secondary/30'}`}
-        onDragOver={(e) => onDragOver(e, col.id)}
-        onDrop={(e) => onDrop(e, col.id)}
-        onDragLeave={onDragLeave}
+        className={`space-y-3 rounded-2xl p-3 min-h-[250px] transition-all duration-300 ease-out ${dropZoneClass}`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragLeave={handleDragLeave}
       >
-        {apps.length === 0 ? (
+        {apps.length === 0 && !isOver && (
           <div className="flex items-center justify-center py-8">
-            <p className="text-[12px] text-muted-foreground">{isOver ? 'Drop here' : 'No applications'}</p>
+            <p className="text-[12px] text-muted-foreground">No applications</p>
           </div>
-        ) : (
-          apps.map((app) => <KanbanCard key={app.id} app={app} onDragStart={onDragStart} />)
+        )}
+        {apps.map((app) => (
+          <KanbanCard key={app.id} app={app} onDragStart={onDragStart} isDragging={app.id === draggedAppId} />
+        ))}
+        {isOver && dropValidity === 'valid' && (
+          <div className="rounded-xl border-2 border-dashed border-success/40 bg-success/10 p-4 flex flex-col items-center justify-center transition-all animate-in fade-in zoom-in-95 duration-200">
+            <div className="h-8 w-8 rounded-full bg-success/20 flex items-center justify-center mb-2">
+              <svg className="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            </div>
+            <p className="text-[13px] font-semibold text-success shadow-sm">Drop here</p>
+          </div>
+        )}
+        {isOver && dropValidity === 'invalid' && (
+          <div className="rounded-xl border-2 border-dashed border-destructive/40 bg-destructive/10 p-4 flex flex-col items-center justify-center gap-1.5 transition-all animate-in fade-in zoom-in-95 duration-200">
+            <div className="h-8 w-8 rounded-full bg-destructive/20 flex items-center justify-center mb-2">
+              <svg className="h-4 w-4 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+            </div>
+            <p className="text-[13px] font-semibold text-destructive shadow-sm">Invalid transition</p>
+          </div>
         )}
       </div>
     </div>
@@ -170,7 +233,9 @@ export default function KanbanBoardPage() {
   // Drag state
   const [draggedApp, setDraggedApp] = useState<LoanApplication | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [dragOverValidity, setDragOverValidity] = useState<DropValidity>(null);
   const dragSourceColumn = useRef<string | null>(null);
+  const dragOverlayRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
 
   // Modal state
@@ -271,32 +336,93 @@ export default function KanbanBoardPage() {
 
   // ── Drag and drop ──────────────────────────────────────
 
+  // Compute drop validity for a given column
+  const getDropValidity = useCallback((targetColumnId: string): DropValidity => {
+    if (!draggedApp || !activeBoard) return null;
+    if (dragSourceColumn.current === targetColumnId) return 'same';
+    const targetCol = activeBoard.columns.find((c) => c.id === targetColumnId);
+    if (!targetCol?.mapped_status) return 'invalid';
+    const allowed = VALID_TRANSITIONS[draggedApp.status] || [];
+    return allowed.includes(targetCol.mapped_status) ? 'valid' : 'invalid';
+  }, [draggedApp, activeBoard]);
+
   const handleDragStart = (e: DragEvent, app: LoanApplication) => {
     setDraggedApp(app);
     // Find which column this app belongs to
-    for (const [colId, apps] of Object.entries(appsByColumn)) {
-      if (apps.some((a) => a.id === app.id)) {
+    for (const [colId, colApps] of Object.entries(appsByColumn)) {
+      if (colApps.some((a) => a.id === app.id)) {
         dragSourceColumn.current = colId;
         break;
       }
     }
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', app.id);
+    // Use a transparent 1x1 pixel as drag image so we can show our custom overlay
+    const emptyImg = document.createElement('canvas');
+    emptyImg.width = 1;
+    emptyImg.height = 1;
+    e.dataTransfer.setDragImage(emptyImg, 0, 0);
+    // Request a frame to set the initial position of the ref-based overlay
+    requestAnimationFrame(() => {
+      if (dragOverlayRef.current) {
+        dragOverlayRef.current.style.transform = `translate3d(${e.clientX - 130}px, ${e.clientY - 40}px, 0)`;
+      }
+    });
   };
 
-  const handleDragOver = (e: DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverColumn !== columnId) setDragOverColumn(columnId);
+  // Track cursor for drag overlay bypassing React state for performance
+  useEffect(() => {
+    if (!draggedApp) return;
+    let animationFrameId: number;
+    const handleGlobalDragOver = (e: globalThis.DragEvent) => {
+      e.preventDefault();
+      if (!animationFrameId && dragOverlayRef.current) {
+        animationFrameId = requestAnimationFrame(() => {
+          if (dragOverlayRef.current) {
+            dragOverlayRef.current.style.transform = `translate3d(${e.clientX - 130}px, ${e.clientY - 40}px, 0)`;
+          }
+          animationFrameId = 0;
+        });
+      }
+    };
+    document.addEventListener('dragover', handleGlobalDragOver);
+    return () => {
+      document.removeEventListener('dragover', handleGlobalDragOver);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [draggedApp]);
+
+  const handleDragOver = (_e: DragEvent, columnId: string) => {
+    if (dragOverColumn !== columnId) {
+      setDragOverColumn(columnId);
+      setDragOverValidity(getDropValidity(columnId));
+    }
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (_e: DragEvent, _columnId: string) => {
     setDragOverColumn(null);
+    setDragOverValidity(null);
   };
+
+  const handleDragEnd = () => {
+    setDraggedApp(null);
+    setDragOverColumn(null);
+    setDragOverValidity(null);
+    dragSourceColumn.current = null;
+  };
+
+  // Listen for dragend globally to clean up state
+  useEffect(() => {
+    if (!draggedApp) return;
+    const cleanup = () => handleDragEnd();
+    document.addEventListener('dragend', cleanup);
+    return () => document.removeEventListener('dragend', cleanup);
+  }, [draggedApp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDrop = async (e: DragEvent, targetColumnId: string) => {
     e.preventDefault();
     setDragOverColumn(null);
+    setDragOverValidity(null);
 
     if (!draggedApp || !activeBoard) return;
     if (dragSourceColumn.current === targetColumnId) {
@@ -322,15 +448,19 @@ export default function KanbanBoardPage() {
     // Optimistic update
     const prevApps = { ...appsByColumn };
     const sourceColId = dragSourceColumn.current!;
+    const movedApp = draggedApp;
+    setDraggedApp(null);
+    dragSourceColumn.current = null;
+
     setAppsByColumn((prev) => {
       const updated = { ...prev };
-      updated[sourceColId] = (prev[sourceColId] || []).filter((a) => a.id !== draggedApp.id);
-      updated[targetColumnId] = [...(prev[targetColumnId] || []), { ...draggedApp, status: targetCol.mapped_status as ApplicationStatus }];
+      updated[sourceColId] = (prev[sourceColId] || []).filter((a) => a.id !== movedApp.id);
+      updated[targetColumnId] = [...(prev[targetColumnId] || []), { ...movedApp, status: targetCol.mapped_status as ApplicationStatus }];
       return updated;
     });
 
     try {
-      await api.post(`/kanban/boards/${activeBoard.id}/columns/${targetColumnId}/move/${draggedApp.id}`);
+      await api.post(`/kanban/boards/${activeBoard.id}/columns/${targetColumnId}/move/${movedApp.id}`);
       toast(`Moved to "${targetCol.title}"`, 'success');
     } catch (err: any) {
       // Revert optimistic update
@@ -338,8 +468,6 @@ export default function KanbanBoardPage() {
       const msg = err?.response?.data?.detail || 'Failed to move application';
       toast(msg, 'error');
     }
-    setDraggedApp(null);
-    dragSourceColumn.current = null;
   };
 
   // ── Board management ──────────────────────────────────
@@ -624,13 +752,15 @@ export default function KanbanBoardPage() {
           ))}
         </div>
       ) : activeBoard ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-6 pt-2 px-2 -mx-2">
           {activeBoard.columns.map((col) => (
             <BoardColumn
               key={col.id}
               col={col}
               apps={getColumnApps(col.id)}
               dragOverColumn={dragOverColumn}
+              dropValidity={dragOverColumn === col.id ? dragOverValidity : null}
+              draggedAppId={draggedApp?.id || null}
               isAdmin={isAdmin}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
@@ -753,6 +883,33 @@ export default function KanbanBoardPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Drag Overlay ─────────────────────────────────── */}
+      {draggedApp && createPortal(
+        <div
+          ref={dragOverlayRef}
+          className="fixed left-0 top-0 pointer-events-none z-[9999] will-change-transform"
+          style={{ transform: 'translate3d(-9999px, -9999px, 0)' }}
+        >
+          <div className="w-[260px] rounded-xl bg-background/80 backdrop-blur-2xl border-2 border-primary/40 p-3.5 shadow-[0_20px_50px_rgba(var(--primary),0.15)] opacity-100 rotate-[3deg] scale-[1.02]">
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                <span className="text-[10px] font-semibold text-muted-foreground">
+                  {draggedApp.user_name ? getInitials(draggedApp.user_name) : '??'}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium text-foreground truncate">{draggedApp.user_name || 'Unknown'}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-medium text-muted-foreground capitalize">{draggedApp.loan_type}</span>
+              <span className="text-[13px] font-semibold text-foreground">${Number(draggedApp.amount).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

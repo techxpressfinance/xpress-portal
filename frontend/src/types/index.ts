@@ -147,12 +147,6 @@ export interface PaginatedResponse<T> {
   per_page: number;
 }
 
-export interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
 export type ReferralStatus = 'pending' | 'signed_up' | 'applied';
 
 export interface ApplicationNote {

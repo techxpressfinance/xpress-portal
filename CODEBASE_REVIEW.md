@@ -697,3 +697,5 @@ Before deploying these changes to production, verify the following:
 2. **Dependency scanning:** Add Dependabot or Renovate to flag outdated/vulnerable dependencies
 3. **Secret scanning:** Enable GitHub secret scanning (or use `trufflehog` in CI) to prevent future credential commits
 4. **Load testing:** Before production launch, run basic load tests on the application listing and upload endpoints to validate the performance fixes
+
+

@@ -35,6 +35,49 @@ def _sanitize_header(value: str) -> str:
     return value.replace("\r", "").replace("\n", "")
 
 
+def _get_base_html(content: str) -> str:
+    """Wrap email content in a premium, modern HTML template."""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #18181b;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f4f4f5; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e4e4e7; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                        <!-- Header -->
+                        <tr>
+                            <td style="padding: 32px 40px; background-color: #09090b; text-align: center;">
+                                <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Xpress Tech</h1>
+                            </td>
+                        </tr>
+                        <!-- Content -->
+                        <tr>
+                            <td style="padding: 40px;">
+                                {content}
+                            </td>
+                        </tr>
+                        <!-- Footer -->
+                        <tr>
+                            <td style="padding: 24px 40px 32px; background-color: #fafafa; border-top: 1px solid #e4e4e7; text-align: center;">
+                                <p style="margin: 0; font-size: 13px; color: #71717a; line-height: 1.5;">
+                                    This is an automated message from Xpress Tech.<br>
+                                    Please do not reply to this email.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+
 def _send_email(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
     """Send email in the background. Fails silently with logging."""
     try:
@@ -43,22 +86,7 @@ def _send_email(to_email: str, subject: str, body: str, html_body: str | None = 
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
 
-        html = html_body or f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                <h2 style="margin: 0;">Xpress Tech Portal</h2>
-            </div>
-            <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
-                <p style="color: #374151; line-height: 1.6;">{body}</p>
-                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-                <p style="color: #9ca3af; font-size: 12px;">
-                    This is an automated notification from Xpress Tech Portal.
-                </p>
-            </div>
-        </body>
-        </html>
-        """
+        html = html_body or _get_base_html(f'<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3f3f46;">{body}</p>')
 
         msg.attach(MIMEText(body, "plain"))
         msg.attach(MIMEText(html, "html"))
@@ -110,59 +138,34 @@ def send_verification_email(to_email: str, name: str, token: str) -> None:
         f"This link will expire in 24 hours.\n\n"
         f"Best regards,\nXpress Tech Team"
     )
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="margin: 0;">Xpress Tech Portal</h2>
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Please verify your email address to complete your registration.</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{verification_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Verify Email</a>
         </div>
-        <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
-            <p style="color: #374151; line-height: 1.6;">Dear {name},</p>
-            <p style="color: #374151; line-height: 1.6;">Please verify your email address by clicking the button below:</p>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="{verification_url}" style="background: #2563eb; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Verify Email</a>
-            </div>
-            <p style="color: #6b7280; font-size: 13px;">Or copy and paste this link: <a href="{verification_url}">{verification_url}</a></p>
-            <p style="color: #6b7280; font-size: 13px;">This link will expire in 24 hours.</p>
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-            <p style="color: #9ca3af; font-size: 12px;">
-                This is an automated notification from Xpress Tech Portal.
-            </p>
-        </div>
-    </body>
-    </html>
+        <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">Or copy and paste this link:</p>
+        <p style="margin: 0 0 24px; font-size: 14px; color: #000000; word-break: break-all;"><a href="{verification_url}" style="color: #09090b;">{verification_url}</a></p>
+        <p style="margin: 0; font-size: 14px; color: #71717a;">This link will expire in 24 hours.</p>
     """
+    html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
 
 
 def _code_html(code: str, intro_lines: list[str]) -> str:
     """Shared HTML template for code-based emails."""
-    intro_html = "".join(f'<p style="color: #374151; line-height: 1.6;">{line}</p>' for line in intro_lines)
+    intro_html = "".join(f'<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{line}</p>' for line in intro_lines)
     digits = "".join(
-        f'<span style="display:inline-block;width:44px;height:52px;line-height:52px;text-align:center;'
-        f'font-size:24px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;'
-        f'border-radius:8px;margin:0 3px;">{d}</span>'
+        f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{d}</span>'
         for d in code
     )
-    return f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="margin: 0;">Xpress Tech Portal</h2>
-        </div>
-        <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
-            {intro_html}
-            <div style="text-align: center; margin: 24px 0;">{digits}</div>
-            <p style="color: #6b7280; font-size: 13px; text-align: center;">This code expires in 10 minutes.</p>
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-            <p style="color: #9ca3af; font-size: 12px;">
-                This is an automated notification from Xpress Tech Portal.
-            </p>
-        </div>
-    </body>
-    </html>
+    content = f"""
+        {intro_html}
+        <div style="text-align: center; margin: 36px 0;">{digits}</div>
+        <p style="margin: 0; font-size: 14px; color: #71717a; text-align: center;">This code expires in 10 minutes.</p>
     """
+    return _get_base_html(content)
 
 
 def send_invitation_email(to_email: str, name: str, code: str, inviter_name: str) -> None:
@@ -219,44 +222,36 @@ def send_complete_application_email(
     code_section = ""
     if login_code:
         digits = "".join(
-            f'<span style="display:inline-block;width:44px;height:52px;line-height:52px;text-align:center;'
-            f'font-size:24px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;'
-            f'border-radius:8px;margin:0 3px;">{d}</span>'
+            f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{d}</span>'
             for d in login_code
         )
         code_section = f"""
-            <p style="color: #374151; line-height: 1.6;">Your one-time login code:</p>
-            <div style="text-align: center; margin: 16px 0;">{digits}</div>
-            <p style="color: #6b7280; font-size: 13px; text-align: center;">This code expires in 10 minutes.</p>
+            <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid #e4e4e7;">
+                <p style="margin: 0 0 16px; font-size: 16px; font-weight: 600; color: #09090b; text-align: center;">Your one-time login code</p>
+                <div style="text-align: center; margin: 0 0 16px;">{digits}</div>
+                <p style="margin: 0; font-size: 14px; color: #71717a; text-align: center;">This code expires in 10 minutes.</p>
+            </div>
         """
 
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="margin: 0;">Xpress Tech Portal</h2>
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {client_name},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{inviter_name}</strong> has invited you to complete your loan application.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Loan Type:</strong> {loan_type.capitalize()}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Amount:</strong> ${amount}</p>
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{app_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View Application</a>
         </div>
-        <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
-            <p style="color: #374151; line-height: 1.6;">Dear {client_name},</p>
-            <p style="color: #374151; line-height: 1.6;">
-                <strong>{inviter_name}</strong> has invited you to complete your loan application.
-            </p>
-            <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                <p style="margin: 4px 0; color: #374151;"><strong>Loan Type:</strong> {loan_type.capitalize()}</p>
-                <p style="margin: 4px 0; color: #374151;"><strong>Amount:</strong> ${amount}</p>
-            </div>
-            <div style="text-align: center; margin: 24px 0;">
-                <a href="{app_url}" style="background: #2563eb; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">View Application</a>
-            </div>
-            {code_section}
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-            <p style="color: #9ca3af; font-size: 12px;">
-                This is an automated notification from Xpress Tech Portal.
-            </p>
-        </div>
-    </body>
-    </html>
+        {code_section}
     """
+    html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
 
@@ -278,33 +273,28 @@ def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> N
         f"Please log in at {login_url} and change your password immediately.\n\n"
         f"Best regards,\nXpress Tech Team"
     )
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="margin: 0;">Xpress Tech Portal</h2>
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            An admin has created a <strong>broker account</strong> for you on Xpress Tech Portal.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {to_email}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;">
+                        <strong>Temporary Password:</strong> 
+                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{temp_password}</code>
+                    </p>
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
         </div>
-        <div style="border: 1px solid #e5e7eb; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
-            <p style="color: #374151; line-height: 1.6;">Dear {name},</p>
-            <p style="color: #374151; line-height: 1.6;">
-                An admin has created a <strong>broker account</strong> for you on Xpress Tech Portal.
-            </p>
-            <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                <p style="margin: 4px 0; color: #374151;"><strong>Email:</strong> {to_email}</p>
-                <p style="margin: 4px 0; color: #374151;"><strong>Temporary Password:</strong> <code style="background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1d4ed8; font-weight: 600;">{temp_password}</code></p>
-            </div>
-            <div style="text-align: center; margin: 24px 0;">
-                <a href="{login_url}" style="background: #2563eb; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Log In Now</a>
-            </div>
-            <p style="color: #dc2626; font-size: 13px; font-weight: 600;">Please change your password after your first login.</p>
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-            <p style="color: #9ca3af; font-size: 12px;">
-                This is an automated notification from Xpress Tech Portal.
-            </p>
-        </div>
-    </body>
-    </html>
+        <p style="margin: 0; font-size: 15px; color: #ef4444; font-weight: 600; text-align: center;">Please change your password after your first login.</p>
     """
+    html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
 
