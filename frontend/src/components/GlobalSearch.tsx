@@ -19,17 +19,10 @@ export default function GlobalSearch() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'broker';
-  if (!isAdmin) return null;
-
-  // Flatten results for keyboard navigation
-  const flatItems: { type: 'application' | 'user'; id: string }[] = [];
-  if (results) {
-    for (const app of results.applications) flatItems.push({ type: 'application', id: app.id });
-    for (const u of results.users) flatItems.push({ type: 'user', id: u.id });
-  }
 
   // Keyboard shortcut to open
   useEffect(() => {
+    if (!isAdmin) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -38,7 +31,7 @@ export default function GlobalSearch() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isAdmin]);
 
   // Focus input when opened
   useEffect(() => {
@@ -75,6 +68,15 @@ export default function GlobalSearch() {
     debounceRef.current = setTimeout(() => doSearch(query), 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
+
+  if (!isAdmin) return null;
+
+  // Flatten results for keyboard navigation
+  const flatItems: { type: 'application' | 'user'; id: string }[] = [];
+  if (results) {
+    for (const app of results.applications) flatItems.push({ type: 'application', id: app.id });
+    for (const u of results.users) flatItems.push({ type: 'user', id: u.id });
+  }
 
   const navigateTo = (path: string) => {
     setOpen(false);
