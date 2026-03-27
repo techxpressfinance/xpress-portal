@@ -61,7 +61,7 @@ def trigger_sync(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     if application.lend_sync_status == "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sync is already in progress")
@@ -90,7 +90,7 @@ def get_sync_status(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     return {
         "lend_ref": application.lend_ref,
@@ -114,7 +114,7 @@ def update_document_lend_type(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     doc.lend_document_type = data.lend_document_type
     db.commit()

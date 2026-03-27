@@ -16,8 +16,9 @@ from app.models.application_broker import ApplicationBroker  # noqa: F401 — en
 from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure table is created
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
+from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, invitations, kanban, lend, messages, referrals, search, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, messages, referrals, search, users
 
 # Configure logging
 logging.basicConfig(
@@ -85,6 +86,8 @@ _MIGRATIONS = [
     ("users", "employee_id", "VARCHAR(50)"),
     ("users", "department", "VARCHAR(100)"),
     ("users", "license_number", "VARCHAR(100)"),
+    # Referrer-specific fields
+    ("users", "organization_name", "VARCHAR(255)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -193,6 +196,7 @@ app.include_router(lend.router)
 app.include_router(kanban.router)
 app.include_router(search.router)
 app.include_router(broker_groups.router)
+app.include_router(external_referrers.router)
 
 
 @app.get("/api/health")

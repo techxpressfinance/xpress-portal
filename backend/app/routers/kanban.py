@@ -353,7 +353,7 @@ def move_card(
     ).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     if not col.mapped_status:
         return {"status": "ok", "message": "Column has no mapped status — no change"}

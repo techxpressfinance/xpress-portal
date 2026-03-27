@@ -10,6 +10,7 @@ from app.database import SessionLocal, get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.document import DocType, Document
+from app.models.external_referral import ExternalReferral, ExternalReferralStatus
 from app.models.loan_application import AnalysisStatus, ApplicationStatus, LoanApplication, LoanType
 from app.models.application_note import ApplicationNote
 from app.models.referral import Referral, ReferralStatus
@@ -52,6 +53,15 @@ def create_application(
         referral.status = ReferralStatus.applied
         referral.converted_at = datetime.now(timezone.utc)
 
+    # Update external referral status to "applied" if this user was externally referred
+    ext_referral = db.query(ExternalReferral).filter(
+        ExternalReferral.referred_client_id == current_user.id,
+        ExternalReferral.status == ExternalReferralStatus.signed_up,
+    ).first()
+    if ext_referral:
+        ext_referral.status = ExternalReferralStatus.applied
+        ext_referral.converted_at = datetime.now(timezone.utc)
+
     db.commit()
     db.refresh(app, attribute_names=["user"])
     return _app_with_user(app)
@@ -78,6 +88,16 @@ def list_applications(
                 db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
             )
         )
+    elif current_user.role == UserRole.referrer:
+        # Referrers only see applications from clients they referred
+        referred_client_ids = (
+            db.query(ExternalReferral.referred_client_id)
+            .filter(
+                ExternalReferral.referrer_id == current_user.id,
+                ExternalReferral.referred_client_id.isnot(None),
+            )
+        )
+        query = query.filter(LoanApplication.user_id.in_(referred_client_ids))
 
     if status_filter:
         query = query.filter(LoanApplication.status == status_filter)
@@ -104,7 +124,7 @@ def get_application(
     application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
     return _app_with_user(application)
 
 
@@ -119,7 +139,12 @@ def update_application(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+
+    # Referrers have read-only access
+    if current_user.role == UserRole.referrer:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers have read-only access")
+
+    check_application_access(application, current_user, db=db)
 
     is_draft = application.status.value == "draft"
 
@@ -191,7 +216,7 @@ def change_status(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     current = application.status.value
     allowed = VALID_TRANSITIONS.get(current, [])
@@ -321,7 +346,7 @@ def trigger_analysis(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     # Prevent duplicate concurrent analysis
     if application.analysis_status == AnalysisStatus.processing:
@@ -362,7 +387,7 @@ def get_analysis(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     return {
         "analysis_status": application.analysis_status.value if application.analysis_status else None,
@@ -381,7 +406,7 @@ def delete_application(
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
     if application.status.value != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be deleted")
 

@@ -54,6 +54,7 @@ class UserOut(BaseModel):
     employee_id: str | None = None
     department: str | None = None
     license_number: str | None = None
+    organization_name: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

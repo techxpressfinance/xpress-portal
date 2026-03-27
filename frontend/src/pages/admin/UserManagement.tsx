@@ -25,6 +25,10 @@ const ALLOWED_ROLE_OPTIONS: Record<string, { value: string; label: string }[]> =
     { value: 'broker', label: 'Broker' },
     { value: 'admin', label: 'Admin' },
   ],
+  referrer: [
+    { value: 'referrer', label: 'Referrer' },
+    { value: 'client', label: 'Client' },
+  ],
 };
 
 export default function UserManagement() {

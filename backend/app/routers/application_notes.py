@@ -37,12 +37,12 @@ def list_notes(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     query = db.query(ApplicationNote).filter(ApplicationNote.application_id == app_id)
 
-    # Clients only see non-internal (client-facing) notes
-    if current_user.role == UserRole.client:
+    # Clients and referrers only see non-internal (client-facing) notes
+    if current_user.role in (UserRole.client, UserRole.referrer):
         query = query.filter(ApplicationNote.is_internal == False)  # noqa: E712
 
     notes = query.order_by(ApplicationNote.created_at.asc()).all()
@@ -60,7 +60,7 @@ def create_note(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     note = ApplicationNote(
         application_id=app_id,

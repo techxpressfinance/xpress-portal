@@ -15,6 +15,10 @@ const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
 const InviteClients = lazy(() => import('./pages/admin/InviteClients'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const CreateBroker = lazy(() => import('./pages/admin/CreateBroker'));
+const CreateReferrer = lazy(() => import('./pages/admin/CreateReferrer'));
+const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
+const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
+const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
 import ApplicationDetail from './pages/client/ApplicationDetail';
 import Applications from './pages/client/Applications';
 import ClientDashboard from './pages/client/Dashboard';
@@ -33,6 +37,7 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'referrer') return <Navigate to="/referrer" replace />;
   return <Navigate to={user.role === 'client' ? '/dashboard' : '/admin'} replace />;
 }
 
@@ -178,10 +183,44 @@ export default function App() {
                 }
               />
               <Route
+                path="/admin/create-referrer"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <CreateReferrer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin/activity"
                 element={
                   <ProtectedRoute roles={['admin']}>
                     <ActivityLogs />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Referrer Routes */}
+              <Route
+                path="/referrer"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <ReferrerDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/referrer/applications"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <ReferrerApplications />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/referrer/applications/:id"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <ReferrerApplicationDetail />
                   </ProtectedRoute>
                 }
               />

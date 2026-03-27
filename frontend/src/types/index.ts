@@ -1,4 +1,4 @@
-export type UserRole = 'client' | 'broker' | 'admin';
+export type UserRole = 'client' | 'broker' | 'admin' | 'referrer';
 export type AuthMethod = 'password' | 'code';
 export type KYCStatus = 'pending' | 'verified' | 'rejected';
 export type LoanType = 'personal' | 'home' | 'business' | 'vehicle';
@@ -21,6 +21,7 @@ export interface User {
   employee_id: string | null;
   department: string | null;
   license_number: string | null;
+  organization_name: string | null;
   created_at: string;
 }
 
@@ -148,6 +149,25 @@ export interface PaginatedResponse<T> {
 }
 
 export type ReferralStatus = 'pending' | 'signed_up' | 'applied';
+export type ExternalReferralStatus = 'pending' | 'signed_up' | 'applied';
+
+export interface ExternalReferral {
+  id: string;
+  referrer_id: string;
+  referrer_name: string | null;
+  referred_email: string;
+  referred_client_id: string | null;
+  referred_client_name: string | null;
+  status: ExternalReferralStatus;
+  created_at: string;
+  converted_at: string | null;
+}
+
+export interface ExternalReferrerStats {
+  total_referred: number;
+  signed_up: number;
+  applied: number;
+}
 
 export interface ApplicationNote {
   id: string;

@@ -36,7 +36,7 @@ def upload_document(
     application = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     # Validate file extension
     allowed_types = {".pdf", ".jpg", ".jpeg", ".png"}
@@ -128,7 +128,7 @@ def list_documents(
     application = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
     return db.query(Document).filter(Document.application_id == application_id).all()
 
 
@@ -145,7 +145,7 @@ def delete_document(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
     if application.status.value != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete documents from a submitted application")
 
@@ -169,7 +169,7 @@ def download_document(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     if not file_exists(doc.file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage")
@@ -203,7 +203,7 @@ def get_ocr_text(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user)
+    check_application_access(application, current_user, db=db)
 
     return {
         "ocr_status": doc.ocr_status.value if doc.ocr_status else "pending",
@@ -226,7 +226,7 @@ def retry_ocr(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, _current_user)
+    check_application_access(application, _current_user, db=db)
 
     if not file_exists(doc.file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage")
@@ -263,7 +263,7 @@ def verify_document(
     application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, _current_user)
+    check_application_access(application, _current_user, db=db)
 
     doc.is_verified = True
     log_activity(db, _current_user.id, "document_verified", "document", doc_id, {"filename": doc.original_filename, "doc_type": doc.doc_type.value})

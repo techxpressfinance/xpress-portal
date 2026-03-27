@@ -299,6 +299,78 @@ def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> N
     _send_async(to_email, subject, body, html_body)
 
 
+def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) -> None:
+    """Send referrer welcome email with login credentials. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping referrer welcome email for %s", to_email)
+        return
+
+    login_url = f"{FRONTEND_URL}/login"
+    subject = "Welcome to Xpress Tech Portal - Referrer Account"
+    body = (
+        f"Dear {name},\n\n"
+        f"An admin has created a referrer account for you on Xpress Tech Portal.\n\n"
+        f"Your login credentials:\n"
+        f"Email: {to_email}\n"
+        f"Temporary Password: {temp_password}\n\n"
+        f"Please log in at {login_url} and change your password immediately.\n\n"
+        f"Best regards,\nXpress Tech Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            An admin has created a <strong>referrer account</strong> for you on Xpress Tech Portal. You can now refer clients and track their application progress.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {to_email}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;">
+                        <strong>Temporary Password:</strong>
+                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{temp_password}</code>
+                    </p>
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
+        </div>
+        <p style="margin: 0; font-size: 15px; color: #ef4444; font-weight: 600; text-align: center;">Please change your password after your first login.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
+def send_referral_notification_email(to_email: str, client_name: str, referrer_name: str, organization_name: str | None = None) -> None:
+    """Notify an existing password-auth client that they've been referred. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping referral notification for %s", to_email)
+        return
+
+    org_text = f" ({organization_name})" if organization_name else ""
+    login_url = f"{FRONTEND_URL}/login"
+    subject = "You've been referred on Xpress Tech Portal"
+    body = (
+        f"Dear {client_name},\n\n"
+        f"{referrer_name}{org_text} has referred you on Xpress Tech Portal.\n\n"
+        f"Log in to start a new application: {login_url}\n\n"
+        f"Best regards,\nXpress Tech Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {client_name},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{referrer_name}{org_text}</strong> has referred you on Xpress Tech Portal. Log in to start a new loan application.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In & Apply</a>
+        </div>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_login_code_email(to_email: str, name: str, code: str) -> None:
     """Send a login code for code-based auth. Non-blocking."""
     if not EMAIL_ENABLED:

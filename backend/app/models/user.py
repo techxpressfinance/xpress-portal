@@ -15,6 +15,7 @@ class UserRole(str, enum.Enum):
     client = "client"
     broker = "broker"
     admin = "admin"
+    referrer = "referrer"
 
 
 class KYCStatus(str, enum.Enum):
@@ -56,6 +57,9 @@ class User(Base):
     employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     license_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Referrer-specific fields
+    organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     applications = relationship("LoanApplication", back_populates="user", foreign_keys="LoanApplication.user_id")
     assigned_applications = relationship(

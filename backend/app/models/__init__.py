@@ -7,5 +7,6 @@ from app.models.direct_message import DirectMessage
 from app.models.referral import Referral
 from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.broker_group import BrokerGroup
+from app.models.external_referral import ExternalReferral
 
-__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup"]
+__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral"]

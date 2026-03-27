@@ -19,6 +19,7 @@ export const ROLE_BADGE: Record<UserRole, string> = {
   client: 'bg-primary/10 text-primary',
   broker: 'bg-chart-2/10 text-chart-2',
   admin: 'bg-chart-5/10 text-chart-5',
+  referrer: 'bg-chart-4/10 text-chart-4',
 };
 
 export const OCR_STATUS_BADGE: Record<OcrStatus, { label: string; className: string }> = {

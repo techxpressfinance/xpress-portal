@@ -11,6 +11,7 @@ from app.models.application_broker import ApplicationBroker
 from app.models.application_note import ApplicationNote
 from app.models.direct_message import DirectMessage
 from app.models.loan_application import LoanApplication
+from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User
 from app.schemas.user import BrokerCreate, KYCStatusUpdate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
@@ -128,6 +129,14 @@ def get_user(
 ):
     if current_user.role.value == "client" and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot view other users")
+    if current_user.role.value == "referrer" and current_user.id != user_id:
+        # Referrers can only view clients they've referred
+        ref = db.query(ExternalReferral).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id == user_id,
+        ).first()
+        if not ref:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot view this user")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -224,6 +233,9 @@ def delete_user(
     ).delete(synchronize_session="fetch")
     db.query(Referral).filter(
         (Referral.referrer_id == user_id) | (Referral.referred_user_id == user_id)
+    ).delete(synchronize_session="fetch")
+    db.query(ExternalReferral).filter(
+        (ExternalReferral.referrer_id == user_id) | (ExternalReferral.referred_client_id == user_id)
     ).delete(synchronize_session="fetch")
     db.query(ApplicationBroker).filter(ApplicationBroker.broker_id == user_id).delete()
 
