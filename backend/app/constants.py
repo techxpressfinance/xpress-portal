@@ -2,11 +2,11 @@ from __future__ import annotations
 
 # NOTE: frontend copy at frontend/src/lib/constants.ts — keep in sync
 VALID_TRANSITIONS: dict[str, list[str]] = {
-    "draft": ["submitted"],
-    "submitted": ["draft", "reviewing", "rejected"],
-    "reviewing": ["approved", "rejected"],
-    "approved": ["reviewing"],
-    "rejected": ["submitted", "reviewing"],
+    "draft": ["submitted", "reviewing", "approved", "rejected"],
+    "submitted": ["draft", "reviewing", "approved", "rejected"],
+    "reviewing": ["draft", "submitted", "approved", "rejected"],
+    "approved": ["draft", "submitted", "reviewing", "rejected"],
+    "rejected": ["draft", "submitted", "reviewing", "approved"],
 }
 
 DEFAULT_KANBAN_COLUMNS = [
