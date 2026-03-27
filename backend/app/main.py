@@ -88,6 +88,8 @@ _MIGRATIONS = [
     ("users", "license_number", "VARCHAR(100)"),
     # Referrer-specific fields
     ("users", "organization_name", "VARCHAR(255)"),
+    # Token revocation timestamp (for bulk invalidation on password change)
+    ("users", "tokens_revoked_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)

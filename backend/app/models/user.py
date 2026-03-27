@@ -51,6 +51,7 @@ class User(Base):
     login_code_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    tokens_revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     invited_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
 
     # Broker-specific fields

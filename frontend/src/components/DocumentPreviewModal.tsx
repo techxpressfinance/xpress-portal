@@ -42,6 +42,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const titleId = `document-preview-${documentId}`;
 
   const fileType = getFileType(filename);
@@ -49,12 +50,17 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
   const ocrAvailable = ocrStatus === 'completed' || ocrStatus === 'failed';
 
   const fetchDocument = useCallback(async () => {
+    // Revoke any previous blob URL before creating a new one
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
     setLoading(true);
     setError(null);
     setLoadProgress(0);
     setImageError(false);
     try {
-      const { data } = await api.get(`/documents/${documentId}/download`, { 
+      const { data } = await api.get(`/documents/${documentId}/download`, {
         responseType: 'blob',
         onDownloadProgress: (progressEvent) => {
           if (progressEvent.total) {
@@ -63,6 +69,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
         }
       });
       const url = URL.createObjectURL(data);
+      blobUrlRef.current = url;
       setBlobUrl(url);
     } catch {
       setError('Failed to load document');
@@ -97,12 +104,13 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
       fetchDocument();
     }
     return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
         setBlobUrl(null);
       }
     };
-  }, [isOpen, documentId]);
+  }, [isOpen, documentId, fetchDocument]);
 
   useEffect(() => {
     if (activeTab === 'ocr' && ocrAvailable && !ocrFetched) {

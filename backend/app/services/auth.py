@@ -29,18 +29,20 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, role: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": user_id, "role": role, "exp": expire, "type": "access", "jti": str(uuid.uuid4())},
+        {"sub": user_id, "role": role, "exp": expire, "iat": now, "type": "access", "jti": str(uuid.uuid4())},
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
 
 
 def create_refresh_token(user_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     return jwt.encode(
-        {"sub": user_id, "exp": expire, "type": "refresh", "jti": str(uuid.uuid4())},
+        {"sub": user_id, "exp": expire, "iat": now, "type": "refresh", "jti": str(uuid.uuid4())},
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
@@ -76,16 +78,15 @@ def blacklist_token(token: str, db) -> None:
 
 
 def blacklist_all_user_tokens(user_id: str, db) -> None:
-    """Revoke all active refresh tokens for a user by adding a blanket revocation marker."""
-    from app.models.token_blacklist import TokenBlacklist
+    """Revoke all tokens for a user by setting tokens_revoked_at on the user record.
 
-    # Add a special marker that invalidates all tokens issued before now
-    entry = TokenBlacklist(
-        token_jti=f"all:{user_id}:{uuid.uuid4()}",
-        user_id=user_id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    db.add(entry)
+    Any token issued before this timestamp will be rejected by get_current_user/refresh.
+    """
+    from app.models.user import User
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.tokens_revoked_at = datetime.now(timezone.utc)
 
 
 def generate_login_code() -> tuple[str, str]:

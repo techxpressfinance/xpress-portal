@@ -329,7 +329,7 @@ export default function KanbanBoardPage() {
   useEffect(() => {
     if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
-      fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter }).catch(() => {});
+      fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
     }, 300);
     return () => clearTimeout(timeout);
   }, [search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, activeBoard, fetchApplications]);

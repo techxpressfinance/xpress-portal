@@ -30,16 +30,33 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
   const isProcessing = analysisStatus === 'pending' || analysisStatus === 'processing';
   const hasResult = analysisStatus === 'completed' && analysisResult;
   const hasFailed = analysisStatus === 'failed';
+  const pollCountRef = useRef(0);
+  const MAX_POLL_ATTEMPTS = 60; // ~3 minutes at 3s intervals
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    pollCountRef.current = 0;
   }, []);
 
-  const pollAnalysis = useCallback(() => {
+  // Use a ref for the callback so the interval always calls the latest version
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
+
+  const startPolling = useCallback(() => {
+    // Prevent duplicate intervals
+    if (pollRef.current) return;
+    pollCountRef.current = 0;
+
     pollRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      if (pollCountRef.current > MAX_POLL_ATTEMPTS) {
+        stopPolling();
+        toast('Analysis is taking too long. Please refresh the page.', 'error');
+        return;
+      }
       try {
         const { data } = await api.get(`/applications/${application.id}/analysis`);
         setAnalysisStatus(data.analysis_status);
@@ -49,22 +66,22 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
 
         if (data.analysis_status === 'completed' || data.analysis_status === 'failed') {
           stopPolling();
-          onStatusChange?.();
+          onStatusChangeRef.current?.();
         }
       } catch {
         stopPolling();
         toast('Failed to check analysis status', 'error');
       }
     }, 3000);
-  }, [application.id, stopPolling, onStatusChange, toast]);
+  }, [application.id, stopPolling, toast]);
 
-  // Start polling if already processing on mount
+  // Start polling if already processing on mount; clean up on unmount
   useEffect(() => {
     if (isProcessing) {
-      pollAnalysis();
+      startPolling();
     }
     return stopPolling;
-  }, [isProcessing, pollAnalysis, stopPolling]);
+  }, [isProcessing, startPolling, stopPolling]);
 
   const handleAnalyze = async () => {
     setTriggering(true);
@@ -72,7 +89,7 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
       await api.post(`/applications/${application.id}/analyze`);
       setAnalysisStatus('pending');
       setAnalysisError(null);
-      pollAnalysis();
+      startPolling();
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to start analysis'), 'error');
     } finally {

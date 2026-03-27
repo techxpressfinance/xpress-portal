@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../components/Toast';
 import { GlassCard, StatCard, PageHeader, Badge, Button } from '../../components/ui';
 import { getInitials } from '../../lib/utils';
 import { ACTION_ICON_CONFIG, ACTION_LABELS, LOAN_TYPE_ICONS, STATUS_BADGE } from '../../lib/constants';
@@ -22,6 +23,7 @@ function monthLabel(ym: string): string {
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
@@ -41,7 +43,7 @@ export default function AdminDashboard() {
         setLogs(logRes.data.items);
         setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
       })
-      .catch(() => {})
+      .catch(() => toast('Failed to load dashboard data', 'error'))
       .finally(() => setLoading(false));
   }, []);
 

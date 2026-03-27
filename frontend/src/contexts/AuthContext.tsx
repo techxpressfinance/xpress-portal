@@ -87,9 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    api.post('/auth/logout').catch(() => {});
-    setAccessToken(null);
-    setUser(null);
+    // Await the server blacklisting the refresh token before clearing local state,
+    // but still clear state on failure to avoid trapping the user in a logged-in state.
+    api.post('/auth/logout').catch(() => {}).finally(() => {
+      setAccessToken(null);
+      setUser(null);
+    });
   };
 
   return (

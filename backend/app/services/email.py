@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 import smtplib
 import threading
@@ -7,6 +8,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from app.config import EMAIL_ENABLED, FRONTEND_URL, SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USER
+
+
+def _esc(value: str) -> str:
+    """HTML-escape a string for safe interpolation into HTML email templates."""
+    return html.escape(value, quote=True)
 
 logger = logging.getLogger(__name__)
 
@@ -139,13 +145,13 @@ def send_verification_email(to_email: str, name: str, token: str) -> None:
         f"Best regards,\nXpress Tech Team"
     )
     content = f"""
-        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Please verify your email address to complete your registration.</p>
         <div style="text-align: center; margin: 32px 0;">
-            <a href="{verification_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Verify Email</a>
+            <a href="{_esc(verification_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Verify Email</a>
         </div>
         <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">Or copy and paste this link:</p>
-        <p style="margin: 0 0 24px; font-size: 14px; color: #000000; word-break: break-all;"><a href="{verification_url}" style="color: #09090b;">{verification_url}</a></p>
+        <p style="margin: 0 0 24px; font-size: 14px; color: #000000; word-break: break-all;"><a href="{_esc(verification_url)}" style="color: #09090b;">{_esc(verification_url)}</a></p>
         <p style="margin: 0; font-size: 14px; color: #71717a;">This link will expire in 24 hours.</p>
     """
     html_body = _get_base_html(content)
@@ -155,9 +161,9 @@ def send_verification_email(to_email: str, name: str, token: str) -> None:
 
 def _code_html(code: str, intro_lines: list[str]) -> str:
     """Shared HTML template for code-based emails."""
-    intro_html = "".join(f'<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{line}</p>' for line in intro_lines)
+    intro_html = "".join(f'<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{_esc(line)}</p>' for line in intro_lines)
     digits = "".join(
-        f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{d}</span>'
+        f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{_esc(d)}</span>'
         for d in code
     )
     content = f"""
@@ -222,7 +228,7 @@ def send_complete_application_email(
     code_section = ""
     if login_code:
         digits = "".join(
-            f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{d}</span>'
+            f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{_esc(d)}</span>'
             for d in login_code
         )
         code_section = f"""
@@ -234,20 +240,20 @@ def send_complete_application_email(
         """
 
     content = f"""
-        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {client_name},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            <strong>{inviter_name}</strong> has invited you to complete your loan application.
+            <strong>{_esc(inviter_name)}</strong> has invited you to complete your loan application.
         </p>
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
             <tr>
                 <td style="padding: 20px;">
-                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Loan Type:</strong> {loan_type.capitalize()}</p>
-                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Amount:</strong> ${amount}</p>
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Loan Type:</strong> {_esc(loan_type.capitalize())}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Amount:</strong> ${_esc(amount)}</p>
                 </td>
             </tr>
         </table>
         <div style="text-align: center; margin: 32px 0;">
-            <a href="{app_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View Application</a>
+            <a href="{_esc(app_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View Application</a>
         </div>
         {code_section}
     """
@@ -274,23 +280,23 @@ def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> N
         f"Best regards,\nXpress Tech Team"
     )
     content = f"""
-        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
             An admin has created a <strong>broker account</strong> for you on Xpress Tech Portal.
         </p>
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
             <tr>
                 <td style="padding: 20px;">
-                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {to_email}</p>
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {_esc(to_email)}</p>
                     <p style="margin: 0; font-size: 15px; color: #3f3f46;">
-                        <strong>Temporary Password:</strong> 
-                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{temp_password}</code>
+                        <strong>Temporary Password:</strong>
+                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{_esc(temp_password)}</code>
                     </p>
                 </td>
             </tr>
         </table>
         <div style="text-align: center; margin: 32px 0;">
-            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
+            <a href="{_esc(login_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
         </div>
         <p style="margin: 0; font-size: 15px; color: #ef4444; font-weight: 600; text-align: center;">Please change your password after your first login.</p>
     """
@@ -317,23 +323,23 @@ def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) ->
         f"Best regards,\nXpress Tech Team"
     )
     content = f"""
-        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {name},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
             An admin has created a <strong>referrer account</strong> for you on Xpress Tech Portal. You can now refer clients and track their application progress.
         </p>
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
             <tr>
                 <td style="padding: 20px;">
-                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {to_email}</p>
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {_esc(to_email)}</p>
                     <p style="margin: 0; font-size: 15px; color: #3f3f46;">
                         <strong>Temporary Password:</strong>
-                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{temp_password}</code>
+                        <code style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 4px 8px; border-radius: 6px; color: #09090b; font-weight: 600; font-family: monospace;">{_esc(temp_password)}</code>
                     </p>
                 </td>
             </tr>
         </table>
         <div style="text-align: center; margin: 32px 0;">
-            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
+            <a href="{_esc(login_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In Now</a>
         </div>
         <p style="margin: 0; font-size: 15px; color: #ef4444; font-weight: 600; text-align: center;">Please change your password after your first login.</p>
     """
@@ -358,12 +364,12 @@ def send_referral_notification_email(to_email: str, client_name: str, referrer_n
         f"Best regards,\nXpress Tech Team"
     )
     content = f"""
-        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {client_name},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            <strong>{referrer_name}{org_text}</strong> has referred you on Xpress Tech Portal. Log in to start a new loan application.
+            <strong>{_esc(referrer_name)}{_esc(org_text)}</strong> has referred you on Xpress Tech Portal. Log in to start a new loan application.
         </p>
         <div style="text-align: center; margin: 32px 0;">
-            <a href="{login_url}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In & Apply</a>
+            <a href="{_esc(login_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In &amp; Apply</a>
         </div>
     """
     html_body = _get_base_html(content)

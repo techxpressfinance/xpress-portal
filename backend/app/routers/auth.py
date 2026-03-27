@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import EMAIL_ENABLED, EMAIL_VERIFICATION_EXPIRE_HOURS, ENVIRONMENT, REFRESH_TOKEN_EXPIRE_DAYS
 from app.database import get_db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import _is_token_revoked_by_user, get_current_user
 from app.middleware.rate_limit import auth_limiter
 from app.models.referral import Referral, ReferralStatus
 from app.models.user import User
@@ -139,6 +139,10 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
             detail="Account temporarily locked. Try again later.",
         )
 
+    # Code-auth users don't have a valid password hash — reject password login
+    if user and user.auth_method == "code":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
     if not user or not verify_password(data.password, user.password_hash):
         # Increment failed attempts if user exists
         if user:
@@ -193,6 +197,10 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     user = db.query(User).filter(User.id == payload["sub"]).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Check bulk token revocation (e.g. after password change)
+    if _is_token_revoked_by_user(user, payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     # Blacklist the old refresh token (rotation)
     blacklist_token(refresh_token, db)

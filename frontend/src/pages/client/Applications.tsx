@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
+import { useToast } from '../../components/Toast';
 import { GlassCard, Badge, PageHeader, Button } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import { LOAN_TYPE_ICONS } from '../../lib/constants';
 import type { LoanApplication } from '../../types';
 
 export default function Applications() {
+  const { toast } = useToast();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -14,7 +16,7 @@ export default function Applications() {
     api
       .get('/applications')
       .then(({ data }) => setApplications(data.items))
-      .catch(() => {})
+      .catch(() => toast('Failed to load applications', 'error'))
       .finally(() => setLoading(false));
   }, []);
 

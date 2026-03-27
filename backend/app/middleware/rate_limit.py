@@ -21,6 +21,7 @@ class RateLimiter:
         self.window_seconds = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
         self._lock = Lock()
+        self._last_full_sweep: float = 0.0
 
     def _get_client_ip(self, request: Request) -> str:
         client_ip = request.client.host if request.client else "unknown"
@@ -34,10 +35,23 @@ class RateLimiter:
     def _cleanup(self, key: str, now: float) -> None:
         cutoff = now - self.window_seconds
         self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+        if not self._requests[key]:
+            del self._requests[key]
+
+    def _sweep_stale(self, now: float) -> None:
+        """Periodically evict all expired keys to bound memory usage."""
+        if now - self._last_full_sweep < self.window_seconds * 2:
+            return
+        self._last_full_sweep = now
+        cutoff = now - self.window_seconds
+        stale_keys = [k for k, v in self._requests.items() if not v or v[-1] <= cutoff]
+        for k in stale_keys:
+            del self._requests[k]
 
     def _check_key(self, key: str) -> None:
         now = time.time()
         with self._lock:
+            self._sweep_stale(now)
             self._cleanup(key, now)
             if len(self._requests[key]) >= self.max_requests:
                 raise HTTPException(

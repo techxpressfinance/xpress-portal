@@ -15,6 +15,7 @@ from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User
 from app.schemas.user import BrokerCreate, KYCStatusUpdate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
+from app.services.activity_log import log_activity
 from app.services.auth import hash_password
 from app.services.email import send_broker_welcome_email
 
@@ -89,6 +90,8 @@ def create_broker(
         invited_by_id=current_user.id,
     )
     db.add(user)
+    db.flush()
+    log_activity(db, current_user.id, "broker_created", "user", user.id, {"email": data.email, "full_name": data.full_name})
     db.commit()
     db.refresh(user)
 
@@ -153,7 +156,9 @@ def update_kyc_status(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    old_kyc = user.kyc_status.value
     user.kyc_status = data.kyc_status
+    log_activity(db, _current_user.id, "kyc_status_changed", "user", user_id, {"from": old_kyc, "to": data.kyc_status.value})
     db.commit()
     db.refresh(user)
     return user
@@ -179,7 +184,9 @@ def update_user_role(
             detail="Cannot promote a client directly to admin. Promote to broker first.",
         )
 
+    old_role = user.role.value
     user.role = data.role
+    log_activity(db, _current_user.id, "role_changed", "user", user_id, {"from": old_role, "to": data.role.value})
     db.commit()
     db.refresh(user)
     return user
@@ -198,6 +205,8 @@ def toggle_user_active(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.is_active = data.is_active
+    action = "user_activated" if data.is_active else "user_deactivated"
+    log_activity(db, current_user.id, action, "user", user_id, {"email": user.email})
     db.commit()
     db.refresh(user)
     return user
@@ -252,5 +261,6 @@ def delete_user(
         {"invited_by_id": None}, synchronize_session="fetch"
     )
 
+    log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": user.email, "role": user.role.value})
     db.delete(user)
     db.commit()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -9,6 +11,20 @@ from app.models.user import User
 from app.services.auth import decode_token, is_token_blacklisted
 
 bearer_scheme = HTTPBearer()
+
+
+def _is_token_revoked_by_user(user: User, payload: dict) -> bool:
+    """Check if the token was issued before the user's bulk revocation timestamp."""
+    if not user.tokens_revoked_at:
+        return False
+    iat = payload.get("iat")
+    if iat is None:
+        return True  # tokens without iat are treated as revoked
+    issued_at = datetime.fromtimestamp(iat, tz=timezone.utc)
+    revoked_at = user.tokens_revoked_at
+    if revoked_at.tzinfo is None:
+        revoked_at = revoked_at.replace(tzinfo=timezone.utc)
+    return issued_at < revoked_at
 
 
 def get_current_user(
@@ -27,6 +43,11 @@ def get_current_user(
     user = db.query(User).filter(User.id == payload["sub"]).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Check bulk token revocation (e.g. after password change)
+    if _is_token_revoked_by_user(user, payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
+
     return user
 
 
