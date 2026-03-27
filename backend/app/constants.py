@@ -3,10 +3,10 @@ from __future__ import annotations
 # NOTE: frontend copy at frontend/src/lib/constants.ts — keep in sync
 VALID_TRANSITIONS: dict[str, list[str]] = {
     "draft": ["submitted"],
-    "submitted": ["reviewing", "rejected"],
+    "submitted": ["draft", "reviewing", "rejected"],
     "reviewing": ["approved", "rejected"],
-    "approved": [],
-    "rejected": [],
+    "approved": ["reviewing"],
+    "rejected": ["submitted", "reviewing"],
 }
 
 DEFAULT_KANBAN_COLUMNS = [

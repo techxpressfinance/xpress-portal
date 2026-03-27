@@ -15,8 +15,9 @@ from app.middleware.security import BodySizeLimitMiddleware, SecurityHeadersMidd
 from app.models.application_broker import ApplicationBroker  # noqa: F401 — ensure table is created
 from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure table is created
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
+from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, dashboard, documents, invitations, kanban, lend, messages, referrals, search, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, invitations, kanban, lend, messages, referrals, search, users
 
 # Configure logging
 logging.basicConfig(
@@ -191,6 +192,7 @@ app.include_router(dashboard.router)
 app.include_router(lend.router)
 app.include_router(kanban.router)
 app.include_router(search.router)
+app.include_router(broker_groups.router)
 
 
 @app.get("/api/health")

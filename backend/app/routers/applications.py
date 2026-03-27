@@ -132,7 +132,7 @@ def update_application(
         field_updates = data.model_dump(exclude_unset=True)
         field_updates.pop("status", None)
         _BROKER_ALLOWED_FIELDS = {
-            "notes", "lend_product_type_id", "lend_owner_type", "lend_send_type", "lend_who_to_contact", "lend_extra_data",
+            "notes", "loan_type", "lend_product_type_id", "lend_owner_type", "lend_send_type", "lend_who_to_contact", "lend_extra_data",
             "amount", "loan_term_requested", "loan_purpose_id",
             "applicant_title", "applicant_first_name", "applicant_last_name", "applicant_middle_name",
             "applicant_dob", "applicant_gender", "applicant_marital_status",
@@ -269,6 +269,40 @@ def unassign_broker(
     if application.assigned_broker_id == broker_id:
         application.assigned_broker_id = application.brokers[0].id if application.brokers else None
     log_activity(db, current_user.id, "broker_unassigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name})
+    db.commit()
+    db.refresh(application, attribute_names=["user", "assigned_broker"])
+    return _app_with_user(application)
+
+
+@router.post("/{app_id}/assign-group", response_model=LoanApplicationOut)
+def assign_broker_group(
+    app_id: str,
+    group_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Assign all brokers in a broker group to the application."""
+    from app.models.broker_group import BrokerGroup
+
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker group not found")
+
+    added = []
+    for broker in group.members:
+        if not any(b.id == broker.id for b in application.brokers):
+            application.brokers.append(broker)
+            added.append(broker.full_name)
+
+    if not application.assigned_broker_id and application.brokers:
+        application.assigned_broker_id = application.brokers[0].id
+
+    log_activity(db, current_user.id, "broker_group_assigned", "application", app_id,
+                 {"group_id": group_id, "group_name": group.name, "brokers_added": added})
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application)

@@ -11,7 +11,7 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
-import type { ApplicationNote, DocType, Document, LendSyncStatus, LoanApplication, LoanType, User } from '../../types';
+import type { ApplicationNote, BrokerGroup, DocType, Document, LendSyncStatus, LoanApplication, LoanType, User } from '../../types';
 
 export default function ReviewApplication() {
   const { id } = useParams<{ id: string }>();
@@ -35,12 +35,15 @@ export default function ReviewApplication() {
   const [referrerMsgContent, setReferrerMsgContent] = useState('');
   const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
+  const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
 
-  // Broker edit draft state
+  // Broker edit state
   const [editLoanType, setEditLoanType] = useState<LoanType>('personal');
   const [editAmount, setEditAmount] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [savingFields, setSavingFields] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingEditFields, setSavingEditFields] = useState(false);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
   const [docType, setDocType] = useState<DocType>('id_proof');
   const [uploading, setUploading] = useState(false);
@@ -71,6 +74,8 @@ export default function ReviewApplication() {
     if (!id) return;
     // Check Lend config
     api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
+    // Fetch broker groups
+    api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => {});
 
     Promise.all([
       api.get(`/applications/${id}`),
@@ -178,6 +183,17 @@ export default function ReviewApplication() {
     if (updated) setApplication(updated);
   };
 
+  const handleAssignGroup = async (groupId: string) => {
+    if (!id) return;
+    try {
+      const { data } = await api.post(`/applications/${id}/assign-group?group_id=${groupId}`);
+      setApplication(data);
+      toast('Broker group assigned', 'success');
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to assign group'), 'error');
+    }
+  };
+
   const handleDownloadDoc = (doc: Document) => downloadFile(doc.id, doc.original_filename);
 
   const handleVerifyDoc = async (docId: string) => {
@@ -205,6 +221,46 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to save fields'), 'error');
     } finally {
       setSavingFields(false);
+    }
+  };
+
+  const handleSaveEditFields = async () => {
+    if (!id) return;
+    setSavingEditFields(true);
+    try {
+      const payload: Record<string, unknown> = {
+        loan_type: editLoanType,
+        amount: leadFields.amount ? parseFloat(leadFields.amount) : undefined,
+        notes: editNotes || null,
+        applicant_title: leadFields.applicant_title || null,
+        applicant_first_name: leadFields.applicant_first_name || null,
+        applicant_last_name: leadFields.applicant_last_name || null,
+        applicant_middle_name: leadFields.applicant_middle_name || null,
+        applicant_dob: leadFields.applicant_dob || null,
+        applicant_gender: leadFields.applicant_gender || null,
+        applicant_marital_status: leadFields.applicant_marital_status || null,
+        applicant_address: leadFields.applicant_address || null,
+        applicant_suburb: leadFields.applicant_suburb || null,
+        applicant_state: leadFields.applicant_state || null,
+        applicant_postcode: leadFields.applicant_postcode || null,
+        business_name: leadFields.business_name || null,
+        business_abn: leadFields.business_abn || null,
+        business_registration_date: leadFields.business_registration_date || null,
+        business_industry_id: leadFields.business_industry_id ? parseInt(leadFields.business_industry_id) : null,
+        business_monthly_sales: leadFields.business_monthly_sales ? parseFloat(leadFields.business_monthly_sales) : null,
+        loan_term_requested: (leadFields.loan_term_years || leadFields.loan_term_months)
+          ? (parseInt(leadFields.loan_term_years || '0') * 12) + parseInt(leadFields.loan_term_months || '0')
+          : null,
+        loan_purpose_id: leadFields.loan_purpose_id ? parseInt(leadFields.loan_purpose_id) : null,
+      };
+      const { data } = await api.patch(`/applications/${id}`, payload);
+      setApplication(data);
+      setEditing(false);
+      toast('Application updated', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to save changes'), 'error');
+    } finally {
+      setSavingEditFields(false);
     }
   };
 
@@ -398,26 +454,198 @@ export default function ReviewApplication() {
               <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
                 {application.loan_type} Loan
               </h1>
-              <Badge value={application.status} />
+              <div className="flex items-center gap-2">
+                <Badge value={application.status} />
+                {!isDraft && !editing && (
+                  <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                    <span className="flex items-center gap-1.5">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                      Edit
+                    </span>
+                  </Button>
+                )}
+                {editing && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+                )}
+              </div>
             </div>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl bg-secondary p-4">
-                <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
-                <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+
+            {editing && !isDraft ? (
+              <div className="space-y-5">
+                {/* Loan basics */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
+                    <select
+                      value={editLoanType}
+                      onChange={(e) => setEditLoanType(e.target.value as LoanType)}
+                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="personal">Personal</option>
+                      <option value="home">Home</option>
+                      <option value="business">Business</option>
+                      <option value="vehicle">Vehicle</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
+                    <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="Enter amount" />
+                  </div>
+                </div>
+
+                {/* Applicant */}
+                <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
+                    <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                      <option value="">Select...</option>
+                      {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
+                    <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
+                    <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
+                    <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
+                    <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
+                    <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                      <option value="">Select...</option>
+                      {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
+                    <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                      <option value="">Select...</option>
+                      {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Address */}
+                <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
+                <div>
+                  <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
+                  <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
+                    <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">State</label>
+                    <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                      <option value="">Select...</option>
+                      {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
+                    <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                </div>
+
+                {/* Business (only for business loans) */}
+                {editLoanType === 'business' && (
+                  <>
+                    <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
+                        <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
+                        <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
+                        <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
+                        <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
+                        <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Loan terms */}
+                <h3 className="text-[13px] font-medium text-muted-foreground">Loan Details</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
+                    <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
+                    <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
+                    <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                    placeholder="Application notes..."
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveEditFields} loading={savingEditFields}>Save Changes</Button>
+                  <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+                </div>
               </div>
-              <div className="rounded-xl bg-secondary p-4">
-                <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
-                <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
-              </div>
-              <div className="rounded-xl bg-secondary p-4">
-                <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
-                <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.created_at)}</dd>
-              </div>
-              <div className="rounded-xl bg-secondary p-4">
-                <dt className="text-[13px] font-medium text-muted-foreground">Last Updated</dt>
-                <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.updated_at)}</dd>
-              </div>
-            </dl>
+            ) : (
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl bg-secondary p-4">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
+                  <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                </div>
+                <div className="rounded-xl bg-secondary p-4">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
+                  <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
+                </div>
+                <div className="rounded-xl bg-secondary p-4">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
+                  <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.created_at)}</dd>
+                </div>
+                <div className="rounded-xl bg-secondary p-4">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Last Updated</dt>
+                  <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.updated_at)}</dd>
+                </div>
+              </dl>
+            )}
           </GlassCard>
 
           {/* Edit & Complete Draft (broker/admin only) */}
@@ -1163,16 +1391,35 @@ export default function ReviewApplication() {
                   )}
                   <select
                     value=""
-                    onChange={(e) => { if (e.target.value) handleAssignBroker(e.target.value); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      if (val.startsWith('group:')) {
+                        handleAssignGroup(val.slice(6));
+                      } else {
+                        handleAssignBroker(val);
+                      }
+                    }}
                     className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
                     style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
                   >
-                    <option value="">Add broker...</option>
-                    {brokers
-                      .filter((b) => !application.assigned_brokers.some((ab) => ab.id === b.id))
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>{b.full_name}</option>
-                      ))}
+                    <option value="">Assign broker or group...</option>
+                    {brokerGroups.length > 0 && (
+                      <optgroup label="Broker Groups">
+                        {brokerGroups.map((g) => (
+                          <option key={`g-${g.id}`} value={`group:${g.id}`}>
+                            {g.name} ({g.members.length} member{g.members.length !== 1 ? 's' : ''})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Individual Brokers">
+                      {brokers
+                        .filter((b) => !application.assigned_brokers.some((ab) => ab.id === b.id))
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>{b.full_name}</option>
+                        ))}
+                    </optgroup>
                   </select>
                 </div>
               )}

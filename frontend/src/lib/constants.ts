@@ -124,10 +124,10 @@ export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'b
 // NOTE: backend source of truth at backend/app/constants.py — keep in sync
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['submitted'],
-  submitted: ['reviewing', 'rejected'],
+  submitted: ['draft', 'reviewing', 'rejected'],
   reviewing: ['approved', 'rejected'],
-  approved: [],
-  rejected: [],
+  approved: ['reviewing'],
+  rejected: ['submitted', 'reviewing'],
 };
 
 export const COLUMN_COLOR_OPTIONS = [

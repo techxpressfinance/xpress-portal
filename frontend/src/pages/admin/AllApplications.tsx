@@ -1,19 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
-import { useAuth } from '../../hooks/useAuth';
-import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useToast } from '../../components/Toast';
 import { formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, Badge, PageHeader, Button, Select, Input } from '../../components/ui';
-import type { LoanApplication, User } from '../../types';
+import type { LoanApplication } from '../../types';
 
 export default function AllApplications() {
-  const { user: currentUser } = useAuth();
   const { toast } = useToast();
-  const { assignBroker, unassignBroker } = useBrokerAssignment();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
-  const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -44,24 +39,6 @@ export default function AllApplications() {
   useEffect(() => {
     fetchData();
   }, [page, statusFilter, loanTypeFilter]);
-
-  useEffect(() => {
-    if (currentUser?.role === 'admin') {
-      api.get('/users').then(({ data }) => {
-        setBrokers(data.filter((u: User) => u.role === 'broker'));
-      }).catch(() => toast('Failed to load brokers', 'error'));
-    }
-  }, [currentUser]);
-
-  const handleAssignBroker = async (appId: string, brokerId: string) => {
-    const updated = await assignBroker(appId, brokerId);
-    if (updated) setApplications((prev) => prev.map((a) => (a.id === appId ? updated : a)));
-  };
-
-  const handleUnassignBroker = async (appId: string, brokerId: string) => {
-    const updated = await unassignBroker(appId, brokerId);
-    if (updated) setApplications((prev) => prev.map((a) => (a.id === appId ? updated : a)));
-  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,52 +160,16 @@ export default function AllApplications() {
                         <Badge value={app.status} />
                       </td>
                       <td className="hidden lg:table-cell px-3 sm:px-6 py-4">
-                        {currentUser?.role === 'admin' ? (
-                          <div className="min-w-[160px]">
-                            {app.assigned_brokers.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mb-1.5">
-                                {app.assigned_brokers.map((ab) => (
-                                  <span key={ab.id} className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                    {ab.full_name}
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); handleUnassignBroker(app.id, ab.id); }}
-                                      className="hover:text-destructive ml-0.5"
-                                    >
-                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            <select
-                              value=""
-                              onChange={(e) => { if (e.target.value) handleAssignBroker(app.id, e.target.value); }}
-                              className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                              style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
-                            >
-                              <option value="">{app.assigned_brokers.length > 0 ? 'Add another...' : 'Assign broker...'}</option>
-                              {brokers
-                                .filter((b) => !app.assigned_brokers.some((ab) => ab.id === b.id))
-                                .map((b) => (
-                                  <option key={b.id} value={b.id}>{b.full_name}</option>
-                                ))}
-                            </select>
-                          </div>
-                        ) : app.assigned_brokers.length > 0 ? (
+                        {app.assigned_brokers.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {app.assigned_brokers.map((ab) => (
-                              <div key={ab.id} className="flex items-center gap-1.5">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-                                  <span className="text-[9px] font-semibold text-primary-foreground">
-                                    {getInitials(ab.full_name)}
-                                  </span>
-                                </div>
-                                <span className="text-[13px] font-medium text-foreground">{ab.full_name}</span>
-                              </div>
+                              <span key={ab.id} className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                {ab.full_name}
+                              </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-[13px] text-muted-foreground italic">Unassigned</span>
+                          <span className="text-[13px] text-muted-foreground">N/A</span>
                         )}
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">

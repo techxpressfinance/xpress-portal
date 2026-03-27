@@ -247,6 +247,20 @@ export interface GlobalSearchResponse {
   query: string;
 }
 
+export interface BrokerGroupMember {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+export interface BrokerGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  members: BrokerGroupMember[];
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;
