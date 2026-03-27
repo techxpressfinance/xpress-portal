@@ -27,9 +27,11 @@ export default function ReviewApplication() {
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
-  const [noteTab, setNoteTab] = useState<'internal' | 'client' | 'referrer'>('internal');
+  const [noteTab, setNoteTab] = useState<'client' | 'referrer'>('client');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
+  const [internalNoteContent, setInternalNoteContent] = useState('');
+  const [sendingInternalNote, setSendingInternalNote] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
   const [referrerMsgSubject, setReferrerMsgSubject] = useState('');
   const [referrerMsgContent, setReferrerMsgContent] = useState('');
@@ -1184,16 +1186,6 @@ export default function ReviewApplication() {
               <h2 className="text-[15px] font-semibold text-foreground">Notes & Messages</h2>
               <div className="flex rounded-xl bg-secondary p-0.5">
                 <button
-                  onClick={() => setNoteTab('internal')}
-                  className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all duration-200 ${
-                    noteTab === 'internal'
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Internal
-                </button>
-                <button
                   onClick={() => setNoteTab('client')}
                   className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all duration-200 ${
                     noteTab === 'client'
@@ -1258,19 +1250,15 @@ export default function ReviewApplication() {
               </div>
             ) : (
               <>
-                {/* Notes list */}
+                {/* Client messages list */}
                 <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
-                  {appNotes
-                    .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
-                    .length === 0 ? (
+                  {appNotes.filter((n) => !n.is_internal).length === 0 ? (
                     <div className="rounded-xl bg-secondary/50 p-4 text-center">
-                      <p className="text-[13px] text-muted-foreground">
-                        {noteTab === 'internal' ? 'No internal notes yet' : 'No client messages yet'}
-                      </p>
+                      <p className="text-[13px] text-muted-foreground">No client messages yet</p>
                     </div>
                   ) : (
                     appNotes
-                      .filter((n) => (noteTab === 'internal' ? n.is_internal : !n.is_internal))
+                      .filter((n) => !n.is_internal)
                       .map((note) => (
                         <div key={note.id} className="rounded-xl bg-secondary/30 p-3">
                           <div className="flex items-center justify-between mb-1">
@@ -1292,14 +1280,14 @@ export default function ReviewApplication() {
                   )}
                 </div>
 
-                {/* Compose */}
+                {/* Compose client message */}
                 <div className="border-t border-border pt-3">
                   <textarea
                     value={newNoteContent}
                     onChange={(e) => setNewNoteContent(e.target.value)}
                     rows={3}
                     className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[13px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                    placeholder={noteTab === 'internal' ? 'Write an internal note...' : 'Write a message to the client...'}
+                    placeholder="Write a message to the client..."
                   />
                   <Button
                     className="mt-2"
@@ -1312,19 +1300,19 @@ export default function ReviewApplication() {
                       try {
                         const { data } = await api.post(`/applications/${id}/notes`, {
                           content: newNoteContent.trim(),
-                          is_internal: noteTab === 'internal',
+                          is_internal: false,
                         });
                         setAppNotes((prev) => [...prev, data]);
                         setNewNoteContent('');
-                        toast(noteTab === 'internal' ? 'Note added' : 'Message sent to client', 'success');
+                        toast('Message sent to client', 'success');
                       } catch (err: any) {
-                        toast(getErrorMessage(err, 'Failed to add note'), 'error');
+                        toast(getErrorMessage(err, 'Failed to send message'), 'error');
                       } finally {
                         setSendingNote(false);
                       }
                     }}
                   >
-                    {noteTab === 'internal' ? 'Add Note' : 'Send to Client'}
+                    Send to Client
                   </Button>
                 </div>
               </>
@@ -1358,6 +1346,71 @@ export default function ReviewApplication() {
                 ))}
               </div>
             )}
+          </GlassCard>
+
+          {/* Internal Notes */}
+          <GlassCard>
+            <h2 className="text-[15px] font-semibold text-foreground mb-3">
+              <span className="inline-flex items-center gap-1.5">
+                <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                Internal Notes
+              </span>
+            </h2>
+            <p className="text-[11px] text-muted-foreground mb-3">Only visible to brokers & admins</p>
+            <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+              {appNotes.filter((n) => n.is_internal).length === 0 ? (
+                <p className="text-[12px] text-muted-foreground italic">No internal notes yet</p>
+              ) : (
+                appNotes
+                  .filter((n) => n.is_internal)
+                  .map((note) => (
+                    <div key={note.id} className="rounded-lg bg-secondary/40 p-2.5">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[11px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDate(note.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-foreground/80 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                    </div>
+                  ))
+              )}
+            </div>
+            <div className="flex gap-2">
+              <textarea
+                value={internalNoteContent}
+                onChange={(e) => setInternalNoteContent(e.target.value)}
+                rows={2}
+                className="flex-1 rounded-lg bg-secondary px-3 py-2 text-[12px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground resize-none"
+                placeholder="Add an internal note..."
+              />
+            </div>
+            <Button
+              className="mt-2 w-full"
+              size="sm"
+              variant="secondary"
+              loading={sendingInternalNote}
+              disabled={!internalNoteContent.trim()}
+              onClick={async () => {
+                if (!id || !internalNoteContent.trim()) return;
+                setSendingInternalNote(true);
+                try {
+                  const { data } = await api.post(`/applications/${id}/notes`, {
+                    content: internalNoteContent.trim(),
+                    is_internal: true,
+                  });
+                  setAppNotes((prev) => [...prev, data]);
+                  setInternalNoteContent('');
+                  toast('Internal note added', 'success');
+                } catch (err: any) {
+                  toast(getErrorMessage(err, 'Failed to add note'), 'error');
+                } finally {
+                  setSendingInternalNote(false);
+                }
+              }}
+            >
+              Add Note
+            </Button>
           </GlassCard>
 
           {/* Broker Assignment */}
