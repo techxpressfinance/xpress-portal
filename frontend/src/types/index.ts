@@ -294,6 +294,64 @@ export interface BrokerGroup {
   members: BrokerGroupMember[];
 }
 
+export type LenderSubmissionStatus = 'pending' | 'approved' | 'declined' | 'conditional' | 'withdrawn';
+
+export interface Lender {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderSubmission {
+  id: string;
+  application_id: string;
+  lender_id: string;
+  lender_name: string | null;
+  submitted_by_id: string;
+  submitted_by_name: string | null;
+  status: LenderSubmissionStatus;
+  submitted_at: string;
+  responded_at: string | null;
+  offered_rate: number | null;
+  offered_amount: number | null;
+  conditions: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderAnalyticsByLender {
+  lender_id: string;
+  lender_name: string;
+  total_submissions: number;
+  approved: number;
+  declined: number;
+  conditional: number;
+  pending: number;
+  withdrawn: number;
+  approval_rate: number;
+  avg_turnaround_days: number | null;
+}
+
+export interface LenderAnalytics {
+  by_lender: LenderAnalyticsByLender[];
+  by_loan_type: { loan_type: string; lender_name: string; count: number; approved: number }[];
+  monthly_trend: { month: string; submissions: number; approvals: number }[];
+  totals: {
+    total_submissions: number;
+    total_approved: number;
+    total_declined: number;
+    overall_approval_rate: number;
+    avg_turnaround_days: number | null;
+  };
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;

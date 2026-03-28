@@ -17,8 +17,10 @@ from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure t
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
+from app.models.lender import Lender  # noqa: F401 — ensure table is created
+from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, messages, referrals, search, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, referrals, search, users
 
 # Configure logging
 logging.basicConfig(
@@ -215,6 +217,8 @@ app.include_router(kanban.router)
 app.include_router(search.router)
 app.include_router(broker_groups.router)
 app.include_router(external_referrers.router)
+app.include_router(lenders.router)
+app.include_router(lender_submissions.router)
 
 
 @app.get("/api/health")

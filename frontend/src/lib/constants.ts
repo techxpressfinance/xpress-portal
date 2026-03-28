@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, OcrStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: 'bg-secondary text-muted-foreground',
@@ -100,6 +100,14 @@ export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactN
     icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
       React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'm4.5 12.75 6 6 9-13.5' })),
   },
+};
+
+export const SUBMISSION_STATUS_BADGE: Record<LenderSubmissionStatus, { label: string; className: string }> = {
+  pending: { label: 'Pending', className: 'bg-chart-4/10 text-chart-4' },
+  approved: { label: 'Approved', className: 'bg-success/10 text-success' },
+  declined: { label: 'Declined', className: 'bg-destructive/10 text-destructive' },
+  conditional: { label: 'Conditional', className: 'bg-warning/10 text-warning' },
+  withdrawn: { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground' },
 };
 
 export const LEND_SYNC_BADGE: Record<LendSyncStatus, { label: string; className: string }> = {

@@ -16,6 +16,8 @@ const InviteClients = lazy(() => import('./pages/admin/InviteClients'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const CreateBroker = lazy(() => import('./pages/admin/CreateBroker'));
 const CreateReferrer = lazy(() => import('./pages/admin/CreateReferrer'));
+const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
+const LenderAnalytics = lazy(() => import('./pages/admin/LenderAnalytics'));
 const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
@@ -187,6 +189,22 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin']}>
                     <CreateReferrer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/lender-analytics"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <LenderAnalytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/lenders"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <LenderManagement />
                   </ProtectedRoute>
                 }
               />

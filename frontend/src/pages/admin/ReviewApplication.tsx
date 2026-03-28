@@ -11,7 +11,8 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
-import type { ApplicationNote, BrokerGroup, DocType, Document, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
+import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
+import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +38,15 @@ export default function ReviewApplication() {
   const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'integrations' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'integrations' | 'messages'>('overview');
+
+  // Lender submissions state
+  const [lenderSubmissions, setLenderSubmissions] = useState<LenderSubmission[]>([]);
+  const [availableLenders, setAvailableLenders] = useState<Lender[]>([]);
+  const [showSubForm, setShowSubForm] = useState(false);
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [subForm, setSubForm] = useState({ lender_id: '', status: 'pending', offered_rate: '', offered_amount: '', conditions: '', notes: '' });
+  const [savingSub, setSavingSub] = useState(false);
 
   // Broker edit state
   const [editLoanType, setEditLoanType] = useState<LoanType>('personal');
@@ -79,6 +88,9 @@ export default function ReviewApplication() {
     api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
     // Fetch broker groups
     api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => {});
+    // Fetch lender submissions and available lenders
+    api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => {});
+    api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => {});
 
     Promise.all([
       api.get(`/applications/${id}`),
@@ -430,17 +442,17 @@ export default function ReviewApplication() {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'integrations', 'messages'] as const).map((tab) => (
+            {(['overview', 'documents', 'submissions', 'integrations', 'messages'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${
-                  activeTab === tab 
-                    ? 'text-primary' 
+                  activeTab === tab
+                    ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                 }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'integrations' ? 'Integrations' : 'Messages'}
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'integrations' ? 'Integrations' : 'Messages'}
                 {activeTab === tab && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
                 )}
@@ -935,6 +947,205 @@ export default function ReviewApplication() {
             </GlassCard>
           )}
 
+              </>
+            )}
+
+            {activeTab === 'submissions' && (
+              <>
+                <GlassCard>
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-[15px] font-semibold text-foreground">Lender Submissions</h2>
+                    {!showSubForm && (
+                      <Button size="sm" onClick={() => { setSubForm({ lender_id: '', status: 'pending', offered_rate: '', offered_amount: '', conditions: '', notes: '' }); setEditingSubId(null); setShowSubForm(true); }}>
+                        + Add Submission
+                      </Button>
+                    )}
+                  </div>
+
+                  {showSubForm && (
+                    <div className="mb-5 p-4 rounded-xl border border-border/60 bg-secondary/20 space-y-3">
+                      <h3 className="text-[14px] font-semibold text-foreground">{editingSubId ? 'Edit Submission' : 'New Submission'}</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {!editingSubId && (
+                          <div>
+                            <label className="block text-[12px] font-medium text-muted-foreground mb-1">Lender *</label>
+                            <select
+                              value={subForm.lender_id}
+                              onChange={e => setSubForm(f => ({ ...f, lender_id: e.target.value }))}
+                              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            >
+                              <option value="">Select lender...</option>
+                              {availableLenders
+                                .filter(l => !lenderSubmissions.some(s => s.lender_id === l.id) || (editingSubId && lenderSubmissions.find(s => s.id === editingSubId)?.lender_id === l.id))
+                                .map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-[12px] font-medium text-muted-foreground mb-1">Status</label>
+                          <select
+                            value={subForm.status}
+                            onChange={e => setSubForm(f => ({ ...f, status: e.target.value }))}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="declined">Declined</option>
+                            <option value="conditional">Conditional</option>
+                            <option value="withdrawn">Withdrawn</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] font-medium text-muted-foreground mb-1">Offered Rate (%)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={subForm.offered_rate}
+                            onChange={e => setSubForm(f => ({ ...f, offered_rate: e.target.value }))}
+                            placeholder="e.g. 6.49"
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] font-medium text-muted-foreground mb-1">Offered Amount ($)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={subForm.offered_amount}
+                            onChange={e => setSubForm(f => ({ ...f, offered_amount: e.target.value }))}
+                            placeholder="e.g. 500000"
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Conditions</label>
+                        <input
+                          type="text"
+                          value={subForm.conditions}
+                          onChange={e => setSubForm(f => ({ ...f, conditions: e.target.value }))}
+                          placeholder="Any conditions from the lender..."
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Notes</label>
+                        <textarea
+                          value={subForm.notes}
+                          onChange={e => setSubForm(f => ({ ...f, notes: e.target.value }))}
+                          rows={2}
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          loading={savingSub}
+                          onClick={async () => {
+                            if (!editingSubId && !subForm.lender_id) { toast('Select a lender', 'error'); return; }
+                            setSavingSub(true);
+                            try {
+                              if (editingSubId) {
+                                const payload: Record<string, unknown> = { status: subForm.status };
+                                if (subForm.offered_rate) payload.offered_rate = parseFloat(subForm.offered_rate);
+                                else payload.offered_rate = null;
+                                if (subForm.offered_amount) payload.offered_amount = parseFloat(subForm.offered_amount);
+                                else payload.offered_amount = null;
+                                payload.conditions = subForm.conditions || null;
+                                payload.notes = subForm.notes || null;
+                                if (subForm.status !== 'pending') payload.responded_at = new Date().toISOString();
+                                const { data } = await api.patch(`/applications/${id}/submissions/${editingSubId}`, payload);
+                                setLenderSubmissions(prev => prev.map(s => s.id === editingSubId ? data : s));
+                                toast('Submission updated', 'success');
+                              } else {
+                                const payload: Record<string, unknown> = { lender_id: subForm.lender_id, status: subForm.status };
+                                if (subForm.offered_rate) payload.offered_rate = parseFloat(subForm.offered_rate);
+                                if (subForm.offered_amount) payload.offered_amount = parseFloat(subForm.offered_amount);
+                                if (subForm.conditions) payload.conditions = subForm.conditions;
+                                if (subForm.notes) payload.notes = subForm.notes;
+                                const { data } = await api.post(`/applications/${id}/submissions`, payload);
+                                setLenderSubmissions(prev => [data, ...prev]);
+                                toast('Submission created', 'success');
+                              }
+                              setShowSubForm(false);
+                              setEditingSubId(null);
+                            } catch (err) {
+                              toast(getErrorMessage(err, 'Failed to save submission'), 'error');
+                            } finally {
+                              setSavingSub(false);
+                            }
+                          }}
+                        >
+                          {editingSubId ? 'Save' : 'Submit'}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowSubForm(false); setEditingSubId(null); }}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {lenderSubmissions.length === 0 && !showSubForm ? (
+                    <p className="text-muted-foreground text-[14px] text-center py-8">No lender submissions yet. Click "Add Submission" to record one.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {lenderSubmissions.map(sub => (
+                        <div key={sub.id} className="rounded-xl border border-border/60 p-4 hover:bg-secondary/20 transition-colors">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[15px] font-semibold text-foreground">{sub.lender_name}</span>
+                                <Badge type="custom" value={SUBMISSION_STATUS_BADGE[sub.status as LenderSubmissionStatus]?.label || sub.status} className={SUBMISSION_STATUS_BADGE[sub.status as LenderSubmissionStatus]?.className || 'bg-secondary text-muted-foreground'} />
+                              </div>
+                              <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 text-[13px] text-muted-foreground mt-2">
+                                <div>Submitted: {formatDate(sub.submitted_at)}</div>
+                                {sub.responded_at && <div>Responded: {formatDate(sub.responded_at)}</div>}
+                                {sub.offered_rate != null && <div>Rate: {sub.offered_rate}%</div>}
+                                {sub.offered_amount != null && <div>Amount: ${Number(sub.offered_amount).toLocaleString()}</div>}
+                                {sub.conditions && <div className="sm:col-span-2">Conditions: {sub.conditions}</div>}
+                                {sub.notes && <div className="sm:col-span-2">Notes: {sub.notes}</div>}
+                              </div>
+                              <div className="text-[12px] text-muted-foreground/60 mt-1">By {sub.submitted_by_name}</div>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSubForm({
+                                    lender_id: sub.lender_id,
+                                    status: sub.status,
+                                    offered_rate: sub.offered_rate != null ? String(sub.offered_rate) : '',
+                                    offered_amount: sub.offered_amount != null ? String(sub.offered_amount) : '',
+                                    conditions: sub.conditions || '',
+                                    notes: sub.notes || '',
+                                  });
+                                  setEditingSubId(sub.id);
+                                  setShowSubForm(true);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={async () => {
+                                  try {
+                                    await api.delete(`/applications/${id}/submissions/${sub.id}`);
+                                    setLenderSubmissions(prev => prev.filter(s => s.id !== sub.id));
+                                    toast('Submission deleted', 'success');
+                                  } catch (err) {
+                                    toast(getErrorMessage(err, 'Failed to delete submission'), 'error');
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </GlassCard>
               </>
             )}
 
