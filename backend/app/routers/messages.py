@@ -91,21 +91,32 @@ def list_application_note_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return all non-internal application notes relevant to the current user."""
+    """Return application notes visible to the current user (based on visibility field)."""
     if current_user.role.value == "client":
-        # Client sees non-internal notes on their own applications
+        # Client sees notes where visibility includes "client" on their own applications
         notes = (
             db.query(ApplicationNote)
             .join(LoanApplication, ApplicationNote.application_id == LoanApplication.id)
-            .filter(LoanApplication.user_id == current_user.id, ApplicationNote.is_internal == False)  # noqa: E712
+            .filter(LoanApplication.user_id == current_user.id, ApplicationNote.visibility.contains("client"))
+            .order_by(ApplicationNote.created_at.desc())
+            .all()
+        )
+    elif current_user.role.value == "referrer":
+        # Referrer sees notes where visibility includes "referrer"
+        notes = (
+            db.query(ApplicationNote)
+            .filter(ApplicationNote.visibility.contains("referrer"))
             .order_by(ApplicationNote.created_at.desc())
             .all()
         )
     else:
-        # Broker/admin sees non-internal notes they authored
+        # Broker/admin sees client/referrer-visible notes they authored (for the Messages page)
         notes = (
             db.query(ApplicationNote)
-            .filter(ApplicationNote.author_id == current_user.id, ApplicationNote.is_internal == False)  # noqa: E712
+            .filter(
+                ApplicationNote.author_id == current_user.id,
+                ApplicationNote.visibility != "broker",
+            )
             .order_by(ApplicationNote.created_at.desc())
             .all()
         )

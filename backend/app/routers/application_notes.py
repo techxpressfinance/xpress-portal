@@ -22,7 +22,7 @@ def _note_to_out(note: ApplicationNote) -> dict:
         "author_name": note.author.full_name if note.author else None,
         "author_role": note.author.role.value if note.author else None,
         "content": note.content,
-        "is_internal": note.is_internal,
+        "visibility": [v.strip() for v in note.visibility.split(",") if v.strip()],
         "created_at": note.created_at,
     }
 
@@ -41,9 +41,12 @@ def list_notes(
 
     query = db.query(ApplicationNote).filter(ApplicationNote.application_id == app_id)
 
-    # Clients and referrers only see non-internal (client-facing) notes
-    if current_user.role in (UserRole.client, UserRole.referrer):
-        query = query.filter(ApplicationNote.is_internal == False)  # noqa: E712
+    # Non-admin/broker users only see notes where their role is in the visibility list
+    if current_user.role == UserRole.client:
+        query = query.filter(ApplicationNote.visibility.contains("client"))
+    elif current_user.role == UserRole.referrer:
+        query = query.filter(ApplicationNote.visibility.contains("referrer"))
+    # Brokers and admins see all notes (broker-visible + everything else)
 
     notes = query.order_by(ApplicationNote.created_at.asc()).all()
     return [_note_to_out(n) for n in notes]
@@ -62,13 +65,37 @@ def create_note(
 
     check_application_access(application, current_user, db=db)
 
+    from app.models.application_note import VALID_VISIBILITY
+    visibility_set = {v for v in data.visibility if v in VALID_VISIBILITY}
+    if not visibility_set:
+        visibility_set = {"broker"}
+
     note = ApplicationNote(
         application_id=app_id,
         author_id=current_user.id,
         content=data.content,
-        is_internal=data.is_internal,
+        visibility=",".join(sorted(visibility_set)),
     )
     db.add(note)
     db.commit()
     db.refresh(note)
     return _note_to_out(note)
+
+
+@router.delete("/{app_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_note(
+    app_id: str,
+    note_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+):
+    note = (
+        db.query(ApplicationNote)
+        .filter(ApplicationNote.id == note_id, ApplicationNote.application_id == app_id)
+        .first()
+    )
+    if not note:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+
+    db.delete(note)
+    db.commit()

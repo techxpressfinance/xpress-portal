@@ -169,6 +169,8 @@ export interface ExternalReferrerStats {
   applied: number;
 }
 
+export type NoteVisibility = 'broker' | 'client' | 'referrer';
+
 export interface ApplicationNote {
   id: string;
   application_id: string;
@@ -176,7 +178,7 @@ export interface ApplicationNote {
   author_name: string | null;
   author_role: string | null;
   content: string;
-  is_internal: boolean;
+  visibility: NoteVisibility[];
   created_at: string;
 }
 

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class ApplicationNoteCreate(BaseModel):
     content: str
-    is_internal: bool = True
+    visibility: list[str] = ["broker"]
 
 
 class ApplicationNoteOut(BaseModel):
@@ -17,7 +17,7 @@ class ApplicationNoteOut(BaseModel):
     author_name: str | None = None
     author_role: str | None = None
     content: str
-    is_internal: bool
+    visibility: list[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}
