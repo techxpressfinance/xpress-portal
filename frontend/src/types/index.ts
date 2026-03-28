@@ -263,9 +263,20 @@ export interface SearchResultUser {
   created_at: string | null;
 }
 
+export interface SearchResultDocument {
+  id: string;
+  application_id: string;
+  original_filename: string;
+  doc_type: DocType;
+  is_verified: boolean;
+  uploaded_at: string | null;
+  user_name: string | null;
+}
+
 export interface GlobalSearchResponse {
   applications: SearchResultApplication[];
   users: SearchResultUser[];
+  documents: SearchResultDocument[];
   query: string;
 }
 

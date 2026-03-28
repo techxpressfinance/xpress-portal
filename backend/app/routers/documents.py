@@ -29,6 +29,7 @@ def upload_document(
     file: UploadFile,
     request: Request,
     background_tasks: BackgroundTasks,
+    label: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -82,11 +83,17 @@ def upload_document(
     if not safe_filename:
         safe_filename = "unknown"
 
+    # Use label as display name if provided, keeping the original extension
+    if label and label.strip():
+        display_name = label.strip() + ext
+    else:
+        display_name = safe_filename
+
     doc = Document(
         application_id=application_id,
         doc_type=doc_type,
         file_path=file_path,
-        original_filename=safe_filename,
+        original_filename=display_name,
     )
     db.add(doc)
     db.commit()

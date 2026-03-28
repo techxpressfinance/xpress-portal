@@ -37,20 +37,19 @@ export default function ReviewApplication() {
   const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
-  
-  const [quickNoteContent, setQuickNoteContent] = useState('');
-  const [sendingQuickNote, setSendingQuickNote] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'integrations' | 'messages'>('overview');
 
   // Broker edit state
   const [editLoanType, setEditLoanType] = useState<LoanType>('personal');
-  const [editAmount, setEditAmount] = useState('');
+
   const [editNotes, setEditNotes] = useState('');
-  const [savingFields, setSavingFields] = useState(false);
+
   const [editing, setEditing] = useState(false);
   const [savingEditFields, setSavingEditFields] = useState(false);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
   const [docType, setDocType] = useState<DocType>('id_proof');
   const [uploading, setUploading] = useState(false);
+  const [fileLabel, setFileLabel] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Lend integration state
@@ -93,7 +92,7 @@ export default function ReviewApplication() {
         setAppNotes(notesRes.data);
         // Init broker edit fields
         setEditLoanType(appRes.data.loan_type);
-        setEditAmount(String(appRes.data.amount));
+        updateLeadField('amount', String(appRes.data.amount || ''));
         setEditNotes(appRes.data.notes || '');
         // Init Lend fields
         setLendProductTypeId(appRes.data.lend_product_type_id ? String(appRes.data.lend_product_type_id) : '');
@@ -210,23 +209,6 @@ export default function ReviewApplication() {
     }
   };
 
-  const handleSaveFields = async () => {
-    if (!id) return;
-    setSavingFields(true);
-    try {
-      const { data } = await api.patch(`/applications/${id}`, {
-        loan_type: editLoanType,
-        amount: parseFloat(editAmount),
-        notes: editNotes || null,
-      });
-      setApplication(data);
-      toast('Application fields saved', 'success');
-    } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to save fields'), 'error');
-    } finally {
-      setSavingFields(false);
-    }
-  };
 
   const handleSaveEditFields = async () => {
     if (!id) return;
@@ -284,27 +266,31 @@ export default function ReviewApplication() {
 
   const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const target = e.target;
     if (!file || !id) return;
 
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     if (file.size > MAX_FILE_SIZE) {
       toast('File size exceeds 10MB limit', 'error');
-      if (fileInput.current) fileInput.current.value = '';
+      target.value = '';
       return;
     }
 
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
+    const params = new URLSearchParams({ doc_type: docType });
+    if (fileLabel.trim()) params.set('label', fileLabel.trim());
     try {
-      const { data } = await api.post(`/documents/upload/${id}?doc_type=${docType}`, formData);
+      const { data } = await api.post(`/documents/upload/${id}?${params}`, formData);
       setDocuments((prev) => [...prev, data]);
+      setFileLabel('');
       toast('Document uploaded', 'success');
     } catch (err: any) {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setUploading(false);
-      if (fileInput.current) fileInput.current.value = '';
+      target.value = '';
     }
   };
 
@@ -442,8 +428,31 @@ export default function ReviewApplication() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Completion Banner */}
-          {application.completed_by_name && (
+          {/* Main Content Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
+            {(['overview', 'documents', 'integrations', 'messages'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${
+                  activeTab === tab 
+                    ? 'text-primary' 
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
+                }`}
+              >
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'integrations' ? 'Integrations' : 'Messages'}
+                {activeTab === tab && (
+                  <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {activeTab === 'overview' && (
+              <>
+                {/* Completion Banner */}
+                {application.completed_by_name && (
             <div className="rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-center gap-3">
               <svg className="h-5 w-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
               <p className="text-[13px] font-medium text-primary">
@@ -458,9 +467,9 @@ export default function ReviewApplication() {
               <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
                 {application.loan_type} Loan
               </h1>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge value={application.status} />
-                {!isDraft && !editing && (
+                {!editing && (
                   <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
                     <span className="flex items-center gap-1.5">
                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
@@ -474,7 +483,7 @@ export default function ReviewApplication() {
               </div>
             </div>
 
-            {editing && !isDraft ? (
+            {editing ? (
               <div className="space-y-5">
                 {/* Loan basics */}
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -652,109 +661,7 @@ export default function ReviewApplication() {
             )}
           </GlassCard>
 
-          {/* Edit & Complete Draft (broker/admin only) */}
-          {isDraft && (
-            <GlassCard>
-              <h2 className="text-[15px] font-semibold text-foreground mb-5">Edit & Complete Application</h2>
-              <div className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
-                    <select
-                      value={editLoanType}
-                      onChange={(e) => setEditLoanType(e.target.value as LoanType)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="home">Home</option>
-                      <option value="business">Business</option>
-                      <option value="vehicle">Vehicle</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editAmount}
-                      onChange={(e) => setEditAmount(e.target.value)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                    placeholder="Application notes..."
-                  />
-                </div>
-                <Button onClick={handleSaveFields} loading={savingFields}>Save Changes</Button>
-              </div>
 
-              {/* Required Documents Checklist */}
-              <div className="mt-6 pt-5 border-t border-border">
-                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Recommended Documents</h3>
-                <div className="grid gap-2 sm:grid-cols-2 mb-4">
-                  {RECOMMENDED_DOC_TYPES.map((type) => (
-                    <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}`}>
-                      {uploadedDocTypes.has(type) ? (
-                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                      ) : (
-                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><circle cx="12" cy="12" r="9" /></svg>
-                      )}
-                      <span className="font-medium">{DOC_TYPE_LABELS[type]}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Upload widget */}
-                <div className="rounded-xl bg-secondary/50 p-4 mb-4">
-                  <label className="block text-[13px] font-medium text-muted-foreground mb-2">Upload Document</label>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                    <select
-                      value={docType}
-                      onChange={(e) => setDocType(e.target.value as DocType)}
-                      className="rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-11 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={handleUploadDoc}
-                      disabled={uploading}
-                      className="flex-1 text-[13px] text-muted-foreground file:mr-4 file:rounded-xl file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-[13px] file:font-medium file:text-primary hover:file:bg-primary/20 file:transition-colors file:cursor-pointer"
-                    />
-                  </div>
-                  {uploading && (
-                    <div className="flex items-center gap-2 mt-2 text-primary">
-                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                      <span className="text-[13px] font-medium">Uploading...</span>
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  variant={allDocsUploaded ? 'success' : 'primary'}
-                  size="lg"
-                  className="w-full"
-                  onClick={handleBrokerSubmit}
-                  disabled={submittingOnBehalf}
-                  loading={submittingOnBehalf}
-                >
-                  Submit on Behalf of Client
-                </Button>
-              </div>
-            </GlassCard>
-          )}
 
           {/* Client Info */}
           {client && (
@@ -798,9 +705,118 @@ export default function ReviewApplication() {
             </GlassCard>
           )}
 
+              </>
+            )}
+
+            {activeTab === 'documents' && (
+              <>
+          {/* Draft Actions (Required Docs & Submit) */}
+          {isDraft && (
+            <GlassCard className="mb-6 border-primary/20 bg-primary/5">
+              <h2 className="text-[15px] font-semibold text-foreground mb-4">Draft Actions</h2>
+              
+              <div className="mb-4">
+                <h3 className="text-[13px] font-medium text-foreground mb-3">Recommended Documents</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {RECOMMENDED_DOC_TYPES.map((type) => (
+                    <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success border border-success/20' : 'bg-background border border-border/50 text-muted-foreground'}`}>
+                      {uploadedDocTypes.has(type) ? (
+                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                      ) : (
+                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><circle cx="12" cy="12" r="9" /></svg>
+                      )}
+                      <span className="font-medium">{DOC_TYPE_LABELS[type]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
+                <input
+                  type="text"
+                  value={fileLabel}
+                  onChange={(e) => setFileLabel(e.target.value)}
+                  placeholder="Label (optional)"
+                  className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                />
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value as DocType)}
+                  className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <div className="relative flex-1">
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={handleUploadDoc}
+                    disabled={uploading}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex items-center justify-center gap-2 h-11 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors font-medium text-[13px]">
+                    {uploading ? (
+                      <><svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Uploading...</>
+                    ) : (
+                      <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg> Click to Upload</>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                variant={allDocsUploaded ? 'success' : 'primary'}
+                size="lg"
+                className="w-full"
+                onClick={handleBrokerSubmit}
+                disabled={submittingOnBehalf}
+                loading={submittingOnBehalf}
+              >
+                Submit Application
+              </Button>
+            </GlassCard>
+          )}
+
           {/* Documents */}
           <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-5">Documents</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
+              {!isDraft && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={fileLabel}
+                    onChange={(e) => setFileLabel(e.target.value)}
+                    placeholder="Label (optional)"
+                    className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 w-36 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                  />
+                  <select
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value as DocType)}
+                    className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleUploadDoc}
+                      disabled={uploading}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <Button size="sm" variant="secondary" className="h-8 pointer-events-none" loading={uploading}>
+                      {uploading ? 'Uploading...' : 'Upload'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
             {documents.length === 0 ? (
               <div className="rounded-xl bg-secondary/50 p-6 text-center">
                 <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
@@ -809,35 +825,42 @@ export default function ReviewApplication() {
             ) : (
               <div className="space-y-3">
                 {documents.map((doc) => (
-                   <div key={doc.id} className="flex items-center gap-4 rounded-xl bg-secondary/30 p-4 transition-all duration-200 hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary">
-                      <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                   <div key={doc.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl bg-secondary/30 p-4 transition-all duration-200 border border-border/50 hover:bg-secondary/60">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background border border-border/50 shadow-sm">
+                        <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] font-semibold text-foreground mb-0.5">{doc.original_filename}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] text-muted-foreground truncate">{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} &middot; {formatDate(doc.uploaded_at)}</span>
+                          {doc.ocr_status && (
+                            <Badge type="custom" value={OCR_STATUS_BADGE[doc.ocr_status].label} className={OCR_STATUS_BADGE[doc.ocr_status].className} />
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-semibold text-foreground">{doc.original_filename}</p>
-                      <p className="text-[12px] text-muted-foreground">{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} &middot; {formatDate(doc.uploaded_at)}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {doc.ocr_status && (
-                        <Badge type="custom" value={OCR_STATUS_BADGE[doc.ocr_status].label} className={OCR_STATUS_BADGE[doc.ocr_status].className} />
-                      )}
-                      {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRetryOcr(doc.id)}
-                          disabled={retryingOcr === doc.id}
-                        >
-                          {retryingOcr === doc.id ? 'Retrying...' : 'Redo OCR'}
-                        </Button>
-                      )}
+
+                    <div className="flex shrink-0 items-center gap-2 bg-background/50 p-1.5 rounded-lg border border-border/50">
                       {doc.is_verified ? (
-                        <Badge type="custom" value="Verified" className="bg-success/10 text-success" />
+                        <Badge type="custom" value="Verified" className="bg-success/10 text-success py-1 px-2 mx-1" />
                       ) : (
-                        <Button variant="success" size="sm" onClick={() => handleVerifyDoc(doc.id)}>Verify</Button>
+                        <Button variant="success" size="sm" onClick={() => handleVerifyDoc(doc.id)} className="h-7 px-3 text-[12px]">Verify</Button>
                       )}
-                      <Button variant="ghost" size="sm" onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })}>View</Button>
-                      <Button variant="secondary" size="sm" onClick={() => handleDownloadDoc(doc)}>Download</Button>
+                      
+                      <div className="h-4 w-[1px] bg-border mx-1" />
+
+                      <button onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })} className="p-1.5 text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-primary/10" title="View Document">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                      </button>
+                      <button onClick={() => handleDownloadDoc(doc)} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary" title="Download">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      </button>
+                      {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
+                        <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary disabled:opacity-50" title="Redo OCR">
+                          <svg className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin': ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -852,6 +875,11 @@ export default function ReviewApplication() {
             onStatusChange={refetchApplication}
           />
 
+              </>
+            )}
+
+            {activeTab === 'overview' && (
+              <>
           {/* Applicant Summary */}
           {application.applicant_first_name && (
             <GlassCard>
@@ -907,6 +935,11 @@ export default function ReviewApplication() {
             </GlassCard>
           )}
 
+              </>
+            )}
+
+            {activeTab === 'integrations' && (
+              <>
           {/* Lend.com.au Integration */}
           {lendEnabled && !isDraft && (
             <GlassCard>
@@ -1182,6 +1215,11 @@ export default function ReviewApplication() {
             </GlassCard>
           )}
 
+              </>
+            )}
+
+            {activeTab === 'messages' && (
+              <>
           {/* Notes & Messages */}
           <GlassCard>
             <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
@@ -1417,6 +1455,9 @@ export default function ReviewApplication() {
               </div>
             )}
           </GlassCard>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Sidebar Actions */}
@@ -1447,61 +1488,7 @@ export default function ReviewApplication() {
             )}
           </GlassCard>
 
-          {/* Quick Internal Notes */}
-          <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-4">Quick Internal Notes</h2>
-            <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-              {appNotes.filter(n => n.visibility.length === 1 && n.visibility[0] === 'broker').length === 0 ? (
-                <p className="text-[12px] text-muted-foreground text-center py-4">No internal notes</p>
-              ) : (
-                appNotes
-                  .filter(n => n.visibility.length === 1 && n.visibility[0] === 'broker')
-                  .map(note => (
-                    <div key={note.id} className="rounded-xl bg-secondary/40 p-3 text-[13px] text-foreground border border-transparent">
-                      <div className="flex justify-between items-start mb-1.5">
-                        <span className="font-semibold text-[12px]">{note.author_name || 'Staff'}</span>
-                        <span className="text-[10px] font-medium text-muted-foreground">{formatDate(note.created_at)}</span>
-                      </div>
-                      <p className="whitespace-pre-wrap leading-relaxed opacity-90">{note.content}</p>
-                    </div>
-                  ))
-              )}
-            </div>
-            <div className="flex flex-col gap-2 mt-2 pt-3 border-t border-border/30">
-              <textarea
-                value={quickNoteContent}
-                onChange={(e) => setQuickNoteContent(e.target.value)}
-                rows={2}
-                placeholder="Add internal note..."
-                className="w-full rounded-xl bg-secondary/50 px-3 py-2.5 text-[13px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none placeholder-muted-foreground"
-              />
-              <Button
-                size="sm"
-                className="w-full h-8 rounded-lg"
-                loading={sendingQuickNote}
-                disabled={!quickNoteContent.trim()}
-                onClick={async () => {
-                  if (!id || !quickNoteContent.trim()) return;
-                  setSendingQuickNote(true);
-                  try {
-                    const { data } = await api.post(`/applications/${id}/notes`, {
-                      content: quickNoteContent.trim(),
-                      visibility: ['broker'],
-                    });
-                    setAppNotes((prev) => [...prev, data]);
-                    setQuickNoteContent('');
-                    toast('Internal note added', 'success');
-                  } catch (err: any) {
-                    toast(getErrorMessage(err, 'Failed to add note'), 'error');
-                  } finally {
-                    setSendingQuickNote(false);
-                  }
-                }}
-              >
-                Add Note
-              </Button>
-            </div>
-          </GlassCard>
+
 
           {/* Broker Assignment */}
           {currentUser?.role === 'admin' && (

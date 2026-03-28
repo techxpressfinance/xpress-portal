@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
+from app.models.document import Document
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.services.query_utils import escape_like
@@ -20,7 +21,7 @@ def global_search(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    """Search across applications and users. Admin/broker only."""
+    """Search across applications, users, and documents. Admin/broker only."""
     safe_q = escape_like(q)
     pattern = f"%{safe_q}%"
 
@@ -44,6 +45,9 @@ def global_search(
         | LoanApplication.lend_ref.ilike(pattern, escape="\\")
         | LoanApplication.loan_type.ilike(pattern, escape="\\")
         | LoanApplication.id.ilike(pattern, escape="\\")
+        | LoanApplication.notes.ilike(pattern, escape="\\")
+        | LoanApplication.status.ilike(pattern, escape="\\")
+        | LoanApplication.applicant_state.ilike(pattern, escape="\\")
     )
 
     apps = (
@@ -80,6 +84,9 @@ def global_search(
         | User.email.ilike(pattern, escape="\\")
         | User.phone.ilike(pattern, escape="\\")
         | User.employee_id.ilike(pattern, escape="\\")
+        | User.organization_name.ilike(pattern, escape="\\")
+        | User.license_number.ilike(pattern, escape="\\")
+        | User.department.ilike(pattern, escape="\\")
     )
 
     users = user_query.order_by(User.created_at.desc()).limit(limit).all()
@@ -96,4 +103,52 @@ def global_search(
         for u in users
     ]
 
-    return {"applications": app_results, "users": user_results, "query": q}
+    # ── Documents ──────────────────────────────────────────
+    doc_query = (
+        db.query(Document)
+        .join(LoanApplication, Document.application_id == LoanApplication.id)
+        .filter(
+            Document.original_filename.ilike(pattern, escape="\\")
+            | Document.doc_type.ilike(pattern, escape="\\")
+            | Document.lend_document_type.ilike(pattern, escape="\\")
+        )
+    )
+
+    # Brokers only see docs on their assigned applications
+    if current_user.role == UserRole.broker:
+        doc_query = doc_query.filter(
+            Document.application_id.in_(
+                db.query(ApplicationBroker.application_id).filter(
+                    ApplicationBroker.broker_id == current_user.id
+                )
+            )
+        )
+
+    docs = doc_query.order_by(Document.uploaded_at.desc()).limit(limit).all()
+
+    # Batch-load application user info for docs
+    doc_app_ids = {d.application_id for d in docs}
+    app_user_map: dict[str, str | None] = {}
+    if doc_app_ids:
+        for app_row in (
+            db.query(LoanApplication.id, User.full_name)
+            .join(User, LoanApplication.user_id == User.id)
+            .filter(LoanApplication.id.in_(doc_app_ids))
+            .all()
+        ):
+            app_user_map[app_row[0]] = app_row[1]
+
+    doc_results = [
+        {
+            "id": d.id,
+            "application_id": d.application_id,
+            "original_filename": d.original_filename,
+            "doc_type": d.doc_type.value if hasattr(d.doc_type, "value") else d.doc_type,
+            "is_verified": d.is_verified,
+            "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "user_name": app_user_map.get(d.application_id),
+        }
+        for d in docs
+    ]
+
+    return {"applications": app_results, "users": user_results, "documents": doc_results, "query": q}

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import { STATUS_BADGE, ROLE_BADGE } from '../lib/constants';
+import { DOC_TYPE_LABELS, STATUS_BADGE, ROLE_BADGE } from '../lib/constants';
 import { formatDate } from '../lib/utils';
 import type { GlobalSearchResponse } from '../types';
 
@@ -72,10 +72,11 @@ export default function GlobalSearch() {
   if (!isAdmin) return null;
 
   // Flatten results for keyboard navigation
-  const flatItems: { type: 'application' | 'user'; id: string }[] = [];
+  const flatItems: { type: 'application' | 'user' | 'document'; id: string; appId?: string }[] = [];
   if (results) {
     for (const app of results.applications) flatItems.push({ type: 'application', id: app.id });
     for (const u of results.users) flatItems.push({ type: 'user', id: u.id });
+    for (const d of results.documents) flatItems.push({ type: 'document', id: d.id, appId: d.application_id });
   }
 
   const navigateTo = (path: string) => {
@@ -94,6 +95,7 @@ export default function GlobalSearch() {
       e.preventDefault();
       const item = flatItems[selectedIndex];
       if (item.type === 'application') navigateTo(`/admin/applications/${item.id}`);
+      else if (item.type === 'document') navigateTo(`/admin/applications/${item.appId}`);
       else navigateTo('/admin/users');
     } else if (e.key === 'Escape') {
       setOpen(false);
@@ -241,6 +243,46 @@ export default function GlobalSearch() {
                         <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${ROLE_BADGE[u.role]}`}>
                           {u.role}
                         </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Documents */}
+              {results.documents.length > 0 && (
+                <div>
+                  <p className="px-4 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Documents
+                  </p>
+                  {results.documents.map((doc) => {
+                    const idx = currentFlatIndex++;
+                    const isSelected = idx === selectedIndex;
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => navigateTo(`/admin/applications/${doc.application_id}`)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isSelected ? 'bg-secondary' : 'hover:bg-secondary/50'}`}
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-chart-3/10">
+                          <svg className="h-4 w-4 text-chart-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">{doc.original_filename}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                            {doc.user_name && ` · ${doc.user_name}`}
+                            {doc.uploaded_at && ` · ${formatDate(doc.uploaded_at)}`}
+                          </p>
+                        </div>
+                        {doc.is_verified && (
+                          <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium bg-success/10 text-success">
+                            Verified
+                          </span>
+                        )}
                       </button>
                     );
                   })}
