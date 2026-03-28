@@ -142,7 +142,7 @@ export default function LenderAnalyticsPage() {
                   outerRadius={110}
                   paddingAngle={3}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                  label={((props: { name?: string; percent?: number }) => `${props.name} ${((props.percent ?? 0) * 100).toFixed(0)}%`) as never}
                 >
                   {pieData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
@@ -198,7 +198,7 @@ export default function LenderAnalyticsPage() {
                 <YAxis tick={{ fontSize: 12, fill: 'oklch(0.55 0 0)' }} domain={[0, 100]} unit="%" />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'oklch(0.98 0 0)', border: '1px solid oklch(0.9 0 0)', borderRadius: '12px', fontSize: '13px' }}
-                  formatter={(value) => [`${value}%`, 'Approval Rate']}
+                  formatter={((value: unknown) => [`${value}%`, 'Approval Rate']) as never}
                 />
                 <Bar dataKey="approval_rate" fill="oklch(0.72 0.19 150)" radius={[8, 8, 0, 0]} name="Approval Rate" />
               </BarChart>
