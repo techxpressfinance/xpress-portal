@@ -374,6 +374,55 @@ export interface KanbanBoard {
   updated_at: string;
 }
 
+export type TaskStatus = 'todo' | 'in_progress' | 'completed';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface ChecklistItem {
+  id: string;
+  task_id: string;
+  title: string;
+  is_completed: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
+  application_id: string | null;
+  application_label: string | null;
+  created_by_id: string;
+  created_by_name: string | null;
+  checklist_items: ChecklistItem[];
+  checklist_progress: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskListItem {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
+  application_id: string | null;
+  application_label: string | null;
+  created_by_id: string;
+  created_by_name: string | null;
+  checklist_total: number;
+  checklist_completed: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface KanbanBoardListItem {
   id: string;
   name: string;

@@ -19,8 +19,9 @@ from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
 from app.models.lender import Lender  # noqa: F401 — ensure table is created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
+from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, referrals, search, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, referrals, search, tasks, users
 
 # Configure logging
 logging.basicConfig(
@@ -219,6 +220,7 @@ app.include_router(broker_groups.router)
 app.include_router(external_referrers.router)
 app.include_router(lenders.router)
 app.include_router(lender_submissions.router)
+app.include_router(tasks.router)
 
 
 @app.get("/api/health")

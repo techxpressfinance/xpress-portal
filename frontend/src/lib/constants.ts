@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: 'bg-secondary text-muted-foreground',
@@ -114,6 +114,19 @@ export const LEND_SYNC_BADGE: Record<LendSyncStatus, { label: string; className:
   pending: { label: 'Lend Syncing...', className: 'bg-chart-4/10 text-chart-4' },
   synced: { label: 'Lend Synced', className: 'bg-success/10 text-success' },
   failed: { label: 'Lend Sync Failed', className: 'bg-destructive/10 text-destructive' },
+};
+
+export const TASK_STATUS_BADGE: Record<TaskStatus, { label: string; className: string }> = {
+  todo: { label: 'To Do', className: 'bg-secondary text-muted-foreground' },
+  in_progress: { label: 'In Progress', className: 'bg-chart-4/10 text-chart-4' },
+  completed: { label: 'Completed', className: 'bg-success/10 text-success' },
+};
+
+export const TASK_PRIORITY_BADGE: Record<TaskPriority, { label: string; className: string }> = {
+  low: { label: 'Low', className: 'bg-secondary text-muted-foreground' },
+  medium: { label: 'Medium', className: 'bg-primary/10 text-primary' },
+  high: { label: 'High', className: 'bg-warning/10 text-warning' },
+  urgent: { label: 'Urgent', className: 'bg-destructive/10 text-destructive' },
 };
 
 export const AU_STATES = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'] as const;

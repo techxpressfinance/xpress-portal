@@ -10,5 +10,6 @@ from app.models.broker_group import BrokerGroup
 from app.models.external_referral import ExternalReferral
 from app.models.lender import Lender
 from app.models.lender_submission import LenderSubmission
+from app.models.task import Task, ChecklistItem
 
-__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission"]
+__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem"]
