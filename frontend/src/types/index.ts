@@ -423,6 +423,52 @@ export interface TaskListItem {
   updated_at: string;
 }
 
+export type QuoteSheetStatus = 'draft' | 'sent';
+
+export interface QuoteOption {
+  id: string;
+  quote_sheet_id: string;
+  sort_order: number;
+  is_recommended: boolean;
+  lender_name: string;
+  lender_product: string | null;
+  purchase_price: number | null;
+  deposit: number | null;
+  loan_amount: number | null;
+  loan_term_months: number | null;
+  balloon_residual: number | null;
+  interest_rate: number | null;
+  comparison_rate: number | null;
+  establishment_fee: number | null;
+  monthly_account_fee: number | null;
+  application_fee: number | null;
+  brokerage: number | null;
+  repayment_monthly: number | null;
+  repayment_fortnightly: number | null;
+  repayment_weekly: number | null;
+  total_repayments: number | null;
+  total_interest: number | null;
+  total_fees: number | null;
+  features: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface QuoteSheet {
+  id: string;
+  application_id: string;
+  version: number;
+  title: string | null;
+  status: QuoteSheetStatus;
+  created_by_id: string;
+  created_by_name: string | null;
+  broker_notes: string | null;
+  sent_at: string | null;
+  options: QuoteOption[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface KanbanBoardListItem {
   id: string;
   name: string;

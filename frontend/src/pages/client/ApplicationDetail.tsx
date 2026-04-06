@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
+import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
-import type { ApplicationNote, Document, LendSyncStatus, LoanApplication } from '../../types';
+import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
+import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import type { ApplicationNote, Document, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +30,7 @@ export default function ApplicationDetail() {
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
   const [deletingApp, setDeletingApp] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
 
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
   const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
@@ -47,6 +50,8 @@ export default function ApplicationDetail() {
       })
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
+    // Fetch sent quote sheets (backend filters to sent-only for clients)
+    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => {});
   }, [id]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -391,6 +396,44 @@ export default function ApplicationDetail() {
               </div>
             )}
           </GlassCard>
+
+          {/* Quote Sheets (sent by broker) */}
+          {quoteSheets.length > 0 && (
+            <GlassCard>
+              <h2 className="text-[15px] font-semibold text-foreground mb-5">Quote Sheets</h2>
+              <div className="space-y-6">
+                {[...quoteSheets].sort((a, b) => b.version - a.version).map(sheet => (
+                  <div key={sheet.id} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-bold text-foreground">v{sheet.version}</span>
+                        {sheet.title && (
+                          <span className="text-[13px] font-medium text-foreground">{sheet.title}</span>
+                        )}
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[sheet.status].className}`}>
+                          {QUOTE_SHEET_STATUS_BADGE[sheet.status].label}
+                        </span>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => downloadQuoteSheetPdf(`quote-sheet-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`)}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                          Download PDF
+                        </span>
+                      </Button>
+                    </div>
+                    {sheet.sent_at && (
+                      <p className="text-[11px] text-muted-foreground">Sent on {formatDate(sheet.sent_at)}</p>
+                    )}
+                    <QuoteSheetComparison quoteSheet={sheet} />
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
         </div>
 
         {/* Upload Sidebar */}

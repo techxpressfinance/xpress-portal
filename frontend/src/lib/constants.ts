@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: 'bg-secondary text-muted-foreground',
@@ -108,6 +108,11 @@ export const SUBMISSION_STATUS_BADGE: Record<LenderSubmissionStatus, { label: st
   declined: { label: 'Declined', className: 'bg-destructive/10 text-destructive' },
   conditional: { label: 'Conditional', className: 'bg-warning/10 text-warning' },
   withdrawn: { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground' },
+};
+
+export const QUOTE_SHEET_STATUS_BADGE: Record<QuoteSheetStatus, { label: string; className: string }> = {
+  draft: { label: 'Draft', className: 'bg-chart-4/10 text-chart-4' },
+  sent: { label: 'Sent to Client', className: 'bg-success/10 text-success' },
 };
 
 export const LEND_SYNC_BADGE: Record<LendSyncStatus, { label: string; className: string }> = {

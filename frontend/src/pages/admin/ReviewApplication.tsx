@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
+import QuoteSheetComparison from '../../components/QuoteSheetComparison';
+import QuoteSheetEditor from '../../components/QuoteSheetEditor';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,8 +12,9 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
-import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
+import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
+import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
@@ -38,7 +41,13 @@ export default function ReviewApplication() {
   const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'integrations' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'integrations' | 'messages'>('overview');
+
+  // Quote sheets state
+  const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
+  const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [editingQuoteSheet, setEditingQuoteSheet] = useState<QuoteSheet | null>(null);
+  const [viewingQuoteSheet, setViewingQuoteSheet] = useState<QuoteSheet | null>(null);
 
   // Lender submissions state
   const [lenderSubmissions, setLenderSubmissions] = useState<LenderSubmission[]>([]);
@@ -91,6 +100,7 @@ export default function ReviewApplication() {
     // Fetch lender submissions and available lenders
     api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => {});
     api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => {});
+    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => {});
 
     Promise.all([
       api.get(`/applications/${id}`),
@@ -442,7 +452,7 @@ export default function ReviewApplication() {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'submissions', 'integrations', 'messages'] as const).map((tab) => (
+            {(['overview', 'documents', 'submissions', 'quotes', 'integrations', 'messages'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -452,7 +462,7 @@ export default function ReviewApplication() {
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                 }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'integrations' ? 'Integrations' : 'Messages'}
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'integrations' ? 'Integrations' : 'Messages'}
                 {activeTab === tab && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
                 )}
@@ -1666,6 +1676,197 @@ export default function ReviewApplication() {
               </div>
             )}
           </GlassCard>
+              </>
+            )}
+
+            {activeTab === 'quotes' && (
+              <>
+                {/* Quote Form / Editor */}
+                {(showQuoteForm || editingQuoteSheet) ? (
+                  <QuoteSheetEditor
+                    applicationId={id!}
+                    quoteSheet={editingQuoteSheet || undefined}
+                    onSave={(sheet) => {
+                      setQuoteSheets(prev => {
+                        const idx = prev.findIndex(s => s.id === sheet.id);
+                        if (idx >= 0) return prev.map(s => s.id === sheet.id ? sheet : s);
+                        return [...prev, sheet];
+                      });
+                      setShowQuoteForm(false);
+                      setEditingQuoteSheet(null);
+                    }}
+                    onCancel={() => { setShowQuoteForm(false); setEditingQuoteSheet(null); }}
+                  />
+                ) : viewingQuoteSheet ? (
+                  <GlassCard>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setViewingQuoteSheet(null)}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                        </button>
+                        <h3 className="text-[15px] font-semibold">
+                          {viewingQuoteSheet.title || `Quote Sheet v${viewingQuoteSheet.version}`}
+                        </h3>
+                        <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[viewingQuoteSheet.status].className}`}>
+                          {QUOTE_SHEET_STATUS_BADGE[viewingQuoteSheet.status].label}
+                        </span>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => downloadQuoteSheetPdf(`quote-sheet-${viewingQuoteSheet.id}`, `quote-sheet-v${viewingQuoteSheet.version}.pdf`)}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                          PDF
+                        </span>
+                      </Button>
+                    </div>
+                    <QuoteSheetComparison quoteSheet={viewingQuoteSheet} showBrokerNotes />
+                  </GlassCard>
+                ) : (
+                  <GlassCard>
+                    <div className="flex items-center justify-between mb-5">
+                      <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
+                      <Button size="sm" onClick={() => setShowQuoteForm(true)}>
+                        <span className="flex items-center gap-1.5">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                          Create Quote Sheet
+                        </span>
+                      </Button>
+                    </div>
+
+                    {quoteSheets.length === 0 ? (
+                      <div className="rounded-xl bg-secondary/50 p-8 text-center">
+                        <svg className="mx-auto h-10 w-10 text-muted-foreground mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                        <p className="text-[14px] font-medium text-muted-foreground">No quote sheets yet</p>
+                        <p className="text-[12px] text-muted-foreground mt-1">Create a quote sheet to compare lender options for this application</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {[...quoteSheets].sort((a, b) => b.version - a.version).map(sheet => (
+                          <div
+                            key={sheet.id}
+                            className="rounded-xl border border-border/60 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[13px] font-bold text-foreground">v{sheet.version}</span>
+                                  {sheet.title && (
+                                    <span className="text-[13px] font-medium text-foreground truncate">{sheet.title}</span>
+                                  )}
+                                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[sheet.status].className}`}>
+                                    {QUOTE_SHEET_STATUS_BADGE[sheet.status].label}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {sheet.options.length} option{sheet.options.length !== 1 ? 's' : ''}
+                                  </span>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {formatDate(sheet.created_at)}
+                                  </span>
+                                  {sheet.created_by_name && (
+                                    <>
+                                      <span className="text-muted-foreground">·</span>
+                                      <span className="text-[11px] text-muted-foreground">by {sheet.created_by_name}</span>
+                                    </>
+                                  )}
+                                  {sheet.sent_at && (
+                                    <>
+                                      <span className="text-muted-foreground">·</span>
+                                      <span className="text-[11px] text-success font-medium">Sent {formatDate(sheet.sent_at)}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => setViewingQuoteSheet(sheet)}
+                                className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                              >
+                                View
+                              </button>
+                              {sheet.status === 'draft' && (
+                                <button
+                                  onClick={() => { setEditingQuoteSheet(sheet); setShowQuoteForm(false); }}
+                                  className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {sheet.status === 'draft' && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await api.patch(`/applications/${id}/quote-sheets/${sheet.id}`, { status: 'sent' });
+                                      const { data } = await api.get(`/applications/${id}/quote-sheets`);
+                                      setQuoteSheets(data);
+                                      toast('Quote sheet sent to client', 'success');
+                                    } catch (err) {
+                                      toast(getErrorMessage(err, 'Failed to send'), 'error');
+                                    }
+                                  }}
+                                  className="rounded-lg bg-success/10 px-3 py-1.5 text-[12px] font-medium text-success hover:bg-success/20 transition-colors"
+                                >
+                                  Send to Client
+                                </button>
+                              )}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const { data } = await api.post(`/applications/${id}/quote-sheets/${sheet.id}/duplicate`);
+                                    setQuoteSheets(prev => [...prev, data]);
+                                    toast(`Duplicated as v${data.version}`, 'success');
+                                  } catch (err) {
+                                    toast(getErrorMessage(err, 'Failed to duplicate'), 'error');
+                                  }
+                                }}
+                                className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                              >
+                                Duplicate
+                              </button>
+                              <button
+                                onClick={() => downloadQuoteSheetPdf(`quote-sheet-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`)}
+                                className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                              >
+                                PDF
+                              </button>
+                              {sheet.status === 'draft' && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await api.delete(`/applications/${id}/quote-sheets/${sheet.id}`);
+                                      setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
+                                      toast('Quote sheet deleted', 'success');
+                                    } catch (err) {
+                                      toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                                    }
+                                  }}
+                                  className="rounded-lg bg-destructive/10 px-3 py-1.5 text-[12px] font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Hidden comparison for PDF capture */}
+                            <div className="sr-only">
+                              <QuoteSheetComparison quoteSheet={sheet} showBrokerNotes />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </GlassCard>
+                )}
               </>
             )}
           </div>
