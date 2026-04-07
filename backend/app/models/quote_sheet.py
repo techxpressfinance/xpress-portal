@@ -33,6 +33,7 @@ class QuoteSheet(Base):
         String(36), ForeignKey("users.id"), nullable=False
     )
     broker_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    input_parameters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob of shared inputs
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False

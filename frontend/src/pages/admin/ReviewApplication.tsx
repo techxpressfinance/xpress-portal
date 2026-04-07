@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
@@ -48,6 +48,21 @@ export default function ReviewApplication() {
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [editingQuoteSheet, setEditingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [viewingQuoteSheet, setViewingQuoteSheet] = useState<QuoteSheet | null>(null);
+  const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
+  const viewKeyRef = useRef(0);
+
+  const handleDownloadPdf = useCallback(async (sheet: QuoteSheet) => {
+    setPdfRenderSheet(sheet);
+    // Wait for React to mount the off-screen element
+    await new Promise(r => setTimeout(r, 100));
+    try {
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`);
+    } catch (err) {
+      console.error('Failed to generate PDF', err);
+    } finally {
+      setPdfRenderSheet(null);
+    }
+  }, []);
 
   // Lender submissions state
   const [lenderSubmissions, setLenderSubmissions] = useState<LenderSubmission[]>([]);
@@ -1698,7 +1713,7 @@ export default function ReviewApplication() {
                     onCancel={() => { setShowQuoteForm(false); setEditingQuoteSheet(null); }}
                   />
                 ) : viewingQuoteSheet ? (
-                  <GlassCard>
+                  <GlassCard key={`view-${viewingQuoteSheet.id}-${viewKeyRef.current}`}>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <button
@@ -1717,7 +1732,7 @@ export default function ReviewApplication() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => downloadQuoteSheetPdf(`quote-sheet-${viewingQuoteSheet.id}`, `quote-sheet-v${viewingQuoteSheet.version}.pdf`)}
+                        onClick={() => handleDownloadPdf(viewingQuoteSheet)}
                       >
                         <span className="flex items-center gap-1.5">
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -1731,7 +1746,7 @@ export default function ReviewApplication() {
                   <GlassCard>
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
-                      <Button size="sm" onClick={() => setShowQuoteForm(true)}>
+                      <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
                         <span className="flex items-center gap-1.5">
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                           Create Quote Sheet
@@ -1789,14 +1804,14 @@ export default function ReviewApplication() {
 
                             <div className="flex items-center gap-2 flex-wrap">
                               <button
-                                onClick={() => setViewingQuoteSheet(sheet)}
+                                onClick={() => { viewKeyRef.current++; setViewingQuoteSheet(sheet); setEditingQuoteSheet(null); setShowQuoteForm(false); }}
                                 className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
                               >
                                 View
                               </button>
                               {sheet.status === 'draft' && (
                                 <button
-                                  onClick={() => { setEditingQuoteSheet(sheet); setShowQuoteForm(false); }}
+                                  onClick={() => { setEditingQuoteSheet(sheet); setShowQuoteForm(false); setViewingQuoteSheet(null); }}
                                   className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
                                 >
                                   Edit
@@ -1819,22 +1834,9 @@ export default function ReviewApplication() {
                                   Send to Client
                                 </button>
                               )}
+
                               <button
-                                onClick={async () => {
-                                  try {
-                                    const { data } = await api.post(`/applications/${id}/quote-sheets/${sheet.id}/duplicate`);
-                                    setQuoteSheets(prev => [...prev, data]);
-                                    toast(`Duplicated as v${data.version}`, 'success');
-                                  } catch (err) {
-                                    toast(getErrorMessage(err, 'Failed to duplicate'), 'error');
-                                  }
-                                }}
-                                className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
-                              >
-                                Duplicate
-                              </button>
-                              <button
-                                onClick={() => downloadQuoteSheetPdf(`quote-sheet-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`)}
+                                onClick={() => handleDownloadPdf(sheet)}
                                 className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
                               >
                                 PDF
@@ -1857,15 +1859,25 @@ export default function ReviewApplication() {
                               )}
                             </div>
 
-                            {/* Hidden comparison for PDF capture */}
-                            <div className="sr-only">
-                              <QuoteSheetComparison quoteSheet={sheet} showBrokerNotes />
-                            </div>
                           </div>
                         ))}
                       </div>
                     )}
                   </GlassCard>
+                )}
+
+                {/* On-demand off-screen render for PDF capture */}
+                {pdfRenderSheet && (
+                  <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '24px' }}>
+                    <div id={`quote-sheet-pdf-${pdfRenderSheet.id}`}>
+                      <QuoteSheetComparison 
+                        quoteSheet={pdfRenderSheet} 
+                        isPdfExport={true}
+                        clientName={client?.full_name}
+                        applicationRef={application?.id ? application.id.split('-')[0].toUpperCase() : undefined}
+                      />
+                    </div>
+                  </div>
                 )}
               </>
             )}

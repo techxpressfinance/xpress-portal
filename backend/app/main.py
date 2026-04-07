@@ -96,6 +96,8 @@ _MIGRATIONS = [
     ("users", "tokens_revoked_at", "TIMESTAMP"),
     # Note visibility: comma-separated roles (replaces is_internal boolean)
     ("application_notes", "visibility", "VARCHAR(100) DEFAULT 'broker' NOT NULL"),
+    # Quote sheet shared input parameters (JSON)
+    ("quote_sheets", "input_parameters", "TEXT"),
 ]
 
 _logger = logging.getLogger(__name__)

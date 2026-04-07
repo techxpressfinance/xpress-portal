@@ -62,6 +62,7 @@ def _serialize(sheet: QuoteSheet) -> dict:
         "created_by_id": sheet.created_by_id,
         "created_by_name": sheet.created_by.full_name if sheet.created_by else None,
         "broker_notes": sheet.broker_notes,
+        "input_parameters": sheet.input_parameters,
         "sent_at": sheet.sent_at.isoformat() if sheet.sent_at else None,
         "options": [_serialize_option(o) for o in sheet.options],
         "created_at": sheet.created_at.isoformat(),
@@ -122,10 +123,11 @@ def list_quote_sheets(
     sheets = query.order_by(QuoteSheet.version.desc()).all()
     result = [_serialize(s) for s in sheets]
 
-    # Strip broker_notes for clients
+    # Strip internal fields for clients
     if current_user.role.value == "client":
         for r in result:
             r["broker_notes"] = None
+            r["input_parameters"] = None
 
     return result
 
@@ -146,6 +148,7 @@ def create_quote_sheet(
         version=_next_version(db, app_id),
         title=data.title,
         broker_notes=data.broker_notes,
+        input_parameters=data.input_parameters,
         created_by_id=current_user.id,
     )
     db.add(sheet)
@@ -180,6 +183,7 @@ def get_quote_sheet(
     result = _serialize(sheet)
     if current_user.role.value == "client":
         result["broker_notes"] = None
+        result["input_parameters"] = None
     return result
 
 
@@ -249,6 +253,7 @@ def duplicate_quote_sheet(
         version=_next_version(db, app_id),
         title=source.title,
         broker_notes=source.broker_notes,
+        input_parameters=source.input_parameters,
         created_by_id=current_user.id,
     )
     db.add(new_sheet)

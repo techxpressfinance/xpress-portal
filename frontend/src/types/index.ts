@@ -454,6 +454,21 @@ export interface QuoteOption {
   created_at: string;
 }
 
+export interface QuoteInputParameters {
+  asset_price: number;
+  asset_description: string; // e.g. "Motor Vehicle", "Industrial Equipment", "Land"
+  deposit_percent: number;
+  establishment_fee: number;
+  ppsr_fee: number;
+  origination_fee: number;
+  brokerage_percent: number;
+  gst_on_brokerage: boolean;
+  balloon_on_total_price: boolean;
+  interest_rate: number;
+  gst_percent: number;
+  balloon_percentages: Record<string, number>; // e.g. { "2": 62, "3": 55, "4": 42, "5": 35, "7": 0 }
+}
+
 export interface QuoteSheet {
   id: string;
   application_id: string;
@@ -463,6 +478,7 @@ export interface QuoteSheet {
   created_by_id: string;
   created_by_name: string | null;
   broker_notes: string | null;
+  input_parameters: string | null;
   sent_at: string | null;
   options: QuoteOption[];
   created_at: string;

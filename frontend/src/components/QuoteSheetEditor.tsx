@@ -1,118 +1,147 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, GlassCard, Input } from './ui';
-import type { QuoteSheet, QuoteOption } from '../types';
+import type { QuoteSheet, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
 
-type OptionForm = {
-  id?: string;
-  lender_name: string;
-  lender_product: string;
-  is_recommended: boolean;
-  purchase_price: string;
-  deposit: string;
-  loan_amount: string;
-  loan_term_months: string;
-  balloon_residual: string;
-  interest_rate: string;
-  comparison_rate: string;
-  establishment_fee: string;
-  monthly_account_fee: string;
-  application_fee: string;
-  brokerage: string;
-  repayment_monthly: string;
-  repayment_fortnightly: string;
-  repayment_weekly: string;
-  total_repayments: string;
-  total_interest: string;
-  total_fees: string;
-  features: string;
-  notes: string;
+// ── Default balloon percentages per term (from Excel) ─────────────────
+const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = {
+  '2': 62,
+  '3': 55,
+  '4': 42,
+  '5': 35,
+  '7': 0,
 };
 
-const blankOption = (): OptionForm => ({
-  lender_name: '',
-  lender_product: '',
-  is_recommended: false,
-  purchase_price: '',
-  deposit: '',
-  loan_amount: '',
-  loan_term_months: '',
-  balloon_residual: '',
-  interest_rate: '',
-  comparison_rate: '',
-  establishment_fee: '',
-  monthly_account_fee: '',
-  application_fee: '',
-  brokerage: '',
-  repayment_monthly: '',
-  repayment_fortnightly: '',
-  repayment_weekly: '',
-  total_repayments: '',
-  total_interest: '',
-  total_fees: '',
-  features: '',
-  notes: '',
-});
+const TERMS = [5, 4, 3, 2, 7]; // Display order matching Excel
 
-function optionToForm(opt: QuoteOption): OptionForm {
-  return {
-    id: opt.id,
-    lender_name: opt.lender_name,
-    lender_product: opt.lender_product || '',
-    is_recommended: opt.is_recommended,
-    purchase_price: opt.purchase_price !== null ? String(opt.purchase_price) : '',
-    deposit: opt.deposit !== null ? String(opt.deposit) : '',
-    loan_amount: opt.loan_amount !== null ? String(opt.loan_amount) : '',
-    loan_term_months: opt.loan_term_months !== null ? String(opt.loan_term_months) : '',
-    balloon_residual: opt.balloon_residual !== null ? String(opt.balloon_residual) : '',
-    interest_rate: opt.interest_rate !== null ? String(opt.interest_rate) : '',
-    comparison_rate: opt.comparison_rate !== null ? String(opt.comparison_rate) : '',
-    establishment_fee: opt.establishment_fee !== null ? String(opt.establishment_fee) : '',
-    monthly_account_fee: opt.monthly_account_fee !== null ? String(opt.monthly_account_fee) : '',
-    application_fee: opt.application_fee !== null ? String(opt.application_fee) : '',
-    brokerage: opt.brokerage !== null ? String(opt.brokerage) : '',
-    repayment_monthly: opt.repayment_monthly !== null ? String(opt.repayment_monthly) : '',
-    repayment_fortnightly: opt.repayment_fortnightly !== null ? String(opt.repayment_fortnightly) : '',
-    repayment_weekly: opt.repayment_weekly !== null ? String(opt.repayment_weekly) : '',
-    total_repayments: opt.total_repayments !== null ? String(opt.total_repayments) : '',
-    total_interest: opt.total_interest !== null ? String(opt.total_interest) : '',
-    total_fees: opt.total_fees !== null ? String(opt.total_fees) : '',
-    features: opt.features || '',
-    notes: opt.notes || '',
-  };
+const DEFAULT_INPUTS: QuoteInputParameters = {
+  asset_price: 0,
+  asset_description: 'Motor Vehicle',
+  deposit_percent: 10,
+  establishment_fee: 500,
+  ppsr_fee: 10,
+  origination_fee: 100,
+  brokerage_percent: 4,
+  gst_on_brokerage: false,
+  balloon_on_total_price: true,
+  interest_rate: 5.99,
+  gst_percent: 10,
+  balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
+};
+
+// ── PMT — Excel-compatible (type=0, arrears) ─────────────────────────
+function pmt(rate: number, nper: number, pv: number, fv = 0): number {
+  if (rate === 0) return -(pv + fv) / nper;
+  const pvif = Math.pow(1 + rate, nper);
+  return -(rate * (pv * pvif + fv)) / (pvif - 1);
 }
 
-function formToPayload(form: OptionForm, index: number) {
-  const num = (v: string) => (v.trim() === '' ? null : parseFloat(v));
-  const int = (v: string) => (v.trim() === '' ? null : parseInt(v, 10));
-  const str = (v: string) => (v.trim() === '' ? null : v.trim());
-  return {
-    lender_name: form.lender_name.trim(),
-    lender_product: str(form.lender_product),
-    sort_order: index,
-    is_recommended: form.is_recommended,
-    purchase_price: num(form.purchase_price),
-    deposit: num(form.deposit),
-    loan_amount: num(form.loan_amount),
-    loan_term_months: int(form.loan_term_months),
-    balloon_residual: num(form.balloon_residual),
-    interest_rate: num(form.interest_rate),
-    comparison_rate: num(form.comparison_rate),
-    establishment_fee: num(form.establishment_fee),
-    monthly_account_fee: num(form.monthly_account_fee),
-    application_fee: num(form.application_fee),
-    brokerage: num(form.brokerage),
-    repayment_monthly: num(form.repayment_monthly),
-    repayment_fortnightly: num(form.repayment_fortnightly),
-    repayment_weekly: num(form.repayment_weekly),
-    total_repayments: num(form.total_repayments),
-    total_interest: num(form.total_interest),
-    total_fees: num(form.total_fees),
-    features: str(form.features),
-    notes: str(form.notes),
-  };
+const fmt2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── Derive all calculated values from inputs ─────────────────────────
+function computeFromInputs(inputs: QuoteInputParameters) {
+  const deposit = inputs.asset_price * (inputs.deposit_percent / 100);
+  const amountBorrowed = inputs.asset_price - deposit;
+  const netAmount = amountBorrowed + inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
+
+  // Brokerage calculation
+  const brokerageBase = netAmount * (inputs.brokerage_percent / 100);
+  const brokerageWithGst = brokerageBase * (1 + inputs.gst_percent / 100);
+  const brokerage = inputs.gst_on_brokerage ? brokerageWithGst : brokerageBase;
+
+  const amountFinanced = netAmount + brokerage;
+
+  // Balloon base: total price or amount financed
+  const balloonBase = inputs.balloon_on_total_price ? inputs.asset_price : amountFinanced;
+
+  return { deposit, amountBorrowed, netAmount, brokerage, amountFinanced, balloonBase };
+}
+
+type Scenario = {
+  termYears: number;
+  hasBalloon: boolean;
+  balloon: number;
+  balloonPercent: number;
+  monthlyRepayment: number;
+  weeklyRepayment: number;
+  totalInterest: number;
+};
+
+function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
+  const { amountFinanced, balloonBase } = computeFromInputs(inputs);
+  const rate = inputs.interest_rate / 100;
+  const monthlyRate = rate / 12;
+
+  const scenarios: Scenario[] = [];
+
+  for (const termYears of TERMS) {
+    const months = termYears * 12;
+    const balloonPct = inputs.balloon_percentages[String(termYears)] ?? 0;
+    const balloonAmount = fmt2(balloonBase * (balloonPct / 100));
+
+    // No balloon variant
+    const monthlyNoBalloon = -pmt(monthlyRate, months, amountFinanced);
+    scenarios.push({
+      termYears,
+      hasBalloon: false,
+      balloon: 0,
+      balloonPercent: 0,
+      monthlyRepayment: fmt2(monthlyNoBalloon),
+      weeklyRepayment: fmt2(monthlyNoBalloon * 12 / 52),
+      totalInterest: fmt2(monthlyNoBalloon * months - amountFinanced),
+    });
+
+    // With balloon variant (only if balloon % > 0)
+    if (balloonPct > 0) {
+      // Excel formula: PMT(rate/12, months, -(amountFinanced - balloon)) + balloon * rate/12
+      const monthlyWithBalloon =
+        pmt(monthlyRate, months, -(amountFinanced - balloonAmount)) + balloonAmount * monthlyRate;
+      scenarios.push({
+        termYears,
+        hasBalloon: true,
+        balloon: balloonAmount,
+        balloonPercent: balloonPct,
+        monthlyRepayment: fmt2(monthlyWithBalloon),
+        weeklyRepayment: fmt2(monthlyWithBalloon * 12 / 52),
+        totalInterest: fmt2((monthlyWithBalloon * months) - (amountFinanced - balloonAmount)),
+      });
+    }
+  }
+
+  return scenarios;
+}
+
+// Convert scenarios to QuoteOption payloads for the API
+function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[]) {
+  const { deposit, amountFinanced, brokerage } = computeFromInputs(inputs);
+
+  return scenarios.map((s, i) => ({
+    lender_name: `${s.termYears} Year${s.hasBalloon ? ` (${s.balloonPercent}% Balloon)` : ''}`,
+    lender_product: null,
+    sort_order: i,
+    is_recommended: false,
+    purchase_price: inputs.asset_price,
+    deposit: fmt2(deposit),
+    loan_amount: fmt2(amountFinanced),
+    loan_term_months: s.termYears * 12,
+    balloon_residual: s.balloon,
+    interest_rate: inputs.interest_rate,
+    comparison_rate: null,
+    establishment_fee: inputs.establishment_fee,
+    monthly_account_fee: null,
+    application_fee: inputs.ppsr_fee + inputs.origination_fee,
+    brokerage: fmt2(brokerage),
+    repayment_monthly: s.monthlyRepayment,
+    repayment_fortnightly: fmt2(s.monthlyRepayment * 12 / 26),
+    repayment_weekly: s.weeklyRepayment,
+    total_repayments: fmt2(s.monthlyRepayment * s.termYears * 12 + s.balloon),
+    total_interest: s.totalInterest,
+    total_fees: fmt2(inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + brokerage),
+    features: null,
+    notes: null,
+  }));
 }
 
 interface QuoteSheetEditorProps {
@@ -122,319 +151,78 @@ interface QuoteSheetEditorProps {
   onCancel: () => void;
 }
 
-type FieldGroup = {
-  title: string;
-  fields: { key: keyof OptionForm; label: string; type: 'text' | 'number' | 'textarea' }[];
-};
-
-// Fields that can be auto-calculated
-const CALCULABLE_FIELDS = new Set<keyof OptionForm>([
-  'loan_amount', 'repayment_monthly', 'repayment_fortnightly', 'repayment_weekly',
-  'total_repayments', 'total_interest', 'total_fees',
-]);
-
-// Source fields that trigger recalculation
-const TRIGGER_FIELDS = new Set<keyof OptionForm>([
-  'purchase_price', 'deposit', 'loan_term_months', 'interest_rate',
-  'balloon_residual', 'repayment_monthly', 'loan_amount',
-  'establishment_fee', 'application_fee', 'monthly_account_fee', 'brokerage',
-  'total_repayments',
-]);
-
-const fmt2 = (n: number) => (Math.round(n * 100) / 100).toString();
-
-/**
- * PMT function — mirrors Excel's PMT(rate, nper, pv, fv, type).
- * Calculates the periodic payment for a loan based on constant payments
- * and a constant interest rate.
- *
- * From the St George xlsx: PMT(rate/12, term, -amountFinanced, balloon, 1)
- * type=1 means advance (payment at beginning of period).
- *
- * Returns a positive number representing the payment amount.
- */
-function pmt(ratePerPeriod: number, nper: number, pv: number, fv = 0, type = 1): number {
-  if (ratePerPeriod === 0) {
-    // Zero interest — simple division
-    return -(pv + fv) / nper;
+function parseInputParams(quoteSheet?: QuoteSheet): QuoteInputParameters {
+  if (quoteSheet?.input_parameters) {
+    try {
+      return { ...DEFAULT_INPUTS, ...JSON.parse(quoteSheet.input_parameters) };
+    } catch { /* fall through */ }
   }
-  const pvif = Math.pow(1 + ratePerPeriod, nper);
-  let payment = (ratePerPeriod * (pv * pvif + fv)) / (pvif - 1);
-  if (type === 1) {
-    // Advance: payment at start of period
-    payment = payment / (1 + ratePerPeriod);
-  }
-  return -payment; // Return positive for a loan
+  return { ...DEFAULT_INPUTS, balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES } };
 }
-
-/** Derive calculable fields from source fields. Only fills empty or previously-computed fields. */
-function recalculate(opt: OptionForm, computed: Set<keyof OptionForm>): { updated: OptionForm; newComputed: Set<keyof OptionForm> } {
-  const next = { ...opt };
-  const nc = new Set(computed);
-  const num = (v: string) => (v.trim() === '' ? NaN : parseFloat(v));
-
-  const canSet = (key: keyof OptionForm) => next[key] === '' || nc.has(key);
-
-  // ── Loan Amount = Purchase Price − Deposit ───────────────────────
-  const pp = num(next.purchase_price);
-  const dep = num(next.deposit);
-  if (!isNaN(pp) && !isNaN(dep) && canSet('loan_amount')) {
-    next.loan_amount = fmt2(pp - dep);
-    nc.add('loan_amount');
-  } else if (canSet('loan_amount') && (isNaN(pp) || isNaN(dep))) {
-    if (nc.has('loan_amount')) { next.loan_amount = ''; nc.delete('loan_amount'); }
-  }
-
-  // ── Amount to be Financed ────────────────────────────────────────
-  // From xlsx C28: Total Amount Financed = Loan Amount + Brokerage + Establishment Fee
-  const loanAmt = num(next.loan_amount);
-  const est = num(next.establishment_fee);
-  const appFee = num(next.application_fee);
-  const brok = num(next.brokerage);
-  const amountFinanced = (isNaN(loanAmt) ? 0 : loanAmt)
-    + (isNaN(est) ? 0 : est)
-    + (isNaN(appFee) ? 0 : appFee)
-    + (isNaN(brok) ? 0 : brok);
-
-  // ── Monthly Repayment via PMT ────────────────────────────────────
-  // From xlsx: PMT(rate/12, term, -amountFinanced, balloon, 1)
-  const rate = num(next.interest_rate);   // annual % e.g. 6.4
-  const term = num(next.loan_term_months);
-  const balloon = num(next.balloon_residual);
-  const rateDecimal = !isNaN(rate) ? rate / 100 : NaN; // 6.4% → 0.064
-
-  if (!isNaN(rateDecimal) && !isNaN(term) && term > 0 && !isNaN(loanAmt) && canSet('repayment_monthly')) {
-    const monthlyRate = rateDecimal / 12;
-    const fv = isNaN(balloon) ? 0 : balloon;
-    const payment = pmt(monthlyRate, term, -amountFinanced, fv, 1);
-    next.repayment_monthly = fmt2(payment);
-    nc.add('repayment_monthly');
-  } else if (canSet('repayment_monthly') && (isNaN(rateDecimal) || isNaN(term) || isNaN(loanAmt))) {
-    if (nc.has('repayment_monthly')) { next.repayment_monthly = ''; nc.delete('repayment_monthly'); }
-  }
-
-  // ── Fortnightly = Monthly × 12 / 26 ─────────────────────────────
-  const monthly = num(next.repayment_monthly);
-  if (!isNaN(monthly) && canSet('repayment_fortnightly')) {
-    next.repayment_fortnightly = fmt2(monthly * 12 / 26);
-    nc.add('repayment_fortnightly');
-  } else if (canSet('repayment_fortnightly') && isNaN(monthly)) {
-    if (nc.has('repayment_fortnightly')) { next.repayment_fortnightly = ''; nc.delete('repayment_fortnightly'); }
-  }
-
-  // ── Weekly = Monthly × 12 / 52 ──────────────────────────────────
-  if (!isNaN(monthly) && canSet('repayment_weekly')) {
-    next.repayment_weekly = fmt2(monthly * 12 / 52);
-    nc.add('repayment_weekly');
-  } else if (canSet('repayment_weekly') && isNaN(monthly)) {
-    if (nc.has('repayment_weekly')) { next.repayment_weekly = ''; nc.delete('repayment_weekly'); }
-  }
-
-  // ── Total Repayments = Monthly × Term + Balloon ──────────────────
-  // From xlsx J38: =J36*C19+C34
-  const bal = isNaN(balloon) ? 0 : balloon;
-  if (!isNaN(monthly) && !isNaN(term) && canSet('total_repayments')) {
-    next.total_repayments = fmt2(monthly * term + bal);
-    nc.add('total_repayments');
-  } else if (canSet('total_repayments') && (isNaN(monthly) || isNaN(term))) {
-    if (nc.has('total_repayments')) { next.total_repayments = ''; nc.delete('total_repayments'); }
-  }
-
-  // ── Total Interest = Total Repayments − Loan Amount ──────────────
-  // From xlsx J43: =J38-J11 (total fees/charges/interest)
-  const totalRep = num(next.total_repayments);
-  if (!isNaN(totalRep) && !isNaN(loanAmt) && canSet('total_interest')) {
-    const ti = totalRep - loanAmt;
-    next.total_interest = fmt2(ti >= 0 ? ti : 0);
-    nc.add('total_interest');
-  } else if (canSet('total_interest') && (isNaN(totalRep) || isNaN(loanAmt))) {
-    if (nc.has('total_interest')) { next.total_interest = ''; nc.delete('total_interest'); }
-  }
-
-  // ── Total Fees = Establishment + Application + (Monthly Fee × Term) + Brokerage ──
-  const mf = num(next.monthly_account_fee);
-  const hasAnyFee = !isNaN(est) || !isNaN(appFee) || !isNaN(mf) || !isNaN(brok);
-  if (hasAnyFee && canSet('total_fees')) {
-    const monthlyFeeTotal = !isNaN(mf) && !isNaN(term) ? mf * term : (isNaN(mf) ? 0 : mf);
-    next.total_fees = fmt2(
-      (isNaN(est) ? 0 : est) + (isNaN(appFee) ? 0 : appFee)
-      + monthlyFeeTotal + (isNaN(brok) ? 0 : brok)
-    );
-    nc.add('total_fees');
-  } else if (canSet('total_fees') && !hasAnyFee) {
-    if (nc.has('total_fees')) { next.total_fees = ''; nc.delete('total_fees'); }
-  }
-
-  return { updated: next, newComputed: nc };
-}
-
-const FIELD_GROUPS: FieldGroup[] = [
-  {
-    title: 'Lender',
-    fields: [
-      { key: 'lender_name', label: 'Lender Name', type: 'text' },
-      { key: 'lender_product', label: 'Product', type: 'text' },
-    ],
-  },
-  {
-    title: 'Loan Details',
-    fields: [
-      { key: 'purchase_price', label: 'Purchase Price ($)', type: 'number' },
-      { key: 'deposit', label: 'Deposit ($)', type: 'number' },
-      { key: 'loan_amount', label: 'Loan Amount ($)', type: 'number' },
-      { key: 'loan_term_months', label: 'Term (months)', type: 'number' },
-      { key: 'balloon_residual', label: 'Balloon / Residual ($)', type: 'number' },
-    ],
-  },
-  {
-    title: 'Rates',
-    fields: [
-      { key: 'interest_rate', label: 'Interest Rate (%)', type: 'number' },
-      { key: 'comparison_rate', label: 'Comparison Rate (%)', type: 'number' },
-    ],
-  },
-  {
-    title: 'Fees',
-    fields: [
-      { key: 'establishment_fee', label: 'Establishment Fee ($)', type: 'number' },
-      { key: 'application_fee', label: 'Application Fee ($)', type: 'number' },
-      { key: 'monthly_account_fee', label: 'Monthly Fee ($)', type: 'number' },
-      { key: 'brokerage', label: 'Brokerage ($)', type: 'number' },
-    ],
-  },
-  {
-    title: 'Repayments',
-    fields: [
-      { key: 'repayment_monthly', label: 'Monthly ($)', type: 'number' },
-      { key: 'repayment_fortnightly', label: 'Fortnightly ($)', type: 'number' },
-      { key: 'repayment_weekly', label: 'Weekly ($)', type: 'number' },
-    ],
-  },
-  {
-    title: 'Totals',
-    fields: [
-      { key: 'total_repayments', label: 'Total Repayments ($)', type: 'number' },
-      { key: 'total_interest', label: 'Total Interest ($)', type: 'number' },
-      { key: 'total_fees', label: 'Total Fees ($)', type: 'number' },
-    ],
-  },
-  {
-    title: 'Additional Info',
-    fields: [
-      { key: 'features', label: 'Features', type: 'textarea' },
-      { key: 'notes', label: 'Notes', type: 'textarea' },
-    ],
-  },
-];
 
 export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, onCancel }: QuoteSheetEditorProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState(quoteSheet?.title || '');
   const [brokerNotes, setBrokerNotes] = useState(quoteSheet?.broker_notes || '');
-  const [options, setOptions] = useState<OptionForm[]>(
-    quoteSheet && quoteSheet.options.length > 0
-      ? quoteSheet.options.map(optionToForm)
-      : [blankOption()]
-  );
+  const [inputs, setInputs] = useState<QuoteInputParameters>(() => parseInputParams(quoteSheet));
   const [saving, setSaving] = useState(false);
 
-  // Track which fields were auto-computed per option (by index)
-  const [computedFields, setComputedFields] = useState<Set<keyof OptionForm>[]>(
-    () => (quoteSheet?.options || [blankOption()]).map(() => new Set<keyof OptionForm>())
-  );
-
-  const updateOption = (index: number, key: keyof OptionForm, value: string | boolean) => {
-    setOptions(prev => {
-      const updated = prev.map((o, i) => (i === index ? { ...o, [key]: value } : o));
-
-      // If user manually edits a computed field, remove it from computed set
-      if (typeof value === 'string' && CALCULABLE_FIELDS.has(key)) {
-        setComputedFields(cf => cf.map((s, i) => {
-          if (i !== index) return s;
-          const ns = new Set(s);
-          ns.delete(key);
-          return ns;
-        }));
-      }
-
-      // If user changed a trigger field, recalculate derived fields
-      if (typeof value === 'string' && TRIGGER_FIELDS.has(key)) {
-        const opt = updated[index];
-        const currentComputed = computedFields[index] || new Set<keyof OptionForm>();
-        const { updated: recalced, newComputed } = recalculate(opt, currentComputed);
-        updated[index] = recalced;
-        setComputedFields(cf => cf.map((s, i) => i === index ? newComputed : s));
-      }
-
-      return updated;
-    });
+  const updateInput = <K extends keyof QuoteInputParameters>(key: K, value: QuoteInputParameters[K]) => {
+    setInputs(prev => ({ ...prev, [key]: value }));
   };
 
-  const addOption = () => {
-    if (options.length >= 4) return;
-    setOptions(prev => [...prev, blankOption()]);
-    setComputedFields(prev => [...prev, new Set<keyof OptionForm>()]);
+  const updateBalloonPct = (term: string, value: number) => {
+    setInputs(prev => ({
+      ...prev,
+      balloon_percentages: { ...prev.balloon_percentages, [term]: value },
+    }));
   };
 
-  const removeOption = (index: number) => {
-    if (options.length <= 1) return;
-    setOptions(prev => prev.filter((_, i) => i !== index));
-    setComputedFields(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const toggleRecommended = (index: number) => {
-    setOptions(prev =>
-      prev.map((o, i) => ({ ...o, is_recommended: i === index ? !o.is_recommended : false }))
-    );
-  };
+  // Derived values
+  const derived = useMemo(() => computeFromInputs(inputs), [inputs]);
+  const scenarios = useMemo(() => {
+    if (inputs.asset_price <= 0) return [];
+    return generateScenarios(inputs);
+  }, [inputs]);
 
   const handleSave = async () => {
-    // Validate at least one option has a lender name
-    if (!options.some(o => o.lender_name.trim())) {
-      toast('At least one option must have a lender name', 'error');
+    if (inputs.asset_price <= 0) {
+      toast('Please enter a valid asset price', 'error');
       return;
     }
 
-    const validOptions = options.filter(o => o.lender_name.trim());
     setSaving(true);
+    const inputParamsJson = JSON.stringify(inputs);
+    const options = scenariosToOptions(inputs, scenarios);
 
     try {
       if (quoteSheet) {
-        // Update existing: patch sheet, then replace options via delete + add
+        // Update existing: patch sheet, then replace all options
         await api.patch(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}`, {
           title: title.trim() || null,
           broker_notes: brokerNotes.trim() || null,
+          input_parameters: inputParamsJson,
         });
 
-        // Delete removed options
-        const newIds = new Set(validOptions.map(o => o.id).filter(Boolean));
+        // Delete all existing options
         for (const existing of quoteSheet.options) {
-          if (!newIds.has(existing.id)) {
-            await api.delete(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options/${existing.id}`);
-          }
+          await api.delete(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options/${existing.id}`);
         }
 
-        // Update existing + add new options
-        for (let i = 0; i < validOptions.length; i++) {
-          const opt = validOptions[i];
-          const payload = formToPayload(opt, i);
-          if (opt.id) {
-            await api.patch(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options/${opt.id}`, payload);
-          } else {
-            await api.post(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options`, payload);
-          }
+        // Add new generated options
+        for (const opt of options) {
+          await api.post(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options`, opt);
         }
 
-        // Refetch the full sheet
         const { data } = await api.get(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}`);
         onSave(data);
         toast('Quote sheet updated', 'success');
       } else {
-        // Create new
         const payload = {
           title: title.trim() || null,
           broker_notes: brokerNotes.trim() || null,
-          options: validOptions.map((o, i) => formToPayload(o, i)),
+          input_parameters: inputParamsJson,
+          options,
         };
         const { data } = await api.post(`/applications/${applicationId}/quote-sheets`, payload);
         onSave(data);
@@ -446,6 +234,9 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
       setSaving(false);
     }
   };
+
+  const fmtCurrency = (n: number) =>
+    `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <GlassCard>
@@ -470,106 +261,241 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
           </div>
         </div>
 
-        {/* Options columns */}
-        <div className="overflow-x-auto">
-          <div className="flex gap-4" style={{ minWidth: `${options.length * 280}px` }}>
-            {options.map((opt, idx) => (
-              <div
-                key={idx}
-                className={`flex-1 min-w-[260px] rounded-xl border p-4 space-y-4 ${
-                  opt.is_recommended ? 'border-success bg-success/5' : 'border-border'
-                }`}
-              >
-                {/* Column header */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-muted-foreground">Option {idx + 1}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleRecommended(idx)}
-                      className={`text-xs px-2 py-1 rounded-full transition-colors ${
-                        opt.is_recommended
-                          ? 'bg-success/20 text-success font-medium'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                      }`}
-                      title="Mark as recommended"
-                    >
-                      {opt.is_recommended ? 'Recommended' : 'Recommend'}
-                    </button>
-                    {options.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeOption(idx)}
-                        className="text-muted-foreground hover:text-destructive transition-colors"
-                        title="Remove option"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
+        {/* ── INPUT Parameters ─────────────────────────────────────── */}
+        <div className="border border-border rounded-xl p-5 space-y-5">
+          <h3 className="text-sm font-semibold text-foreground">Loan Parameters</h3>
 
-                {/* Field groups */}
-                {FIELD_GROUPS.map(group => (
-                  <div key={group.title}>
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                      {group.title}
-                    </p>
-                    <div className="space-y-2">
-                      {group.fields.map(field => {
-                        const isComputed = computedFields[idx]?.has(field.key) ?? false;
-                        return (
-                          <div key={field.key} className="relative">
-                            {field.type === 'textarea' ? (
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">{field.label}</label>
-                                <textarea
-                                  className="w-full rounded-lg bg-secondary px-3 py-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent min-h-[60px]"
-                                  value={opt[field.key] as string}
-                                  onChange={e => updateOption(idx, field.key, e.target.value)}
-                                  placeholder={field.label}
-                                  rows={2}
-                                />
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <Input
-                                  label={
-                                    isComputed
-                                      ? `${field.label} ⚡`
-                                      : field.label
-                                  }
-                                  type={field.type}
-                                  step={field.type === 'number' ? 'any' : undefined}
-                                  value={opt[field.key] as string}
-                                  onChange={e => updateOption(idx, field.key, e.target.value)}
-                                  placeholder={field.label}
-                                  className={`!text-[13px] !h-9 !py-1.5 !rounded-lg ${isComputed ? '!text-chart-2' : ''}`}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+          {/* Row 0: Asset description */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Asset / Loan Type"
+              placeholder="e.g. Motor Vehicle, Industrial Equipment, Land, Boat"
+              value={inputs.asset_description}
+              onChange={e => updateInput('asset_description', e.target.value)}
+            />
+          </div>
+
+          {/* Row 1: Core loan details */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Asset Price</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.asset_price || ''}
+                  onChange={e => updateInput('asset_price', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
               </div>
+            </div>
+            <Input
+              label="Deposit"
+              type="number"
+              step="any"
+              value={inputs.deposit_percent || ''}
+              onChange={e => updateInput('deposit_percent', parseFloat(e.target.value) || 0)}
+              suffix="%"
+            />
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Deposit</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.deposit)}
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Amount Borrowed</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.amountBorrowed)}
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Fees */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Loan Establishment Fee</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.establishment_fee || ''}
+                  onChange={e => updateInput('establishment_fee', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">PPSR</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.ppsr_fee || ''}
+                  onChange={e => updateInput('ppsr_fee', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Origination Fee</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.origination_fee || ''}
+                  onChange={e => updateInput('origination_fee', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Amount to be Financed</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.amountFinanced)}
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Brokerage & Rate */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <Input
+              label="Brokerage"
+              type="number"
+              step="any"
+              value={inputs.brokerage_percent || ''}
+              onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
+              suffix="%"
+            />
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Brokerage</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.brokerage)}
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST on Brokerage</label>
+              <button
+                type="button"
+                onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
+                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.gst_on_brokerage
+                  ? 'bg-primary/10 text-primary border border-primary/30'
+                  : 'bg-muted text-muted-foreground border border-transparent'
+                  }`}
+              >
+                {inputs.gst_on_brokerage ? 'With GST' : 'Without GST'}
+              </button>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Lender Interest Rate</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.interest_rate || ''}
+                  onChange={e => updateInput('interest_rate', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] px-4 pr-8 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 4: GST Rate */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.gst_percent || ''}
+                  onChange={e => updateInput('gst_percent', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] px-4 pr-8 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 4: Balloon config */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Balloon calculated on</label>
+              <button
+                type="button"
+                onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
+                className={`h-[44px] w-full px-4 rounded-xl text-sm font-medium transition-colors border ${inputs.balloon_on_total_price
+                  ? 'bg-primary/10 text-primary border-primary/30'
+                  : 'bg-muted text-muted-foreground border-transparent'
+                  }`}
+              >
+                {inputs.balloon_on_total_price ? 'Total Price' : 'Amount Financed'}
+              </button>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Balloon Base</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.balloonBase)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Balloon % per Term ───────────────────────────────────── */}
+        <div className="border border-border rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Balloon % per Term</h3>
+          <div className="grid grid-cols-5 gap-3">
+            {TERMS.map(t => (
+              <Input
+                key={t}
+                label={`${t} Year`}
+                type="number"
+                step="any"
+                value={inputs.balloon_percentages[String(t)] ?? 0}
+                onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
+                className="!text-center"
+                suffix="%"
+              />
             ))}
           </div>
         </div>
 
-        {/* Add option button */}
-        {options.length < 4 && (
-          <button
-            type="button"
-            onClick={addOption}
-            className="w-full py-3 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
-          >
-            + Add Lender Option
-          </button>
+        {/* ── Live Preview ─────────────────────────────────────────── */}
+        {scenarios.length > 0 && (
+          <div className="border border-border rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">Preview — Generated Scenarios</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Term</th>
+                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Balloon</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Monthly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Weekly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Total Interest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scenarios.map((s, i) => (
+                    <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 px-3 font-medium">{s.termYears} Year{!s.hasBalloon ? '' : ''}</td>
+                      <td className="py-2 px-3 text-muted-foreground">
+                        {s.hasBalloon ? `${s.balloonPercent}% (${fmtCurrency(s.balloon)})` : 'None'}
+                      </td>
+                      <td className="py-2 px-3 text-right font-semibold">{fmtCurrency(s.monthlyRepayment)}</td>
+                      <td className="py-2 px-3 text-right">{fmtCurrency(s.weeklyRepayment)}</td>
+                      <td className="py-2 px-3 text-right">{fmtCurrency(s.totalInterest)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {/* Actions */}

@@ -91,6 +91,7 @@ class QuoteOptionOut(BaseModel):
 class QuoteSheetCreate(BaseModel):
     title: str | None = None
     broker_notes: str | None = None
+    input_parameters: str | None = None  # JSON string of shared inputs
     options: list[QuoteOptionCreate] = []
 
 
@@ -98,6 +99,7 @@ class QuoteSheetUpdate(BaseModel):
     title: str | None = None
     status: str | None = None
     broker_notes: str | None = None
+    input_parameters: str | None = None
 
 
 class QuoteSheetOut(BaseModel):
@@ -109,6 +111,7 @@ class QuoteSheetOut(BaseModel):
     created_by_id: str
     created_by_name: str | None = None
     broker_notes: str | None
+    input_parameters: str | None = None
     sent_at: datetime | None
     options: list[QuoteOptionOut] = []
     created_at: datetime

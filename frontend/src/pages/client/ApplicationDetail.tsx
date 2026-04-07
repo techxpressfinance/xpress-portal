@@ -31,6 +31,21 @@ export default function ApplicationDetail() {
   const [deletingApp, setDeletingApp] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
+  const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
+
+  const handleDownloadPdf = async (sheet: QuoteSheet) => {
+    setPdfRenderSheet(sheet);
+    // Wait for React to mount the off-screen element
+    await new Promise(r => setTimeout(r, 100));
+    try {
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`);
+    } catch (err) {
+      console.error('Failed to generate PDF', err);
+      toast('Failed to generate PDF', 'error');
+    } finally {
+      setPdfRenderSheet(null);
+    }
+  };
 
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
   const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
@@ -417,7 +432,7 @@ export default function ApplicationDetail() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => downloadQuoteSheetPdf(`quote-sheet-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`)}
+                        onClick={() => handleDownloadPdf(sheet)}
                       >
                         <span className="flex items-center gap-1.5">
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -428,9 +443,24 @@ export default function ApplicationDetail() {
                     {sheet.sent_at && (
                       <p className="text-[11px] text-muted-foreground">Sent on {formatDate(sheet.sent_at)}</p>
                     )}
-                    <QuoteSheetComparison quoteSheet={sheet} />
+                    <QuoteSheetComparison quoteSheet={sheet} isClientView />
                   </div>
                 ))}
+
+                {/* On-demand off-screen render for clean PDF capture */}
+                {pdfRenderSheet && (
+                  <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '24px' }}>
+                    <div id={`quote-sheet-pdf-${pdfRenderSheet.id}`}>
+                      <QuoteSheetComparison 
+                        quoteSheet={pdfRenderSheet} 
+                        isClientView 
+                        isPdfExport={true}
+                        clientName={`${application?.applicant_first_name || ''} ${application?.applicant_last_name || ''}`.trim() || 'Client'}
+                        applicationRef={application?.id ? application.id.split('-')[0].toUpperCase() : undefined}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </GlassCard>
           )}
