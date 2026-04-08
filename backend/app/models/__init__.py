@@ -12,5 +12,6 @@ from app.models.lender import Lender
 from app.models.lender_submission import LenderSubmission
 from app.models.task import Task, ChecklistItem
 from app.models.quote_sheet import QuoteSheet, QuoteOption
+from app.models.contact import Contact, Organization, ContactOrganization
 
-__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption"]
+__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization"]

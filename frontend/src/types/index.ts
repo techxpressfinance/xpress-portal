@@ -485,6 +485,54 @@ export interface QuoteSheet {
   updated_at: string;
 }
 
+// Contacts & Organizations
+export interface ContactOrganization {
+  id: string;
+  name: string;
+  abn: string | null;
+  industry: string | null;
+  address: string | null;
+  notes: string | null;
+  role: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactApplication {
+  id: string;
+  loan_type: LoanType;
+  amount: number;
+  status: ApplicationStatus;
+  business_name: string | null;
+  business_abn: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Contact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+  email: string | null;
+  phone: string | null;
+  date_of_birth: string | null;
+  drivers_license_number: string | null;
+  address: string | null;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
+  notes: string | null;
+  application_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactDetail extends Contact {
+  organizations: ContactOrganization[];
+  applications: ContactApplication[];
+}
+
 export interface KanbanBoardListItem {
   id: string;
   name: string;

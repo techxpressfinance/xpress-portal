@@ -21,8 +21,9 @@ from app.models.lender import Lender  # noqa: F401 — ensure table is created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
+from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, tasks, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, tasks, users
 
 # Configure logging
 logging.basicConfig(
@@ -98,6 +99,8 @@ _MIGRATIONS = [
     ("application_notes", "visibility", "VARCHAR(100) DEFAULT 'broker' NOT NULL"),
     # Quote sheet shared input parameters (JSON)
     ("quote_sheets", "input_parameters", "TEXT"),
+    # Contact linkage on loan applications
+    ("loan_applications", "contact_id", "VARCHAR(36) REFERENCES contacts(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -225,6 +228,7 @@ app.include_router(lenders.router)
 app.include_router(lender_submissions.router)
 app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
+app.include_router(contacts.router)
 
 
 @app.get("/api/health")

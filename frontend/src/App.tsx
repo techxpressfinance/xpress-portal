@@ -20,6 +20,8 @@ const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderAnalytics = lazy(() => import('./pages/admin/LenderAnalytics'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
+const Contacts = lazy(() => import('./pages/admin/Contacts'));
+const ContactDetail = lazy(() => import('./pages/admin/ContactDetail'));
 const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
@@ -223,6 +225,22 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <TaskDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/contacts"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <Contacts />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/contacts/:id"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <ContactDetail />
                   </ProtectedRoute>
                 }
               />

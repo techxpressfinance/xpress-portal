@@ -97,12 +97,16 @@ class LoanApplication(Base):
     lend_send_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_who_to_contact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # Contact linkage
+    contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=True)
+
     # Lend sync tracking
     lend_ref: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     # Legacy single-broker FK kept for backward compat / migration
