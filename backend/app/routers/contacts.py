@@ -215,6 +215,66 @@ def unlink_organization(
     db.commit()
 
 
+def _extract_extra_fields(app: LoanApplication) -> tuple[str | None, str | None]:
+    """Extract phone and DL number from lend_extra_data JSON."""
+    import json
+    phone = None
+    dl_number = None
+    if app.lend_extra_data:
+        try:
+            extra = json.loads(app.lend_extra_data)
+            phone = extra.get("mobile_phone") or extra.get("phone")
+            dl_number = extra.get("drivers_license_number")
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    return phone, dl_number
+
+
+def _find_matching_contact(
+    contacts: list[Contact],
+    first_name: str,
+    last_name: str,
+    dob: str | None,
+    phone: str | None,
+    dl_number: str | None,
+) -> Contact | None:
+    """Find an existing contact matching the given identifiers.
+
+    Priority: DL number > phone+DOB > DOB+name > name (case-insensitive).
+    """
+    fn_lower = first_name.strip().lower()
+    ln_lower = last_name.strip().lower()
+
+    # 1. DL number (strongest)
+    if dl_number:
+        for c in contacts:
+            if c.drivers_license_number and c.drivers_license_number.strip() == dl_number.strip():
+                return c
+
+    # 2. Phone + DOB
+    if phone and dob:
+        for c in contacts:
+            if c.phone and c.phone.strip() == phone.strip() and c.date_of_birth and c.date_of_birth.strip() == dob.strip():
+                return c
+
+    # 3. DOB + name
+    if dob:
+        for c in contacts:
+            if (
+                c.date_of_birth and c.date_of_birth.strip() == dob.strip()
+                and (c.first_name or "").strip().lower() == fn_lower
+                and (c.last_name or "").strip().lower() == ln_lower
+            ):
+                return c
+
+    # 4. Name only (first + last, case-insensitive)
+    for c in contacts:
+        if (c.first_name or "").strip().lower() == fn_lower and (c.last_name or "").strip().lower() == ln_lower:
+            return c
+
+    return None
+
+
 @router.post("/auto-create", status_code=status.HTTP_200_OK)
 def auto_create_contacts(
     db: Session = Depends(get_db),
@@ -222,10 +282,12 @@ def auto_create_contacts(
 ):
     """Scan all loan applications without a contact_id and auto-create/link contacts.
 
-    Matching priority: drivers_license_number > phone + DOB > phone > DOB + name.
+    Matching priority: DL number > phone+DOB > DOB+name > name.
     Also auto-creates organizations from business_name/business_abn on applications.
     """
     unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None)).all()
+    # Load all existing contacts once; refresh after each new creation
+    all_contacts: list[Contact] = list(db.query(Contact).all())
     created = 0
     linked = 0
     orgs_created = 0
@@ -236,60 +298,16 @@ def auto_create_contacts(
         if not first_name or not last_name:
             continue
 
-        phone = None
         dob = app.applicant_dob
+        phone, dl_number = _extract_extra_fields(app)
 
-        # Try to get phone from lend_extra_data
-        if app.lend_extra_data:
-            import json
-            try:
-                extra = json.loads(app.lend_extra_data)
-                phone = extra.get("mobile_phone") or extra.get("phone")
-            except (json.JSONDecodeError, AttributeError):
-                pass
+        contact = _find_matching_contact(all_contacts, first_name, last_name, dob, phone, dl_number)
 
-        dl_number = None
-        if app.lend_extra_data:
-            import json
-            try:
-                extra = json.loads(app.lend_extra_data)
-                dl_number = extra.get("drivers_license_number")
-            except (json.JSONDecodeError, AttributeError):
-                pass
-
-        # Try to find existing contact by matching criteria
-        contact = None
-
-        # Match by DL number (strongest identifier)
-        if dl_number and not contact:
-            all_contacts = db.query(Contact).all()
-            for c in all_contacts:
-                if c.drivers_license_number and c.drivers_license_number == dl_number:
-                    contact = c
-                    break
-
-        # Match by phone + DOB
-        if phone and dob and not contact:
-            all_contacts = all_contacts if 'all_contacts' in dir() else db.query(Contact).all()
-            for c in all_contacts:
-                if c.phone == phone and c.date_of_birth == dob:
-                    contact = c
-                    break
-
-        # Match by phone + name
-        if phone and not contact:
-            all_contacts = all_contacts if 'all_contacts' in dir() else db.query(Contact).all()
-            for c in all_contacts:
-                if c.phone == phone and c.first_name.lower() == first_name.lower() and c.last_name.lower() == last_name.lower():
-                    contact = c
-                    break
-
-        # No match — create new contact
         if not contact:
             contact = Contact(
-                first_name=first_name,
-                last_name=last_name,
-                middle_name=app.applicant_middle_name,
+                first_name=first_name.strip(),
+                last_name=last_name.strip(),
+                middle_name=(app.applicant_middle_name or "").strip() or None,
                 phone=phone,
                 date_of_birth=dob,
                 drivers_license_number=dl_number,
@@ -300,6 +318,7 @@ def auto_create_contacts(
             )
             db.add(contact)
             db.flush()
+            all_contacts.append(contact)  # keep cache in sync
             created += 1
 
         app.contact_id = contact.id
@@ -321,7 +340,6 @@ def auto_create_contacts(
                 db.flush()
                 orgs_created += 1
 
-            # Link contact to org if not already linked
             existing_link = db.query(ContactOrganization).filter(
                 ContactOrganization.contact_id == contact.id,
                 ContactOrganization.organization_id == org.id,
@@ -334,4 +352,123 @@ def auto_create_contacts(
         "contacts_created": created,
         "applications_linked": linked,
         "organizations_created": orgs_created,
+    }
+
+
+def _pick_best_value(field: str, contacts: list[Contact]) -> str | None:
+    """Pick the best value for a field across all duplicate contacts.
+
+    Prefers the longest non-empty value (most complete data wins).
+    For address fields, all four parts (address/suburb/state/postcode) are
+    scored together so we take the most complete address as a unit.
+    """
+    values = [(getattr(c, field) or "").strip() for c in contacts]
+    non_empty = [v for v in values if v]
+    if not non_empty:
+        return None
+    # Return the longest (most complete) value
+    return max(non_empty, key=len)
+
+
+def _pick_best_address(contacts: list[Contact]) -> dict[str, str | None]:
+    """Pick the most complete address across all duplicate contacts.
+
+    Scores each contact's address by how many of the 4 fields are filled,
+    then takes all 4 fields from the winner.
+    """
+    best_idx = 0
+    best_score = 0
+    for i, c in enumerate(contacts):
+        score = sum(1 for f in ("address", "suburb", "state", "postcode") if (getattr(c, f) or "").strip())
+        if score > best_score:
+            best_score = score
+            best_idx = i
+    winner = contacts[best_idx]
+    return {
+        "address": (winner.address or "").strip() or None,
+        "suburb": (winner.suburb or "").strip() or None,
+        "state": (winner.state or "").strip() or None,
+        "postcode": (winner.postcode or "").strip() or None,
+    }
+
+
+@router.post("/deduplicate", status_code=status.HTTP_200_OK)
+def deduplicate_contacts(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+):
+    """Find and merge duplicate contacts.
+
+    Groups contacts by normalized (first_name + last_name). Keeps the oldest
+    contact as the primary, but picks the best (most complete) value for each
+    field across all duplicates. Address fields are picked as a unit so you
+    don't get a Frankenstein address.
+    """
+    all_contacts = db.query(Contact).order_by(Contact.created_at.asc()).all()
+
+    # Group by normalized name
+    name_groups: dict[str, list[Contact]] = {}
+    for c in all_contacts:
+        key = f"{(c.first_name or '').strip().lower()}|{(c.last_name or '').strip().lower()}"
+        name_groups.setdefault(key, []).append(c)
+
+    merged_count = 0
+    deleted_count = 0
+
+    for _key, group in name_groups.items():
+        if len(group) < 2:
+            continue
+
+        # The primary is the oldest (first created) — we keep this record
+        primary = group[0]
+        duplicates = group[1:]
+
+        # Pick the best value for each field across ALL contacts in the group
+        for field in ("email", "phone", "date_of_birth", "drivers_license_number", "middle_name"):
+            best = _pick_best_value(field, group)
+            if best:
+                setattr(primary, field, best)
+
+        # Pick address as a unit (most complete set of address fields wins)
+        best_addr = _pick_best_address(group)
+        for field, value in best_addr.items():
+            if value:
+                setattr(primary, field, value)
+
+        # Merge notes: concatenate any non-empty notes from duplicates
+        all_notes = [c.notes for c in group if c.notes and c.notes.strip()]
+        if all_notes:
+            primary.notes = "\n".join(dict.fromkeys(all_notes))  # dedupe identical notes
+
+        for dup in duplicates:
+            # Move all applications from dup to primary
+            db.query(LoanApplication).filter(
+                LoanApplication.contact_id == dup.id
+            ).update({"contact_id": primary.id}, synchronize_session="fetch")
+
+            # Move org links — skip if primary already has that org
+            dup_org_links = db.query(ContactOrganization).filter(
+                ContactOrganization.contact_id == dup.id
+            ).all()
+            for link in dup_org_links:
+                existing = db.query(ContactOrganization).filter(
+                    ContactOrganization.contact_id == primary.id,
+                    ContactOrganization.organization_id == link.organization_id,
+                ).first()
+                if not existing:
+                    link.contact_id = primary.id
+                else:
+                    db.delete(link)
+
+            db.delete(dup)
+            deleted_count += 1
+
+        merged_count += 1
+
+    db.commit()
+    remaining = db.query(func.count(Contact.id)).scalar()
+    return {
+        "groups_merged": merged_count,
+        "duplicates_removed": deleted_count,
+        "contacts_remaining": remaining,
     }

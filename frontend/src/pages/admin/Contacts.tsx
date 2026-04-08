@@ -14,6 +14,7 @@ export default function Contacts() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [deduping, setDeduping] = useState(false);
   const perPage = 20;
 
   const fetchContacts = (p = page, q = search) => {
@@ -53,6 +54,22 @@ export default function Contacts() {
     }
   };
 
+  const handleDeduplicate = async () => {
+    setDeduping(true);
+    try {
+      const { data } = await api.post('/contacts/deduplicate');
+      toast(
+        `Merged ${data.groups_merged} groups, removed ${data.duplicates_removed} duplicates. ${data.contacts_remaining} contacts remaining.`,
+        'success'
+      );
+      fetchContacts(1, search);
+    } catch {
+      toast('Failed to deduplicate contacts', 'error');
+    } finally {
+      setDeduping(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / perPage);
 
   return (
@@ -61,9 +78,14 @@ export default function Contacts() {
         title="Contacts"
         subtitle={`${total} contacts`}
         action={
-          <Button onClick={handleAutoCreate} disabled={syncing} variant="secondary" size="sm">
-            {syncing ? 'Syncing...' : 'Auto-Create from Applications'}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleDeduplicate} disabled={deduping} variant="secondary" size="sm">
+              {deduping ? 'Merging...' : 'Deduplicate'}
+            </Button>
+            <Button onClick={handleAutoCreate} disabled={syncing} variant="secondary" size="sm">
+              {syncing ? 'Syncing...' : 'Auto-Create from Applications'}
+            </Button>
+          </div>
         }
       />
 
