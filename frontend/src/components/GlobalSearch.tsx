@@ -18,7 +18,7 @@ export default function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'broker';
+  const isAdmin = user?.role === 'admin' || user?.role === 'broker' || user?.role === 'referrer';
 
   // Keyboard shortcut to open
   useEffect(() => {

@@ -256,6 +256,7 @@ def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
 @router.post("/resend-verification")
 def resend_verification(data: ResendVerificationRequest, request: Request, db: Session = Depends(get_db)):
     auth_limiter.check(request)
+    auth_limiter.check_key(data.email)
 
     user = db.query(User).filter(User.email == data.email).first()
     if user and not user.email_verified and EMAIL_ENABLED:

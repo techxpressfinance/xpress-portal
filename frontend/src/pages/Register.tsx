@@ -33,7 +33,7 @@ export default function Register() {
   useEffect(() => {
     if (refCode) {
       api.get(`/referrals/validate/${encodeURIComponent(refCode)}`)
-        .then(({ data }) => setReferrerName(data.referrer_name))
+        .then(({ data }) => { if (data.valid) setReferrerName(data.referrer_name); })
         .catch(() => {});
     }
   }, [refCode]);

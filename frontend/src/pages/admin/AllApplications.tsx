@@ -137,49 +137,49 @@ export default function AllApplications() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {applications.map((app) => (
-                    <tr key={app.id} className="transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                      <td className="px-3 sm:px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                            <span className="text-[11px] font-semibold text-muted-foreground">
-                              {app.user_name
-                                ? getInitials(app.user_name)
-                                : app.user_id.slice(0, 2).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[14px] font-medium text-foreground truncate">{app.user_name || app.user_id.slice(0, 8) + '...'}</p>
-                            {app.user_email && <p className="text-[12px] text-muted-foreground truncate">{app.user_email}</p>}
-                            <p className="sm:hidden text-[12px] text-muted-foreground capitalize">{app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium capitalize text-foreground">{app.loan_type}</td>
-                      <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>
-                      <td className="px-3 sm:px-6 py-4">
-                        <Badge value={app.status} />
-                      </td>
-                      <td className="hidden lg:table-cell px-3 sm:px-6 py-4">
-                        {app.assigned_brokers.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {app.assigned_brokers.map((ab) => (
-                              <span key={ab.id} className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                {ab.full_name}
+                    <tr key={app.id} className="transition-colors hover:bg-secondary/50 cursor-pointer" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
+                      <Link to={`/admin/applications/${app.id}`} className="contents">
+                        <td className="px-3 sm:px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                              <span className="text-[11px] font-semibold text-muted-foreground">
+                                {app.user_name
+                                  ? getInitials(app.user_name)
+                                  : app.user_id.slice(0, 2).toUpperCase()}
                               </span>
-                            ))}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[14px] font-medium text-foreground truncate">{app.user_name || app.user_id.slice(0, 8) + '...'}</p>
+                              {app.user_email && <p className="text-[12px] text-muted-foreground truncate">{app.user_email}</p>}
+                              <p className="sm:hidden text-[12px] text-muted-foreground capitalize">{app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
+                            </div>
                           </div>
-                        ) : (
-                          <span className="text-[13px] text-muted-foreground">N/A</span>
-                        )}
-                      </td>
-                      <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
-                        {formatDate(app.created_at)}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4">
-                        <Link to={`/admin/applications/${app.id}`}>
+                        </td>
+                        <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium capitalize text-foreground">{app.loan_type}</td>
+                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>
+                        <td className="px-3 sm:px-6 py-4">
+                          <Badge value={app.status} />
+                        </td>
+                        <td className="hidden lg:table-cell px-3 sm:px-6 py-4">
+                          {app.assigned_brokers.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {app.assigned_brokers.map((ab) => (
+                                <span key={ab.id} className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                  {ab.full_name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[13px] text-muted-foreground">N/A</span>
+                          )}
+                        </td>
+                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
+                          {formatDate(app.created_at)}
+                        </td>
+                        <td className="px-3 sm:px-6 py-4">
                           <Button variant="ghost" size="sm">Review</Button>
-                        </Link>
-                      </td>
+                        </td>
+                      </Link>
                     </tr>
                   ))}
                 </tbody>

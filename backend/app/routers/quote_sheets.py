@@ -11,6 +11,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication
 from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus
 from app.models.user import User
+from app.services.access_control import check_application_access
 from app.schemas.quote_sheet import (
     QuoteOptionCreate,
     QuoteOptionUpdate,
@@ -113,7 +114,8 @@ def list_quote_sheets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _get_application(db, app_id)
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     query = db.query(QuoteSheet).filter(QuoteSheet.application_id == app_id)
 
     # Clients only see sent sheets
@@ -141,7 +143,8 @@ def create_quote_sheet(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    _get_application(db, app_id)
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
 
     sheet = QuoteSheet(
         application_id=app_id,
@@ -175,6 +178,8 @@ def get_quote_sheet(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
 
     if current_user.role.value == "client" and sheet.status != QuoteSheetStatus.sent:
@@ -195,8 +200,10 @@ def update_quote_sheet(
     sheet_id: str,
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
 
@@ -229,8 +236,10 @@ def delete_quote_sheet(
     app_id: str,
     sheet_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
     db.delete(sheet)
@@ -246,6 +255,8 @@ def duplicate_quote_sheet(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     source = _get_sheet(db, app_id, sheet_id)
 
     new_sheet = QuoteSheet(
@@ -301,8 +312,10 @@ def add_option(
     sheet_id: str,
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
 
@@ -320,8 +333,10 @@ def update_option(
     opt_id: str,
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
 
@@ -343,8 +358,10 @@ def delete_option(
     sheet_id: str,
     opt_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
+    app = _get_application(db, app_id)
+    check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
 

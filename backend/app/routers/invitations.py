@@ -87,7 +87,7 @@ def invite_user(
         email=data.email,
         full_name=data.full_name,
         phone=data.phone,
-        password_hash="!invited",
+        password_hash="!",
         auth_method="code",
         role="client",
         is_active=True,

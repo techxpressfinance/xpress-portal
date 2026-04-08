@@ -24,12 +24,12 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 @router.get("/validate/{code}")
 def validate_referral_code(code: str, db: Session = Depends(get_db)):
-    """Validate a referral code and return the referrer's name. Public endpoint for registration page."""
+    """Validate a referral code. Public endpoint for registration page."""
     referral = db.query(Referral).filter(Referral.referral_code == code).first()
     if not referral:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid referral code")
+        return {"valid": False, "referrer_name": None}
     referrer = db.query(User).filter(User.id == referral.referrer_id).first()
-    return {"referrer_name": referrer.full_name if referrer else "Someone"}
+    return {"valid": True, "referrer_name": referrer.full_name if referrer else "A referrer"}
 
 
 def _referral_to_out(ref: Referral) -> dict:

@@ -6,6 +6,17 @@ const api = axios.create({
 });
 
 let accessToken: string | null = null;
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function onTokenRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
+function addRefreshSubscriber(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -43,17 +54,33 @@ api.interceptors.response.use(
     const isAuthUrl = original.url?.startsWith('/auth/');
     if (error.response?.status === 401 && !original._retry && !isAuthUrl) {
       original._retry = true;
+
+      if (isRefreshing) {
+        // Queue this request until the in-flight refresh completes
+        return new Promise((resolve) => {
+          addRefreshSubscriber((newToken: string) => {
+            original.headers.Authorization = `Bearer ${newToken}`;
+            resolve(api(original));
+          });
+        });
+      }
+
+      isRefreshing = true;
       try {
         const { data } = await axios.post('/api/auth/refresh', null, {
           withCredentials: true,
           headers: { 'X-CSRF-Token': getCsrfToken() },
         });
         setAccessToken(data.access_token);
+        onTokenRefreshed(data.access_token);
         original.headers.Authorization = `Bearer ${data.access_token}`;
         return api(original);
       } catch {
         setAccessToken(null);
+        refreshSubscribers = [];
         window.location.href = '/login';
+      } finally {
+        isRefreshing = false;
       }
     }
     return Promise.reject(error);
