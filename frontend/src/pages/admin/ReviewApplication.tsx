@@ -48,15 +48,20 @@ export default function ReviewApplication() {
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [editingQuoteSheet, setEditingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [viewingQuoteSheet, setViewingQuoteSheet] = useState<QuoteSheet | null>(null);
-  const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
+  const [pdfRenderSheet, setPdfRenderSheet] = useState<{ sheet: QuoteSheet; clientFacing: boolean } | null>(null);
   const viewKeyRef = useRef(0);
+  // Send modal state
+  const [sendModalSheet, setSendModalSheet] = useState<QuoteSheet | null>(null);
+  const [sendModalTerms, setSendModalTerms] = useState<number[]>([]);
+  const [sendingQuote, setSendingQuote] = useState(false);
 
-  const handleDownloadPdf = useCallback(async (sheet: QuoteSheet) => {
-    setPdfRenderSheet(sheet);
+  const handleDownloadPdf = useCallback(async (sheet: QuoteSheet, clientFacing = false) => {
+    setPdfRenderSheet({ sheet, clientFacing });
     // Wait for React to mount the off-screen element
     await new Promise(r => setTimeout(r, 100));
     try {
-      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`);
+      const suffix = clientFacing ? 'client' : 'internal';
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}-${suffix}.pdf`);
     } catch (err) {
       console.error('Failed to generate PDF', err);
     } finally {
@@ -1729,16 +1734,25 @@ export default function ReviewApplication() {
                           {QUOTE_SHEET_STATUS_BADGE[viewingQuoteSheet.status].label}
                         </span>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleDownloadPdf(viewingQuoteSheet)}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                          PDF
-                        </span>
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleDownloadPdf(viewingQuoteSheet, false)}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                            PDF
+                          </span>
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleDownloadPdf(viewingQuoteSheet, true)}
+                        >
+                          Client PDF
+                        </Button>
+                      </div>
                     </div>
                     <QuoteSheetComparison quoteSheet={viewingQuoteSheet} showBrokerNotes />
                   </GlassCard>
@@ -1819,15 +1833,17 @@ export default function ReviewApplication() {
                               )}
                               {sheet.status === 'draft' && (
                                 <button
-                                  onClick={async () => {
-                                    try {
-                                      await api.patch(`/applications/${id}/quote-sheets/${sheet.id}`, { status: 'sent' });
-                                      const { data } = await api.get(`/applications/${id}/quote-sheets`);
-                                      setQuoteSheets(data);
-                                      toast('Quote sheet sent to client', 'success');
-                                    } catch (err) {
-                                      toast(getErrorMessage(err, 'Failed to send'), 'error');
-                                    }
+                                  onClick={() => {
+                                    // Extract available term years from sheet options
+                                    const terms = [...new Set(sheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
+                                    const displayOrder = [5, 4, 3, 2, 7];
+                                    terms.sort((a, b) => {
+                                      const ai = displayOrder.indexOf(a);
+                                      const bi = displayOrder.indexOf(b);
+                                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                                    });
+                                    setSendModalTerms(terms);
+                                    setSendModalSheet(sheet);
                                   }}
                                   className="rounded-lg bg-success/10 px-3 py-1.5 text-[12px] font-medium text-success hover:bg-success/20 transition-colors"
                                 >
@@ -1836,10 +1852,18 @@ export default function ReviewApplication() {
                               )}
 
                               <button
-                                onClick={() => handleDownloadPdf(sheet)}
+                                onClick={() => handleDownloadPdf(sheet, false)}
                                 className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                                title="Internal PDF (includes interest rate)"
                               >
                                 PDF
+                              </button>
+                              <button
+                                onClick={() => handleDownloadPdf(sheet, true)}
+                                className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                                title="Client PDF (no interest rate)"
+                              >
+                                Client PDF
                               </button>
                               {sheet.status === 'draft' && (
                                 <button
@@ -1869,13 +1893,89 @@ export default function ReviewApplication() {
                 {/* On-demand off-screen render for PDF capture */}
                 {pdfRenderSheet && (
                   <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '24px' }}>
-                    <div id={`quote-sheet-pdf-${pdfRenderSheet.id}`}>
-                      <QuoteSheetComparison 
-                        quoteSheet={pdfRenderSheet} 
+                    <div id={`quote-sheet-pdf-${pdfRenderSheet.sheet.id}`}>
+                      <QuoteSheetComparison
+                        quoteSheet={pdfRenderSheet.sheet}
                         isPdfExport={true}
+                        isClientView={pdfRenderSheet.clientFacing}
                         clientName={client?.full_name}
                         applicationRef={application?.id ? application.id.split('-')[0].toUpperCase() : undefined}
                       />
+                    </div>
+                  </div>
+                )}
+
+                {/* Send to Client Modal */}
+                {sendModalSheet && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-card rounded-2xl shadow-xl border border-border w-full max-w-md mx-4 p-6">
+                      <h3 className="text-lg font-semibold text-foreground mb-1">Send Quote to Client</h3>
+                      <p className="text-sm text-muted-foreground mb-5">Select which term years to include in the client's quote sheet.</p>
+
+                      <div className="space-y-2.5 mb-6">
+                        {(() => {
+                          const allTerms = [...new Set(sendModalSheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
+                          const displayOrder = [5, 4, 3, 2, 7];
+                          allTerms.sort((a, b) => {
+                            const ai = displayOrder.indexOf(a);
+                            const bi = displayOrder.indexOf(b);
+                            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                          });
+                          return allTerms.map(term => (
+                            <label key={term} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/30 transition-colors cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sendModalTerms.includes(term)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setSendModalTerms(prev => [...prev, term]);
+                                  } else {
+                                    setSendModalTerms(prev => prev.filter(t => t !== term));
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                              />
+                              <span className="text-sm font-medium text-foreground">{term} Year Term</span>
+                            </label>
+                          ));
+                        })()}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          loading={sendingQuote}
+                          disabled={sendModalTerms.length === 0}
+                          onClick={async () => {
+                            setSendingQuote(true);
+                            try {
+                              // Update input_parameters with selected_terms
+                              let inputParams: Record<string, unknown> = {};
+                              if (sendModalSheet.input_parameters) {
+                                try { inputParams = JSON.parse(sendModalSheet.input_parameters); } catch { /* empty */ }
+                              }
+                              inputParams.selected_terms = sendModalTerms;
+
+                              await api.patch(`/applications/${id}/quote-sheets/${sendModalSheet.id}`, {
+                                status: 'sent',
+                                input_parameters: JSON.stringify(inputParams),
+                              });
+                              const { data } = await api.get(`/applications/${id}/quote-sheets`);
+                              setQuoteSheets(data);
+                              toast('Quote sheet sent to client', 'success');
+                              setSendModalSheet(null);
+                            } catch (err) {
+                              toast(getErrorMessage(err, 'Failed to send'), 'error');
+                            } finally {
+                              setSendingQuote(false);
+                            }
+                          }}
+                        >
+                          Send ({sendModalTerms.length} term{sendModalTerms.length !== 1 ? 's' : ''})
+                        </Button>
+                        <Button variant="secondary" onClick={() => setSendModalSheet(null)} disabled={sendingQuote}>
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}

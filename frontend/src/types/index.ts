@@ -467,6 +467,8 @@ export interface QuoteInputParameters {
   interest_rate: number;
   gst_percent: number;
   balloon_percentages: Record<string, number>; // e.g. { "2": 62, "3": 55, "4": 42, "5": 35, "7": 0 }
+  fees_financed: boolean; // true = fees added to loan amount, false = fees charged separately
+  selected_terms?: number[]; // e.g. [5, 4, 3] — which terms to show client. undefined = all
 }
 
 export interface QuoteSheet {

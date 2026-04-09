@@ -29,6 +29,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   interest_rate: 5.99,
   gst_percent: 10,
   balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
+  fees_financed: true,
 };
 
 // ── PMT — Excel-compatible (type=0, arrears) ─────────────────────────
@@ -44,7 +45,8 @@ const fmt2 = (n: number) => Math.round(n * 100) / 100;
 function computeFromInputs(inputs: QuoteInputParameters) {
   const deposit = inputs.asset_price * (inputs.deposit_percent / 100);
   const amountBorrowed = inputs.asset_price - deposit;
-  const netAmount = amountBorrowed + inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
+  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
+  const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
 
   // Brokerage calculation
   const brokerageBase = netAmount * (inputs.brokerage_percent / 100);
@@ -56,7 +58,7 @@ function computeFromInputs(inputs: QuoteInputParameters) {
   // Balloon base: total price or amount financed
   const balloonBase = inputs.balloon_on_total_price ? inputs.asset_price : amountFinanced;
 
-  return { deposit, amountBorrowed, netAmount, brokerage, amountFinanced, balloonBase };
+  return { deposit, amountBorrowed, netAmount, brokerage, amountFinanced, balloonBase, totalFees };
 }
 
 type Scenario = {
@@ -351,6 +353,28 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                   onChange={e => updateInput('origination_fee', parseFloat(e.target.value) || 0)}
                   className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
                 />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Fees Treatment</label>
+              <select
+                value={inputs.fees_financed ? 'financed' : 'non-financed'}
+                onChange={e => updateInput('fees_financed', e.target.value === 'financed')}
+                className="w-full h-[44px] px-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+              >
+                <option value="financed">Financed (added to loan)</option>
+                <option value="non-financed">Non-Financed (charged separately)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2b: Computed amounts */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Total Fees</label>
+              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
+                {fmtCurrency(derived.totalFees)}
+                {!inputs.fees_financed && <span className="ml-1.5 text-[10px] text-warning font-semibold uppercase">(separate)</span>}
               </div>
             </div>
             <div>
