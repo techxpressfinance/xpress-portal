@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -21,7 +22,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    phone: str | None = None
+    phone: Optional[str] = None
 
     @field_validator("password")
     @classmethod
@@ -45,16 +46,16 @@ class UserOut(BaseModel):
     id: str
     email: str
     full_name: str
-    phone: str | None
+    phone: Optional[str]
     role: UserRole
     kyc_status: KYCStatus
     is_active: bool
     email_verified: bool
     auth_method: str = "password"
-    employee_id: str | None = None
-    department: str | None = None
-    license_number: str | None = None
-    organization_name: str | None = None
+    employee_id: Optional[str] = None
+    department: Optional[str] = None
+    license_number: Optional[str] = None
+    organization_name: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -76,8 +77,8 @@ class AccessTokenResponse(BaseModel):
 
 
 class UserProfileUpdate(BaseModel):
-    full_name: str | None = None
-    phone: str | None = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
 
 
 class KYCStatusUpdate(BaseModel):
@@ -99,7 +100,7 @@ class RefreshRequest(BaseModel):
 class InvitationCreate(BaseModel):
     email: EmailStr
     full_name: str
-    phone: str | None = None
+    phone: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -112,10 +113,10 @@ class InvitationCreate(BaseModel):
 class BrokerCreate(BaseModel):
     email: EmailStr
     full_name: str
-    phone: str | None = None
+    phone: Optional[str] = None
     employee_id: str
-    department: str | None = None
-    license_number: str | None = None
+    department: Optional[str] = None
+    license_number: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -159,11 +160,11 @@ class InvitationOut(BaseModel):
     id: str
     email: str
     full_name: str
-    phone: str | None
+    phone: Optional[str]
     is_active: bool
     auth_method: str
     created_at: datetime
-    invited_by_name: str | None = None
+    invited_by_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -183,4 +184,4 @@ class StartApplicationForClient(BaseModel):
     client_id: str
     loan_type: str
     amount: float
-    notes: str | None = None
+    notes: Optional[str] = None

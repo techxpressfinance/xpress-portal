@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -8,8 +9,8 @@ from pydantic import BaseModel, EmailStr, field_validator
 class ReferrerCreate(BaseModel):
     email: EmailStr
     full_name: str
-    phone: str | None = None
-    organization_name: str | None = None
+    phone: Optional[str] = None
+    organization_name: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -21,7 +22,7 @@ class ReferrerCreate(BaseModel):
 
 class ExternalReferralInvite(BaseModel):
     email: EmailStr
-    full_name: str | None = None
+    full_name: Optional[str] = None
 
     @field_validator("email")
     @classmethod
@@ -34,13 +35,13 @@ class ExternalReferralInvite(BaseModel):
 class ExternalReferralOut(BaseModel):
     id: str
     referrer_id: str
-    referrer_name: str | None = None
+    referrer_name: Optional[str] = None
     referred_email: str
-    referred_client_id: str | None = None
-    referred_client_name: str | None = None
+    referred_client_id: Optional[str] = None
+    referred_client_name: Optional[str] = None
     status: str
     created_at: datetime
-    converted_at: datetime | None = None
+    converted_at: Optional[datetime] = None
 
 
 class ExternalReferrerStats(BaseModel):

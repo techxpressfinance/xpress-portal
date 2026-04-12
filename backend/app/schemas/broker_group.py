@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
 
 class BrokerGroupCreate(BaseModel):
     name: str
-    description: str | None = None
+    description: Optional[str] = None
     member_ids: list[str] = []
 
     @field_validator("name")
@@ -19,8 +20,8 @@ class BrokerGroupCreate(BaseModel):
 
 
 class BrokerGroupUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class BrokerGroupMemberOut(BaseModel):
@@ -34,7 +35,7 @@ class BrokerGroupMemberOut(BaseModel):
 class BrokerGroupOut(BaseModel):
     id: str
     name: str
-    description: str | None
+    description: Optional[str]
     created_at: datetime
     members: list[BrokerGroupMemberOut] = []
 

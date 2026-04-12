@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -19,10 +19,10 @@ router = APIRouter(prefix="/api/activity-logs", tags=["activity-logs"])
 def list_activity_logs(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    entity_type: str | None = None,
-    action: str | None = None,
-    user_id: str | None = None,
-    date_range: Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"] | None = None,
+    entity_type: Optional[str] = None,
+    action: Optional[str] = None,
+    user_id: Optional[str] = None,
+    date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
 ):

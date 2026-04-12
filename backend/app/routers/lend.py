@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,7 +21,7 @@ class LendConfigOut(BaseModel):
 
 
 class LendDocTypeUpdate(BaseModel):
-    lend_document_type: str | None = None
+    lend_document_type: Optional[str] = None
 
 
 @router.get("/config", response_model=LendConfigOut)

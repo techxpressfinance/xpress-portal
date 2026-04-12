@@ -4,6 +4,7 @@ import base64
 import logging
 import re
 from pathlib import Path
+from typing import Optional
 
 import httpx
 
@@ -25,7 +26,7 @@ def upload_file_to_onedrive(
     customer_full_name: str,
     application_id: str,
     original_filename: str,
-) -> tuple[str | None, str | None]:
+) -> tuple[Optional[str], Optional[str]]:
     """Send file to Power Automate flow which uploads it to OneDrive.
 
     The flow receives a JSON payload with:

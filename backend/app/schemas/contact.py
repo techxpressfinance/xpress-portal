@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -8,11 +9,11 @@ from pydantic import BaseModel
 class OrganizationOut(BaseModel):
     id: str
     name: str
-    abn: str | None
-    industry: str | None
-    address: str | None
-    notes: str | None
-    role: str | None = None  # from ContactOrganization join
+    abn: Optional[str]
+    industry: Optional[str]
+    address: Optional[str]
+    notes: Optional[str]
+    role: Optional[str] = None  # from ContactOrganization join
     created_at: datetime
     updated_at: datetime
 
@@ -25,8 +26,8 @@ class ContactApplicationOut(BaseModel):
     loan_type: str
     amount: float
     status: str
-    business_name: str | None
-    business_abn: str | None
+    business_name: Optional[str]
+    business_abn: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -37,16 +38,16 @@ class ContactOut(BaseModel):
     id: str
     first_name: str
     last_name: str
-    middle_name: str | None
-    email: str | None
-    phone: str | None
-    date_of_birth: str | None
-    drivers_license_number: str | None
-    address: str | None
-    suburb: str | None
-    state: str | None
-    postcode: str | None
-    notes: str | None
+    middle_name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    date_of_birth: Optional[str]
+    drivers_license_number: Optional[str]
+    address: Optional[str]
+    suburb: Optional[str]
+    state: Optional[str]
+    postcode: Optional[str]
+    notes: Optional[str]
     application_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -61,23 +62,23 @@ class ContactDetailOut(ContactOut):
 
 
 class ContactUpdate(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None
-    middle_name: str | None = None
-    email: str | None = None
-    phone: str | None = None
-    date_of_birth: str | None = None
-    drivers_license_number: str | None = None
-    address: str | None = None
-    suburb: str | None = None
-    state: str | None = None
-    postcode: str | None = None
-    notes: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    drivers_license_number: Optional[str] = None
+    address: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ContactOrganizationLink(BaseModel):
     organization_id: str
-    role: str | None = None
+    role: Optional[str] = None
 
 
 class PaginatedContacts(BaseModel):

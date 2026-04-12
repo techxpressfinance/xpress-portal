@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -14,9 +15,9 @@ class DocumentOut(BaseModel):
     original_filename: str
     is_verified: bool
     uploaded_at: datetime
-    onedrive_url: str | None = None
+    onedrive_url: Optional[str] = None
     ocr_status: str = "pending"
-    lend_document_type: str | None = None
+    lend_document_type: Optional[str] = None
     lend_uploaded: bool = False
 
     model_config = {"from_attributes": True}

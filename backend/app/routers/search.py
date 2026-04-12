@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -128,7 +129,7 @@ def global_search(
 
     # Batch-load application user info for docs
     doc_app_ids = {d.application_id for d in docs}
-    app_user_map: dict[str, str | None] = {}
+    app_user_map: dict[str, Optional[str]] = {}
     if doc_app_ids:
         for app_row in (
             db.query(LoanApplication.id, User.full_name)

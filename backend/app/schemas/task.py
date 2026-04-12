@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -21,9 +22,9 @@ class ChecklistItemCreate(BaseModel):
 
 
 class ChecklistItemUpdate(BaseModel):
-    title: str | None = None
-    is_completed: bool | None = None
-    sort_order: int | None = None
+    title: Optional[str] = None
+    is_completed: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 
 class ChecklistItemOut(BaseModel):
@@ -39,13 +40,13 @@ class ChecklistItemOut(BaseModel):
 
 class TaskCreate(BaseModel):
     title: str
-    description: str | None = None
+    description: Optional[str] = None
     status: str = "todo"
     priority: str = "medium"
-    due_date: datetime | None = None
-    assigned_to_id: str | None = None
-    application_id: str | None = None
-    checklist_items: list[ChecklistItemCreate] | None = None
+    due_date: Optional[datetime] = None
+    assigned_to_id: Optional[str] = None
+    application_id: Optional[str] = None
+    checklist_items: Optional[list[ChecklistItemCreate]] = None
 
     @field_validator("title")
     @classmethod
@@ -56,30 +57,30 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    status: str | None = None
-    priority: str | None = None
-    due_date: datetime | None = None
-    assigned_to_id: str | None = None
-    application_id: str | None = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[datetime] = None
+    assigned_to_id: Optional[str] = None
+    application_id: Optional[str] = None
 
 
 class TaskOut(BaseModel):
     id: str
     title: str
-    description: str | None
+    description: Optional[str]
     status: str
     priority: str
-    due_date: datetime | None
-    assigned_to_id: str | None
-    assigned_to_name: str | None = None
-    application_id: str | None
-    application_label: str | None = None
+    due_date: Optional[datetime]
+    assigned_to_id: Optional[str]
+    assigned_to_name: Optional[str] = None
+    application_id: Optional[str]
+    application_label: Optional[str] = None
     created_by_id: str
-    created_by_name: str | None = None
+    created_by_name: Optional[str] = None
     checklist_items: list[ChecklistItemOut] = []
-    checklist_progress: str | None = None
+    checklist_progress: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -91,13 +92,13 @@ class TaskListOut(BaseModel):
     title: str
     status: str
     priority: str
-    due_date: datetime | None
-    assigned_to_id: str | None
-    assigned_to_name: str | None = None
-    application_id: str | None
-    application_label: str | None = None
+    due_date: Optional[datetime]
+    assigned_to_id: Optional[str]
+    assigned_to_name: Optional[str] = None
+    application_id: Optional[str]
+    application_label: Optional[str] = None
     created_by_id: str
-    created_by_name: str | None = None
+    created_by_name: Optional[str] = None
     checklist_total: int = 0
     checklist_completed: int = 0
     created_at: datetime

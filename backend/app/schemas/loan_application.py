@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,67 +12,67 @@ from app.models.loan_application import AnalysisStatus, ApplicationStatus, LoanT
 class LoanApplicationCreate(BaseModel):
     loan_type: LoanType
     amount: Decimal = Field(..., ge=0)
-    notes: str | None = None
+    notes: Optional[str] = None
     # Client-filled — Personal
-    applicant_title: str | None = None
-    applicant_first_name: str | None = None
-    applicant_last_name: str | None = None
-    applicant_middle_name: str | None = None
-    applicant_dob: str | None = None
-    applicant_gender: str | None = None
-    applicant_marital_status: str | None = None
+    applicant_title: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    applicant_middle_name: Optional[str] = None
+    applicant_dob: Optional[str] = None
+    applicant_gender: Optional[str] = None
+    applicant_marital_status: Optional[str] = None
     # Client-filled — Address
-    applicant_address: str | None = None
-    applicant_suburb: str | None = None
-    applicant_state: str | None = None
-    applicant_postcode: str | None = None
+    applicant_address: Optional[str] = None
+    applicant_suburb: Optional[str] = None
+    applicant_state: Optional[str] = None
+    applicant_postcode: Optional[str] = None
     # Client-filled — Business
-    business_abn: str | None = None
-    business_name: str | None = None
-    business_registration_date: str | None = None
-    business_industry_id: int | None = None
-    business_monthly_sales: Decimal | None = Field(None, ge=0)
+    business_abn: Optional[str] = None
+    business_name: Optional[str] = None
+    business_registration_date: Optional[str] = None
+    business_industry_id: Optional[int] = None
+    business_monthly_sales: Optional[Decimal] = Field(None, ge=0)
     # Client-filled — Loan
-    loan_purpose_id: int | None = None
-    loan_term_requested: int | None = None
+    loan_purpose_id: Optional[int] = None
+    loan_term_requested: Optional[int] = None
     # Overflow JSON
-    lend_extra_data: str | None = None
+    lend_extra_data: Optional[str] = None
 
 
 class LoanApplicationUpdate(BaseModel):
-    loan_type: LoanType | None = None
-    amount: Decimal | None = Field(None, ge=0)
-    status: ApplicationStatus | None = None
-    notes: str | None = None
+    loan_type: Optional[LoanType] = None
+    amount: Optional[Decimal] = Field(None, ge=0)
+    status: Optional[ApplicationStatus] = None
+    notes: Optional[str] = None
     # Client-filled — Personal
-    applicant_title: str | None = None
-    applicant_first_name: str | None = None
-    applicant_last_name: str | None = None
-    applicant_middle_name: str | None = None
-    applicant_dob: str | None = None
-    applicant_gender: str | None = None
-    applicant_marital_status: str | None = None
+    applicant_title: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    applicant_middle_name: Optional[str] = None
+    applicant_dob: Optional[str] = None
+    applicant_gender: Optional[str] = None
+    applicant_marital_status: Optional[str] = None
     # Client-filled — Address
-    applicant_address: str | None = None
-    applicant_suburb: str | None = None
-    applicant_state: str | None = None
-    applicant_postcode: str | None = None
+    applicant_address: Optional[str] = None
+    applicant_suburb: Optional[str] = None
+    applicant_state: Optional[str] = None
+    applicant_postcode: Optional[str] = None
     # Client-filled — Business
-    business_abn: str | None = None
-    business_name: str | None = None
-    business_registration_date: str | None = None
-    business_industry_id: int | None = None
-    business_monthly_sales: Decimal | None = Field(None, ge=0)
+    business_abn: Optional[str] = None
+    business_name: Optional[str] = None
+    business_registration_date: Optional[str] = None
+    business_industry_id: Optional[int] = None
+    business_monthly_sales: Optional[Decimal] = Field(None, ge=0)
     # Client-filled — Loan
-    loan_purpose_id: int | None = None
-    loan_term_requested: int | None = None
+    loan_purpose_id: Optional[int] = None
+    loan_term_requested: Optional[int] = None
     # Overflow JSON
-    lend_extra_data: str | None = None
+    lend_extra_data: Optional[str] = None
     # Broker-filled — Lend controls
-    lend_product_type_id: int | None = None
-    lend_owner_type: str | None = None
-    lend_send_type: str | None = None
-    lend_who_to_contact: str | None = None
+    lend_product_type_id: Optional[int] = None
+    lend_owner_type: Optional[str] = None
+    lend_send_type: Optional[str] = None
+    lend_who_to_contact: Optional[str] = None
 
 
 class AssignedBroker(BaseModel):
@@ -84,58 +85,58 @@ class AssignedBroker(BaseModel):
 class LoanApplicationOut(BaseModel):
     id: str
     user_id: str
-    user_name: str | None = None
-    user_email: str | None = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
     loan_type: LoanType
     amount: Decimal = Field(..., ge=0)
     status: ApplicationStatus
-    assigned_broker_id: str | None = None
-    assigned_broker_name: str | None = None
+    assigned_broker_id: Optional[str] = None
+    assigned_broker_name: Optional[str] = None
     assigned_brokers: list[AssignedBroker] = []
-    notes: str | None
+    notes: Optional[str]
     created_at: datetime
     updated_at: datetime
-    analysis_status: AnalysisStatus | None = None
-    analysis_result: str | None = None
-    analysis_error: str | None = None
-    analyzed_at: datetime | None = None
-    completed_by_id: str | None = None
-    completed_by_name: str | None = None
-    completed_at: datetime | None = None
+    analysis_status: Optional[AnalysisStatus] = None
+    analysis_result: Optional[str] = None
+    analysis_error: Optional[str] = None
+    analyzed_at: Optional[datetime] = None
+    completed_by_id: Optional[str] = None
+    completed_by_name: Optional[str] = None
+    completed_at: Optional[datetime] = None
     # Client-filled — Personal
-    applicant_title: str | None = None
-    applicant_first_name: str | None = None
-    applicant_last_name: str | None = None
-    applicant_middle_name: str | None = None
-    applicant_dob: str | None = None
-    applicant_gender: str | None = None
-    applicant_marital_status: str | None = None
+    applicant_title: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    applicant_middle_name: Optional[str] = None
+    applicant_dob: Optional[str] = None
+    applicant_gender: Optional[str] = None
+    applicant_marital_status: Optional[str] = None
     # Client-filled — Address
-    applicant_address: str | None = None
-    applicant_suburb: str | None = None
-    applicant_state: str | None = None
-    applicant_postcode: str | None = None
+    applicant_address: Optional[str] = None
+    applicant_suburb: Optional[str] = None
+    applicant_state: Optional[str] = None
+    applicant_postcode: Optional[str] = None
     # Client-filled — Business
-    business_abn: str | None = None
-    business_name: str | None = None
-    business_registration_date: str | None = None
-    business_industry_id: int | None = None
-    business_monthly_sales: Decimal | None = Field(None, ge=0)
+    business_abn: Optional[str] = None
+    business_name: Optional[str] = None
+    business_registration_date: Optional[str] = None
+    business_industry_id: Optional[int] = None
+    business_monthly_sales: Optional[Decimal] = Field(None, ge=0)
     # Client-filled — Loan
-    loan_purpose_id: int | None = None
-    loan_term_requested: int | None = None
+    loan_purpose_id: Optional[int] = None
+    loan_term_requested: Optional[int] = None
     # Overflow JSON
-    lend_extra_data: str | None = None
+    lend_extra_data: Optional[str] = None
     # Broker-filled — Lend controls
-    lend_product_type_id: int | None = None
-    lend_owner_type: str | None = None
-    lend_send_type: str | None = None
-    lend_who_to_contact: str | None = None
+    lend_product_type_id: Optional[int] = None
+    lend_owner_type: Optional[str] = None
+    lend_send_type: Optional[str] = None
+    lend_who_to_contact: Optional[str] = None
     # Lend sync tracking
-    lend_ref: str | None = None
-    lend_sync_status: str | None = None
-    lend_sync_error: str | None = None
-    lend_synced_at: datetime | None = None
+    lend_ref: Optional[str] = None
+    lend_sync_status: Optional[str] = None
+    lend_sync_error: Optional[str] = None
+    lend_synced_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

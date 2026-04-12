@@ -5,6 +5,7 @@ import logging
 import time
 from base64 import b64encode
 from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 
@@ -88,7 +89,7 @@ def _map_residency(value: str) -> str:
     return mapping.get(value, value)
 
 
-def build_lead_payload(app, user, extra_data: dict | None = None) -> dict:
+def build_lead_payload(app, user, extra_data: Optional[dict] = None) -> dict:
     extra = extra_data or {}
     is_commercial = app.loan_type.value == "business"
 

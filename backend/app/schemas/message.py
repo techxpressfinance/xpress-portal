@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -16,9 +17,9 @@ class MessageCreate(BaseModel):
 class MessageOut(BaseModel):
     id: str
     sender_id: str
-    sender_name: str | None = None
+    sender_name: Optional[str] = None
     recipient_id: str
-    recipient_name: str | None = None
+    recipient_name: Optional[str] = None
     subject: str
     content: str
     is_read: bool
@@ -41,7 +42,7 @@ class ApplicationNoteMessageOut(BaseModel):
     application_id: str
     loan_type: str
     author_id: str
-    author_name: str | None = None
+    author_name: Optional[str] = None
     content: str
     created_at: datetime
 

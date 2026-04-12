@@ -1,28 +1,30 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class KanbanColumnCreate(BaseModel):
     title: str
-    mapped_status: str | None = None
+    mapped_status: Optional[str] = None
     position: int
-    color: str | None = None
+    color: Optional[str] = None
 
 
 class KanbanColumnUpdate(BaseModel):
-    title: str | None = None
-    mapped_status: str | None = None
-    color: str | None = None
+    title: Optional[str] = None
+    mapped_status: Optional[str] = None
+    color: Optional[str] = None
 
 
 class KanbanColumnOut(BaseModel):
     id: str
     board_id: str
     title: str
-    mapped_status: str | None
+    mapped_status: Optional[str]
     position: int
-    color: str | None
+    color: Optional[str]
     application_count: int = 0
 
     model_config = {"from_attributes": True}
@@ -30,22 +32,22 @@ class KanbanColumnOut(BaseModel):
 
 class KanbanBoardCreate(BaseModel):
     name: str
-    description: str | None = None
-    columns: list[KanbanColumnCreate] | None = None
+    description: Optional[str] = None
+    columns: Optional[list[KanbanColumnCreate]] = None
 
 
 class KanbanBoardUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class KanbanBoardOut(BaseModel):
     id: str
     name: str
-    description: str | None
+    description: Optional[str]
     is_default: bool
     created_by_id: str
-    created_by_name: str | None = None
+    created_by_name: Optional[str] = None
     columns: list[KanbanColumnOut] = []
     created_at: str
     updated_at: str
@@ -56,7 +58,7 @@ class KanbanBoardOut(BaseModel):
 class KanbanBoardListOut(BaseModel):
     id: str
     name: str
-    description: str | None
+    description: Optional[str]
     is_default: bool
     column_count: int = 0
     created_at: str

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -14,8 +15,8 @@ class ApplicationNoteOut(BaseModel):
     id: str
     application_id: str
     author_id: str
-    author_name: str | None = None
-    author_role: str | None = None
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
     content: str
     visibility: list[str]
     created_at: datetime

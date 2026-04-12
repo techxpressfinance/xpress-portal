@@ -1,5 +1,6 @@
 import os
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
@@ -29,7 +30,7 @@ def upload_document(
     file: UploadFile,
     request: Request,
     background_tasks: BackgroundTasks,
-    label: str | None = None,
+    label: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

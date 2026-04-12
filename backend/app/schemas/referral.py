@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -9,7 +10,7 @@ from app.models.referral import ReferralStatus
 
 class ReferralInvite(BaseModel):
     email: EmailStr
-    name: str | None = None
+    name: Optional[str] = None
 
 
 class ReferralCodeOut(BaseModel):
@@ -21,12 +22,12 @@ class ReferralOut(BaseModel):
     id: str
     referrer_id: str
     referral_code: str
-    referred_email: str | None = None
-    referred_user_id: str | None = None
-    referred_user_name: str | None = None
+    referred_email: Optional[str] = None
+    referred_user_id: Optional[str] = None
+    referred_user_name: Optional[str] = None
     status: ReferralStatus
     created_at: datetime
-    converted_at: datetime | None = None
+    converted_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

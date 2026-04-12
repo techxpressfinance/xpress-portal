@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -9,7 +10,7 @@ import app.config as config
 
 logger = logging.getLogger(__name__)
 
-_fernet: Fernet | None = None
+_fernet: Optional[Fernet] = None
 
 
 def _get_fernet() -> Fernet:

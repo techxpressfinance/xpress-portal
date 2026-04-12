@@ -1,60 +1,61 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
 
 class QuoteOptionCreate(BaseModel):
     lender_name: str
-    lender_product: str | None = None
+    lender_product: Optional[str] = None
     sort_order: int = 0
     is_recommended: bool = False
-    purchase_price: float | None = None
-    deposit: float | None = None
-    loan_amount: float | None = None
-    loan_term_months: int | None = None
-    balloon_residual: float | None = None
-    interest_rate: float | None = None
-    comparison_rate: float | None = None
-    establishment_fee: float | None = None
-    monthly_account_fee: float | None = None
-    application_fee: float | None = None
-    brokerage: float | None = None
-    repayment_monthly: float | None = None
-    repayment_fortnightly: float | None = None
-    repayment_weekly: float | None = None
-    total_repayments: float | None = None
-    total_interest: float | None = None
-    total_fees: float | None = None
-    features: str | None = None
-    notes: str | None = None
+    purchase_price: Optional[float] = None
+    deposit: Optional[float] = None
+    loan_amount: Optional[float] = None
+    loan_term_months: Optional[int] = None
+    balloon_residual: Optional[float] = None
+    interest_rate: Optional[float] = None
+    comparison_rate: Optional[float] = None
+    establishment_fee: Optional[float] = None
+    monthly_account_fee: Optional[float] = None
+    application_fee: Optional[float] = None
+    brokerage: Optional[float] = None
+    repayment_monthly: Optional[float] = None
+    repayment_fortnightly: Optional[float] = None
+    repayment_weekly: Optional[float] = None
+    total_repayments: Optional[float] = None
+    total_interest: Optional[float] = None
+    total_fees: Optional[float] = None
+    features: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class QuoteOptionUpdate(BaseModel):
-    lender_name: str | None = None
-    lender_product: str | None = None
-    sort_order: int | None = None
-    is_recommended: bool | None = None
-    purchase_price: float | None = None
-    deposit: float | None = None
-    loan_amount: float | None = None
-    loan_term_months: int | None = None
-    balloon_residual: float | None = None
-    interest_rate: float | None = None
-    comparison_rate: float | None = None
-    establishment_fee: float | None = None
-    monthly_account_fee: float | None = None
-    application_fee: float | None = None
-    brokerage: float | None = None
-    repayment_monthly: float | None = None
-    repayment_fortnightly: float | None = None
-    repayment_weekly: float | None = None
-    total_repayments: float | None = None
-    total_interest: float | None = None
-    total_fees: float | None = None
-    features: str | None = None
-    notes: str | None = None
+    lender_name: Optional[str] = None
+    lender_product: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_recommended: Optional[bool] = None
+    purchase_price: Optional[float] = None
+    deposit: Optional[float] = None
+    loan_amount: Optional[float] = None
+    loan_term_months: Optional[int] = None
+    balloon_residual: Optional[float] = None
+    interest_rate: Optional[float] = None
+    comparison_rate: Optional[float] = None
+    establishment_fee: Optional[float] = None
+    monthly_account_fee: Optional[float] = None
+    application_fee: Optional[float] = None
+    brokerage: Optional[float] = None
+    repayment_monthly: Optional[float] = None
+    repayment_fortnightly: Optional[float] = None
+    repayment_weekly: Optional[float] = None
+    total_repayments: Optional[float] = None
+    total_interest: Optional[float] = None
+    total_fees: Optional[float] = None
+    features: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class QuoteOptionOut(BaseModel):
@@ -63,56 +64,56 @@ class QuoteOptionOut(BaseModel):
     sort_order: int
     is_recommended: bool
     lender_name: str
-    lender_product: str | None
-    purchase_price: float | None
-    deposit: float | None
-    loan_amount: float | None
-    loan_term_months: int | None
-    balloon_residual: float | None
-    interest_rate: float | None
-    comparison_rate: float | None
-    establishment_fee: float | None
-    monthly_account_fee: float | None
-    application_fee: float | None
-    brokerage: float | None
-    repayment_monthly: float | None
-    repayment_fortnightly: float | None
-    repayment_weekly: float | None
-    total_repayments: float | None
-    total_interest: float | None
-    total_fees: float | None
-    features: str | None
-    notes: str | None
+    lender_product: Optional[str]
+    purchase_price: Optional[float]
+    deposit: Optional[float]
+    loan_amount: Optional[float]
+    loan_term_months: Optional[int]
+    balloon_residual: Optional[float]
+    interest_rate: Optional[float]
+    comparison_rate: Optional[float]
+    establishment_fee: Optional[float]
+    monthly_account_fee: Optional[float]
+    application_fee: Optional[float]
+    brokerage: Optional[float]
+    repayment_monthly: Optional[float]
+    repayment_fortnightly: Optional[float]
+    repayment_weekly: Optional[float]
+    total_repayments: Optional[float]
+    total_interest: Optional[float]
+    total_fees: Optional[float]
+    features: Optional[str]
+    notes: Optional[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class QuoteSheetCreate(BaseModel):
-    title: str | None = None
-    broker_notes: str | None = None
-    input_parameters: str | None = None  # JSON string of shared inputs
+    title: Optional[str] = None
+    broker_notes: Optional[str] = None
+    input_parameters: Optional[str] = None  # JSON string of shared inputs
     options: list[QuoteOptionCreate] = []
 
 
 class QuoteSheetUpdate(BaseModel):
-    title: str | None = None
-    status: str | None = None
-    broker_notes: str | None = None
-    input_parameters: str | None = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    broker_notes: Optional[str] = None
+    input_parameters: Optional[str] = None
 
 
 class QuoteSheetOut(BaseModel):
     id: str
     application_id: str
     version: int
-    title: str | None
+    title: Optional[str]
     status: str
     created_by_id: str
-    created_by_name: str | None = None
-    broker_notes: str | None
-    input_parameters: str | None = None
-    sent_at: datetime | None
+    created_by_name: Optional[str] = None
+    broker_notes: Optional[str]
+    input_parameters: Optional[str] = None
+    sent_at: Optional[datetime]
     options: list[QuoteOptionOut] = []
     created_at: datetime
     updated_at: datetime

@@ -6,6 +6,7 @@ import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Optional
 
 from app.config import EMAIL_ENABLED, FRONTEND_URL, SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USER
 
@@ -84,7 +85,7 @@ def _get_base_html(content: str) -> str:
     </html>
     """
 
-def _send_email(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
+def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
     """Send email in the background. Fails silently with logging."""
     try:
         msg = MIMEMultipart("alternative")
@@ -205,7 +206,7 @@ def send_complete_application_email(
     loan_type: str,
     amount: str,
     application_id: str,
-    login_code: str | None = None,
+    login_code: Optional[str] = None,
 ) -> None:
     """Send email asking client to complete a draft application. Non-blocking."""
     if not EMAIL_ENABLED:
@@ -348,7 +349,7 @@ def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) ->
     _send_async(to_email, subject, body, html_body)
 
 
-def send_referral_notification_email(to_email: str, client_name: str, referrer_name: str, organization_name: str | None = None) -> None:
+def send_referral_notification_email(to_email: str, client_name: str, referrer_name: str, organization_name: Optional[str] = None) -> None:
     """Notify an existing password-auth client that they've been referred. Non-blocking."""
     if not EMAIL_ENABLED:
         logger.debug("Email not configured, skipping referral notification for %s", to_email)

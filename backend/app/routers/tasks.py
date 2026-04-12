@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -128,12 +129,12 @@ def _get_task(db: Session, task_id: str) -> Task:
 def list_tasks(
     page: int = Query(1, ge=1),
     per_page: int = Query(15, ge=1, le=100),
-    status_filter: str | None = Query(None, alias="status"),
-    priority: str | None = None,
-    assigned_to_id: str | None = None,
-    application_id: str | None = None,
-    created_by_id: str | None = None,
-    search: str | None = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    priority: Optional[str] = None,
+    assigned_to_id: Optional[str] = None,
+    application_id: Optional[str] = None,
+    created_by_id: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):

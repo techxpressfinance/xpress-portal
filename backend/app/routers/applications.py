@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -71,9 +72,9 @@ def create_application(
 def list_applications(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    status_filter: ApplicationStatus | None = Query(None, alias="status"),
-    loan_type: LoanType | None = None,
-    search: str | None = None,
+    status_filter: Optional[ApplicationStatus] = Query(None, alias="status"),
+    loan_type: Optional[LoanType] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

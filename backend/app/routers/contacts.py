@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
@@ -54,7 +55,7 @@ def _contact_with_count(contact: Contact, db: Session) -> dict:
 def list_contacts(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    search: str | None = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
 ):
@@ -215,7 +216,7 @@ def unlink_organization(
     db.commit()
 
 
-def _extract_extra_fields(app: LoanApplication) -> tuple[str | None, str | None]:
+def _extract_extra_fields(app: LoanApplication) -> tuple[Optional[str], Optional[str]]:
     """Extract phone and DL number from lend_extra_data JSON."""
     import json
     phone = None
@@ -234,10 +235,10 @@ def _find_matching_contact(
     contacts: list[Contact],
     first_name: str,
     last_name: str,
-    dob: str | None,
-    phone: str | None,
-    dl_number: str | None,
-) -> Contact | None:
+    dob: Optional[str],
+    phone: Optional[str],
+    dl_number: Optional[str],
+) -> Optional[Contact]:
     """Find an existing contact matching the given identifiers.
 
     Priority: DL number > phone+DOB > DOB+name > name (case-insensitive).
@@ -355,7 +356,7 @@ def auto_create_contacts(
     }
 
 
-def _pick_best_value(field: str, contacts: list[Contact]) -> str | None:
+def _pick_best_value(field: str, contacts: list[Contact]) -> Optional[str]:
     """Pick the best value for a field across all duplicate contacts.
 
     Prefers the longest non-empty value (most complete data wins).
@@ -370,7 +371,7 @@ def _pick_best_value(field: str, contacts: list[Contact]) -> str | None:
     return max(non_empty, key=len)
 
 
-def _pick_best_address(contacts: list[Contact]) -> dict[str, str | None]:
+def _pick_best_address(contacts: list[Contact]) -> dict[str, Optional[str]]:
     """Pick the most complete address across all duplicate contacts.
 
     Scores each contact's address by how many of the 4 fields are filled,

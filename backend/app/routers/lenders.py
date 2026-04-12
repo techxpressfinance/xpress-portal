@@ -80,7 +80,7 @@ def deactivate_lender(
 
 @router.get("/analytics")
 def lender_analytics(
-    period: str = Query("all", regex="^(30d|90d|6m|1y|all)$"),
+    period: str = Query("all", pattern="^(30d|90d|6m|1y|all)$"),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
 ):

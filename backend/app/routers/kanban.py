@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -268,11 +268,11 @@ def reorder_columns(
 @router.get("/boards/{board_id}/applications")
 def get_board_applications(
     board_id: str,
-    search: str | None = None,
-    loan_type: str | None = None,
-    broker_id: str | None = None,
-    client_id: str | None = None,
-    date_range: Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"] | None = None,
+    search: Optional[str] = None,
+    loan_type: Optional[str] = None,
+    broker_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
     per_column: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
