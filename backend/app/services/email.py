@@ -378,6 +378,91 @@ def send_referral_notification_email(to_email: str, client_name: str, referrer_n
     _send_async(to_email, subject, body, html_body)
 
 
+def send_quote_sheet_email(
+    to_email: str,
+    to_name: str,
+    sender_name: str,
+    sheet_title: str,
+    asset_description: str,
+    summary_rows: list[dict],
+) -> None:
+    """Send a quote sheet summary via email. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping quote sheet email for %s", to_email)
+        return
+
+    subject = f"Your Quote — {sheet_title} - Xpress Tech"
+
+    # Build plain-text summary
+    lines = [f"Dear {to_name or 'Client'},", "", f"{sender_name} from Xpress Tech has prepared a finance quote for you.", ""]
+    if asset_description and asset_description != "Asset":
+        lines.append(f"Asset: {asset_description}")
+    lines.append(f"Quote: {sheet_title}")
+    lines.append("")
+    for row in summary_rows:
+        monthly_str = f"${row['monthly']:,.2f}/mo" if row.get("monthly") else ""
+        weekly_str = f"${row['weekly']:,.2f}/wk" if row.get("weekly") else ""
+        lines.append(f"  {row['term']}: {monthly_str}  {weekly_str}")
+    lines.append("")
+    lines.append("Please contact us to discuss these options further.")
+    lines.append("")
+    lines.append("Best regards,")
+    lines.append("Xpress Tech Team")
+    body = "\n".join(lines)
+
+    # Build HTML rows
+    table_rows_html = ""
+    for row in summary_rows:
+        monthly_str = f"${row['monthly']:,.2f}" if row.get("monthly") else "—"
+        weekly_str = f"${row['weekly']:,.2f}" if row.get("weekly") else "—"
+        balloon_str = f"${row['balloon']:,.2f}" if row.get("balloon") else "$0.00"
+        table_rows_html += f"""
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 10px 16px; font-weight: 600; color: #1a1a1a;">{_esc(row['term'])}</td>
+                <td style="padding: 10px 16px; text-align: right; font-weight: 700; color: #2563eb;">{monthly_str}</td>
+                <td style="padding: 10px 16px; text-align: right; color: #374151;">{weekly_str}</td>
+                <td style="padding: 10px 16px; text-align: right; color: #6b7280;">{balloon_str}</td>
+            </tr>
+        """
+
+    asset_line = ""
+    if asset_description and asset_description != "Asset":
+        asset_line = f'<p style="margin: 0 0 4px; font-size: 14px; color: #2563eb; font-weight: 600;">{_esc(asset_description)} Finance</p>'
+
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(to_name or 'Client')},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{_esc(sender_name)}</strong> from Xpress Tech has prepared a finance quote for you.
+        </p>
+
+        <div style="margin-bottom: 24px; padding: 16px 20px; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px;">
+            {asset_line}
+            <p style="margin: 0; font-size: 16px; font-weight: 700; color: #09090b;">{_esc(sheet_title)}</p>
+        </div>
+
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border: 1px solid #e4e4e7; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+            <thead>
+                <tr style="background-color: #f4f4f5;">
+                    <th style="padding: 10px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px;">Term</th>
+                    <th style="padding: 10px 16px; text-align: right; font-size: 12px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px;">Monthly</th>
+                    <th style="padding: 10px 16px; text-align: right; font-size: 12px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px;">Weekly</th>
+                    <th style="padding: 10px 16px; text-align: right; font-size: 12px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px;">Balloon</th>
+                </tr>
+            </thead>
+            <tbody>
+                {table_rows_html}
+            </tbody>
+        </table>
+
+        <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">
+            Please contact us to discuss these options further.
+        </p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_login_code_email(to_email: str, name: str, code: str) -> None:
     """Send a login code for code-based auth. Non-blocking."""
     if not EMAIL_ENABLED:

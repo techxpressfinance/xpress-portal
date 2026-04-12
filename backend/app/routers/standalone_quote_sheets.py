@@ -7,19 +7,19 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.middleware.auth import get_current_user, require_role
-from app.models.loan_application import LoanApplication
+from app.middleware.auth import require_role
 from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus
 from app.models.user import User
-from app.services.access_control import check_application_access
 from app.schemas.quote_sheet import (
     QuoteOptionCreate,
     QuoteOptionUpdate,
     QuoteSheetCreate,
+    QuoteSheetEmailRequest,
     QuoteSheetUpdate,
 )
+from app.services.email import send_quote_sheet_email
 
-router = APIRouter(prefix="/api/applications/{app_id}/quote-sheets", tags=["quote-sheets"])
+router = APIRouter(prefix="/api/quote-sheets", tags=["standalone-quote-sheets"])
 
 
 def _serialize_option(opt: QuoteOption) -> dict:
@@ -73,17 +73,10 @@ def _serialize(sheet: QuoteSheet) -> dict:
     }
 
 
-def _get_application(db: Session, app_id: str) -> LoanApplication:
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
-    if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    return app
-
-
-def _get_sheet(db: Session, app_id: str, sheet_id: str) -> QuoteSheet:
+def _get_sheet(db: Session, sheet_id: str) -> QuoteSheet:
     sheet = (
         db.query(QuoteSheet)
-        .filter(QuoteSheet.id == sheet_id, QuoteSheet.application_id == app_id)
+        .filter(QuoteSheet.id == sheet_id, QuoteSheet.application_id.is_(None))
         .first()
     )
     if not sheet:
@@ -99,10 +92,10 @@ def _require_draft(sheet: QuoteSheet) -> None:
         )
 
 
-def _next_version(db: Session, app_id: str) -> int:
+def _next_version(db: Session) -> int:
     max_ver = (
         db.query(func.max(QuoteSheet.version))
-        .filter(QuoteSheet.application_id == app_id)
+        .filter(QuoteSheet.application_id.is_(None))
         .scalar()
     )
     return (max_ver or 0) + 1
@@ -111,49 +104,35 @@ def _next_version(db: Session, app_id: str) -> int:
 # ── List ──────────────────────────────────────────────────────────────
 
 @router.get("")
-def list_quote_sheets(
-    app_id: str,
+def list_standalone_quote_sheets(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    query = db.query(QuoteSheet).filter(QuoteSheet.application_id == app_id)
-
-    # Clients only see sent sheets
-    if current_user.role.value == "client":
-        query = query.filter(QuoteSheet.status == QuoteSheetStatus.sent)
-
-    sheets = query.order_by(QuoteSheet.version.desc()).all()
-    result = [_serialize(s) for s in sheets]
-
-    # Strip internal fields for clients
-    if current_user.role.value == "client":
-        for r in result:
-            r["broker_notes"] = None
-            r["input_parameters"] = None
-
-    return result
+    sheets = (
+        db.query(QuoteSheet)
+        .filter(QuoteSheet.application_id.is_(None))
+        .order_by(QuoteSheet.created_at.desc())
+        .all()
+    )
+    return [_serialize(s) for s in sheets]
 
 
 # ── Create ────────────────────────────────────────────────────────────
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_quote_sheet(
-    app_id: str,
+def create_standalone_quote_sheet(
     data: QuoteSheetCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-
     sheet = QuoteSheet(
-        application_id=app_id,
-        version=_next_version(db, app_id),
+        application_id=None,
+        version=_next_version(db),
         title=data.title,
         broker_notes=data.broker_notes,
         input_parameters=data.input_parameters,
+        recipient_name=data.recipient_name,
+        recipient_email=data.recipient_email,
         created_by_id=current_user.id,
     )
     db.add(sheet)
@@ -174,39 +153,25 @@ def create_quote_sheet(
 # ── Get One ───────────────────────────────────────────────────────────
 
 @router.get("/{sheet_id}")
-def get_quote_sheet(
-    app_id: str,
+def get_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
-
-    if current_user.role.value == "client" and sheet.status != QuoteSheetStatus.sent:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote sheet not found")
-
-    result = _serialize(sheet)
-    if current_user.role.value == "client":
-        result["broker_notes"] = None
-        result["input_parameters"] = None
-    return result
+    sheet = _get_sheet(db, sheet_id)
+    return _serialize(sheet)
 
 
 # ── Update ────────────────────────────────────────────────────────────
 
 @router.patch("/{sheet_id}")
-def update_quote_sheet(
-    app_id: str,
+def update_standalone_quote_sheet(
     sheet_id: str,
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
+    sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
 
     update_data = data.model_dump(exclude_unset=True)
@@ -234,15 +199,12 @@ def update_quote_sheet(
 # ── Delete ────────────────────────────────────────────────────────────
 
 @router.delete("/{sheet_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_quote_sheet(
-    app_id: str,
+def delete_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
+    sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
     db.delete(sheet)
     db.commit()
@@ -251,22 +213,21 @@ def delete_quote_sheet(
 # ── Duplicate ─────────────────────────────────────────────────────────
 
 @router.post("/{sheet_id}/duplicate", status_code=status.HTTP_201_CREATED)
-def duplicate_quote_sheet(
-    app_id: str,
+def duplicate_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    source = _get_sheet(db, app_id, sheet_id)
+    source = _get_sheet(db, sheet_id)
 
     new_sheet = QuoteSheet(
-        application_id=app_id,
-        version=_next_version(db, app_id),
+        application_id=None,
+        version=_next_version(db),
         title=source.title,
         broker_notes=source.broker_notes,
         input_parameters=source.input_parameters,
+        recipient_name=source.recipient_name,
+        recipient_email=source.recipient_email,
         created_by_id=current_user.id,
     )
     db.add(new_sheet)
@@ -309,16 +270,13 @@ def duplicate_quote_sheet(
 # ── Option CRUD ───────────────────────────────────────────────────────
 
 @router.post("/{sheet_id}/options", status_code=status.HTTP_201_CREATED)
-def add_option(
-    app_id: str,
+def add_standalone_option(
     sheet_id: str,
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
+    sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
 
     opt = QuoteOption(quote_sheet_id=sheet.id, **data.model_dump())
@@ -329,17 +287,14 @@ def add_option(
 
 
 @router.patch("/{sheet_id}/options/{opt_id}")
-def update_option(
-    app_id: str,
+def update_standalone_option(
     sheet_id: str,
     opt_id: str,
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
+    sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
 
     opt = db.query(QuoteOption).filter(QuoteOption.id == opt_id, QuoteOption.quote_sheet_id == sheet.id).first()
@@ -355,16 +310,13 @@ def update_option(
 
 
 @router.delete("/{sheet_id}/options/{opt_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_option(
-    app_id: str,
+def delete_standalone_option(
     sheet_id: str,
     opt_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
 ):
-    app = _get_application(db, app_id)
-    check_application_access(app, current_user, db=db)
-    sheet = _get_sheet(db, app_id, sheet_id)
+    sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
 
     opt = db.query(QuoteOption).filter(QuoteOption.id == opt_id, QuoteOption.quote_sheet_id == sheet.id).first()
@@ -373,3 +325,70 @@ def delete_option(
 
     db.delete(opt)
     db.commit()
+
+
+# ── Send Email ────────────────────────────────────────────────────────
+
+@router.post("/{sheet_id}/send-email")
+def send_standalone_quote_email(
+    sheet_id: str,
+    data: QuoteSheetEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+):
+    sheet = _get_sheet(db, sheet_id)
+
+    if not sheet.options:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quote sheet has no options to send",
+        )
+
+    # Build the quote summary for the email
+    import json
+    input_params = None
+    if sheet.input_parameters:
+        try:
+            input_params = json.loads(sheet.input_parameters)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    asset_description = "Asset"
+    if input_params and "asset_description" in input_params:
+        asset_description = input_params["asset_description"]
+
+    # Filter options by selected terms if specified
+    options = sheet.options
+    if data.include_terms:
+        options = [o for o in options if round((o.loan_term_months or 0) / 12) in data.include_terms]
+
+    # Build summary rows for the email
+    summary_rows = []
+    for opt in sorted(options, key=lambda o: o.sort_order):
+        term_years = round((opt.loan_term_months or 0) / 12)
+        has_balloon = (opt.balloon_residual or 0) > 0
+        balloon_label = f" ({opt.lender_name})" if has_balloon else ""
+        summary_rows.append({
+            "term": f"{term_years} Year{balloon_label}",
+            "loan_amount": float(opt.loan_amount) if opt.loan_amount else 0,
+            "monthly": float(opt.repayment_monthly) if opt.repayment_monthly else 0,
+            "weekly": float(opt.repayment_weekly) if opt.repayment_weekly else 0,
+            "balloon": float(opt.balloon_residual) if opt.balloon_residual else 0,
+        })
+
+    send_quote_sheet_email(
+        to_email=data.to_email,
+        to_name=data.to_name or sheet.recipient_name or "",
+        sender_name=current_user.full_name,
+        sheet_title=sheet.title or f"Quote Sheet v{sheet.version}",
+        asset_description=asset_description,
+        summary_rows=summary_rows,
+    )
+
+    # Update recipient info on the sheet
+    sheet.recipient_email = data.to_email
+    if data.to_name:
+        sheet.recipient_name = data.to_name
+    db.commit()
+
+    return {"detail": "Quote sheet email sent"}

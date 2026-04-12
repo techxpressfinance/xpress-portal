@@ -94,6 +94,8 @@ class QuoteSheetCreate(BaseModel):
     broker_notes: Optional[str] = None
     input_parameters: Optional[str] = None  # JSON string of shared inputs
     options: list[QuoteOptionCreate] = []
+    recipient_name: Optional[str] = None
+    recipient_email: Optional[str] = None
 
 
 class QuoteSheetUpdate(BaseModel):
@@ -101,11 +103,20 @@ class QuoteSheetUpdate(BaseModel):
     status: Optional[str] = None
     broker_notes: Optional[str] = None
     input_parameters: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_email: Optional[str] = None
+
+
+class QuoteSheetEmailRequest(BaseModel):
+    to_email: str
+    to_name: Optional[str] = None
+    include_terms: Optional[list[int]] = None  # which term years to include; None = all
+    client_facing: bool = True
 
 
 class QuoteSheetOut(BaseModel):
     id: str
-    application_id: str
+    application_id: Optional[str] = None
     version: int
     title: Optional[str]
     status: str
@@ -113,6 +124,8 @@ class QuoteSheetOut(BaseModel):
     created_by_name: Optional[str] = None
     broker_notes: Optional[str]
     input_parameters: Optional[str] = None
+    recipient_name: Optional[str] = None
+    recipient_email: Optional[str] = None
     sent_at: Optional[datetime]
     options: list[QuoteOptionOut] = []
     created_at: datetime

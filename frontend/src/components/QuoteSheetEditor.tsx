@@ -147,7 +147,7 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
 }
 
 interface QuoteSheetEditorProps {
-  applicationId: string;
+  applicationId?: string;
   quoteSheet?: QuoteSheet;
   onSave: (sheet: QuoteSheet) => void;
   onCancel: () => void;
@@ -187,6 +187,9 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
     return generateScenarios(inputs);
   }, [inputs]);
 
+  const isStandalone = !applicationId;
+  const baseUrl = isStandalone ? '/quote-sheets' : `/applications/${applicationId}/quote-sheets`;
+
   const handleSave = async () => {
     if (inputs.asset_price <= 0) {
       toast('Please enter a valid asset price', 'error');
@@ -200,7 +203,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
     try {
       if (quoteSheet) {
         // Update existing: patch sheet, then replace all options
-        await api.patch(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}`, {
+        await api.patch(`${baseUrl}/${quoteSheet.id}`, {
           title: title.trim() || null,
           broker_notes: brokerNotes.trim() || null,
           input_parameters: inputParamsJson,
@@ -208,15 +211,15 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
 
         // Delete all existing options
         for (const existing of quoteSheet.options) {
-          await api.delete(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options/${existing.id}`);
+          await api.delete(`${baseUrl}/${quoteSheet.id}/options/${existing.id}`);
         }
 
         // Add new generated options
         for (const opt of options) {
-          await api.post(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}/options`, opt);
+          await api.post(`${baseUrl}/${quoteSheet.id}/options`, opt);
         }
 
-        const { data } = await api.get(`/applications/${applicationId}/quote-sheets/${quoteSheet.id}`);
+        const { data } = await api.get(`${baseUrl}/${quoteSheet.id}`);
         onSave(data);
         toast('Quote sheet updated', 'success');
       } else {
@@ -226,7 +229,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
           input_parameters: inputParamsJson,
           options,
         };
-        const { data } = await api.post(`/applications/${applicationId}/quote-sheets`, payload);
+        const { data } = await api.post(baseUrl, payload);
         onSave(data);
         toast('Quote sheet created', 'success');
       }

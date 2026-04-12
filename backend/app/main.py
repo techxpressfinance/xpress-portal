@@ -23,7 +23,7 @@ from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables 
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, tasks, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, standalone_quote_sheets, tasks, users
 
 # Configure logging
 logging.basicConfig(
@@ -101,6 +101,9 @@ _MIGRATIONS = [
     ("quote_sheets", "input_parameters", "TEXT"),
     # Contact linkage on loan applications
     ("loan_applications", "contact_id", "VARCHAR(36) REFERENCES contacts(id)"),
+    # Standalone quote sheets: recipient info and nullable application_id
+    ("quote_sheets", "recipient_name", "VARCHAR(200)"),
+    ("quote_sheets", "recipient_email", "VARCHAR(255)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -113,6 +116,51 @@ with engine.begin() as conn:
         if col not in _column_cache[table]:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
             _logger.info("Added column %s.%s", table, col)
+
+# SQLite doesn't support ALTER COLUMN to drop NOT NULL.
+# Rebuild quote_sheets table to make application_id nullable.
+with engine.begin() as conn:
+    # Check if application_id is still NOT NULL by trying an insert with NULL
+    _needs_rebuild = False
+    try:
+        _cols = {c["name"]: c for c in _inspector.get_columns("quote_sheets")}
+        if "application_id" in _cols and _cols["application_id"].get("nullable") is False:
+            _needs_rebuild = True
+    except Exception:
+        pass
+
+    if _needs_rebuild:
+        _logger.info("Rebuilding quote_sheets table to make application_id nullable")
+        conn.execute(text("""
+            CREATE TABLE quote_sheets_new (
+                id VARCHAR(36) PRIMARY KEY,
+                application_id VARCHAR(36) REFERENCES loan_applications(id) ON DELETE CASCADE,
+                version INTEGER NOT NULL DEFAULT 1,
+                title VARCHAR(200),
+                status VARCHAR(5) NOT NULL DEFAULT 'draft',
+                created_by_id VARCHAR(36) NOT NULL REFERENCES users(id),
+                broker_notes TEXT,
+                input_parameters TEXT,
+                recipient_name VARCHAR(200),
+                recipient_email VARCHAR(255),
+                sent_at DATETIME,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO quote_sheets_new
+                (id, application_id, version, title, status, created_by_id,
+                 broker_notes, input_parameters, recipient_name, recipient_email,
+                 sent_at, created_at, updated_at)
+            SELECT id, application_id, version, title, status, created_by_id,
+                   broker_notes, input_parameters, recipient_name, recipient_email,
+                   sent_at, created_at, updated_at
+            FROM quote_sheets
+        """))
+        conn.execute(text("DROP TABLE quote_sheets"))
+        conn.execute(text("ALTER TABLE quote_sheets_new RENAME TO quote_sheets"))
+        _logger.info("quote_sheets table rebuilt successfully")
 
 # Backfill: migrate existing assigned_broker_id rows into application_brokers
 if "application_brokers" in {t for t in _inspector.get_table_names()}:
@@ -228,6 +276,7 @@ app.include_router(lenders.router)
 app.include_router(lender_submissions.router)
 app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
+app.include_router(standalone_quote_sheets.router)
 app.include_router(contacts.router)
 
 

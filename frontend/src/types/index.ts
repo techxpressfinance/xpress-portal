@@ -473,7 +473,7 @@ export interface QuoteInputParameters {
 
 export interface QuoteSheet {
   id: string;
-  application_id: string;
+  application_id: string | null;
   version: number;
   title: string | null;
   status: QuoteSheetStatus;
@@ -481,6 +481,8 @@ export interface QuoteSheet {
   created_by_name: string | null;
   broker_notes: string | null;
   input_parameters: string | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
   sent_at: string | null;
   options: QuoteOption[];
   created_at: string;

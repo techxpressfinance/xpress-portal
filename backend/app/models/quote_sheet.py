@@ -21,9 +21,11 @@ class QuoteSheet(Base):
     __tablename__ = "quote_sheets"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    application_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("loan_applications.id", ondelete="CASCADE"), nullable=False
+    application_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("loan_applications.id", ondelete="CASCADE"), nullable=True
     )
+    recipient_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    recipient_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     status: Mapped[QuoteSheetStatus] = mapped_column(
