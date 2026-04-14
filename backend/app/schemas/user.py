@@ -56,6 +56,7 @@ class UserOut(BaseModel):
     department: Optional[str] = None
     license_number: Optional[str] = None
     organization_name: Optional[str] = None
+    tenant_id: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

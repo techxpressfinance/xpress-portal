@@ -14,6 +14,7 @@ class KanbanBoard(Base):
     __tablename__ = "kanban_boards"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
@@ -34,6 +35,7 @@ class KanbanColumn(Base):
     __tablename__ = "kanban_columns"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     board_id: Mapped[str] = mapped_column(String(36), ForeignKey("kanban_boards.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     mapped_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

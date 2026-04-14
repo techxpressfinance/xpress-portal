@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,7 @@ class UserRole(str, enum.Enum):
     broker = "broker"
     admin = "admin"
     referrer = "referrer"
+    super_admin = "super_admin"
 
 
 class KYCStatus(str, enum.Enum):
@@ -26,9 +27,11 @@ class KYCStatus(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="!invited")
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     auth_method: Mapped[str] = mapped_column(String(10), default="password", nullable=False)

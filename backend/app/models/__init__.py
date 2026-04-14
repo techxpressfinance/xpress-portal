@@ -1,3 +1,4 @@
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.loan_application import LoanApplication
 from app.models.document import Document
@@ -14,4 +15,4 @@ from app.models.task import Task, ChecklistItem
 from app.models.quote_sheet import QuoteSheet, QuoteOption
 from app.models.contact import Contact, Organization, ContactOrganization
 
-__all__ = ["User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization"]
+__all__ = ["Tenant", "User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization"]

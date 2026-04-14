@@ -35,6 +35,7 @@ from app.services.auth import (
 )
 from app.services.email import send_login_code_email, send_verification_email
 from app.services.login_code import set_login_code
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -69,10 +70,11 @@ def register(
     request: Request,
     db: Session = Depends(get_db),
     ref: Optional[str] = Query(None, description="Referral code"),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     auth_limiter.check(request)
 
-    if db.query(User).filter(User.email == data.email).first():
+    if db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     if EMAIL_ENABLED:
@@ -87,6 +89,7 @@ def register(
         password_hash=hash_password(data.password),
         full_name=data.full_name,
         phone=data.phone,
+        tenant_id=tenant_id,
         email_verified=not EMAIL_ENABLED,
         email_verification_token=token,
         email_verification_token_expires_at=token_expires,
@@ -123,14 +126,14 @@ def register(
 
 
 @router.post("/login", response_model=AccessTokenResponse)
-def login(data: UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
+def login(data: UserLogin, request: Request, response: Response, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
     auth_limiter.check(request)
     auth_limiter.check_key(data.email)
 
     _MAX_FAILED = 5
     _LOCKOUT_MINUTES = 15
 
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
 
     # Check account lockout before verifying password
     if user and user.locked_until and user.locked_until > datetime.now(timezone.utc):
@@ -161,8 +164,8 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     user.locked_until = None
     db.commit()
 
-    _set_refresh_cookie(response, create_refresh_token(user.id))
-    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value))
+    _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
+    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
 
 
 @router.post("/logout")
@@ -206,8 +209,9 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     blacklist_token(refresh_token, db)
     db.commit()
 
-    _set_refresh_cookie(response, create_refresh_token(user.id))
-    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value))
+    _tenant_id = payload.get("tenant_id", user.tenant_id or "")
+    _set_refresh_cookie(response, create_refresh_token(user.id, _tenant_id))
+    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, _tenant_id))
 
 
 @router.post("/change-password")
@@ -254,11 +258,11 @@ def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.post("/resend-verification")
-def resend_verification(data: ResendVerificationRequest, request: Request, db: Session = Depends(get_db)):
+def resend_verification(data: ResendVerificationRequest, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
     auth_limiter.check(request)
     auth_limiter.check_key(data.email)
 
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if user and not user.email_verified and EMAIL_ENABLED:
         token = secrets.token_urlsafe(32)
         user.email_verification_token = token
@@ -275,10 +279,10 @@ def me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/request-code")
-def request_code(data: CodeRequest, request: Request, db: Session = Depends(get_db)):
+def request_code(data: CodeRequest, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
     auth_limiter.check(request)
 
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if user and user.auth_method == "code" and user.is_active:
         plain = set_login_code(user)
         db.commit()
@@ -288,10 +292,10 @@ def request_code(data: CodeRequest, request: Request, db: Session = Depends(get_
 
 
 @router.post("/verify-code", response_model=AccessTokenResponse)
-def verify_code(data: CodeVerify, request: Request, response: Response, db: Session = Depends(get_db)):
+def verify_code(data: CodeVerify, request: Request, response: Response, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
     auth_limiter.check(request)
 
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if not user or user.auth_method != "code":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_active:
@@ -315,8 +319,8 @@ def verify_code(data: CodeVerify, request: Request, response: Response, db: Sess
     user.login_code_attempts = 0
     db.commit()
 
-    _set_refresh_cookie(response, create_refresh_token(user.id))
-    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value))
+    _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
+    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
 
 
 @router.get("/csrf-token")

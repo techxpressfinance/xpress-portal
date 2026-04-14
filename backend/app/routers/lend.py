@@ -12,6 +12,7 @@ from app.models.document import Document
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.services.access_control import check_application_access
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/lend", tags=["lend"])
 
@@ -54,12 +55,13 @@ def trigger_sync(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
     force_new: bool = Query(False, description="Clear existing Lend ref and create a fresh lead"),
 ):
     if not LEND_ENABLED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lend integration is not configured")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -87,8 +89,9 @@ def get_sync_status(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -107,12 +110,13 @@ def update_document_lend_type(
     data: LendDocTypeUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)

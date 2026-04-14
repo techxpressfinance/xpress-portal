@@ -12,6 +12,7 @@ from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.lender_submission import LenderSubmissionCreate, LenderSubmissionOut, LenderSubmissionUpdate
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications/{app_id}/submissions", tags=["lender-submissions"])
 
@@ -41,8 +42,9 @@ def list_submissions(
     app_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     subs = (
@@ -60,8 +62,9 @@ def create_submission(
     data: LenderSubmissionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -86,6 +89,7 @@ def create_submission(
         application_id=app_id,
         lender_id=data.lender_id,
         submitted_by_id=current_user.id,
+        tenant_id=tenant_id,
         status=sub_status,
         submitted_at=data.submitted_at or datetime.now(timezone.utc),
         offered_rate=data.offered_rate,
@@ -106,6 +110,7 @@ def update_submission(
     data: LenderSubmissionUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sub = (
         db.query(LenderSubmission)
@@ -135,6 +140,7 @@ def delete_submission(
     sub_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sub = (
         db.query(LenderSubmission)

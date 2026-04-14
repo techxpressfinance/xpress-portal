@@ -11,6 +11,7 @@ from app.models.document import Document
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.services.query_utils import escape_like
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -21,13 +22,14 @@ def global_search(
     limit: int = Query(10, ge=1, le=25),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Search across applications, users, and documents. Admin/broker only."""
     safe_q = escape_like(q)
     pattern = f"%{safe_q}%"
 
     # ── Applications ───────────────────────────────────────
-    app_query = db.query(LoanApplication).join(User, LoanApplication.user_id == User.id)
+    app_query = db.query(LoanApplication).join(User, LoanApplication.user_id == User.id).filter(LoanApplication.tenant_id == tenant_id)
 
     # Brokers only see their assigned applications
     if current_user.role == UserRole.broker:
@@ -80,7 +82,7 @@ def global_search(
         )
 
     # ── Users ──────────────────────────────────────────────
-    user_query = db.query(User).filter(
+    user_query = db.query(User).filter(User.tenant_id == tenant_id).filter(
         User.full_name.ilike(pattern, escape="\\")
         | User.email.ilike(pattern, escape="\\")
         | User.phone.ilike(pattern, escape="\\")
@@ -108,6 +110,7 @@ def global_search(
     doc_query = (
         db.query(Document)
         .join(LoanApplication, Document.application_id == LoanApplication.id)
+        .filter(Document.tenant_id == tenant_id)
         .filter(
             Document.original_filename.ilike(pattern, escape="\\")
             | Document.doc_type.ilike(pattern, escape="\\")

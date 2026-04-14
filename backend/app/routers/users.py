@@ -18,6 +18,7 @@ from app.schemas.user import BrokerCreate, KYCStatusUpdate, UserActiveUpdate, Us
 from app.services.activity_log import log_activity
 from app.services.auth import hash_password
 from app.services.email import send_broker_welcome_email
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -35,8 +36,9 @@ def _generate_temp_password(length: int = 12) -> str:
 def list_users(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    return db.query(User).order_by(User.created_at.desc()).limit(500).all()
+    return db.query(User).filter(User.tenant_id == tenant_id).order_by(User.created_at.desc()).limit(500).all()
 
 
 @router.get("/me", response_model=UserOut)
@@ -64,9 +66,10 @@ def create_broker(
     data: BrokerCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Create a new broker account. Admin only. Sends login credentials via email."""
-    existing = db.query(User).filter(User.email == data.email).first()
+    existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -88,10 +91,11 @@ def create_broker(
         department=data.department,
         license_number=data.license_number,
         invited_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(user)
     db.flush()
-    log_activity(db, current_user.id, "broker_created", "user", user.id, {"email": data.email, "full_name": data.full_name})
+    log_activity(db, current_user.id, "broker_created", "user", user.id, {"email": data.email, "full_name": data.full_name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
 
@@ -104,6 +108,7 @@ def get_user_referrer(
     user_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Get the referrer of a user, if any."""
     referral = db.query(Referral).filter(
@@ -129,6 +134,7 @@ def get_user(
     user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if current_user.role.value == "client" and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot view other users")
@@ -140,7 +146,7 @@ def get_user(
         ).first()
         if not ref:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot view this user")
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
@@ -152,13 +158,14 @@ def update_kyc_status(
     data: KYCStatusUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     old_kyc = user.kyc_status.value
     user.kyc_status = data.kyc_status
-    log_activity(db, _current_user.id, "kyc_status_changed", "user", user_id, {"from": old_kyc, "to": data.kyc_status.value})
+    log_activity(db, _current_user.id, "kyc_status_changed", "user", user_id, {"from": old_kyc, "to": data.kyc_status.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
     return user
@@ -170,10 +177,11 @@ def update_user_role(
     data: UserRoleUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if user_id == _current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change your own role")
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -186,7 +194,7 @@ def update_user_role(
 
     old_role = user.role.value
     user.role = data.role
-    log_activity(db, _current_user.id, "role_changed", "user", user_id, {"from": old_role, "to": data.role.value})
+    log_activity(db, _current_user.id, "role_changed", "user", user_id, {"from": old_role, "to": data.role.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
     return user
@@ -198,15 +206,16 @@ def toggle_user_active(
     data: UserActiveUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate yourself")
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.is_active = data.is_active
     action = "user_activated" if data.is_active else "user_deactivated"
-    log_activity(db, current_user.id, action, "user", user_id, {"email": user.email})
+    log_activity(db, current_user.id, action, "user", user_id, {"email": user.email}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
     return user
@@ -217,12 +226,13 @@ def delete_user(
     user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Permanently delete a user. Admin only. Blocked if user owns loan applications."""
     if user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -261,6 +271,6 @@ def delete_user(
         {"invited_by_id": None}, synchronize_session="fetch"
     )
 
-    log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": user.email, "role": user.role.value})
+    log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": user.email, "role": user.role.value}, tenant_id=tenant_id)
     db.delete(user)
     db.commit()

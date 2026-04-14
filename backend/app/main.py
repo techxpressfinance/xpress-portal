@@ -12,6 +12,8 @@ from app.database import Base, engine
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.security import BodySizeLimitMiddleware, SecurityHeadersMiddleware
+from app.middleware.tenant import TenantMiddleware
+from app.models.tenant import Tenant  # noqa: F401 — ensure table is created
 from app.models.application_broker import ApplicationBroker  # noqa: F401 — ensure table is created
 from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure table is created
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
@@ -23,7 +25,7 @@ from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables 
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, standalone_quote_sheets, tasks, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -104,6 +106,28 @@ _MIGRATIONS = [
     # Standalone quote sheets: recipient info and nullable application_id
     ("quote_sheets", "recipient_name", "VARCHAR(200)"),
     ("quote_sheets", "recipient_email", "VARCHAR(255)"),
+    # Multi-tenancy: add tenant_id to all tenant-scoped tables
+    ("users", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("loan_applications", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("documents", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("contacts", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("contact_organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("lenders", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("lender_submissions", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("kanban_boards", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("kanban_columns", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("tasks", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("checklist_items", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("quote_sheets", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("quote_options", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("activity_logs", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("direct_messages", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("referrals", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("external_referrals", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("application_notes", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("application_brokers", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("broker_groups", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -196,6 +220,32 @@ if "application_notes" in {t for t in _inspector.get_table_names()}:
             ))
             _logger.info("Backfilled application_notes.visibility from is_internal")
 
+# Backfill: create default tenant and assign all existing data
+with engine.begin() as conn:
+    _tenant_count = conn.execute(text("SELECT COUNT(*) FROM tenants")).scalar()
+    if _tenant_count == 0:
+        import uuid as _uuid
+        from datetime import datetime as _dt, timezone as _tz
+        _default_tenant_id = str(_uuid.uuid4())
+        _now = _dt.now(_tz.utc)
+        conn.execute(text(
+            "INSERT INTO tenants (id, name, slug, is_active, created_at, updated_at) "
+            "VALUES (:id, :name, :slug, 1, :now, :now)"
+        ), {"id": _default_tenant_id, "name": "Default", "slug": "default", "now": _now})
+        _tenant_tables = [
+            "users", "loan_applications", "documents", "contacts", "organizations",
+            "contact_organizations", "lenders", "lender_submissions", "kanban_boards",
+            "kanban_columns", "tasks", "checklist_items", "quote_sheets", "quote_options",
+            "activity_logs", "direct_messages", "referrals", "external_referrals",
+            "application_notes", "application_brokers", "broker_groups",
+        ]
+        for _tbl in _tenant_tables:
+            try:
+                conn.execute(text(f"UPDATE {_tbl} SET tenant_id = :tid WHERE tenant_id IS NULL"), {"tid": _default_tenant_id})
+            except Exception:
+                pass  # Table may be empty or not exist yet
+        _logger.info("Created default tenant %s and backfilled all data", _default_tenant_id)
+
 # Purge expired blacklisted tokens on startup
 with engine.begin() as conn:
     if DATABASE_URL.startswith("sqlite"):
@@ -204,31 +254,55 @@ with engine.begin() as conn:
         conn.execute(text("DELETE FROM token_blacklist WHERE expires_at < NOW()"))
     _logger.info("Purged expired blacklisted tokens")
 
-# Seed a default Kanban board if the table exists but is empty
+# Seed super_admin user if none exists
+with engine.begin() as conn:
+    _sa_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")).scalar()
+    if _sa_count == 0:
+        import os as _os
+        import uuid as _uuid
+        from datetime import datetime as _dt, timezone as _tz
+        from app.services.auth import hash_password as _hash_pw
+        _sa_email = _os.getenv("SUPER_ADMIN_EMAIL", "admin@xpresstech.com")
+        _sa_password = _os.getenv("SUPER_ADMIN_PASSWORD", "Admin123!")
+        _now = _dt.now(_tz.utc)
+        conn.execute(text(
+            "INSERT INTO users (id, email, password_hash, full_name, role, kyc_status, is_active, email_verified, auth_method, "
+            "failed_login_attempts, login_code_attempts, created_at, updated_at) "
+            "VALUES (:id, :email, :pw, :name, 'super_admin', 'verified', 1, 1, 'password', 0, 0, :now, :now)"
+        ), {"id": str(_uuid.uuid4()), "email": _sa_email, "pw": _hash_pw(_sa_password), "name": "Super Admin", "now": _now})
+        _logger.info("Seeded super_admin user: %s (change password immediately!)", _sa_email)
+
+# Seed a default Kanban board per tenant if they don't have one
 try:
+    import uuid as _uuid
+    from datetime import datetime as _dt, timezone as _tz
     with engine.begin() as conn:
-        board_count = conn.execute(text("SELECT COUNT(*) FROM kanban_boards")).scalar()
-        if board_count == 0:
-            import uuid as _uuid
-            from datetime import datetime as _dt, timezone as _tz
+        _tenants = conn.execute(text("SELECT id FROM tenants WHERE is_active = 1")).fetchall()
+        for _tenant_row in _tenants:
+            _tid = _tenant_row[0]
+            _board_exists = conn.execute(
+                text("SELECT COUNT(*) FROM kanban_boards WHERE tenant_id = :tid"), {"tid": _tid}
+            ).scalar()
+            if _board_exists > 0:
+                continue
+            _admin_row = conn.execute(
+                text("SELECT id FROM users WHERE role='admin' AND tenant_id = :tid LIMIT 1"), {"tid": _tid}
+            ).first()
+            if not _admin_row:
+                continue
             _now = _dt.now(_tz.utc)
             _board_id = str(_uuid.uuid4())
-            # Find first admin user to set as creator
-            _admin_row = conn.execute(text("SELECT id FROM users WHERE role='admin' LIMIT 1")).first()
-            if not _admin_row:
-                _logger.debug("Kanban board seeding skipped: no admin user exists yet")
-            else:
-                _creator_id = _admin_row[0]
+            _creator_id = _admin_row[0]
+            conn.execute(text(
+                "INSERT INTO kanban_boards (id, tenant_id, name, description, created_by_id, is_default, created_at, updated_at) "
+                "VALUES (:id, :tid, :name, :desc, :creator, 1, :now, :now)"
+            ), {"id": _board_id, "tid": _tid, "name": "Default Pipeline", "desc": "Default application pipeline board", "creator": _creator_id, "now": _now})
+            for col_def in DEFAULT_KANBAN_COLUMNS:
                 conn.execute(text(
-                    "INSERT INTO kanban_boards (id, name, description, created_by_id, is_default, created_at, updated_at) "
-                    "VALUES (:id, :name, :desc, :creator, 1, :now, :now)"
-                ), {"id": _board_id, "name": "Default Pipeline", "desc": "Default application pipeline board", "creator": _creator_id, "now": _now})
-                for col_def in DEFAULT_KANBAN_COLUMNS:
-                    conn.execute(text(
-                        "INSERT INTO kanban_columns (id, board_id, title, mapped_status, position, color, created_at) "
-                        "VALUES (:id, :board_id, :title, :mapped_status, :position, :color, :now)"
-                    ), {"id": str(_uuid.uuid4()), "board_id": _board_id, **col_def, "now": _now})
-                _logger.info("Seeded default Kanban board")
+                    "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, position, color, created_at) "
+                    "VALUES (:id, :tid, :board_id, :title, :mapped_status, :position, :color, :now)"
+                ), {"id": str(_uuid.uuid4()), "tid": _tid, "board_id": _board_id, **col_def, "now": _now})
+            _logger.info("Seeded default Kanban board for tenant %s", _tid)
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
@@ -245,6 +319,7 @@ async def _global_exception_handler(request: Request, exc: Exception):
 
 
 # Middleware (order matters - last added runs first)
+app.add_middleware(TenantMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
@@ -252,11 +327,14 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS.split(",") if o.strip()],
+    allow_origin_regex=r"https?://[\w-]+\.(localhost(:\d+)?|xpresstech\.com)",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Tenant-Slug"],
 )
 
+app.include_router(super_admin.router)
+app.include_router(tenants.router)
 app.include_router(auth.router)
 app.include_router(invitations.router)
 app.include_router(users.router)

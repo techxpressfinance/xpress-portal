@@ -20,6 +20,7 @@ from app.schemas.contact import (
     PaginatedContacts,
 )
 from app.services.query_utils import escape_like
+from app.services.tenant_scope import get_tenant_id
 
 _logger = logging.getLogger(__name__)
 
@@ -58,8 +59,9 @@ def list_contacts(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(Contact)
+    query = db.query(Contact).filter(Contact.tenant_id == tenant_id)
     if search:
         safe = escape_like(search)
         # Search across name, email, phone — encrypted fields searched post-query
@@ -76,7 +78,7 @@ def list_contacts(
     # For name search on encrypted fields, we need to fetch and filter in Python
     if search and not query.count():
         # Fallback: load all and filter by decrypted name
-        all_contacts = db.query(Contact).all()
+        all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).all()
         safe_lower = search.lower()
         filtered = [
             c for c in all_contacts
@@ -108,8 +110,9 @@ def get_contact(
     contact_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.tenant_id == tenant_id).first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
@@ -159,8 +162,9 @@ def update_contact(
     data: ContactUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.tenant_id == tenant_id).first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
@@ -177,6 +181,7 @@ def link_organization(
     data: ContactOrganizationLink,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
@@ -205,6 +210,7 @@ def unlink_organization(
     org_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     link = db.query(ContactOrganization).filter(
         ContactOrganization.contact_id == contact_id,
@@ -280,15 +286,16 @@ def _find_matching_contact(
 def auto_create_contacts(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Scan all loan applications without a contact_id and auto-create/link contacts.
 
     Matching priority: DL number > phone+DOB > DOB+name > name.
     Also auto-creates organizations from business_name/business_abn on applications.
     """
-    unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None)).all()
+    unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None), LoanApplication.tenant_id == tenant_id).all()
     # Load all existing contacts once; refresh after each new creation
-    all_contacts: list[Contact] = list(db.query(Contact).all())
+    all_contacts: list[Contact] = list(db.query(Contact).filter(Contact.tenant_id == tenant_id).all())
     created = 0
     linked = 0
     orgs_created = 0
@@ -308,6 +315,7 @@ def auto_create_contacts(
             contact = Contact(
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
+                tenant_id=tenant_id,
                 middle_name=(app.applicant_middle_name or "").strip() or None,
                 phone=phone,
                 date_of_birth=dob,
@@ -329,13 +337,14 @@ def auto_create_contacts(
         if app.business_name or app.business_abn:
             org = None
             if app.business_abn:
-                org = db.query(Organization).filter(Organization.abn == app.business_abn).first()
+                org = db.query(Organization).filter(Organization.abn == app.business_abn, Organization.tenant_id == tenant_id).first()
             if not org and app.business_name:
-                org = db.query(Organization).filter(Organization.name == app.business_name).first()
+                org = db.query(Organization).filter(Organization.name == app.business_name, Organization.tenant_id == tenant_id).first()
             if not org:
                 org = Organization(
                     name=app.business_name or "Unknown",
                     abn=app.business_abn,
+                    tenant_id=tenant_id,
                 )
                 db.add(org)
                 db.flush()
@@ -397,6 +406,7 @@ def _pick_best_address(contacts: list[Contact]) -> dict[str, Optional[str]]:
 def deduplicate_contacts(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Find and merge duplicate contacts.
 
@@ -405,7 +415,7 @@ def deduplicate_contacts(
     field across all duplicates. Address fields are picked as a unit so you
     don't get a Frankenstein address.
     """
-    all_contacts = db.query(Contact).order_by(Contact.created_at.asc()).all()
+    all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).order_by(Contact.created_at.asc()).all()
 
     # Group by normalized name
     name_groups: dict[str, list[Contact]] = {}
@@ -467,7 +477,7 @@ def deduplicate_contacts(
         merged_count += 1
 
     db.commit()
-    remaining = db.query(func.count(Contact.id)).scalar()
+    remaining = db.query(func.count(Contact.id)).filter(Contact.tenant_id == tenant_id).scalar()
     return {
         "groups_merged": merged_count,
         "duplicates_removed": deleted_count,

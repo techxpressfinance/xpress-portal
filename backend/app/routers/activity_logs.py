@@ -11,6 +11,7 @@ from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.schemas.activity_log import ActivityLogOut, PaginatedActivityLogs
 from app.services.date_filter import apply_date_range_filter
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/activity-logs", tags=["activity-logs"])
 
@@ -25,8 +26,9 @@ def list_activity_logs(
     date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(ActivityLog)
+    query = db.query(ActivityLog).filter(ActivityLog.tenant_id == tenant_id)
 
     if entity_type:
         query = query.filter(ActivityLog.entity_type == entity_type)

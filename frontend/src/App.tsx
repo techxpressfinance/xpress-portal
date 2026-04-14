@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ToastProvider } from './components/Toast';
 import { AuthProvider } from './contexts/AuthContext';
+import { TenantProvider } from './contexts/TenantContext';
 import { useAuth } from './hooks/useAuth';
 
 const ActivityLogs = lazy(() => import('./pages/admin/ActivityLogs'));
@@ -39,11 +40,17 @@ import EnterCode from './pages/EnterCode';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
+const PlatformLogin = lazy(() => import('./pages/PlatformLogin'));
+const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'));
+const TenantManagement = lazy(() => import('./pages/platform/TenantManagement'));
+const CreateTenant = lazy(() => import('./pages/platform/CreateTenant'));
+const TenantDetail = lazy(() => import('./pages/platform/TenantDetail'));
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'super_admin') return <Navigate to="/platform" replace />;
   if (user.role === 'referrer') return <Navigate to="/referrer" replace />;
   return <Navigate to={user.role === 'client' ? '/dashboard' : '/admin'} replace />;
 }
@@ -52,10 +59,12 @@ export default function App() {
   return (
     <ErrorBoundary>
     <BrowserRouter>
+      <TenantProvider>
       <AuthProvider>
         <ToastProvider>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
+            <Route path="/platform-login" element={<PlatformLogin />} />
             <Route path="/login" element={<Login />} />
             <Route path="/enter-code" element={<EnterCode />} />
             <Route path="/register" element={<Register />} />
@@ -262,6 +271,40 @@ export default function App() {
                 }
               />
 
+              {/* Super Admin / Platform Routes */}
+              <Route
+                path="/platform"
+                element={
+                  <ProtectedRoute roles={['super_admin']}>
+                    <PlatformDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/platform/tenants"
+                element={
+                  <ProtectedRoute roles={['super_admin']}>
+                    <TenantManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/platform/tenants/new"
+                element={
+                  <ProtectedRoute roles={['super_admin']}>
+                    <CreateTenant />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/platform/tenants/:id"
+                element={
+                  <ProtectedRoute roles={['super_admin']}>
+                    <TenantDetail />
+                  </ProtectedRoute>
+                }
+              />
+
               {/* Referrer Routes */}
               <Route
                 path="/referrer"
@@ -292,6 +335,7 @@ export default function App() {
           </Suspense>
         </ToastProvider>
       </AuthProvider>
+      </TenantProvider>
     </BrowserRouter>
     </ErrorBoundary>
   );

@@ -31,9 +31,31 @@ export function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
+export function getTenantSlug(): string | null {
+  const stored = localStorage.getItem('dev-tenant-slug');
+  if (stored) return stored;
+
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  if (parts.length >= 2) {
+    const sub = parts[0];
+    if (sub !== 'www' && sub !== 'localhost' && !/^\d+$/.test(sub)) {
+      return sub;
+    }
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get('tenant') || 'default';
+}
+
 api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  // Attach tenant slug header
+  const slug = getTenantSlug();
+  if (slug) {
+    config.headers['X-Tenant-Slug'] = slug;
   }
   // Attach CSRF token on state-changing requests
   const method = config.method?.toLowerCase();

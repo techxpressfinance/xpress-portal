@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.user import UserRole
 from app.schemas.message import ApplicationNoteMessageOut, MessageCreate, MessageOut, MessageRecipientOut, PaginatedMessages
 from app.services.email import _send_email
+from app.services.tenant_scope import get_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ def _message_to_out(msg: DirectMessage) -> MessageOut:
 def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     count = (
         db.query(DirectMessage)
@@ -56,6 +58,7 @@ def list_messages(
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     query = db.query(DirectMessage).filter(
         or_(DirectMessage.recipient_id == current_user.id, DirectMessage.sender_id == current_user.id)
@@ -90,6 +93,7 @@ def list_messages(
 def list_application_note_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Return application notes visible to the current user (based on visibility field)."""
     if current_user.role.value == "client":
@@ -138,11 +142,12 @@ def list_application_note_messages(
 def list_message_recipients(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if current_user.role.value == "client":
-        recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin])).all()
+        recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
     else:
-        recipients = db.query(User).filter(User.role == UserRole.client).all()
+        recipients = db.query(User).filter(User.role == UserRole.client, User.tenant_id == tenant_id).all()
     return recipients
 
 
@@ -151,6 +156,7 @@ def get_message(
     message_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     msg = db.query(DirectMessage).filter(DirectMessage.id == message_id).first()
     if not msg:
@@ -174,6 +180,7 @@ def send_message(
     data: MessageCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     # Validate recipient exists and is a client
     recipient = db.query(User).filter(User.id == data.recipient_id).first()
@@ -192,6 +199,7 @@ def send_message(
         recipient_id=data.recipient_id,
         subject=data.subject,
         content=data.content,
+        tenant_id=tenant_id,
     )
     db.add(msg)
     db.commit()

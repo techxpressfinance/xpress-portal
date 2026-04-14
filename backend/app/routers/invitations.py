@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
 from app.services.email import send_complete_application_email, send_invitation_email
 from app.services.login_code import set_login_code
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
@@ -23,12 +24,13 @@ def list_invitations(
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     Inviter = aliased(User)
     query = (
         db.query(User, Inviter.full_name.label("inviter_name"))
         .outerjoin(Inviter, User.invited_by_id == Inviter.id)
-        .filter(User.invited_by_id.isnot(None))
+        .filter(User.invited_by_id.isnot(None), User.tenant_id == tenant_id)
     )
 
     # Brokers see only their own invitations
@@ -58,11 +60,12 @@ def invite_user(
     data: InvitationCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if data.email.lower() == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot invite yourself")
 
-    existing = db.query(User).filter(User.email == data.email).first()
+    existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
 
     if existing:
         if existing.auth_method != "code":
@@ -94,6 +97,7 @@ def invite_user(
         email_verified=True,
         login_code_attempts=0,
         invited_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     plain = set_login_code(user)
     db.add(user)
@@ -109,8 +113,9 @@ def invite_to_complete_application(
     data: InviteToCompleteCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == data.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == data.application_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -145,6 +150,7 @@ def start_application_for_client(
     data: StartApplicationForClient,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Create a draft application on behalf of a client and send them an email to complete it."""
     from app.models.loan_application import LoanType
@@ -166,6 +172,7 @@ def start_application_for_client(
         loan_type=loan_type,
         amount=data.amount,
         notes=data.notes,
+        tenant_id=tenant_id,
     )
     db.add(application)
     db.flush()

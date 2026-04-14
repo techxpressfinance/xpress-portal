@@ -13,6 +13,7 @@ from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.lender import LenderCreate, LenderOut, LenderUpdate
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/lenders", tags=["lenders"])
 
@@ -21,8 +22,9 @@ router = APIRouter(prefix="/api/lenders", tags=["lenders"])
 def list_lenders(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(Lender).order_by(Lender.name)
+    query = db.query(Lender).filter(Lender.tenant_id == tenant_id).order_by(Lender.name)
     if current_user.role.value != "admin":
         query = query.filter(Lender.is_active.is_(True))
     return query.all()
@@ -33,11 +35,12 @@ def create_lender(
     data: LenderCreate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    existing = db.query(Lender).filter(Lender.name == data.name).first()
+    existing = db.query(Lender).filter(Lender.name == data.name, Lender.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A lender with this name already exists")
-    lender = Lender(**data.model_dump())
+    lender = Lender(**data.model_dump(), tenant_id=tenant_id)
     db.add(lender)
     db.commit()
     db.refresh(lender)
@@ -50,12 +53,13 @@ def update_lender(
     data: LenderUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    lender = db.query(Lender).filter(Lender.id == lender_id).first()
+    lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
     if not lender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
     if data.name is not None:
-        dup = db.query(Lender).filter(Lender.name == data.name, Lender.id != lender_id).first()
+        dup = db.query(Lender).filter(Lender.name == data.name, Lender.id != lender_id, Lender.tenant_id == tenant_id).first()
         if dup:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A lender with this name already exists")
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -70,8 +74,9 @@ def deactivate_lender(
     lender_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    lender = db.query(Lender).filter(Lender.id == lender_id).first()
+    lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
     if not lender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
     lender.is_active = False
@@ -83,6 +88,7 @@ def lender_analytics(
     period: str = Query("all", pattern="^(30d|90d|6m|1y|all)$"),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     # Determine date cutoff
     now = datetime.now(timezone.utc)
@@ -96,7 +102,7 @@ def lender_analytics(
     elif period == "1y":
         cutoff = now - timedelta(days=365)
 
-    base_query = db.query(LenderSubmission).join(Lender)
+    base_query = db.query(LenderSubmission).join(Lender).filter(LenderSubmission.tenant_id == tenant_id)
     if cutoff:
         base_query = base_query.filter(LenderSubmission.submitted_at >= cutoff)
 

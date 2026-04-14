@@ -30,6 +30,7 @@ from app.schemas.loan_application import (
     LoanApplicationUpdate,
     PaginatedApplications,
 )
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -39,11 +40,12 @@ def create_application(
     data: LoanApplicationCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    app = LoanApplication(user_id=current_user.id, **data.model_dump())
+    app = LoanApplication(user_id=current_user.id, tenant_id=tenant_id, **data.model_dump())
     db.add(app)
     db.flush()
-    log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)})
+    log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
 
     # Update referral status to "applied" if this user was referred
     referral = db.query(Referral).filter(
@@ -77,8 +79,9 @@ def list_applications(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by))
+    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.tenant_id == tenant_id)
 
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
@@ -121,8 +124,9 @@ def get_application(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -136,8 +140,9 @@ def update_application(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -213,8 +218,9 @@ def change_status(
     new_status: ApplicationStatus = Query(..., alias="status"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -229,7 +235,7 @@ def change_status(
 
     old_status = current
     application.status = new_status
-    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status.value})
+    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)
 
@@ -248,13 +254,14 @@ def assign_broker(
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Add a broker to the application's assigned brokers."""
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker).first()
+    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker, User.tenant_id == tenant_id).first()
     if not broker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
 
@@ -265,7 +272,7 @@ def assign_broker(
     # Keep legacy column in sync with the first broker
     if not application.assigned_broker_id:
         application.assigned_broker_id = broker_id
-    log_activity(db, current_user.id, "broker_assigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name})
+    log_activity(db, current_user.id, "broker_assigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application)
@@ -277,9 +284,10 @@ def unassign_broker(
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Remove a broker from the application's assigned brokers."""
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -294,7 +302,7 @@ def unassign_broker(
     # Keep legacy column in sync
     if application.assigned_broker_id == broker_id:
         application.assigned_broker_id = application.brokers[0].id if application.brokers else None
-    log_activity(db, current_user.id, "broker_unassigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name})
+    log_activity(db, current_user.id, "broker_unassigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application)
@@ -306,15 +314,16 @@ def assign_broker_group(
     group_id: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Assign all brokers in a broker group to the application."""
     from app.models.broker_group import BrokerGroup
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker group not found")
 
@@ -328,7 +337,7 @@ def assign_broker_group(
         application.assigned_broker_id = application.brokers[0].id
 
     log_activity(db, current_user.id, "broker_group_assigned", "application", app_id,
-                 {"group_id": group_id, "group_name": group.name, "brokers_added": added})
+                 {"group_id": group_id, "group_name": group.name, "brokers_added": added}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application)
@@ -340,11 +349,12 @@ def trigger_analysis(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     if not LLM_ANALYSIS_ENABLED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="LLM analysis is not configured (missing OPENAI_API_KEY)")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -384,8 +394,9 @@ def get_analysis(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -403,8 +414,9 @@ def delete_application(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -423,6 +435,6 @@ def delete_application(
     # Delete associated notes
     db.query(ApplicationNote).filter(ApplicationNote.application_id == app_id).delete()
 
-    log_activity(db, current_user.id, "deleted", "application", app_id, {"loan_type": application.loan_type.value})
+    log_activity(db, current_user.id, "deleted", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
     db.delete(application)
     db.commit()

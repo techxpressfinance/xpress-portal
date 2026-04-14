@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.document import DocumentOut
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -33,9 +34,10 @@ def upload_document(
     label: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     upload_limiter.check(request)
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -95,6 +97,7 @@ def upload_document(
         doc_type=doc_type,
         file_path=file_path,
         original_filename=display_name,
+        tenant_id=tenant_id,
     )
     db.add(doc)
     db.commit()
@@ -132,8 +135,9 @@ def list_documents(
     application_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -145,8 +149,9 @@ def delete_document(
     doc_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -169,8 +174,9 @@ def download_document(
     doc_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -203,8 +209,9 @@ def get_ocr_text(
     doc_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -226,8 +233,9 @@ def retry_ocr(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -263,8 +271,9 @@ def verify_document(
     doc_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -274,7 +283,7 @@ def verify_document(
     check_application_access(application, _current_user, db=db)
 
     doc.is_verified = True
-    log_activity(db, _current_user.id, "document_verified", "document", doc_id, {"filename": doc.original_filename, "doc_type": doc.doc_type.value})
+    log_activity(db, _current_user.id, "document_verified", "document", doc_id, {"filename": doc.original_filename, "doc_type": doc.doc_type.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(doc)
     return doc

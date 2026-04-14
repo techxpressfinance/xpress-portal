@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { useTenant } from '../contexts/TenantContext';
 import { Button, Input } from '../components/ui';
 
 interface ResendForm {
@@ -11,6 +12,8 @@ interface ResendForm {
 const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
 export default function ResendVerification() {
+  const { tenant } = useTenant();
+  const brandName = tenant?.name || 'Xpress';
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const {
@@ -36,10 +39,14 @@ export default function ResendVerification() {
         style={{ animation: `fadeInUp 0.6s ${easing} both` }}
       >
         <div className="flex items-center gap-3 mb-10">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
-            <span className="text-[18px] font-semibold text-background">X</span>
-          </div>
-          <span className="text-[22px] font-semibold text-foreground tracking-tight">Xpress</span>
+          {tenant?.logo_url ? (
+            <img src={tenant.logo_url} alt={brandName} className="h-11 w-11 rounded-lg object-contain" />
+          ) : (
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
+              <span className="text-[18px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+            </div>
+          )}
+          <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>
         </div>
 
         {sent ? (

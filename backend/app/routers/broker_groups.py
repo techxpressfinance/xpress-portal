@@ -8,6 +8,7 @@ from app.middleware.auth import require_role
 from app.models.broker_group import BrokerGroup, broker_group_members
 from app.models.user import User, UserRole
 from app.schemas.broker_group import BrokerGroupCreate, BrokerGroupMemberOut, BrokerGroupOut, BrokerGroupUpdate
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/broker-groups", tags=["broker-groups"])
 
@@ -16,8 +17,9 @@ router = APIRouter(prefix="/api/broker-groups", tags=["broker-groups"])
 def list_groups(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    return db.query(BrokerGroup).order_by(BrokerGroup.name).all()
+    return db.query(BrokerGroup).filter(BrokerGroup.tenant_id == tenant_id).order_by(BrokerGroup.name).all()
 
 
 @router.post("", response_model=BrokerGroupOut, status_code=status.HTTP_201_CREATED)
@@ -25,12 +27,13 @@ def create_group(
     data: BrokerGroupCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    existing = db.query(BrokerGroup).filter(BrokerGroup.name == data.name).first()
+    existing = db.query(BrokerGroup).filter(BrokerGroup.name == data.name, BrokerGroup.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A group with this name already exists")
 
-    group = BrokerGroup(name=data.name, description=data.description, created_by_id=current_user.id)
+    group = BrokerGroup(name=data.name, description=data.description, created_by_id=current_user.id, tenant_id=tenant_id)
 
     # Add initial members
     if data.member_ids:
@@ -48,8 +51,9 @@ def get_group(
     group_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     return group
@@ -61,8 +65,9 @@ def update_group(
     data: BrokerGroupUpdate,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     if data.name is not None:
@@ -79,8 +84,9 @@ def delete_group(
     group_id: str,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     db.delete(group)
@@ -93,8 +99,9 @@ def add_member(
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
@@ -117,8 +124,9 @@ def remove_member(
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id).first()
+    group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 

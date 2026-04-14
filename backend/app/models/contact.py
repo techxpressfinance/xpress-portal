@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,7 @@ class ContactOrganization(Base):
     __tablename__ = "contact_organizations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     contact_id: Mapped[str] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=False)
     organization_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=False)
     role: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. director, guarantor, employee
@@ -26,10 +27,12 @@ class ContactOrganization(Base):
 
 class Organization(Base):
     __tablename__ = "organizations"
+    __table_args__ = (UniqueConstraint("abn", "tenant_id", name="uq_org_abn_tenant"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True)
+    abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -48,6 +51,7 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     first_name: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     last_name: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     middle_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)

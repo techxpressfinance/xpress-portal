@@ -28,6 +28,7 @@ from app.services.date_filter import apply_date_range_filter
 from app.services.email import send_status_notification
 from app.services.query_utils import escape_like
 from app.services.serialization import app_with_user
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/kanban", tags=["kanban"])
 
@@ -71,8 +72,9 @@ def _board_to_dict(board: KanbanBoard, db: Session) -> dict:
 def list_boards(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    boards = db.query(KanbanBoard).order_by(KanbanBoard.created_at).all()
+    boards = db.query(KanbanBoard).filter(KanbanBoard.tenant_id == tenant_id).order_by(KanbanBoard.created_at).all()
     return [
         {
             "id": b.id,
@@ -92,8 +94,9 @@ def create_board(
     data: KanbanBoardCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = KanbanBoard(name=data.name, description=data.description, created_by_id=current_user.id)
+    board = KanbanBoard(name=data.name, description=data.description, created_by_id=current_user.id, tenant_id=tenant_id)
     db.add(board)
     db.flush()
 
@@ -107,10 +110,11 @@ def create_board(
             mapped_status=col_data.mapped_status,
             position=col_data.position,
             color=col_data.color,
+            tenant_id=tenant_id,
         )
         db.add(col)
 
-    log_activity(db, current_user.id, "board_created", "kanban_board", board.id, {"name": data.name})
+    log_activity(db, current_user.id, "board_created", "kanban_board", board.id, {"name": data.name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(board)
     return _board_to_dict(board, db)
@@ -121,8 +125,9 @@ def get_board(
     board_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     return _board_to_dict(board, db)
@@ -134,14 +139,15 @@ def update_board(
     data: KanbanBoardUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(board, key, value)
-    log_activity(db, current_user.id, "board_updated", "kanban_board", board.id, updates)
+    log_activity(db, current_user.id, "board_updated", "kanban_board", board.id, updates, tenant_id=tenant_id)
     db.commit()
     db.refresh(board)
     return _board_to_dict(board, db)
@@ -152,14 +158,15 @@ def delete_board(
     board_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    total = db.query(KanbanBoard).count()
+    total = db.query(KanbanBoard).filter(KanbanBoard.tenant_id == tenant_id).count()
     if total <= 1:
         raise HTTPException(status_code=400, detail="Cannot delete the only board")
-    log_activity(db, current_user.id, "board_deleted", "kanban_board", board.id, {"name": board.name})
+    log_activity(db, current_user.id, "board_deleted", "kanban_board", board.id, {"name": board.name}, tenant_id=tenant_id)
     db.delete(board)
     db.commit()
 
@@ -172,8 +179,9 @@ def add_column(
     data: KanbanColumnCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     if data.mapped_status:
@@ -185,14 +193,15 @@ def add_column(
         mapped_status=data.mapped_status,
         position=max_pos + 1,
         color=data.color,
+        tenant_id=tenant_id,
     )
     db.add(col)
-    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": data.title, "board_id": board_id})
+    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": data.title, "board_id": board_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
     count = 0
     if col.mapped_status:
-        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status).count()
+        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id).count()
     return {**{c.name: getattr(col, c.name) for c in col.__table__.columns}, "application_count": count}
 
 
@@ -203,6 +212,7 @@ def update_column(
     data: KanbanColumnUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
@@ -212,12 +222,12 @@ def update_column(
         _validate_mapped_status(updates["mapped_status"])
     for key, value in updates.items():
         setattr(col, key, value)
-    log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates)
+    log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
     count = 0
     if col.mapped_status:
-        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status).count()
+        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id).count()
     return {**{c.name: getattr(col, c.name) for c in col.__table__.columns}, "application_count": count}
 
 
@@ -227,6 +237,7 @@ def delete_column(
     column_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
@@ -234,7 +245,7 @@ def delete_column(
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
     if len(board.columns) <= 1:
         raise HTTPException(status_code=400, detail="Cannot delete the last column")
-    log_activity(db, current_user.id, "column_deleted", "kanban_column", col.id, {"title": col.title})
+    log_activity(db, current_user.id, "column_deleted", "kanban_column", col.id, {"title": col.title}, tenant_id=tenant_id)
     db.delete(col)
     # Reorder remaining columns
     remaining = db.query(KanbanColumn).filter(KanbanColumn.board_id == board_id, KanbanColumn.id != column_id).order_by(KanbanColumn.position).all()
@@ -249,8 +260,9 @@ def reorder_columns(
     data: ColumnReorderRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     col_map = {c.id: c for c in board.columns}
@@ -258,7 +270,7 @@ def reorder_columns(
         raise HTTPException(status_code=400, detail="column_ids must contain all column IDs for this board")
     for i, cid in enumerate(data.column_ids):
         col_map[cid].position = i
-    log_activity(db, current_user.id, "columns_reordered", "kanban_board", board_id)
+    log_activity(db, current_user.id, "columns_reordered", "kanban_board", board_id, tenant_id=tenant_id)
     db.commit()
     return {"status": "ok"}
 
@@ -276,8 +288,9 @@ def get_board_applications(
     per_column: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -285,7 +298,7 @@ def get_board_applications(
         joinedload(LoanApplication.user),
         selectinload(LoanApplication.brokers),
         joinedload(LoanApplication.completed_by),
-    )
+    ).filter(LoanApplication.tenant_id == tenant_id)
 
     # Broker access: only their assigned applications
     if current_user.role == UserRole.broker:
@@ -342,6 +355,7 @@ def move_card(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
@@ -350,7 +364,7 @@ def move_card(
     application = db.query(LoanApplication).options(
         selectinload(LoanApplication.brokers),
         joinedload(LoanApplication.user),
-    ).filter(LoanApplication.id == app_id).first()
+    ).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -373,7 +387,7 @@ def move_card(
 
     old_status = current
     application.status = ApplicationStatus(new_status)
-    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status})
+    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status}, tenant_id=tenant_id)
     db.commit()
 
     # Email notification

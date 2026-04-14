@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input } from '../components/ui';
 
@@ -18,7 +19,9 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
 export default function Register() {
   const { register: registerUser, user } = useAuth();
+  const { tenant } = useTenant();
   const navigate = useNavigate();
+  const brandName = tenant?.name || 'Xpress';
   const [searchParams] = useSearchParams();
   const refCode = searchParams.get('ref') || '';
   const [error, setError] = useState('');
@@ -65,10 +68,14 @@ export default function Register() {
           style={{ animation: `fadeInUp 0.7s ${easing} both` }}
         >
           <div className="flex items-center gap-3 mb-16">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[18px] font-semibold text-background">X</span>
-            </div>
-            <span className="text-[22px] font-semibold text-foreground tracking-tight">Xpress</span>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-11 w-11 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[18px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>
           </div>
 
           <h2
@@ -91,10 +98,14 @@ export default function Register() {
         >
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-12 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[16px] font-semibold text-background">X</span>
-            </div>
-            <span className="text-[20px] font-semibold text-foreground tracking-tight">Xpress</span>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-10 w-10 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[16px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>
           </div>
 
           <h1 className="text-[28px] font-semibold text-foreground mb-2 tracking-tight">

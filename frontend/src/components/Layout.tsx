@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import PageTransition from './PageTransition';
 import GlobalSearch from './GlobalSearch';
@@ -16,8 +17,10 @@ const navLinkClass = (isActive: boolean, collapsed: boolean) =>
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { tenant } = useTenant();
   const navigate = useNavigate();
   const { theme, toggle: toggleTheme } = useTheme();
+  const brandName = tenant?.name || 'Xpress';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
@@ -45,6 +48,7 @@ export default function Layout() {
 
   const confirmLogout = () => setShowLogoutConfirm(true);
 
+  const isSuperAdmin = user?.role === 'super_admin';
   const isAdmin = user?.role === 'admin' || user?.role === 'broker';
   const isReferrer = user?.role === 'referrer';
 
@@ -72,18 +76,33 @@ export default function Layout() {
         {/* Logo */}
         <div className={`flex h-14 items-center ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
           <Link to="/" className="flex items-center gap-2.5" onClick={() => setSidebarOpen(false)}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[13px] font-bold text-background">X</span>
-            </div>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-8 w-8 shrink-0 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[13px] font-bold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
             {!collapsed && (
-              <span className="text-[15px] font-semibold text-foreground tracking-tight">Xpress</span>
+              <span className="text-[15px] font-semibold text-foreground tracking-tight">{brandName}</span>
             )}
           </Link>
         </div>
 
         {/* Navigation */}
         <nav className={`flex-1 ${collapsed ? 'px-2' : 'px-3'} py-2 space-y-0.5`} onClick={() => setSidebarOpen(false)}>
-          {isReferrer ? (
+          {isSuperAdmin ? (
+            <>
+              <NavLink to="/platform" end className={linkClass} title="Dashboard">
+                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" /></svg>
+                {!collapsed && 'Dashboard'}
+              </NavLink>
+              <NavLink to="/platform/tenants" className={linkClass} title="Tenants">
+                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5M3.75 3v18m16.5-18v18M5.25 3h13.5M5.25 21h13.5M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" /></svg>
+                {!collapsed && 'Tenants'}
+              </NavLink>
+            </>
+          ) : isReferrer ? (
             <>
               <NavLink to="/referrer" end className={linkClass} title="Dashboard">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" /></svg>
@@ -297,7 +316,7 @@ export default function Layout() {
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
           </button>
-          <span className="ml-2.5 text-[15px] font-semibold text-foreground">Xpress</span>
+          <span className="ml-2.5 text-[15px] font-semibold text-foreground">{brandName}</span>
         </header>
 
         {/* Page content */}

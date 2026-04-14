@@ -18,6 +18,7 @@ from app.schemas.quote_sheet import (
     QuoteSheetCreate,
     QuoteSheetUpdate,
 )
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications/{app_id}/quote-sheets", tags=["quote-sheets"])
 
@@ -115,6 +116,7 @@ def list_quote_sheets(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -144,6 +146,7 @@ def create_quote_sheet(
     data: QuoteSheetCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -155,6 +158,7 @@ def create_quote_sheet(
         broker_notes=data.broker_notes,
         input_parameters=data.input_parameters,
         created_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(sheet)
     db.flush()
@@ -179,6 +183,7 @@ def get_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -203,6 +208,7 @@ def update_quote_sheet(
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -239,6 +245,7 @@ def delete_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -256,6 +263,7 @@ def duplicate_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -268,6 +276,7 @@ def duplicate_quote_sheet(
         broker_notes=source.broker_notes,
         input_parameters=source.input_parameters,
         created_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(new_sheet)
     db.flush()
@@ -315,6 +324,7 @@ def add_option(
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -336,6 +346,7 @@ def update_option(
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)
@@ -361,6 +372,7 @@ def delete_option(
     opt_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
     check_application_access(app, current_user, db=db)

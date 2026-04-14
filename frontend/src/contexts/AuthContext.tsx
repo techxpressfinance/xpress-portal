@@ -7,6 +7,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  superAdminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, phone: string, password: string, ref?: string) => Promise<User>;
   requestCode: (email: string) => Promise<void>;
   loginWithCode: (email: string, code: string) => Promise<void>;
@@ -17,6 +18,7 @@ export const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
   login: async () => {},
+  superAdminLogin: async () => {},
   register: async () => ({} as User),
   requestCode: async () => {},
   loginWithCode: async () => {},
@@ -65,6 +67,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   };
 
+  const superAdminLogin = async (email: string, password: string) => {
+    const csrf = getCsrfToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const { data } = await axios.post('/api/super-admin/login', { email, password }, {
+      withCredentials: true,
+      headers,
+    });
+    setAccessToken(data.access_token);
+    await fetchUser();
+  };
+
   const register = async (name: string, email: string, phone: string, password: string, ref?: string): Promise<User> => {
     const params = ref ? `?ref=${encodeURIComponent(ref)}` : '';
     const { data } = await api.post(`/auth/register${params}`, {
@@ -96,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, requestCode, loginWithCode, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, requestCode, loginWithCode, logout }}>
       {children}
     </AuthContext.Provider>
   );

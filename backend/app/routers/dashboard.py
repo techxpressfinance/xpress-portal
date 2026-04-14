@@ -11,6 +11,7 @@ from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -19,10 +20,12 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 def get_dashboard_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     now = datetime.now(timezone.utc)
 
     def scoped(q):
+        q = q.filter(LoanApplication.tenant_id == tenant_id)
         if current_user.role == UserRole.broker:
             return q.filter(
                 LoanApplication.id.in_(

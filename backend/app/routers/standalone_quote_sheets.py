@@ -18,6 +18,7 @@ from app.schemas.quote_sheet import (
     QuoteSheetUpdate,
 )
 from app.services.email import send_quote_sheet_email
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/quote-sheets", tags=["standalone-quote-sheets"])
 
@@ -107,10 +108,11 @@ def _next_version(db: Session) -> int:
 def list_standalone_quote_sheets(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheets = (
         db.query(QuoteSheet)
-        .filter(QuoteSheet.application_id.is_(None))
+        .filter(QuoteSheet.application_id.is_(None), QuoteSheet.tenant_id == tenant_id)
         .order_by(QuoteSheet.created_at.desc())
         .all()
     )
@@ -124,6 +126,7 @@ def create_standalone_quote_sheet(
     data: QuoteSheetCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = QuoteSheet(
         application_id=None,
@@ -134,6 +137,7 @@ def create_standalone_quote_sheet(
         recipient_name=data.recipient_name,
         recipient_email=data.recipient_email,
         created_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(sheet)
     db.flush()
@@ -157,6 +161,7 @@ def get_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     return _serialize(sheet)
@@ -170,6 +175,7 @@ def update_standalone_quote_sheet(
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
@@ -203,6 +209,7 @@ def delete_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
@@ -217,6 +224,7 @@ def duplicate_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     source = _get_sheet(db, sheet_id)
 
@@ -229,6 +237,7 @@ def duplicate_standalone_quote_sheet(
         recipient_name=source.recipient_name,
         recipient_email=source.recipient_email,
         created_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(new_sheet)
     db.flush()
@@ -275,6 +284,7 @@ def add_standalone_option(
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
@@ -293,6 +303,7 @@ def update_standalone_option(
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
@@ -315,6 +326,7 @@ def delete_standalone_option(
     opt_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
     _require_draft(sheet)
@@ -335,6 +347,7 @@ def send_standalone_quote_email(
     data: QuoteSheetEmailRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
 

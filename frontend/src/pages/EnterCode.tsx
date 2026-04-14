@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input } from '../components/ui';
 
@@ -13,6 +14,8 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
 export default function EnterCode() {
   const { loginWithCode, requestCode, user } = useAuth();
+  const { tenant } = useTenant();
+  const brandName = tenant?.name || 'Xpress';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const paramEmail = searchParams.get('email') || '';
@@ -94,15 +97,19 @@ export default function EnterCode() {
           style={{ animation: `fadeInUp 0.7s ${easing} both` }}
         >
           <div className="flex items-center gap-3 mb-16">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[18px] font-semibold text-background">X</span>
-            </div>
-            <span className="text-[22px] font-semibold text-foreground tracking-tight">Xpress</span>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-11 w-11 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[18px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>
           </div>
 
           <h2 className="text-[34px] font-semibold text-foreground leading-[1.15] mb-4">
             Welcome to{' '}
-            <span className="text-[#0071e3]">Xpress Tech Portal.</span>
+            <span className="text-[#0071e3]">{brandName}.</span>
           </h2>
           <p className="text-[15px] text-muted-foreground leading-relaxed max-w-sm">
             You've been invited to manage your loan application. Enter your code to get started.
@@ -118,10 +125,14 @@ export default function EnterCode() {
         >
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-12 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-[16px] font-semibold text-background">X</span>
-            </div>
-            <span className="text-[20px] font-semibold text-foreground tracking-tight">Xpress</span>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-10 w-10 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[16px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>
           </div>
 
           <h1 className="text-[28px] font-semibold text-foreground mb-2 tracking-tight">

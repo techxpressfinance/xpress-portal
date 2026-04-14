@@ -21,6 +21,7 @@ from app.schemas.user import UserOut
 from app.services.auth import hash_password
 from app.services.email import send_invitation_email, send_referrer_welcome_email
 from app.services.login_code import set_login_code
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/external-referrers", tags=["external-referrers"])
 
@@ -41,9 +42,10 @@ def create_referrer(
     data: ReferrerCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Create a new external referrer account. Admin only."""
-    existing = db.query(User).filter(User.email == data.email).first()
+    existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -63,6 +65,7 @@ def create_referrer(
         email_verified=True,
         organization_name=data.organization_name,
         invited_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(user)
     db.commit()
@@ -76,19 +79,22 @@ def create_referrer(
 def list_referrers(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """List all external referrers. Admin only."""
-    return db.query(User).filter(User.role == UserRole.referrer).order_by(User.created_at.desc()).all()
+    return db.query(User).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id).order_by(User.created_at.desc()).all()
 
 
 @router.get("/admin/all-referrals", response_model=list[ExternalReferralOut])
 def list_all_external_referrals(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """List all external referrals across all referrers. Admin only."""
     referrals = (
         db.query(ExternalReferral)
+        .filter(ExternalReferral.tenant_id == tenant_id)
         .order_by(ExternalReferral.created_at.desc())
         .limit(500)
         .all()
@@ -104,6 +110,7 @@ def refer_client(
     data: ExternalReferralInvite,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Send a referral to a client (new or existing). Referrer only."""
     email = data.email.lower().strip()
@@ -127,7 +134,7 @@ def refer_client(
         )
 
     # Check if client exists
-    existing_user = db.query(User).filter(User.email == email).first()
+    existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
 
     referral = ExternalReferral(
         referrer_id=current_user.id,
@@ -135,6 +142,7 @@ def refer_client(
         referred_client_id=existing_user.id if existing_user else None,
         status=ExternalReferralStatus.signed_up if existing_user else ExternalReferralStatus.pending,
         converted_at=datetime.now(timezone.utc) if existing_user else None,
+        tenant_id=tenant_id,
     )
     db.add(referral)
 
@@ -163,6 +171,7 @@ def refer_client(
             email_verified=True,
             login_code_attempts=0,
             invited_by_id=current_user.id,
+            tenant_id=tenant_id,
         )
         plain = set_login_code(new_user)
         db.add(new_user)
@@ -181,6 +190,7 @@ def refer_client(
 def list_my_referrals(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """List all referrals made by the current referrer."""
     referrals = (
@@ -196,6 +206,7 @@ def list_my_referrals(
 def get_my_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Get referral stats for the current referrer."""
     referrals = (

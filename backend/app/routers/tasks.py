@@ -22,6 +22,7 @@ from app.schemas.task import (
     TaskUpdate,
 )
 from app.services.activity_log import log_activity
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -137,8 +138,9 @@ def list_tasks(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(Task).options(
+    query = db.query(Task).filter(Task.tenant_id == tenant_id).options(
         joinedload(Task.assigned_to),
         joinedload(Task.created_by),
         joinedload(Task.application),
@@ -185,6 +187,7 @@ def create_task(
     data: TaskCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     # Validate enum values
     try:
@@ -211,6 +214,7 @@ def create_task(
         assigned_to_id=data.assigned_to_id,
         application_id=data.application_id,
         created_by_id=current_user.id,
+        tenant_id=tenant_id,
     )
     db.add(task)
     db.flush()
@@ -222,10 +226,11 @@ def create_task(
                 title=item_data.title,
                 is_completed=item_data.is_completed,
                 sort_order=item_data.sort_order if item_data.sort_order else idx,
+                tenant_id=tenant_id,
             )
             db.add(item)
 
-    log_activity(db, current_user.id, "task_created", "task", task.id, {"title": task.title})
+    log_activity(db, current_user.id, "task_created", "task", task.id, {"title": task.title}, tenant_id=tenant_id)
     db.commit()
 
     task = _get_task(db, task.id)
@@ -237,6 +242,7 @@ def get_task(
     task_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     task = _get_task(db, task_id)
     return _task_to_out(task)
@@ -248,6 +254,7 @@ def update_task(
     data: TaskUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     task = _get_task(db, task_id)
     changes = {}
@@ -293,7 +300,7 @@ def update_task(
         task.application_id = data.application_id or None
         changes["application_id"] = data.application_id
 
-    log_activity(db, current_user.id, "task_updated", "task", task.id, changes)
+    log_activity(db, current_user.id, "task_updated", "task", task.id, changes, tenant_id=tenant_id)
     db.commit()
 
     task = _get_task(db, task_id)
@@ -305,12 +312,13 @@ def delete_task(
     task_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    log_activity(db, current_user.id, "task_deleted", "task", task.id, {"title": task.title})
+    log_activity(db, current_user.id, "task_deleted", "task", task.id, {"title": task.title}, tenant_id=tenant_id)
     db.delete(task)
     db.commit()
 
@@ -324,8 +332,9 @@ def add_checklist_item(
     data: ChecklistItemCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
@@ -338,9 +347,10 @@ def add_checklist_item(
         title=data.title,
         is_completed=data.is_completed,
         sort_order=max_order + 1,
+        tenant_id=tenant_id,
     )
     db.add(item)
-    log_activity(db, current_user.id, "checklist_item_added", "task", task_id, {"item_title": data.title})
+    log_activity(db, current_user.id, "checklist_item_added", "task", task_id, {"item_title": data.title}, tenant_id=tenant_id)
     db.commit()
     db.refresh(item)
     return item
@@ -353,6 +363,7 @@ def update_checklist_item(
     data: ChecklistItemUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     item = (
         db.query(ChecklistItem)
@@ -385,6 +396,7 @@ def toggle_checklist_item(
     item_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     item = (
         db.query(ChecklistItem)
@@ -398,6 +410,7 @@ def toggle_checklist_item(
     log_activity(
         db, current_user.id, "checklist_item_toggled", "task", task_id,
         {"item_title": item.title, "is_completed": item.is_completed},
+        tenant_id=tenant_id,
     )
     db.commit()
     db.refresh(item)
@@ -410,6 +423,7 @@ def delete_checklist_item(
     item_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     item = (
         db.query(ChecklistItem)
@@ -429,8 +443,9 @@ def reorder_checklist_items(
     data: ChecklistReorderRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 

@@ -14,6 +14,7 @@ from app.models.referral import Referral, ReferralStatus, _generate_referral_cod
 from app.models.user import User
 from app.schemas.referral import ReferralCodeOut, ReferralInvite, ReferralOut, ReferralStats
 from app.services.email import _send_email
+from app.services.tenant_scope import get_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ def _referral_to_out(ref: Referral) -> dict:
 def get_my_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("client")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Get or create the client's referral code."""
     # Look for an existing referral record with no referred_email (the 'master' code)
@@ -74,6 +76,7 @@ def get_my_code(
 def get_my_referrals(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("client")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """List all referrals made by this client."""
     referrals = (
@@ -89,6 +92,7 @@ def get_my_referrals(
 def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("client")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Get referral statistics for the current client."""
     base = db.query(Referral).filter(
@@ -107,6 +111,7 @@ def send_invite(
     data: ReferralInvite,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("client")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Send an email invite to a prospective user."""
     # Get or create the client's master referral code
@@ -158,11 +163,12 @@ def send_invite(
 def admin_list_referrals(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """List all referrals system-wide (admin only)."""
     referrals = (
         db.query(Referral)
-        .filter(Referral.referred_email != None)  # noqa: E711
+        .filter(Referral.referred_email != None, Referral.tenant_id == tenant_id)  # noqa: E711
         .order_by(Referral.created_at.desc())
         .all()
     )

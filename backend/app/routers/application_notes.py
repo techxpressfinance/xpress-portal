@@ -10,6 +10,7 @@ from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.schemas.application_note import ApplicationNoteCreate, ApplicationNoteOut
 from app.services.access_control import check_application_access
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications", tags=["application-notes"])
 
@@ -32,8 +33,9 @@ def list_notes(
     app_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -58,8 +60,9 @@ def create_note(
     data: ApplicationNoteCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -75,6 +78,7 @@ def create_note(
         author_id=current_user.id,
         content=data.content,
         visibility=",".join(sorted(visibility_set)),
+        tenant_id=tenant_id,
     )
     db.add(note)
     db.commit()
@@ -88,6 +92,7 @@ def delete_note(
     note_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     note = (
         db.query(ApplicationNote)

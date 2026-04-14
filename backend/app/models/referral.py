@@ -29,6 +29,7 @@ class Referral(Base):
     __tablename__ = "referrals"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     referrer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     referral_code: Mapped[str] = mapped_column(String(20), unique=True, index=True, default=_generate_referral_code)
     referred_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

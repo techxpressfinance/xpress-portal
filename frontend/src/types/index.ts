@@ -1,4 +1,4 @@
-export type UserRole = 'client' | 'broker' | 'admin' | 'referrer';
+export type UserRole = 'client' | 'broker' | 'admin' | 'referrer' | 'super_admin';
 export type AuthMethod = 'password' | 'code';
 export type KYCStatus = 'pending' | 'verified' | 'rejected';
 export type LoanType = 'personal' | 'home' | 'business' | 'vehicle';
@@ -22,7 +22,17 @@ export interface User {
   department: string | null;
   license_number: string | null;
   organization_name: string | null;
+  tenant_id: string;
   created_at: string;
+}
+
+export interface TenantBranding {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  support_email: string | null;
 }
 
 export interface AssignedBroker {
