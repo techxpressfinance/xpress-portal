@@ -22,6 +22,7 @@ _SKIP_PATHS = {
 _SKIP_PREFIXES = (
     "/api/tenants/branding",
     "/api/super-admin",
+    "/api/auth",
 )
 
 
@@ -62,7 +63,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Skip tenant resolution for certain paths
-        if path in _SKIP_PATHS or path.startswith(_SKIP_PREFIXES):
+        if path in _SKIP_PATHS or any(path.startswith(p) for p in _SKIP_PREFIXES):
             request.state.tenant = None
             request.state.tenant_id = None
             return await call_next(request)

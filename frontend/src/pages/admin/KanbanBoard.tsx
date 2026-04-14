@@ -5,8 +5,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
-import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, COLUMN_COLOR_BG } from '../../lib/constants';
-import { PageHeader, Input, Button } from '../../components/ui';
+import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, COLUMN_COLOR_BG, STATUS_LABEL } from '../../lib/constants';
+import { PageHeader, Input, Button, ConfirmDialog } from '../../components/ui';
 import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, ApplicationStatus, User } from '../../types';
 
 // ── Card Component ──────────────────────────────────────────
@@ -243,6 +243,14 @@ export default function KanbanBoardPage() {
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [editingColumn, setEditingColumn] = useState<KanbanColumn | null>(null);
   const [showBoardSettings, setShowBoardSettings] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{
+    app: LoanApplication;
+    sourceColumnId: string;
+    targetColumnId: string;
+    targetColumnTitle: string;
+    targetMappedStatus: ApplicationStatus;
+  } | null>(null);
+  const [movingApp, setMovingApp] = useState(false);
 
   // Form state
   const [newBoardName, setNewBoardName] = useState('');
@@ -445,28 +453,52 @@ export default function KanbanBoardPage() {
       return;
     }
 
-    // Optimistic update
-    const prevApps = { ...appsByColumn };
-    const sourceColId = dragSourceColumn.current!;
+    const sourceColId = dragSourceColumn.current;
+    if (!sourceColId) {
+      setDraggedApp(null);
+      return;
+    }
+
     const movedApp = draggedApp;
     setDraggedApp(null);
     dragSourceColumn.current = null;
 
+    setPendingMove({
+      app: movedApp,
+      sourceColumnId: sourceColId,
+      targetColumnId,
+      targetColumnTitle: targetCol.title,
+      targetMappedStatus: targetCol.mapped_status as ApplicationStatus,
+    });
+  };
+
+  const confirmMoveApplication = async () => {
+    if (!activeBoard || !pendingMove) return;
+
+    setMovingApp(true);
+    const prevApps = { ...appsByColumn };
+
     setAppsByColumn((prev) => {
       const updated = { ...prev };
-      updated[sourceColId] = (prev[sourceColId] || []).filter((a) => a.id !== movedApp.id);
-      updated[targetColumnId] = [...(prev[targetColumnId] || []), { ...movedApp, status: targetCol.mapped_status as ApplicationStatus }];
+      updated[pendingMove.sourceColumnId] = (prev[pendingMove.sourceColumnId] || []).filter((a) => a.id !== pendingMove.app.id);
+      updated[pendingMove.targetColumnId] = [
+        ...(prev[pendingMove.targetColumnId] || []),
+        { ...pendingMove.app, status: pendingMove.targetMappedStatus },
+      ];
       return updated;
     });
 
     try {
-      await api.post(`/kanban/boards/${activeBoard.id}/columns/${targetColumnId}/move/${movedApp.id}`);
-      toast(`Moved to "${targetCol.title}"`, 'success');
+      await api.post(`/kanban/boards/${activeBoard.id}/columns/${pendingMove.targetColumnId}/move/${pendingMove.app.id}`);
+      toast(`Moved to "${pendingMove.targetColumnTitle}"`, 'success');
+      setPendingMove(null);
     } catch (err: any) {
       // Revert optimistic update
       setAppsByColumn(prevApps);
       const msg = err?.response?.data?.detail || 'Failed to move application';
       toast(msg, 'error');
+    } finally {
+      setMovingApp(false);
     }
   };
 
@@ -589,6 +621,7 @@ export default function KanbanBoardPage() {
   // ── Active filter count ─────────────────────────────────
 
   const activeFilterCount = [loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter].filter(Boolean).length;
+  const formatStatusLabel = (status: string) => STATUS_LABEL[status as keyof typeof STATUS_LABEL] || status.replace(/_/g, ' ');
 
   const clearAllFilters = () => {
     setLoanTypeFilter('');
@@ -914,6 +947,24 @@ export default function KanbanBoardPage() {
         </div>,
         document.body,
       )}
+
+      <ConfirmDialog
+        open={!!pendingMove}
+        title="Confirm status change"
+        message={pendingMove ? (
+          <>
+            Move this application from <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.app.status)}</span> to <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.targetMappedStatus)}</span>?
+          </>
+        ) : null}
+        confirmText="Confirm Move"
+        cancelText="Cancel"
+        variant={pendingMove?.targetMappedStatus === 'rejected' ? 'danger' : pendingMove?.targetMappedStatus === 'approval' || pendingMove?.targetMappedStatus === 'settled' ? 'success' : 'primary'}
+        loading={movingApp}
+        onConfirm={confirmMoveApplication}
+        onCancel={() => {
+          if (!movingApp) setPendingMove(null);
+        }}
+      />
     </div>
   );
 }

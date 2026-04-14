@@ -1,0 +1,16 @@
+2026-04-14 23:34:19 INFO app.main: Backfilled application_notes.visibility from is_internal
+2026-04-14 23:34:19 INFO app.main: Purged expired blacklisted tokens
+INFO:     Started server process [62030]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-04-14 23:34:24 INFO xpress.access: GET /api/auth/csrf-token 200 1ms 127.0.0.1
+INFO:     127.0.0.1:62596 - "GET /api/auth/csrf-token HTTP/1.1" 200 OK
+2026-04-14 23:34:27 INFO xpress.access: GET /api/auth/csrf-token 200 1ms 127.0.0.1
+INFO:     127.0.0.1:62598 - "GET /api/auth/csrf-token HTTP/1.1" 200 OK
+2026-04-14 23:34:49 INFO xpress.access: POST /api/auth/login 400 1ms 127.0.0.1
+INFO:     127.0.0.1:62600 - "POST /api/auth/login HTTP/1.1" 400 Bad Request
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [62030]

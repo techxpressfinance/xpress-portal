@@ -7,7 +7,7 @@ import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Badge, Button } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -30,6 +30,8 @@ export default function ApplicationDetail() {
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
   const [deletingApp, setDeletingApp] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [submittingApplication, setSubmittingApplication] = useState(false);
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
 
@@ -66,7 +68,7 @@ export default function ApplicationDetail() {
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
     // Fetch sent quote sheets (backend filters to sent-only for clients)
-    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => {});
+    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
   }, [id]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,12 +133,16 @@ export default function ApplicationDetail() {
 
   const handleSubmitApplication = async () => {
     if (!id || !application) return;
+    setSubmittingApplication(true);
     try {
       const { data } = await api.patch(`/applications/${id}`, { status: 'application_received' });
       setApplication(data);
       toast('Application submitted for review!', 'success');
+      setShowSubmitConfirm(false);
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to submit'), 'error');
+    } finally {
+      setSubmittingApplication(false);
     }
   };
 
@@ -258,7 +264,9 @@ export default function ApplicationDetail() {
                   <Button
                     variant={allDocsUploaded ? 'success' : 'primary'}
                     size="lg"
-                    onClick={handleSubmitApplication}
+                    onClick={() => setShowSubmitConfirm(true)}
+                    loading={submittingApplication}
+                    disabled={submittingApplication}
                     className="flex-1"
                   >
                     Submit for Review
@@ -451,9 +459,9 @@ export default function ApplicationDetail() {
                 {pdfRenderSheet && (
                   <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '24px' }}>
                     <div id={`quote-sheet-pdf-${pdfRenderSheet.id}`}>
-                      <QuoteSheetComparison 
-                        quoteSheet={pdfRenderSheet} 
-                        isClientView 
+                      <QuoteSheetComparison
+                        quoteSheet={pdfRenderSheet}
+                        isClientView
                         isPdfExport={true}
                         clientName={`${application?.applicant_first_name || ''} ${application?.applicant_last_name || ''}`.trim() || 'Client'}
                         applicationRef={application?.id ? application.id.split('-')[0].toUpperCase() : undefined}
@@ -570,6 +578,20 @@ export default function ApplicationDetail() {
         </div>,
         document.body
       )}
+
+      <ConfirmDialog
+        open={showSubmitConfirm}
+        title="Submit application for review?"
+        message="This will change the application status to Application Received."
+        confirmText="Submit"
+        cancelText="Cancel"
+        variant="primary"
+        loading={submittingApplication}
+        onConfirm={handleSubmitApplication}
+        onCancel={() => {
+          if (!submittingApplication) setShowSubmitConfirm(false);
+        }}
+      />
     </div>
   );
 }

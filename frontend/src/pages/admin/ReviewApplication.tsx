@@ -10,9 +10,9 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { GlassCard, Badge, Button } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, VALID_TRANSITIONS } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
@@ -85,6 +85,9 @@ export default function ReviewApplication() {
   const [editing, setEditing] = useState(false);
   const [savingEditFields, setSavingEditFields] = useState(false);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
   const [docType, setDocType] = useState<DocType>('id_proof');
   const [uploading, setUploading] = useState(false);
   const [fileLabel, setFileLabel] = useState('');
@@ -114,13 +117,13 @@ export default function ReviewApplication() {
   useEffect(() => {
     if (!id) return;
     // Check Lend config
-    api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
+    api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => { });
     // Fetch broker groups
-    api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => {});
+    api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => { });
     // Fetch lender submissions and available lenders
-    api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => {});
-    api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => {});
-    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => {});
+    api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => { });
+    api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => { });
+    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
 
     Promise.all([
       api.get(`/applications/${id}`),
@@ -171,12 +174,12 @@ export default function ReviewApplication() {
         if (appRes.data.user_id) {
           api.get(`/users/${appRes.data.user_id}/referrer`)
             .then(({ data }) => setReferrer(data.referrer || null))
-            .catch(() => {});
+            .catch(() => { });
         }
       })
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, toast]);
 
   const refetchApplication = async () => {
     if (!id) return;
@@ -198,21 +201,30 @@ export default function ReviewApplication() {
       toast('Message sent to referrer', 'success');
       setReferrerMsgSubject('');
       setReferrerMsgContent('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send message'), 'error');
     } finally {
       setSendingReferrerMsg(false);
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = (newStatus: string) => {
     if (!id) return;
+    setPendingStatus(newStatus);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!id || !pendingStatus) return;
+    setChangingStatus(true);
     try {
-      const { data } = await api.patch(`/applications/${id}/status?status=${newStatus}`);
+      const { data } = await api.patch(`/applications/${id}/status?status=${pendingStatus}`);
       setApplication(data);
-      toast(`Status changed to ${newStatus}`, 'success');
-    } catch (err: any) {
+      toast(`Status changed to ${pendingStatus}`, 'success');
+      setPendingStatus(null);
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to change status'), 'error');
+    } finally {
+      setChangingStatus(false);
     }
   };
 
@@ -234,7 +246,7 @@ export default function ReviewApplication() {
       const { data } = await api.post(`/applications/${id}/assign-group?group_id=${groupId}`);
       setApplication(data);
       toast('Broker group assigned', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to assign group'), 'error');
     }
   };
@@ -246,7 +258,7 @@ export default function ReviewApplication() {
       const { data } = await api.patch(`/documents/${docId}/verify`);
       setDocuments((prev) => prev.map((d) => (d.id === docId ? data : d)));
       toast('Document verified', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to verify'), 'error');
     }
   };
@@ -292,14 +304,20 @@ export default function ReviewApplication() {
     }
   };
 
-  const handleBrokerSubmit = async () => {
+  const handleBrokerSubmit = () => {
+    if (!id) return;
+    setConfirmBrokerSubmit(true);
+  };
+
+  const confirmBrokerSubmitAction = async () => {
     if (!id) return;
     setSubmittingOnBehalf(true);
     try {
       const { data } = await api.patch(`/applications/${id}`, { status: 'application_received' });
       setApplication(data);
       toast('Application submitted on behalf of client', 'success');
-    } catch (err: any) {
+      setConfirmBrokerSubmit(false);
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to submit'), 'error');
     } finally {
       setSubmittingOnBehalf(false);
@@ -328,7 +346,7 @@ export default function ReviewApplication() {
       setDocuments((prev) => [...prev, data]);
       setFileLabel('');
       toast('Document uploaded', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setUploading(false);
@@ -342,7 +360,7 @@ export default function ReviewApplication() {
       await api.post(`/documents/${docId}/retry-ocr`);
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, ocr_status: 'pending' as const } : d));
       toast('OCR restarted', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to restart OCR'), 'error');
     } finally {
       setRetryingOcr(null);
@@ -451,6 +469,7 @@ export default function ReviewApplication() {
   }
 
   const allowedTransitions = VALID_TRANSITIONS[application.status] || [];
+  const pendingStatusLabel = pendingStatus ? (STATUS_LABEL[pendingStatus as keyof typeof STATUS_LABEL] || pendingStatus.replace(/_/g, ' ')) : '';
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -476,11 +495,10 @@ export default function ReviewApplication() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${
-                  activeTab === tab
+                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${activeTab === tab
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
-                }`}
+                  }`}
               >
                 {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'integrations' ? 'Integrations' : 'Messages'}
                 {activeTab === tab && (
@@ -495,487 +513,487 @@ export default function ReviewApplication() {
               <>
                 {/* Completion Banner */}
                 {application.completed_by_name && (
-            <div className="rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-center gap-3">
-              <svg className="h-5 w-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-              <p className="text-[13px] font-medium text-primary">
-                Completed by {application.completed_by_name} on {formatDate(application.completed_at!)}
-              </p>
-            </div>
-          )}
-
-          {/* Application Info */}
-          <GlassCard>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-              <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
-                {application.loan_type} Loan
-              </h1>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge value={application.status} />
-                {!editing && (
-                  <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                    <span className="flex items-center gap-1.5">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                      Edit
-                    </span>
-                  </Button>
-                )}
-                {editing && (
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
-                )}
-              </div>
-            </div>
-
-            {editing ? (
-              <div className="space-y-5">
-                {/* Loan basics */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
-                    <select
-                      value={editLoanType}
-                      onChange={(e) => setEditLoanType(e.target.value as LoanType)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="home">Home</option>
-                      <option value="business">Business</option>
-                      <option value="vehicle">Vehicle</option>
-                    </select>
+                  <div className="rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-center gap-3">
+                    <svg className="h-5 w-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    <p className="text-[13px] font-medium text-primary">
+                      Completed by {application.completed_by_name} on {formatDate(application.completed_at!)}
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
-                    <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="Enter amount" />
-                  </div>
-                </div>
-
-                {/* Applicant */}
-                <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                    <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <option value="">Select...</option>
-                      {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                    <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                    <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                    <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                    <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                    <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <option value="">Select...</option>
-                      {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                    <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <option value="">Select...</option>
-                      {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Address */}
-                <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
-                <div>
-                  <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                  <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                    <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                    <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                      <option value="">Select...</option>
-                      {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                    <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                </div>
-
-                {/* Business (only for business loans) */}
-                {editLoanType === 'business' && (
-                  <>
-                    <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                        <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                        <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                        <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                        <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                        <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                      </div>
-                    </div>
-                  </>
                 )}
 
-                {/* Loan terms */}
-                <h3 className="text-[13px] font-medium text-muted-foreground">Loan Details</h3>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                    <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                    <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                    <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                    placeholder="Application notes..."
-                  />
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Button onClick={handleSaveEditFields} loading={savingEditFields}>Save Changes</Button>
-                  <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl bg-secondary p-4">
-                  <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
-                  <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
-                </div>
-                <div className="rounded-xl bg-secondary p-4">
-                  <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
-                  <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
-                </div>
-                <div className="rounded-xl bg-secondary p-4">
-                  <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
-                  <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.created_at)}</dd>
-                </div>
-                <div className="rounded-xl bg-secondary p-4">
-                  <dt className="text-[13px] font-medium text-muted-foreground">Last Updated</dt>
-                  <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.updated_at)}</dd>
-                </div>
-              </dl>
-            )}
-          </GlassCard>
-
-
-
-          {/* Client Info */}
-          {client && (
-            <GlassCard>
-              <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
-              <div className="flex items-center gap-4 mb-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-                  <span className="text-[15px] font-semibold text-primary-foreground">{client.full_name.charAt(0).toUpperCase()}</span>
-                </div>
-                <div>
-                  <p className="text-[14px] font-semibold text-foreground">{client.full_name}</p>
-                  <p className="text-[13px] text-muted-foreground">{client.email}</p>
-                </div>
-              </div>
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
-                  <dd className="mt-1 text-[14px] font-medium text-foreground">{client.phone || 'Not provided'}</dd>
-                </div>
-                <div>
-                  <dt className="text-[13px] font-medium text-muted-foreground">KYC Status</dt>
-                  <dd className="mt-1"><Badge type="kyc" value={client.kyc_status} /></dd>
-                </div>
-              </dl>
-
-              {/* Referrer Info */}
-              {referrer && (
-                <div className="mt-5 pt-5 border-t border-border">
-                  <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
-                      <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
-                      <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
+                {/* Application Info */}
+                <GlassCard>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
+                      {application.loan_type} Loan
+                    </h1>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge value={application.status} />
+                      {!editing && (
+                        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                          <span className="flex items-center gap-1.5">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                            Edit
+                          </span>
+                        </Button>
+                      )}
+                      {editing && (
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
-            </GlassCard>
-          )}
+
+                  {editing ? (
+                    <div className="space-y-5">
+                      {/* Loan basics */}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
+                          <select
+                            value={editLoanType}
+                            onChange={(e) => setEditLoanType(e.target.value as LoanType)}
+                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            <option value="personal">Personal</option>
+                            <option value="home">Home</option>
+                            <option value="business">Business</option>
+                            <option value="vehicle">Vehicle</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
+                          <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="Enter amount" />
+                        </div>
+                      </div>
+
+                      {/* Applicant */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
+                      <div className="grid gap-3 sm:grid-cols-4">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
+                          <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <option value="">Select...</option>
+                            {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
+                          <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
+                          <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
+                          <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
+                          <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
+                          <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <option value="">Select...</option>
+                            {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
+                          <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <option value="">Select...</option>
+                            {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Address */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
+                        <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
+                          <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">State</label>
+                          <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <option value="">Select...</option>
+                            {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
+                          <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                      </div>
+
+                      {/* Business (only for business loans) */}
+                      {editLoanType === 'business' && (
+                        <>
+                          <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
+                              <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            </div>
+                            <div>
+                              <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
+                              <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            </div>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div>
+                              <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
+                              <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            </div>
+                            <div>
+                              <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
+                              <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            </div>
+                            <div>
+                              <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
+                              <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Loan terms */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Loan Details</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
+                          <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
+                          <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
+                          <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
+                        <textarea
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          rows={3}
+                          className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                          placeholder="Application notes..."
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button onClick={handleSaveEditFields} loading={savingEditFields}>Save Changes</Button>
+                        <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-xl bg-secondary p-4">
+                        <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
+                        <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                      </div>
+                      <div className="rounded-xl bg-secondary p-4">
+                        <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
+                        <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
+                      </div>
+                      <div className="rounded-xl bg-secondary p-4">
+                        <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
+                        <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.created_at)}</dd>
+                      </div>
+                      <div className="rounded-xl bg-secondary p-4">
+                        <dt className="text-[13px] font-medium text-muted-foreground">Last Updated</dt>
+                        <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.updated_at)}</dd>
+                      </div>
+                    </dl>
+                  )}
+                </GlassCard>
+
+
+
+                {/* Client Info */}
+                {client && (
+                  <GlassCard>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
+                    <div className="flex items-center gap-4 mb-5">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+                        <span className="text-[15px] font-semibold text-primary-foreground">{client.full_name.charAt(0).toUpperCase()}</span>
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-semibold text-foreground">{client.full_name}</p>
+                        <p className="text-[13px] text-muted-foreground">{client.email}</p>
+                      </div>
+                    </div>
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
+                        <dd className="mt-1 text-[14px] font-medium text-foreground">{client.phone || 'Not provided'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[13px] font-medium text-muted-foreground">KYC Status</dt>
+                        <dd className="mt-1"><Badge type="kyc" value={client.kyc_status} /></dd>
+                      </div>
+                    </dl>
+
+                    {/* Referrer Info */}
+                    {referrer && (
+                      <div className="mt-5 pt-5 border-t border-border">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
+                            <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
+                            <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </GlassCard>
+                )}
 
               </>
             )}
 
             {activeTab === 'documents' && (
               <>
-          {/* Draft Actions (Required Docs & Submit) */}
-          {isDraft && (
-            <GlassCard className="mb-6 border-primary/20 bg-primary/5">
-              <h2 className="text-[15px] font-semibold text-foreground mb-4">Draft Actions</h2>
-              
-              <div className="mb-4">
-                <h3 className="text-[13px] font-medium text-foreground mb-3">Recommended Documents</h3>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {RECOMMENDED_DOC_TYPES.map((type) => (
-                    <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success border border-success/20' : 'bg-background border border-border/50 text-muted-foreground'}`}>
-                      {uploadedDocTypes.has(type) ? (
-                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                      ) : (
-                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><circle cx="12" cy="12" r="9" /></svg>
-                      )}
-                      <span className="font-medium">{DOC_TYPE_LABELS[type]}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                {/* Draft Actions (Required Docs & Submit) */}
+                {isDraft && (
+                  <GlassCard className="mb-6 border-primary/20 bg-primary/5">
+                    <h2 className="text-[15px] font-semibold text-foreground mb-4">Draft Actions</h2>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
-                <input
-                  type="text"
-                  value={fileLabel}
-                  onChange={(e) => setFileLabel(e.target.value)}
-                  placeholder="Label (optional)"
-                  className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                />
-                <select
-                  value={docType}
-                  onChange={(e) => setDocType(e.target.value as DocType)}
-                  className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-                <div className="relative flex-1">
-                  <input
-                    ref={fileInput}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleUploadDoc}
-                    disabled={uploading}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="flex items-center justify-center gap-2 h-11 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors font-medium text-[13px]">
-                    {uploading ? (
-                      <><svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Uploading...</>
-                    ) : (
-                      <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg> Click to Upload</>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                variant={allDocsUploaded ? 'success' : 'primary'}
-                size="lg"
-                className="w-full"
-                onClick={handleBrokerSubmit}
-                disabled={submittingOnBehalf}
-                loading={submittingOnBehalf}
-              >
-                Submit Application
-              </Button>
-            </GlassCard>
-          )}
-
-          {/* Documents */}
-          <GlassCard>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
-              {!isDraft && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={fileLabel}
-                    onChange={(e) => setFileLabel(e.target.value)}
-                    placeholder="Label (optional)"
-                    className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 w-36 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                  />
-                  <select
-                    value={docType}
-                    onChange={(e) => setDocType(e.target.value as DocType)}
-                    className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={handleUploadDoc}
-                      disabled={uploading}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <Button size="sm" variant="secondary" className="h-8 pointer-events-none" loading={uploading}>
-                      {uploading ? 'Uploading...' : 'Upload'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-            {documents.length === 0 ? (
-              <div className="rounded-xl bg-secondary/50 p-6 text-center">
-                <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                <p className="text-[14px] text-muted-foreground">No documents uploaded</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {documents.map((doc) => (
-                   <div key={doc.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl bg-secondary/30 p-4 transition-all duration-200 border border-border/50 hover:bg-secondary/60">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background border border-border/50 shadow-sm">
-                        <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                    <div className="mb-4">
+                      <h3 className="text-[13px] font-medium text-foreground mb-3">Recommended Documents</h3>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {RECOMMENDED_DOC_TYPES.map((type) => (
+                          <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success border border-success/20' : 'bg-background border border-border/50 text-muted-foreground'}`}>
+                            {uploadedDocTypes.has(type) ? (
+                              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                            ) : (
+                              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><circle cx="12" cy="12" r="9" /></svg>
+                            )}
+                            <span className="font-medium">{DOC_TYPE_LABELS[type]}</span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-semibold text-foreground mb-0.5">{doc.original_filename}</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[12px] text-muted-foreground truncate">{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} &middot; {formatDate(doc.uploaded_at)}</span>
-                          {doc.ocr_status && (
-                            <Badge type="custom" value={OCR_STATUS_BADGE[doc.ocr_status].label} className={OCR_STATUS_BADGE[doc.ocr_status].className} />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
+                      <input
+                        type="text"
+                        value={fileLabel}
+                        onChange={(e) => setFileLabel(e.target.value)}
+                        placeholder="Label (optional)"
+                        className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                      />
+                      <select
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value as DocType)}
+                        className="rounded-xl bg-background px-3.5 py-2 text-[14px] text-foreground h-11 border border-border/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                      <div className="relative flex-1">
+                        <input
+                          ref={fileInput}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={handleUploadDoc}
+                          disabled={uploading}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="flex items-center justify-center gap-2 h-11 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors font-medium text-[13px]">
+                          {uploading ? (
+                            <><svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Uploading...</>
+                          ) : (
+                            <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg> Click to Upload</>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2 bg-background/50 p-1.5 rounded-lg border border-border/50">
-                      {doc.is_verified ? (
-                        <Badge type="custom" value="Verified" className="bg-success/10 text-success py-1 px-2 mx-1" />
-                      ) : (
-                        <Button variant="success" size="sm" onClick={() => handleVerifyDoc(doc.id)} className="h-7 px-3 text-[12px]">Verify</Button>
-                      )}
-                      
-                      <div className="h-4 w-[1px] bg-border mx-1" />
+                    <Button
+                      variant={allDocsUploaded ? 'success' : 'primary'}
+                      size="lg"
+                      className="w-full"
+                      onClick={handleBrokerSubmit}
+                      disabled={submittingOnBehalf}
+                      loading={submittingOnBehalf}
+                    >
+                      Submit Application
+                    </Button>
+                  </GlassCard>
+                )}
 
-                      <button onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })} className="p-1.5 text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-primary/10" title="View Document">
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                      </button>
-                      <button onClick={() => handleDownloadDoc(doc)} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary" title="Download">
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                      </button>
-                      {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
-                        <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary disabled:opacity-50" title="Redo OCR">
-                          <svg className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin': ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                        </button>
-                      )}
-                    </div>
+                {/* Documents */}
+                <GlassCard>
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
+                    {!isDraft && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={fileLabel}
+                          onChange={(e) => setFileLabel(e.target.value)}
+                          placeholder="Label (optional)"
+                          className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 w-36 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                        />
+                        <select
+                          value={docType}
+                          onChange={(e) => setDocType(e.target.value as DocType)}
+                          className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <div className="relative">
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleUploadDoc}
+                            disabled={uploading}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <Button size="sm" variant="secondary" className="h-8 pointer-events-none" loading={uploading}>
+                            {uploading ? 'Uploading...' : 'Upload'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </GlassCard>
+                  {documents.length === 0 ? (
+                    <div className="rounded-xl bg-secondary/50 p-6 text-center">
+                      <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                      <p className="text-[14px] text-muted-foreground">No documents uploaded</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {documents.map((doc) => (
+                        <div key={doc.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl bg-secondary/30 p-4 transition-all duration-200 border border-border/50 hover:bg-secondary/60">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background border border-border/50 shadow-sm">
+                              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[14px] font-semibold text-foreground mb-0.5">{doc.original_filename}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12px] text-muted-foreground truncate">{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type} &middot; {formatDate(doc.uploaded_at)}</span>
+                                {doc.ocr_status && (
+                                  <Badge type="custom" value={OCR_STATUS_BADGE[doc.ocr_status].label} className={OCR_STATUS_BADGE[doc.ocr_status].className} />
+                                )}
+                              </div>
+                            </div>
+                          </div>
 
-          {/* AI Document Analysis */}
-          <AnalysisPanel
-            application={application}
-            documents={documents}
-            onStatusChange={refetchApplication}
-          />
+                          <div className="flex shrink-0 items-center gap-2 bg-background/50 p-1.5 rounded-lg border border-border/50">
+                            {doc.is_verified ? (
+                              <Badge type="custom" value="Verified" className="bg-success/10 text-success py-1 px-2 mx-1" />
+                            ) : (
+                              <Button variant="success" size="sm" onClick={() => handleVerifyDoc(doc.id)} className="h-7 px-3 text-[12px]">Verify</Button>
+                            )}
+
+                            <div className="h-4 w-[1px] bg-border mx-1" />
+
+                            <button onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })} className="p-1.5 text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-primary/10" title="View Document">
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                            </button>
+                            <button onClick={() => handleDownloadDoc(doc)} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary" title="Download">
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                            </button>
+                            {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
+                              <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary disabled:opacity-50" title="Redo OCR">
+                                <svg className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </GlassCard>
+
+                {/* AI Document Analysis */}
+                <AnalysisPanel
+                  application={application}
+                  documents={documents}
+                  onStatusChange={refetchApplication}
+                />
 
               </>
             )}
 
             {activeTab === 'overview' && (
               <>
-          {/* Applicant Summary */}
-          {application.applicant_first_name && (
-            <GlassCard>
-              <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-secondary/50 p-3">
-                  <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                  <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                    {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
-                  </dd>
-                </div>
-                {application.applicant_dob && (
-                  <div className="rounded-xl bg-secondary/50 p-3">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
-                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
-                  </div>
-                )}
-                {application.applicant_gender && (
-                  <div className="rounded-xl bg-secondary/50 p-3">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Gender</dt>
-                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender}</dd>
-                  </div>
-                )}
-                {application.applicant_marital_status && (
-                  <div className="rounded-xl bg-secondary/50 p-3">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Marital Status</dt>
-                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status}</dd>
-                  </div>
-                )}
-                {application.applicant_address && (
-                  <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Address</dt>
-                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                      {application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}
-                    </dd>
-                  </div>
-                )}
-                {application.business_name && (
-                  <>
-                    <div className="rounded-xl bg-secondary/50 p-3">
-                      <dt className="text-[12px] font-medium text-muted-foreground">Business</dt>
-                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name}</dd>
-                    </div>
-                    {application.business_abn && (
+                {/* Applicant Summary */}
+                {application.applicant_first_name && (
+                  <GlassCard>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
+                    <dl className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">ABN</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_abn}</dd>
+                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
+                        </dd>
                       </div>
-                    )}
-                  </>
+                      {application.applicant_dob && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
+                        </div>
+                      )}
+                      {application.applicant_gender && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Gender</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender}</dd>
+                        </div>
+                      )}
+                      {application.applicant_marital_status && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Marital Status</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status}</dd>
+                        </div>
+                      )}
+                      {application.applicant_address && (
+                        <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Address</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                            {application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}
+                          </dd>
+                        </div>
+                      )}
+                      {application.business_name && (
+                        <>
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Business</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name}</dd>
+                          </div>
+                          {application.business_abn && (
+                            <div className="rounded-xl bg-secondary/50 p-3">
+                              <dt className="text-[12px] font-medium text-muted-foreground">ABN</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_abn}</dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </dl>
+                  </GlassCard>
                 )}
-              </dl>
-            </GlassCard>
-          )}
 
               </>
             )}
@@ -1181,521 +1199,517 @@ export default function ReviewApplication() {
 
             {activeTab === 'integrations' && (
               <>
-          {/* Lend.com.au Integration */}
-          {lendEnabled && !isDraft && (
-            <GlassCard>
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-[15px] font-semibold text-foreground">Lend.com.au</h2>
-                {application.lend_sync_status && LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus] && (
-                  <Badge type="custom" value={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].label} className={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].className} />
-                )}
-              </div>
-
-              {/* Sync status info */}
-              {application.lend_ref && (
-                <div className="mb-4 rounded-xl bg-success/5 border border-success/20 px-4 py-2.5">
-                  <span className="text-[13px] font-medium text-success">Lend Ref: {application.lend_ref}</span>
-                  {application.lend_synced_at && (
-                    <span className="text-[12px] text-success/70 ml-3">Synced: {formatDate(application.lend_synced_at)}</span>
-                  )}
-                </div>
-              )}
-              {application.lend_sync_error && (
-                <div className="mb-4 rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
-                  <div className="flex items-start gap-2">
-                    <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
-                    <div>
-                      <p className="text-[13px] font-semibold text-destructive mb-1">Sync Failed</p>
-                      {application.lend_sync_error.includes(';') ? (
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {application.lend_sync_error.split(';').map((err, i) => (
-                            <li key={i} className="text-[12px] text-destructive/90">{err.trim()}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-[12px] text-destructive/90">{application.lend_sync_error}</p>
+                {/* Lend.com.au Integration */}
+                {lendEnabled && !isDraft && (
+                  <GlassCard>
+                    <div className="flex items-center justify-between mb-5">
+                      <h2 className="text-[15px] font-semibold text-foreground">Lend.com.au</h2>
+                      {application.lend_sync_status && LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus] && (
+                        <Badge type="custom" value={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].label} className={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].className} />
                       )}
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* Editable lead details */}
-              <button
-                type="button"
-                onClick={() => setShowLendDetails(!showLendDetails)}
-                className="flex items-center justify-between w-full rounded-xl bg-secondary/50 hover:bg-secondary px-4 py-2.5 mb-4 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                  <span className="text-[13px] font-medium text-foreground">Edit Lead Details</span>
-                </div>
-                <svg className={`h-4 w-4 text-muted-foreground transition-transform ${showLendDetails ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-              </button>
-              {showLendDetails && (
-                <div className="space-y-4 mb-5 rounded-xl bg-secondary/30 p-4">
-                  {/* Applicant */}
-                  <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
-                  <div className="grid gap-3 sm:grid-cols-4">
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                      <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        <option value="">Select...</option>
-                        {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                      <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                      <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                      <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                      <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                      <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        <option value="">Select...</option>
-                        {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                      <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        <option value="">Select...</option>
-                        {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Address */}
-                  <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Address</h3>
-                  <div className="grid gap-3 sm:grid-cols-1">
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                      <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                      <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                      <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        <option value="">Select...</option>
-                        {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                      <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                  </div>
-
-                  {/* Business (only for business loans) */}
-                  {application.loan_type === 'business' && (
-                    <>
-                      <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Business</h3>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                          <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                        </div>
-                        <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                          <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                        </div>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                          <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                        </div>
-                        <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                          <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                        </div>
-                        <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                          <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Loan */}
-                  <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Loan</h3>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Amount</label>
-                      <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                      <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                      <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                      <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Broker Lend fields */}
-              <div className="space-y-4 mb-5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Product Type ID</label>
-                    <input
-                      type="number"
-                      value={lendProductTypeId}
-                      onChange={(e) => setLendProductTypeId(e.target.value)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      placeholder="e.g. 25"
-                    />
-                  </div>
-                  {application.loan_type === 'business' && (
-                    <div>
-                      <label className="block text-[13px] font-medium text-muted-foreground mb-2">Owner Type</label>
-                      <select
-                        value={lendOwnerType}
-                        onChange={(e) => setLendOwnerType(e.target.value)}
-                        className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      >
-                        <option value="">Select...</option>
-                        <option value="Sole Trader">Sole Trader</option>
-                        <option value="Partnership">Partnership</option>
-                        <option value="Company">Company</option>
-                        <option value="Trust">Trust</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Send Type</label>
-                    <select
-                      value={lendSendType}
-                      onChange={(e) => setLendSendType(e.target.value)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="Auto">Auto</option>
-                      <option value="Manual">Manual</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[13px] font-medium text-muted-foreground mb-2">Who to Contact</label>
-                    <select
-                      value={lendWhoToContact}
-                      onChange={(e) => setLendWhoToContact(e.target.value)}
-                      className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="Broker">Broker</option>
-                      <option value="Client">Client</option>
-                    </select>
-                  </div>
-                </div>
-                <Button onClick={handleSaveLendFields} loading={savingLend} size="sm">Save Lend Settings</Button>
-              </div>
-
-              {/* Document type mapping */}
-              {documents.length > 0 && (
-                <div className="border-t border-border pt-4 mb-4">
-                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Document Type Mapping</h3>
-                  <div className="space-y-2">
-                    {documents.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 p-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate text-[13px] font-medium text-foreground">{doc.original_filename}</p>
-                        </div>
-                        {doc.lend_uploaded && (
-                          <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    {/* Sync status info */}
+                    {application.lend_ref && (
+                      <div className="mb-4 rounded-xl bg-success/5 border border-success/20 px-4 py-2.5">
+                        <span className="text-[13px] font-medium text-success">Lend Ref: {application.lend_ref}</span>
+                        {application.lend_synced_at && (
+                          <span className="text-[12px] text-success/70 ml-3">Synced: {formatDate(application.lend_synced_at)}</span>
                         )}
-                        <input
-                          type="text"
-                          value={docLendTypes[doc.id] || ''}
-                          onChange={(e) => handleDocLendTypeChange(doc.id, e.target.value)}
-                          className="w-40 rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          placeholder="Lend doc type"
-                        />
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    )}
+                    {application.lend_sync_error && (
+                      <div className="mb-4 rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
+                        <div className="flex items-start gap-2">
+                          <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                          <div>
+                            <p className="text-[13px] font-semibold text-destructive mb-1">Sync Failed</p>
+                            {application.lend_sync_error.includes(';') ? (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {application.lend_sync_error.split(';').map((err, i) => (
+                                  <li key={i} className="text-[12px] text-destructive/90">{err.trim()}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-[12px] text-destructive/90">{application.lend_sync_error}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-              {/* Sync button */}
-              <Button
-                onClick={handleLendSync}
-                loading={syncing}
-                disabled={application.lend_sync_status === 'pending' || syncing}
-                variant={application.lend_sync_status === 'failed' ? 'danger' : 'primary'}
-              >
-                {application.lend_sync_status === 'failed' ? 'Re-sync to Lend' :
-                 application.lend_sync_status === 'synced' ? 'Re-sync to Lend' :
-                 application.lend_sync_status === 'pending' ? 'Syncing...' :
-                 'Sync to Lend'}
-              </Button>
-            </GlassCard>
-          )}
+                    {/* Editable lead details */}
+                    <button
+                      type="button"
+                      onClick={() => setShowLendDetails(!showLendDetails)}
+                      className="flex items-center justify-between w-full rounded-xl bg-secondary/50 hover:bg-secondary px-4 py-2.5 mb-4 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                        <span className="text-[13px] font-medium text-foreground">Edit Lead Details</span>
+                      </div>
+                      <svg className={`h-4 w-4 text-muted-foreground transition-transform ${showLendDetails ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                    </button>
+                    {showLendDetails && (
+                      <div className="space-y-4 mb-5 rounded-xl bg-secondary/30 p-4">
+                        {/* Applicant */}
+                        <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
+                            <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                              <option value="">Select...</option>
+                              {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
+                            <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
+                            <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
+                            <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
+                            <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
+                            <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                              <option value="">Select...</option>
+                              {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
+                            <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                              <option value="">Select...</option>
+                              {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Address */}
+                        <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Address</h3>
+                        <div className="grid gap-3 sm:grid-cols-1">
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
+                            <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
+                            <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">State</label>
+                            <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                              <option value="">Select...</option>
+                              {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
+                            <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                        </div>
+
+                        {/* Business (only for business loans) */}
+                        {application.loan_type === 'business' && (
+                          <>
+                            <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Business</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
+                                <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              </div>
+                              <div>
+                                <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
+                                <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <div>
+                                <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
+                                <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              </div>
+                              <div>
+                                <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
+                                <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              </div>
+                              <div>
+                                <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
+                                <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Loan */}
+                        <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Loan</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Amount</label>
+                            <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
+                            <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
+                            <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
+                            <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Broker Lend fields */}
+                    <div className="space-y-4 mb-5">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Product Type ID</label>
+                          <input
+                            type="number"
+                            value={lendProductTypeId}
+                            onChange={(e) => setLendProductTypeId(e.target.value)}
+                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            placeholder="e.g. 25"
+                          />
+                        </div>
+                        {application.loan_type === 'business' && (
+                          <div>
+                            <label className="block text-[13px] font-medium text-muted-foreground mb-2">Owner Type</label>
+                            <select
+                              value={lendOwnerType}
+                              onChange={(e) => setLendOwnerType(e.target.value)}
+                              className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            >
+                              <option value="">Select...</option>
+                              <option value="Sole Trader">Sole Trader</option>
+                              <option value="Partnership">Partnership</option>
+                              <option value="Company">Company</option>
+                              <option value="Trust">Trust</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Send Type</label>
+                          <select
+                            value={lendSendType}
+                            onChange={(e) => setLendSendType(e.target.value)}
+                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            <option value="Auto">Auto</option>
+                            <option value="Manual">Manual</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Who to Contact</label>
+                          <select
+                            value={lendWhoToContact}
+                            onChange={(e) => setLendWhoToContact(e.target.value)}
+                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            <option value="Broker">Broker</option>
+                            <option value="Client">Client</option>
+                          </select>
+                        </div>
+                      </div>
+                      <Button onClick={handleSaveLendFields} loading={savingLend} size="sm">Save Lend Settings</Button>
+                    </div>
+
+                    {/* Document type mapping */}
+                    {documents.length > 0 && (
+                      <div className="border-t border-border pt-4 mb-4">
+                        <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Document Type Mapping</h3>
+                        <div className="space-y-2">
+                          {documents.map((doc) => (
+                            <div key={doc.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 p-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="truncate text-[13px] font-medium text-foreground">{doc.original_filename}</p>
+                              </div>
+                              {doc.lend_uploaded && (
+                                <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                              )}
+                              <input
+                                type="text"
+                                value={docLendTypes[doc.id] || ''}
+                                onChange={(e) => handleDocLendTypeChange(doc.id, e.target.value)}
+                                className="w-40 rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                placeholder="Lend doc type"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sync button */}
+                    <Button
+                      onClick={handleLendSync}
+                      loading={syncing}
+                      disabled={application.lend_sync_status === 'pending' || syncing}
+                      variant={application.lend_sync_status === 'failed' ? 'danger' : 'primary'}
+                    >
+                      {application.lend_sync_status === 'failed' ? 'Re-sync to Lend' :
+                        application.lend_sync_status === 'synced' ? 'Re-sync to Lend' :
+                          application.lend_sync_status === 'pending' ? 'Syncing...' :
+                            'Sync to Lend'}
+                    </Button>
+                  </GlassCard>
+                )}
 
               </>
             )}
 
             {activeTab === 'messages' && (
               <>
-          {/* Notes & Messages */}
-          <GlassCard>
-            <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
-              <h2 className="text-[16px] font-semibold text-foreground">Notes & Messages</h2>
-              {referrer && (
-                <div className="flex rounded-xl bg-secondary/80 p-1">
-                  <button
-                    onClick={() => setNoteTab('messages')}
-                    className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${
-                      noteTab === 'messages'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                    }`}
-                  >
-                    Messages
-                  </button>
-                  <button
-                    onClick={() => {
-                      setNoteTab('referrer');
-                      if (!referrerMsgSubject) setReferrerMsgSubject(`Re: Referral - ${client?.full_name || 'Client'}`);
-                    }}
-                    className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${
-                      noteTab === 'referrer'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                    }`}
-                  >
-                    DM Referrer
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {noteTab === 'referrer' && referrer ? (
-              /* Referrer direct message compose */
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-3 rounded-2xl bg-secondary/30 p-4 border border-border/50">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-chart-4/15 text-chart-4 shadow-inner">
-                    <span className="text-[13px] font-bold">{referrer.full_name.charAt(0).toUpperCase()}</span>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-semibold text-foreground">{referrer.full_name}</p>
-                    <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={referrerMsgSubject}
-                    onChange={(e) => setReferrerMsgSubject(e.target.value)}
-                    placeholder="Subject..."
-                    className="w-full rounded-2xl bg-secondary/50 px-4 py-3 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                  />
-                  <div className="relative">
-                    <textarea
-                      value={referrerMsgContent}
-                      onChange={(e) => setReferrerMsgContent(e.target.value)}
-                      rows={4}
-                      placeholder="Write a message to the referrer..."
-                      className="w-full rounded-2xl bg-secondary/50 px-4 py-3 pb-16 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground resize-none"
-                    />
-                    <div className="absolute bottom-3 right-3">
-                      <Button
-                        size="sm"
-                        onClick={handleSendReferrerMessage}
-                        loading={sendingReferrerMsg}
-                        disabled={!referrerMsgSubject.trim() || !referrerMsgContent.trim()}
-                        className="rounded-xl px-4"
-                      >
-                        Send
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {/* All notes list */}
-                <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                  {appNotes.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                      <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                        <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                {/* Notes & Messages */}
+                <GlassCard>
+                  <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
+                    <h2 className="text-[16px] font-semibold text-foreground">Notes & Messages</h2>
+                    {referrer && (
+                      <div className="flex rounded-xl bg-secondary/80 p-1">
+                        <button
+                          onClick={() => setNoteTab('messages')}
+                          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${noteTab === 'messages'
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                            }`}
+                        >
+                          Messages
+                        </button>
+                        <button
+                          onClick={() => {
+                            setNoteTab('referrer');
+                            if (!referrerMsgSubject) setReferrerMsgSubject(`Re: Referral - ${client?.full_name || 'Client'}`);
+                          }}
+                          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${noteTab === 'referrer'
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                            }`}
+                        >
+                          DM Referrer
+                        </button>
                       </div>
-                      <p className="text-[13px] font-medium text-muted-foreground">No messages yet</p>
-                    </div>
-                  ) : (
-                    appNotes.map((note) => {
-                      const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
-                      return (
-                        <div key={note.id} className="flex flex-col gap-1.5 group/note">
-                          <div className="flex items-baseline justify-between px-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                              {note.author_role && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">
-                                  {note.author_role}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={async () => {
-                                  if (!id) return;
-                                  try {
-                                    await api.delete(`/applications/${id}/notes/${note.id}`);
-                                    setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
-                                    toast('Message deleted', 'success');
-                                  } catch (err: any) {
-                                    toast(getErrorMessage(err, 'Failed to delete'), 'error');
-                                  }
-                                }}
-                                className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                title="Delete message"
-                              >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                              </button>
-                              <span className="text-[11px] font-medium text-muted-foreground">
-                                {formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          </div>
-                          <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed relative ${isInternal ? 'bg-secondary/40 text-foreground border border-transparent' : 'bg-primary/10 text-primary border border-primary/20'}`}>
-                            <p className="whitespace-pre-wrap">{note.content}</p>
-                            
-                            {/* Visibility Indicators */}
-                            <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
-                              <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                              {isInternal ? (
-                                <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
-                              ) : (
-                                <div className="flex gap-1.5">
-                                  {note.visibility.filter((v) => v !== 'broker').map((v) => (
-                                    <span
-                                      key={v}
-                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                                        v === 'client' ? 'bg-chart-2/20 text-chart-2' :
-                                        'bg-chart-4/20 text-chart-4'
-                                      }`}
-                                    >
-                                      {v}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                    )}
+                  </div>
+
+                  {noteTab === 'referrer' && referrer ? (
+                    /* Referrer direct message compose */
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="flex items-center gap-3 rounded-2xl bg-secondary/30 p-4 border border-border/50">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-chart-4/15 text-chart-4 shadow-inner">
+                          <span className="text-[13px] font-bold">{referrer.full_name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-semibold text-foreground">{referrer.full_name}</p>
+                          <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          value={referrerMsgSubject}
+                          onChange={(e) => setReferrerMsgSubject(e.target.value)}
+                          placeholder="Subject..."
+                          className="w-full rounded-2xl bg-secondary/50 px-4 py-3 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                        />
+                        <div className="relative">
+                          <textarea
+                            value={referrerMsgContent}
+                            onChange={(e) => setReferrerMsgContent(e.target.value)}
+                            rows={4}
+                            placeholder="Write a message to the referrer..."
+                            className="w-full rounded-2xl bg-secondary/50 px-4 py-3 pb-16 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground resize-none"
+                          />
+                          <div className="absolute bottom-3 right-3">
+                            <Button
+                              size="sm"
+                              onClick={handleSendReferrerMessage}
+                              loading={sendingReferrerMsg}
+                              disabled={!referrerMsgSubject.trim() || !referrerMsgContent.trim()}
+                              className="rounded-xl px-4"
+                            >
+                              Send
+                            </Button>
                           </div>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Sleek Compose Area */}
-                <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
-                  <textarea
-                    value={newNoteContent}
-                    onChange={(e) => setNewNoteContent(e.target.value)}
-                    rows={2}
-                    className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                    placeholder="Write a message..."
-                  />
-                  
-                  <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
-                    <div className="flex items-center gap-1 bg-background/50 rounded-xl p-1 backdrop-blur-sm border border-border/50">
-                      {([
-                        { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
-                        { key: 'client' as NoteVisibility, label: 'Client', locked: false },
-                        { key: 'referrer' as NoteVisibility, label: 'Referrer', locked: false },
-                      ]).map(({ key, label, locked }) => {
-                        const active = noteVisibility.includes(key);
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            disabled={locked}
-                            onClick={() => {
-                              if (locked) return;
-                              setNoteVisibility((prev) =>
-                                active ? prev.filter((v) => v !== key) : [...prev, key]
-                              );
-                            }}
-                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all duration-200 ${
-                              active
-                                ? locked
-                                  ? 'bg-muted/80 text-muted-foreground/80 cursor-default'
-                                  : key === 'client'
-                                    ? 'bg-chart-2/20 text-chart-2 shadow-sm'
-                                    : 'bg-chart-4/20 text-chart-4 shadow-sm'
-                                : 'text-muted-foreground/60 hover:text-foreground hover:bg-secondary'
-                            }`}
-                          >
-                            {active ? (
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                            ) : (
-                              <div className="h-3 w-3 rounded-full border border-current" />
-                            )}
-                            {label}
-                          </button>
-                        );
-                      })}
+                      </div>
                     </div>
+                  ) : (
+                    <div className="flex flex-col h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      {/* All notes list */}
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
+                        {appNotes.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
+                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                            </div>
+                            <p className="text-[13px] font-medium text-muted-foreground">No messages yet</p>
+                          </div>
+                        ) : (
+                          appNotes.map((note) => {
+                            const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
+                            return (
+                              <div key={note.id} className="flex flex-col gap-1.5 group/note">
+                                <div className="flex items-baseline justify-between px-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                                    {note.author_role && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">
+                                        {note.author_role}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={async () => {
+                                        if (!id) return;
+                                        try {
+                                          await api.delete(`/applications/${id}/notes/${note.id}`);
+                                          setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
+                                          toast('Message deleted', 'success');
+                                        } catch (err: unknown) {
+                                          toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                                        }
+                                      }}
+                                      className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                      title="Delete message"
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    </button>
+                                    <span className="text-[11px] font-medium text-muted-foreground">
+                                      {formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed relative ${isInternal ? 'bg-secondary/40 text-foreground border border-transparent' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                  <p className="whitespace-pre-wrap">{note.content}</p>
 
-                    <Button
-                      size="sm"
-                      className="rounded-xl px-4 h-9"
-                      loading={sendingNote}
-                      disabled={!newNoteContent.trim()}
-                      onClick={async () => {
-                        if (!id || !newNoteContent.trim()) return;
-                        setSendingNote(true);
-                        try {
-                          const { data } = await api.post(`/applications/${id}/notes`, {
-                            content: newNoteContent.trim(),
-                            visibility: noteVisibility,
-                          });
-                          setAppNotes((prev) => [...prev, data]);
-                          setNewNoteContent('');
-                          const targets = noteVisibility.filter((v) => v !== 'broker');
-                          toast(targets.length > 0 ? `Message sent (visible to ${targets.join(', ')})` : 'Internal note added', 'success');
-                        } catch (err: any) {
-                          toast(getErrorMessage(err, 'Failed to send message'), 'error');
-                        } finally {
-                          setSendingNote(false);
-                        }
-                      }}
-                    >
-                      <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
-                      {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Note' : 'Send'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </GlassCard>
+                                  {/* Visibility Indicators */}
+                                  <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
+                                    <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                                    {isInternal ? (
+                                      <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
+                                    ) : (
+                                      <div className="flex gap-1.5">
+                                        {note.visibility.filter((v) => v !== 'broker').map((v) => (
+                                          <span
+                                            key={v}
+                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${v === 'client' ? 'bg-chart-2/20 text-chart-2' :
+                                                'bg-chart-4/20 text-chart-4'
+                                              }`}
+                                          >
+                                            {v}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Sleek Compose Area */}
+                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
+                        <textarea
+                          value={newNoteContent}
+                          onChange={(e) => setNewNoteContent(e.target.value)}
+                          rows={2}
+                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
+                          placeholder="Write a message..."
+                        />
+
+                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                          <div className="flex items-center gap-1 bg-background/50 rounded-xl p-1 backdrop-blur-sm border border-border/50">
+                            {([
+                              { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
+                              { key: 'client' as NoteVisibility, label: 'Client', locked: false },
+                              { key: 'referrer' as NoteVisibility, label: 'Referrer', locked: false },
+                            ]).map(({ key, label, locked }) => {
+                              const active = noteVisibility.includes(key);
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  disabled={locked}
+                                  onClick={() => {
+                                    if (locked) return;
+                                    setNoteVisibility((prev) =>
+                                      active ? prev.filter((v) => v !== key) : [...prev, key]
+                                    );
+                                  }}
+                                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all duration-200 ${active
+                                      ? locked
+                                        ? 'bg-muted/80 text-muted-foreground/80 cursor-default'
+                                        : key === 'client'
+                                          ? 'bg-chart-2/20 text-chart-2 shadow-sm'
+                                          : 'bg-chart-4/20 text-chart-4 shadow-sm'
+                                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-secondary'
+                                    }`}
+                                >
+                                  {active ? (
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                                  ) : (
+                                    <div className="h-3 w-3 rounded-full border border-current" />
+                                  )}
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <Button
+                            size="sm"
+                            className="rounded-xl px-4 h-9"
+                            loading={sendingNote}
+                            disabled={!newNoteContent.trim()}
+                            onClick={async () => {
+                              if (!id || !newNoteContent.trim()) return;
+                              setSendingNote(true);
+                              try {
+                                const { data } = await api.post(`/applications/${id}/notes`, {
+                                  content: newNoteContent.trim(),
+                                  visibility: noteVisibility,
+                                });
+                                setAppNotes((prev) => [...prev, data]);
+                                setNewNoteContent('');
+                                const targets = noteVisibility.filter((v) => v !== 'broker');
+                                toast(targets.length > 0 ? `Message sent (visible to ${targets.join(', ')})` : 'Internal note added', 'success');
+                              } catch (err: unknown) {
+                                toast(getErrorMessage(err, 'Failed to send message'), 'error');
+                              } finally {
+                                setSendingNote(false);
+                              }
+                            }}
+                          >
+                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                            {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Note' : 'Send'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </GlassCard>
               </>
             )}
 
@@ -2091,6 +2105,38 @@ export default function ReviewApplication() {
           ocrStatus={previewDoc.ocrStatus}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingStatus}
+        title="Change application status?"
+        message={pendingStatus ? (
+          <>
+            This will update the application to <span className="font-semibold text-foreground capitalize">{pendingStatusLabel}</span>.
+          </>
+        ) : null}
+        confirmText="Change Status"
+        cancelText="Cancel"
+        variant={pendingStatus === 'rejected' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
+        loading={changingStatus}
+        onConfirm={confirmStatusChange}
+        onCancel={() => {
+          if (!changingStatus) setPendingStatus(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmBrokerSubmit}
+        title="Submit this application now?"
+        message="The draft will be submitted and its status will change to Application Received."
+        confirmText="Submit Application"
+        cancelText="Cancel"
+        variant="primary"
+        loading={submittingOnBehalf}
+        onConfirm={confirmBrokerSubmitAction}
+        onCancel={() => {
+          if (!submittingOnBehalf) setConfirmBrokerSubmit(false);
+        }}
+      />
     </div>
   );
 }
