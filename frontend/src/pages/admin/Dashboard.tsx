@@ -31,21 +31,26 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
+    const isAdmin = user?.role === 'admin';
+    Promise.allSettled([
       api.get('/dashboard/stats'),
       api.get('/applications?per_page=100'),
-      api.get('/activity-logs?per_page=10'),
+      isAdmin ? api.get('/activity-logs?per_page=10') : Promise.resolve(null),
       api.get('/users'),
     ])
       .then(([statsRes, appRes, logRes, usersRes]) => {
-        setDashStats(statsRes.data);
-        setApplications(appRes.data.items);
-        setLogs(logRes.data.items);
-        setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
+        const failed: string[] = [];
+        if (statsRes.status === 'fulfilled') setDashStats(statsRes.value.data);
+        else failed.push('stats');
+        if (appRes.status === 'fulfilled') setApplications(appRes.value.data.items);
+        else failed.push('applications');
+        if (logRes.status === 'fulfilled' && logRes.value) setLogs(logRes.value.data.items);
+        if (usersRes.status === 'fulfilled') setBrokers(usersRes.value.data.filter((u: User) => u.role === 'broker'));
+        else failed.push('brokers');
+        if (failed.length) toast(`Failed to load: ${failed.join(', ')}`, 'error');
       })
-      .catch(() => toast('Failed to load dashboard data', 'error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.role]);
 
   // Derive counts from stats endpoint (accurate across all data, not capped by per_page)
   const counts = {
@@ -396,7 +401,8 @@ export default function AdminDashboard() {
         )}
       </GlassCard>
 
-      {/* Recent Activity */}
+      {/* Recent Activity (admin only) */}
+      {user?.role === 'admin' && (
       <GlassCard padding="none">
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
           <h2 className="text-[15px] font-semibold text-foreground">Recent Activity</h2>
@@ -464,6 +470,7 @@ export default function AdminDashboard() {
           </div>
         )}
       </GlassCard>
+      )}
     </div>
   );
 }
