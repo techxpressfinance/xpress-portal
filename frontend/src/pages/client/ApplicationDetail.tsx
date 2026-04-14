@@ -132,7 +132,7 @@ export default function ApplicationDetail() {
   const handleSubmitApplication = async () => {
     if (!id || !application) return;
     try {
-      const { data } = await api.patch(`/applications/${id}`, { status: 'submitted' });
+      const { data } = await api.patch(`/applications/${id}`, { status: 'application_received' });
       setApplication(data);
       toast('Application submitted for review!', 'success');
     } catch (err: any) {

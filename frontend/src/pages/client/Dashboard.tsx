@@ -38,7 +38,7 @@ export default function ClientDashboard() {
 
   const handleCopyLink = () => copy(referralLink);
 
-  const activeCount = applications.filter((a) => !['approved', 'rejected'].includes(a.status)).length;
+  const activeCount = applications.filter((a) => !['settled', 'rejected'].includes(a.status)).length;
   const kyc = KYC_CONFIG[user?.kyc_status || 'pending'];
 
   return (

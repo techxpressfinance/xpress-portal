@@ -6,16 +6,20 @@ interface Props {
 
 const steps: { key: ApplicationStatus; label: string }[] = [
   { key: 'draft', label: 'Draft' },
+  { key: 'application_received', label: 'Received' },
+  { key: 'application_assessed', label: 'Assessed' },
   { key: 'submitted', label: 'Submitted' },
-  { key: 'reviewing', label: 'Under Review' },
-  { key: 'approved', label: 'Approved' },
+  { key: 'approval', label: 'Approval' },
+  { key: 'settled', label: 'Settled' },
 ];
 
 const statusOrder: Record<string, number> = {
   draft: 0,
-  submitted: 1,
-  reviewing: 2,
-  approved: 3,
+  application_received: 1,
+  application_assessed: 2,
+  submitted: 3,
+  approval: 4,
+  settled: 5,
   rejected: -1,
 };
 

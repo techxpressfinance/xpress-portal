@@ -86,7 +86,7 @@ def get_dashboard_stats(
     # ── Average turnaround (created → updated for approved/rejected) ──
     completed = scoped(
         db.query(LoanApplication.created_at, LoanApplication.updated_at).filter(
-            LoanApplication.status.in_([ApplicationStatus.approved, ApplicationStatus.rejected])
+            LoanApplication.status.in_([ApplicationStatus.settled, ApplicationStatus.rejected])
         )
     ).all()
     if completed:

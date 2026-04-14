@@ -18,17 +18,25 @@ def _esc(value: str) -> str:
 logger = logging.getLogger(__name__)
 
 STATUS_MESSAGES = {
+    "application_received": {
+        "subject": "Application Received - Xpress Tech Portal",
+        "body": "Your loan application has been received and is now pending assessment. Our team will review your application shortly.",
+    },
+    "application_assessed": {
+        "subject": "Application Assessed - Xpress Tech Portal",
+        "body": "Your loan application has been assessed by our team. We will be in touch with the next steps.",
+    },
     "submitted": {
-        "subject": "Application Submitted - Xpress Tech Portal",
-        "body": "Your loan application has been submitted and is now pending review. Our team will review your application shortly.",
+        "subject": "Application Submitted to Lender - Xpress Tech Portal",
+        "body": "Your loan application has been submitted to a lender for consideration.",
     },
-    "reviewing": {
-        "subject": "Application Under Review - Xpress Tech Portal",
-        "body": "Your loan application is now being reviewed by our team. We will notify you once a decision has been made.",
-    },
-    "approved": {
+    "approval": {
         "subject": "Application Approved - Xpress Tech Portal",
-        "body": "Congratulations! Your loan application has been approved. Our team will reach out to you with the next steps.",
+        "body": "Congratulations! Your loan application has been approved. Our team will reach out with the settlement steps.",
+    },
+    "settled": {
+        "subject": "Loan Settled - Xpress Tech Portal",
+        "body": "Your loan has settled. Thank you for choosing Xpress Tech.",
     },
     "rejected": {
         "subject": "Application Update - Xpress Tech Portal",

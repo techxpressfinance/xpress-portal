@@ -56,9 +56,11 @@ export default function AdminDashboard() {
   const counts = {
     total: dashStats ? Object.values(dashStats.status_counts).reduce((a, b) => a + b, 0) : 0,
     draft: dashStats?.status_counts.draft ?? 0,
+    application_received: dashStats?.status_counts.application_received ?? 0,
+    application_assessed: dashStats?.status_counts.application_assessed ?? 0,
     submitted: dashStats?.status_counts.submitted ?? 0,
-    reviewing: dashStats?.status_counts.reviewing ?? 0,
-    approved: dashStats?.status_counts.approved ?? 0,
+    approval: dashStats?.status_counts.approval ?? 0,
+    settled: dashStats?.status_counts.settled ?? 0,
     rejected: dashStats?.status_counts.rejected ?? 0,
   };
 
@@ -72,9 +74,9 @@ export default function AdminDashboard() {
 
   const stats = [
     { label: 'Total', value: counts.total, gradient: 'from-primary to-primary', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg> },
-    { label: 'Submitted', value: counts.submitted, gradient: 'from-chart-2 to-chart-2', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg> },
-    { label: 'Reviewing', value: counts.reviewing, gradient: 'from-chart-4 to-chart-4', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg> },
-    { label: 'Approved', value: counts.approved, gradient: 'from-success to-success', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>, valueColor: 'text-success' },
+    { label: 'Received', value: counts.application_received, gradient: 'from-chart-2 to-chart-2', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg> },
+    { label: 'Assessed', value: counts.application_assessed, gradient: 'from-chart-4 to-chart-4', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg> },
+    { label: 'Settled', value: counts.settled, gradient: 'from-success to-success', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>, valueColor: 'text-success' },
     { label: 'Rejected', value: counts.rejected, gradient: 'from-destructive to-destructive', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>, valueColor: 'text-destructive' },
   ];
 
@@ -234,7 +236,7 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {(['draft', 'submitted', 'reviewing', 'approved', 'rejected'] as const).map((status) => {
+              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected'] as const).map((status) => {
                 const count = counts[status];
                 const pct = counts.total > 0 ? (count / counts.total) * 100 : 0;
                 const volume = dashStats?.volume_by_status[status] ?? 0;

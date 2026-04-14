@@ -296,7 +296,7 @@ export default function ReviewApplication() {
     if (!id) return;
     setSubmittingOnBehalf(true);
     try {
-      const { data } = await api.patch(`/applications/${id}`, { status: 'submitted' });
+      const { data } = await api.patch(`/applications/${id}`, { status: 'application_received' });
       setApplication(data);
       toast('Application submitted on behalf of client', 'success');
     } catch (err: any) {
@@ -2000,12 +2000,12 @@ export default function ReviewApplication() {
                 {allowedTransitions.map((s) => (
                   <Button
                     key={s}
-                    variant={s === 'approved' ? 'success' : s === 'rejected' ? 'danger' : 'primary'}
+                    variant={s === 'settled' || s === 'approval' ? 'success' : s === 'rejected' ? 'danger' : 'primary'}
                     size="lg"
                     className="w-full capitalize"
                     onClick={() => handleStatusChange(s)}
                   >
-                    {s}
+                    {s.replace(/_/g, ' ')}
                   </Button>
                 ))}
               </div>

@@ -819,9 +819,11 @@ export default function KanbanBoardPage() {
             >
               <option value="">None (organizational only)</option>
               <option value="draft">Draft</option>
+              <option value="application_received">Application Received</option>
+              <option value="application_assessed">Application Assessed</option>
               <option value="submitted">Submitted</option>
-              <option value="reviewing">Reviewing</option>
-              <option value="approved">Approved</option>
+              <option value="approval">Approval</option>
+              <option value="settled">Settled</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>
@@ -858,9 +860,11 @@ export default function KanbanBoardPage() {
             >
               <option value="">None (organizational only)</option>
               <option value="draft">Draft</option>
+              <option value="application_received">Application Received</option>
+              <option value="application_assessed">Application Assessed</option>
               <option value="submitted">Submitted</option>
-              <option value="reviewing">Reviewing</option>
-              <option value="approved">Approved</option>
+              <option value="approval">Approval</option>
+              <option value="settled">Settled</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>

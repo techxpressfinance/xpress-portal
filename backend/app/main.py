@@ -186,6 +186,24 @@ with engine.begin() as conn:
         conn.execute(text("ALTER TABLE quote_sheets_new RENAME TO quote_sheets"))
         _logger.info("quote_sheets table rebuilt successfully")
 
+# Data migration: remap legacy ApplicationStatus values to the new vocabulary.
+# Old: submitted, reviewing, approved  →  New: application_received, application_assessed, approval
+with engine.begin() as conn:
+    _status_remap = [
+        ("submitted", "application_received"),
+        ("reviewing", "application_assessed"),
+        ("approved", "approval"),
+    ]
+    for _old, _new in _status_remap:
+        conn.execute(
+            text("UPDATE loan_applications SET status = :new WHERE status = :old"),
+            {"old": _old, "new": _new},
+        )
+        conn.execute(
+            text("UPDATE kanban_columns SET mapped_status = :new WHERE mapped_status = :old"),
+            {"old": _old, "new": _new},
+        )
+
 # Backfill: migrate existing assigned_broker_id rows into application_brokers
 if "application_brokers" in {t for t in _inspector.get_table_names()}:
     _dialect = engine.dialect.name

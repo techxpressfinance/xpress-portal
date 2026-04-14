@@ -23,9 +23,11 @@ class LoanType(str, enum.Enum):
 
 class ApplicationStatus(str, enum.Enum):
     draft = "draft"
+    application_received = "application_received"
+    application_assessed = "application_assessed"
     submitted = "submitted"
-    reviewing = "reviewing"
-    approved = "approved"
+    approval = "approval"
+    settled = "settled"
     rejected = "rejected"
 
 

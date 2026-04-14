@@ -3,10 +3,22 @@ import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncSta
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: 'bg-secondary text-muted-foreground',
-  submitted: 'bg-primary/10 text-primary',
-  reviewing: 'bg-chart-4/10 text-chart-4',
-  approved: 'bg-success/10 text-success',
+  application_received: 'bg-primary/10 text-primary',
+  application_assessed: 'bg-chart-4/10 text-chart-4',
+  submitted: 'bg-chart-2/10 text-chart-2',
+  approval: 'bg-chart-5/10 text-chart-5',
+  settled: 'bg-success/10 text-success',
   rejected: 'bg-destructive/10 text-destructive',
+};
+
+export const STATUS_LABEL: Record<ApplicationStatus, string> = {
+  draft: 'Draft',
+  application_received: 'Application Received',
+  application_assessed: 'Application Assessed',
+  submitted: 'Submitted',
+  approval: 'Approval',
+  settled: 'Settled',
+  rejected: 'Rejected',
 };
 
 export const KYC_CONFIG: Record<KYCStatus, { color: string; bg: string; label: string; gradient: string }> = {
@@ -151,11 +163,13 @@ export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'b
 
 // NOTE: backend source of truth at backend/app/constants.py — keep in sync
 export const VALID_TRANSITIONS: Record<string, string[]> = {
-  draft: ['submitted', 'reviewing', 'approved', 'rejected'],
-  submitted: ['draft', 'reviewing', 'approved', 'rejected'],
-  reviewing: ['draft', 'submitted', 'approved', 'rejected'],
-  approved: ['draft', 'submitted', 'reviewing', 'rejected'],
-  rejected: ['draft', 'submitted', 'reviewing', 'approved'],
+  draft: ['application_received', 'rejected'],
+  application_received: ['application_assessed', 'submitted', 'rejected', 'draft'],
+  application_assessed: ['submitted', 'approval', 'rejected', 'application_received', 'draft'],
+  submitted: ['approval', 'rejected', 'application_assessed', 'application_received', 'draft'],
+  approval: ['settled', 'rejected', 'submitted'],
+  settled: [],
+  rejected: ['draft', 'application_received', 'application_assessed', 'submitted'],
 };
 
 export const COLUMN_COLOR_OPTIONS = [

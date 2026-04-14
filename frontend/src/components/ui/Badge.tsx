@@ -1,4 +1,4 @@
-import { STATUS_BADGE, ROLE_BADGE, KYC_CONFIG } from '../../lib/constants';
+import { STATUS_BADGE, STATUS_LABEL, ROLE_BADGE, KYC_CONFIG } from '../../lib/constants';
 
 type BadgeType = 'status' | 'role' | 'kyc' | 'custom';
 
@@ -20,9 +20,16 @@ export default function Badge({ type = 'status', value, className = '' }: BadgeP
     colorClass = kyc ? `${kyc.bg} ${kyc.color}` : colorClass;
   }
 
+  const display =
+    type === 'kyc'
+      ? KYC_CONFIG[value as keyof typeof KYC_CONFIG]?.label || value
+      : type === 'status'
+        ? STATUS_LABEL[value as keyof typeof STATUS_LABEL] || value
+        : value;
+
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium capitalize ${colorClass} ${className}`}>
-      {type === 'kyc' ? KYC_CONFIG[value as keyof typeof KYC_CONFIG]?.label || value : value}
+      {display}
     </span>
   );
 }

@@ -177,11 +177,11 @@ def update_application(
     updates = data.model_dump(exclude_unset=True)
     requested_status = updates.pop("status", None)
 
-    # Handle draft -> submitted for any role
-    if requested_status == "submitted":
+    # Handle draft -> application_received for any role (client submission)
+    if requested_status == "application_received":
         if not is_draft:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be submitted")
-        updates["status"] = "submitted"
+        updates["status"] = "application_received"
 
         # Track broker/admin completion on behalf of client
         if current_user.role != UserRole.client:
@@ -193,13 +193,13 @@ def update_application(
             # Notify the client
             client_user = db.query(User).filter(User.id == application.user_id).first()
             if client_user:
-                send_status_notification(client_user.email, client_user.full_name, application.loan_type.value, "submitted")
+                send_status_notification(client_user.email, client_user.full_name, application.loan_type.value, "application_received")
 
     for key, value in updates.items():
         setattr(application, key, value)
 
-    # Detect if status just changed to submitted for Lend auto-sync
-    becoming_submitted = updates.get("status") == "submitted"
+    # Detect if status just changed to application_received for Lend auto-sync
+    becoming_submitted = updates.get("status") == "application_received"
 
     db.commit()
 
