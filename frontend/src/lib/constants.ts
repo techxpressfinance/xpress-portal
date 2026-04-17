@@ -2,13 +2,13 @@ import React from 'react';
 import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
-  draft: 'bg-secondary text-muted-foreground',
-  application_received: 'bg-primary/10 text-primary',
-  application_assessed: 'bg-chart-4/10 text-chart-4',
-  submitted: 'bg-chart-2/10 text-chart-2',
-  approval: 'bg-chart-5/10 text-chart-5',
-  settled: 'bg-success/10 text-success',
-  rejected: 'bg-destructive/10 text-destructive',
+  draft: '',
+  application_received: 'led-chip-info',
+  application_assessed: 'led-chip-violet',
+  submitted: 'led-chip-accent',
+  approval: 'led-chip-warning',
+  settled: 'led-chip-success',
+  rejected: 'led-chip-danger',
 };
 
 export const STATUS_LABEL: Record<ApplicationStatus, string> = {
@@ -22,43 +22,43 @@ export const STATUS_LABEL: Record<ApplicationStatus, string> = {
 };
 
 export const KYC_CONFIG: Record<KYCStatus, { color: string; bg: string; label: string; gradient: string }> = {
-  pending: { color: 'text-warning', bg: 'bg-warning/10', label: 'Pending Verification', gradient: 'from-warning to-warning' },
-  verified: { color: 'text-success', bg: 'bg-success/10', label: 'Verified', gradient: 'from-success to-success' },
-  rejected: { color: 'text-destructive', bg: 'bg-destructive/10', label: 'Rejected', gradient: 'from-destructive to-destructive' },
+  pending: { color: 'text-[var(--led-warning)]', bg: 'led-chip-warning', label: 'Pending Verification', gradient: 'from-warning to-warning' },
+  verified: { color: 'text-[var(--led-success)]', bg: 'led-chip-success', label: 'Verified', gradient: 'from-success to-success' },
+  rejected: { color: 'text-[var(--led-danger)]', bg: 'led-chip-danger', label: 'Rejected', gradient: 'from-destructive to-destructive' },
 };
 
 export const ROLE_BADGE: Record<UserRole, string> = {
-  client: 'bg-primary/10 text-primary',
-  broker: 'bg-chart-2/10 text-chart-2',
-  admin: 'bg-chart-5/10 text-chart-5',
-  referrer: 'bg-chart-4/10 text-chart-4',
-  super_admin: 'bg-chart-1/10 text-chart-1',
+  client: 'led-chip-info',
+  broker: 'led-chip-accent',
+  admin: 'led-chip-warning',
+  referrer: 'led-chip-violet',
+  super_admin: 'led-chip-danger',
 };
 
 export const OCR_STATUS_BADGE: Record<OcrStatus, { label: string; className: string }> = {
-  pending: { label: 'OCR Pending', className: 'bg-secondary text-muted-foreground' },
-  processing: { label: 'Extracting...', className: 'bg-chart-4/10 text-chart-4' },
-  completed: { label: 'Text Extracted', className: 'bg-success/10 text-success' },
-  failed: { label: 'OCR Failed', className: 'bg-destructive/10 text-destructive' },
+  pending: { label: 'OCR Pending', className: '' },
+  processing: { label: 'Extracting...', className: 'led-chip-warning' },
+  completed: { label: 'Text Extracted', className: 'led-chip-success' },
+  failed: { label: 'OCR Failed', className: 'led-chip-danger' },
 };
 
 export const ANALYSIS_STATUS_BADGE: Record<AnalysisStatus, { label: string; className: string }> = {
-  pending: { label: 'Analysis Pending', className: 'bg-secondary text-muted-foreground' },
-  processing: { label: 'Analyzing...', className: 'bg-chart-4/10 text-chart-4' },
-  completed: { label: 'Analysis Complete', className: 'bg-success/10 text-success' },
-  failed: { label: 'Analysis Failed', className: 'bg-destructive/10 text-destructive' },
+  pending: { label: 'Analysis Pending', className: '' },
+  processing: { label: 'Analyzing...', className: 'led-chip-warning' },
+  completed: { label: 'Analysis Complete', className: 'led-chip-success' },
+  failed: { label: 'Analysis Failed', className: 'led-chip-danger' },
 };
 
 export const RISK_LEVEL_BADGE: Record<string, { label: string; className: string }> = {
-  low: { label: 'Low Risk', className: 'bg-success/10 text-success' },
-  medium: { label: 'Medium Risk', className: 'bg-warning/10 text-warning' },
-  high: { label: 'High Risk', className: 'bg-destructive/10 text-destructive' },
+  low: { label: 'Low Risk', className: 'led-chip-success' },
+  medium: { label: 'Medium Risk', className: 'led-chip-warning' },
+  high: { label: 'High Risk', className: 'led-chip-danger' },
 };
 
 export const RECOMMENDATION_BADGE: Record<string, { label: string; className: string }> = {
-  approve: { label: 'Approve', className: 'bg-success/10 text-success' },
-  review: { label: 'Needs Review', className: 'bg-warning/10 text-warning' },
-  reject: { label: 'Reject', className: 'bg-destructive/10 text-destructive' },
+  approve: { label: 'Approve', className: 'led-chip-success' },
+  review: { label: 'Needs Review', className: 'led-chip-warning' },
+  reject: { label: 'Reject', className: 'led-chip-danger' },
 };
 
 export const FLAG_SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string }> = {
@@ -116,35 +116,35 @@ export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactN
 };
 
 export const SUBMISSION_STATUS_BADGE: Record<LenderSubmissionStatus, { label: string; className: string }> = {
-  pending: { label: 'Pending', className: 'bg-chart-4/10 text-chart-4' },
-  approved: { label: 'Approved', className: 'bg-success/10 text-success' },
-  declined: { label: 'Declined', className: 'bg-destructive/10 text-destructive' },
-  conditional: { label: 'Conditional', className: 'bg-warning/10 text-warning' },
-  withdrawn: { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground' },
+  pending: { label: 'Pending', className: 'led-chip-warning' },
+  approved: { label: 'Approved', className: 'led-chip-success' },
+  declined: { label: 'Declined', className: 'led-chip-danger' },
+  conditional: { label: 'Conditional', className: 'led-chip-accent' },
+  withdrawn: { label: 'Withdrawn', className: '' },
 };
 
 export const QUOTE_SHEET_STATUS_BADGE: Record<QuoteSheetStatus, { label: string; className: string }> = {
-  draft: { label: 'Draft', className: 'bg-chart-4/10 text-chart-4' },
-  sent: { label: 'Sent to Client', className: 'bg-success/10 text-success' },
+  draft: { label: 'Draft', className: 'led-chip-warning' },
+  sent: { label: 'Sent to Client', className: 'led-chip-success' },
 };
 
 export const LEND_SYNC_BADGE: Record<LendSyncStatus, { label: string; className: string }> = {
-  pending: { label: 'Lend Syncing...', className: 'bg-chart-4/10 text-chart-4' },
-  synced: { label: 'Lend Synced', className: 'bg-success/10 text-success' },
-  failed: { label: 'Lend Sync Failed', className: 'bg-destructive/10 text-destructive' },
+  pending: { label: 'Lend Syncing...', className: 'led-chip-warning' },
+  synced: { label: 'Lend Synced', className: 'led-chip-success' },
+  failed: { label: 'Lend Sync Failed', className: 'led-chip-danger' },
 };
 
 export const TASK_STATUS_BADGE: Record<TaskStatus, { label: string; className: string }> = {
-  todo: { label: 'To Do', className: 'bg-secondary text-muted-foreground' },
-  in_progress: { label: 'In Progress', className: 'bg-chart-4/10 text-chart-4' },
-  completed: { label: 'Completed', className: 'bg-success/10 text-success' },
+  todo: { label: 'To Do', className: '' },
+  in_progress: { label: 'In Progress', className: 'led-chip-warning' },
+  completed: { label: 'Completed', className: 'led-chip-success' },
 };
 
 export const TASK_PRIORITY_BADGE: Record<TaskPriority, { label: string; className: string }> = {
-  low: { label: 'Low', className: 'bg-secondary text-muted-foreground' },
-  medium: { label: 'Medium', className: 'bg-primary/10 text-primary' },
-  high: { label: 'High', className: 'bg-warning/10 text-warning' },
-  urgent: { label: 'Urgent', className: 'bg-destructive/10 text-destructive' },
+  low: { label: 'Low', className: '' },
+  medium: { label: 'Medium', className: 'led-chip-info' },
+  high: { label: 'High', className: 'led-chip-warning' },
+  urgent: { label: 'Urgent', className: 'led-chip-danger' },
 };
 
 export const AU_STATES = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'] as const;
@@ -190,4 +190,14 @@ export const COLUMN_COLOR_BG: Record<string, string> = {
   'destructive': 'bg-destructive',
   'chart-2': 'bg-chart-2',
   'chart-5': 'bg-chart-5',
+};
+
+export const COLUMN_COLOR_BORDER_L: Record<string, string> = {
+  'muted-foreground': 'border-l-muted-foreground',
+  'primary': 'border-l-primary',
+  'chart-4': 'border-l-chart-4',
+  'success': 'border-l-success',
+  'destructive': 'border-l-destructive',
+  'chart-2': 'border-l-chart-2',
+  'chart-5': 'border-l-chart-5',
 };

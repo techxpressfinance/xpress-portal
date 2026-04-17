@@ -1,62 +1,221 @@
-import { useEffect, useState, useCallback, useRef, type DragEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef, type DragEvent, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
-import { formatDate, getInitials } from '../../lib/utils';
-import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, COLUMN_COLOR_BG, STATUS_LABEL } from '../../lib/constants';
-import { PageHeader, Input, Button, ConfirmDialog } from '../../components/ui';
+import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
+import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, STATUS_LABEL } from '../../lib/constants';
+import { ConfirmDialog } from '../../components/ui';
 import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, ApplicationStatus, User } from '../../types';
 
-// ── Card Component ──────────────────────────────────────────
+// ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
 
-function KanbanCard({ app, onDragStart, isDragging }: { app: LoanApplication; onDragStart: (e: DragEvent, app: LoanApplication) => void; isDragging?: boolean }) {
+const COLOR_TO_OKLCH: Record<string, string> = {
+  'muted-foreground': 'oklch(0.62 0.02 0)',
+  'primary': 'oklch(0.55 0.22 268)',
+  'chart-4': 'oklch(0.72 0.15 65)',
+  'success': 'oklch(0.62 0.15 155)',
+  'destructive': 'oklch(0.58 0.20 20)',
+  'chart-2': 'oklch(0.62 0.14 210)',
+  'chart-5': 'oklch(0.55 0.19 300)',
+};
+const colorDot = (key: string | null | undefined) => COLOR_TO_OKLCH[key || 'muted-foreground'] || COLOR_TO_OKLCH['muted-foreground'];
+
+// ── Icons (minimal set) ──
+
+function Icon({ name, size = 14, className = '' }: { name: string; size?: number; className?: string }) {
+  const paths: Record<string, ReactNode> = {
+    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></>,
+    car: <path d="M3 13h18l-2-6H5l-2 6Zm0 0v4a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2m10 0v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-4M7 16h.01M17 16h.01" />,
+    home: <path d="M3 12 12 4l9 8v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-7 8-7s8 3 8 7" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
+    chevronRight: <path d="m9 6 6 6-6 6" />,
+    board: <><rect x="3" y="4" width="6" height="16" rx="1.2" /><rect x="11" y="4" width="6" height="10" rx="1.2" /><rect x="19" y="4" width="2.5" height="7" rx="1" /></>,
+    list: <><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></>,
+    edit: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />,
+    trash: <><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" /></>,
+    dotsV: <><circle cx="12" cy="5" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="12" cy="19" r="1.3" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.5c3 0 5.5 2 5.5 5" /></>,
+    filter: <path d="M4 5h16l-6 8v6l-4-2v-4L4 5Z" />,
+  };
   return (
-    <div
-      draggable
-      onDragStart={(e) => onDragStart(e, app)}
-      className={`rounded-xl bg-background border border-border p-3.5 transition-all duration-300 ease-out cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-40 scale-95 ring-2 ring-primary/50 ring-dashed bg-primary/5' : 'hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1'}`}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {paths[name] || null}
+    </svg>
+  );
+}
+
+const LOAN_TYPE_ICON: Record<string, string> = {
+  business: 'briefcase',
+  vehicle: 'car',
+  home: 'home',
+  personal: 'user',
+};
+
+const LOAN_TYPE_LABEL: Record<string, string> = {
+  business: 'Business',
+  vehicle: 'Vehicle',
+  home: 'Home',
+  personal: 'Personal',
+};
+
+// ── Avatar ──
+
+function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
+  return (
+    <span
+      className={`led-avatar ${size === 'sm' ? 'led-avatar-sm' : ''}`}
+      style={{ background: avatarColor(name) }}
+      title={name}
     >
-      <Link to={`/admin/applications/${app.id}`} className="block" draggable={false} onClick={(e) => isDragging && e.preventDefault()}>
-        <div className="flex items-center gap-2.5 mb-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary">
-            <span className="text-[10px] font-semibold text-muted-foreground">
-              {app.user_name ? getInitials(app.user_name) : '??'}
-            </span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium text-foreground truncate">{app.user_name || 'Unknown'}</p>
-            {app.user_email && <p className="text-[11px] text-muted-foreground truncate">{app.user_email}</p>}
-          </div>
+      {getInitials(name)}
+    </span>
+  );
+}
+
+// ── Filter Pill with popover ──
+
+function FilterPill({
+  label,
+  value,
+  active,
+  children,
+  icon,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+  children: (close: () => void) => ReactNode;
+  icon?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className={`led-filter-pill ${active ? 'led-active' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {icon && <Icon name={icon} size={12} />}
+        <span className="led-pill-label">{label}:</span>
+        <span>{value}</span>
+        <Icon name="chevronDown" size={11} />
+      </button>
+      {open && (
+        <div className="led-popover" style={{ top: 'calc(100% + 6px)', left: 0 }}>
+          {children(() => setOpen(false))}
         </div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[12px] font-medium text-muted-foreground capitalize">{app.loan_type}</span>
-          <span className="text-[13px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{formatDate(app.created_at)}</span>
-          {app.assigned_brokers.length > 0 && (
-            <div className="flex -space-x-1.5">
-              {app.assigned_brokers.slice(0, 3).map((ab) => (
-                <div key={ab.id} className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[8px] font-semibold text-primary-foreground border-2 border-background" title={ab.full_name}>
-                  {getInitials(ab.full_name)}
-                </div>
-              ))}
-              {app.assigned_brokers.length > 3 && (
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[8px] font-medium text-muted-foreground border-2 border-background">
-                  +{app.assigned_brokers.length - 3}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </Link>
+      )}
     </div>
   );
 }
 
-// ── Column Component ────────────────────────────────────────
+// ── Card ──
+
+function KanbanCard({
+  app,
+  onDragStart,
+  isDragging,
+  flash,
+}: {
+  app: LoanApplication;
+  onDragStart: (e: DragEvent, app: LoanApplication) => void;
+  isDragging?: boolean;
+  flash?: boolean;
+}) {
+  const navigate = useNavigate();
+  const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
+  const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
+  const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
+  const subtitle = app.business_name || app.user_email || '';
+  const brokers = app.assigned_brokers || [];
+  const days = daysSince(app.updated_at);
+  const isStale = days >= 7;
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, app)}
+      onClick={(e) => {
+        if (isDragging) { e.preventDefault(); return; }
+        navigate(`/admin/applications/${app.id}`);
+      }}
+      className={`led-kanban-card ${isDragging ? 'led-dragging' : ''} ${flash ? 'led-flash-row' : ''}`}
+    >
+      <div className="led-kanban-card-row">
+        <span className="led-kanban-card-id">APP-{shortId}</span>
+        <span className="led-kanban-card-lt">
+          <Icon name={ltIcon} size={11} /> {ltLabel}
+        </span>
+      </div>
+
+      <div className="led-kanban-card-title">{app.user_name || 'Unknown'}</div>
+      {subtitle ? <div className="led-kanban-card-sub">{subtitle}</div> : <div style={{ height: 8 }} />}
+
+      <div className="led-kanban-card-row">
+        <span className="led-kanban-card-amt">{fmtMoneyK(Number(app.amount) || 0)}</span>
+        {isStale && (
+          <span className="led-chip led-chip-warning" style={{ height: 18, fontSize: 10.5 }} title={`${days}d in stage`}>
+            <Icon name="clock" size={10} />
+            {days}d
+          </span>
+        )}
+      </div>
+
+      <div className="led-kanban-card-foot">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {brokers.length > 0 ? (
+            <div className="led-avatar-stack" style={{ display: 'inline-flex' }}>
+              {brokers.slice(0, 3).map((ab) => (
+                <Avatar key={ab.id} name={ab.full_name} size="sm" />
+              ))}
+              {brokers.length > 3 && (
+                <span
+                  className="led-avatar led-avatar-sm"
+                  style={{ background: 'var(--led-bg-2)', color: 'var(--led-muted)' }}
+                >
+                  +{brokers.length - 3}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span
+              style={{
+                width: 22, height: 22, borderRadius: '50%',
+                border: '1.5px dashed var(--led-line-strong)',
+                display: 'inline-block',
+              }}
+              title="Unassigned"
+            />
+          )}
+        </div>
+        <span className="led-mono led-tnum" style={{ fontSize: 10.5, color: 'var(--led-muted)' }}>
+          {relativeTime(app.updated_at)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Column ──
 
 type DropValidity = 'valid' | 'invalid' | 'same' | null;
 
@@ -67,6 +226,7 @@ function BoardColumn({
   dropValidity,
   draggedAppId,
   isAdmin,
+  flashIds,
   onDragStart,
   onDragOver,
   onDrop,
@@ -80,6 +240,7 @@ function BoardColumn({
   dropValidity: DropValidity;
   draggedAppId: string | null;
   isAdmin: boolean;
+  flashIds: Set<string>;
   onDragStart: (e: DragEvent, app: LoanApplication) => void;
   onDragOver: (e: DragEvent, columnId: string) => void;
   onDrop: (e: DragEvent, columnId: string) => void;
@@ -89,115 +250,139 @@ function BoardColumn({
 }) {
   const isOver = dragOverColumn === col.id;
   const dragCounterRef = useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    if (menuOpen) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [menuOpen]);
+
+  const totalAmount = apps.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  const avgDays = apps.length
+    ? Math.round(apps.reduce((sum, a) => sum + daysSince(a.updated_at), 0) / apps.length)
+    : 0;
 
   const handleDragEnter = (e: DragEvent) => {
     e.preventDefault();
     dragCounterRef.current++;
-    if (dragCounterRef.current === 1) {
-      onDragOver(e, col.id);
-    }
+    if (dragCounterRef.current === 1) onDragOver(e, col.id);
   };
-
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
-
   const handleDragLeave = (e: DragEvent) => {
     dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      onDragLeave(e, col.id);
-    }
+    if (dragCounterRef.current === 0) onDragLeave(e, col.id);
   };
-
   const handleDrop = (e: DragEvent) => {
     dragCounterRef.current = 0;
     onDrop(e, col.id);
   };
 
-  // Determine drop zone styling
-  let dropZoneClass = 'bg-secondary/20 border-2 border-transparent';
-  if (isOver && dropValidity === 'valid') {
-    dropZoneClass = 'bg-success/10 border-2 border-success/40 shadow-[inset_0_0_30px_rgba(var(--success),0.1)] scale-[1.02] ring-4 ring-success/10';
-  } else if (isOver && dropValidity === 'invalid') {
-    dropZoneClass = 'bg-destructive/10 border-2 border-destructive/30 ring-4 ring-destructive/10 opacity-80 mix-blend-luminosity';
-  } else if (isOver && dropValidity === 'same') {
-    dropZoneClass = 'bg-secondary/40 border-2 border-border scale-[1.01]';
-  } else if (draggedAppId) {
-    // While dragging but not over this column — subtle hint
-    dropZoneClass = 'bg-secondary/10 border-2 border-dashed border-border/50 ring-1 ring-border/20';
-  }
+  const dropClass =
+    isOver && dropValidity === 'valid' ? 'led-drop-valid'
+      : isOver && dropValidity === 'invalid' ? 'led-drop-invalid'
+        : isOver && dropValidity === 'same' ? 'led-drop-same'
+          : '';
 
   return (
-    <div className="min-w-[280px] flex-1 shrink-0">
-      <div className="flex items-center gap-2.5 mb-3 px-2 group">
-        <div className={`h-2.5 w-2.5 rounded-full ${COLUMN_COLOR_BG[col.color || 'muted-foreground'] || 'bg-muted-foreground'}`} />
-        <span className="text-[13px] font-semibold text-foreground">{col.title}</span>
-        {col.mapped_status && (
-          <span className="text-[10px] text-muted-foreground/60">{col.mapped_status}</span>
-        )}
-        <span className="ml-auto rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {apps.length}
-        </span>
+    <div
+      className={`led-kanban-col ${dropClass}`}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragLeave={handleDragLeave}
+    >
+      <div className="led-kanban-col-header">
+        <span className="led-sdot" style={{ background: colorDot(col.color) }} />
+        <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.005em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {col.title}
+        </div>
+        <span className="led-chip led-mono led-tnum" style={{ height: 20, fontSize: 11 }}>{apps.length}</span>
         {isAdmin && (
-          <div className="hidden group-hover:flex items-center gap-1">
-            <button onClick={() => onEditColumn(col)} className="p-0.5 rounded text-muted-foreground hover:text-foreground" title="Edit column">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+              onClick={() => setMenuOpen((o) => !o)}
+              title="Column actions"
+            >
+              <Icon name="dotsV" size={12} />
             </button>
-            <button onClick={() => onDeleteColumn(col)} className="p-0.5 rounded text-muted-foreground hover:text-destructive" title="Delete column">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-            </button>
+            {menuOpen && (
+              <div className="led-popover" style={{ top: 'calc(100% + 4px)', right: 0, minWidth: 160 }}>
+                <button
+                  type="button"
+                  className="led-popover-item"
+                  onClick={() => { setMenuOpen(false); onEditColumn(col); }}
+                >
+                  <Icon name="edit" size={13} />Edit column
+                </button>
+                <button
+                  type="button"
+                  className="led-popover-item"
+                  style={{ color: 'var(--led-danger)' }}
+                  onClick={() => { setMenuOpen(false); onDeleteColumn(col); }}
+                >
+                  <Icon name="trash" size={13} />Delete column
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
-      <div
-        className={`space-y-3 rounded-2xl p-3 min-h-[250px] transition-all duration-300 ease-out ${dropZoneClass}`}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onDragLeave={handleDragLeave}
-      >
+
+      <div className="led-kanban-col-meta">
+        <span className="led-mono led-tnum">{fmtMoneyK(totalAmount)} value</span>
+        <span className="led-mono led-tnum">avg {avgDays}d</span>
+      </div>
+
+      <div className="led-kanban-list">
         {apps.length === 0 && !isOver && (
-          <div className="flex items-center justify-center py-8">
-            <p className="text-[12px] text-muted-foreground">No applications</p>
-          </div>
+          <div className="led-kanban-empty">Drop cards here</div>
         )}
         {apps.map((app) => (
-          <KanbanCard key={app.id} app={app} onDragStart={onDragStart} isDragging={app.id === draggedAppId} />
+          <KanbanCard
+            key={app.id}
+            app={app}
+            onDragStart={onDragStart}
+            isDragging={app.id === draggedAppId}
+            flash={flashIds.has(app.id)}
+          />
         ))}
         {isOver && dropValidity === 'valid' && (
-          <div className="rounded-xl border-2 border-dashed border-success/40 bg-success/10 p-4 flex flex-col items-center justify-center transition-all animate-in fade-in zoom-in-95 duration-200">
-            <div className="h-8 w-8 rounded-full bg-success/20 flex items-center justify-center mb-2">
-              <svg className="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-            </div>
-            <p className="text-[13px] font-semibold text-success shadow-sm">Drop here</p>
-          </div>
+          <div className="led-kanban-drop-hint">Release to move here</div>
         )}
         {isOver && dropValidity === 'invalid' && (
-          <div className="rounded-xl border-2 border-dashed border-destructive/40 bg-destructive/10 p-4 flex flex-col items-center justify-center gap-1.5 transition-all animate-in fade-in zoom-in-95 duration-200">
-            <div className="h-8 w-8 rounded-full bg-destructive/20 flex items-center justify-center mb-2">
-              <svg className="h-4 w-4 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-            </div>
-            <p className="text-[13px] font-semibold text-destructive shadow-sm">Invalid transition</p>
-          </div>
+          <div className="led-kanban-drop-hint led-invalid">Not a valid transition</div>
         )}
       </div>
     </div>
   );
 }
 
-// ── Modal Wrapper ───────────────────────────────────────────
+// ── Modal (portal, wraps content in ledger-theme) ──
 
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+    <div className="ledger-theme" style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,15,18,0.45)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
+      <div style={{
+        position: 'relative', zIndex: 10, width: '100%', maxWidth: 440,
+        borderRadius: 16, background: 'var(--led-surface)',
+        border: '1px solid var(--led-line)', padding: 20,
+        boxShadow: 'var(--led-shadow-lg)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.006em', color: 'var(--led-ink)', margin: 0 }}>{title}</h3>
+          <button type="button" className="led-btn led-btn-ghost led-btn-sm led-btn-icon" onClick={onClose}>
+            <Icon name="close" size={14} />
           </button>
         </div>
         {children}
@@ -207,7 +392,7 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   );
 }
 
-// ── Main Board Component ────────────────────────────────────
+// ── Main ──
 
 export default function KanbanBoardPage() {
   const { toast } = useToast();
@@ -226,7 +411,6 @@ export default function KanbanBoardPage() {
   const [brokerFilter, setBrokerFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [dateRangeFilter, setDateRangeFilter] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const [clientsList, setClientsList] = useState<{ id: string; full_name: string; email: string }[]>([]);
 
@@ -237,6 +421,7 @@ export default function KanbanBoardPage() {
   const dragSourceColumn = useRef<string | null>(null);
   const dragOverlayRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
+  const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
 
   // Modal state
   const [showCreateBoard, setShowCreateBoard] = useState(false);
@@ -259,7 +444,7 @@ export default function KanbanBoardPage() {
   const [colMappedStatus, setColMappedStatus] = useState('');
   const [colColor, setColColor] = useState('muted-foreground');
 
-  // ── Data fetching ──────────────────────────────────────
+  // ── Data fetching ──
 
   const fetchBoards = useCallback(async () => {
     const { data } = await api.get('/kanban/boards');
@@ -299,17 +484,15 @@ export default function KanbanBoardPage() {
     }
   }, [fetchBoard, fetchApplications, search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, toast]);
 
-  // Fetch broker/client lists for filter dropdowns
   const fetchFilterOptions = useCallback(async () => {
     try {
       const { data } = await api.get('/users');
       const users = data as User[];
       setBrokersList(users.filter((u) => u.role === 'broker' || u.role === 'admin').map((u) => ({ id: u.id, full_name: u.full_name })));
       setClientsList(users.filter((u) => u.role === 'client').map((u) => ({ id: u.id, full_name: u.full_name, email: u.email })));
-    } catch { /* ignore - filters just won't populate */ }
+    } catch { /* ignore */ }
   }, []);
 
-  // Initial load
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -333,7 +516,6 @@ export default function KanbanBoardPage() {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fetch apps when search or filters change (debounced)
   useEffect(() => {
     if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
@@ -342,9 +524,8 @@ export default function KanbanBoardPage() {
     return () => clearTimeout(timeout);
   }, [search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, activeBoard, fetchApplications]);
 
-  // ── Drag and drop ──────────────────────────────────────
+  // ── Drag and drop ──
 
-  // Compute drop validity for a given column
   const getDropValidity = useCallback((targetColumnId: string): DropValidity => {
     if (!draggedApp || !activeBoard) return null;
     if (dragSourceColumn.current === targetColumnId) return 'same';
@@ -356,7 +537,6 @@ export default function KanbanBoardPage() {
 
   const handleDragStart = (e: DragEvent, app: LoanApplication) => {
     setDraggedApp(app);
-    // Find which column this app belongs to
     for (const [colId, colApps] of Object.entries(appsByColumn)) {
       if (colApps.some((a) => a.id === app.id)) {
         dragSourceColumn.current = colId;
@@ -365,12 +545,10 @@ export default function KanbanBoardPage() {
     }
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', app.id);
-    // Use a transparent 1x1 pixel as drag image so we can show our custom overlay
     const emptyImg = document.createElement('canvas');
     emptyImg.width = 1;
     emptyImg.height = 1;
     e.dataTransfer.setDragImage(emptyImg, 0, 0);
-    // Request a frame to set the initial position of the ref-based overlay
     requestAnimationFrame(() => {
       if (dragOverlayRef.current) {
         dragOverlayRef.current.style.transform = `translate3d(${e.clientX - 130}px, ${e.clientY - 40}px, 0)`;
@@ -378,7 +556,6 @@ export default function KanbanBoardPage() {
     });
   };
 
-  // Track cursor for drag overlay bypassing React state for performance
   useEffect(() => {
     if (!draggedApp) return;
     let animationFrameId: number;
@@ -419,7 +596,6 @@ export default function KanbanBoardPage() {
     dragSourceColumn.current = null;
   };
 
-  // Listen for dragend globally to clean up state
   useEffect(() => {
     if (!draggedApp) return;
     const cleanup = () => handleDragEnd();
@@ -444,7 +620,6 @@ export default function KanbanBoardPage() {
       return;
     }
 
-    // Client-side transition validation
     const currentStatus = draggedApp.status;
     const allowed = VALID_TRANSITIONS[currentStatus] || [];
     if (!allowed.includes(targetCol.mapped_status)) {
@@ -483,17 +658,18 @@ export default function KanbanBoardPage() {
       updated[pendingMove.sourceColumnId] = (prev[pendingMove.sourceColumnId] || []).filter((a) => a.id !== pendingMove.app.id);
       updated[pendingMove.targetColumnId] = [
         ...(prev[pendingMove.targetColumnId] || []),
-        { ...pendingMove.app, status: pendingMove.targetMappedStatus },
+        { ...pendingMove.app, status: pendingMove.targetMappedStatus, updated_at: new Date().toISOString() },
       ];
       return updated;
     });
 
     try {
       await api.post(`/kanban/boards/${activeBoard.id}/columns/${pendingMove.targetColumnId}/move/${pendingMove.app.id}`);
+      setFlashIds(new Set([pendingMove.app.id]));
+      setTimeout(() => setFlashIds(new Set()), 900);
       toast(`Moved to "${pendingMove.targetColumnTitle}"`, 'success');
       setPendingMove(null);
     } catch (err: any) {
-      // Revert optimistic update
       setAppsByColumn(prevApps);
       const msg = err?.response?.data?.detail || 'Failed to move application';
       toast(msg, 'error');
@@ -502,7 +678,7 @@ export default function KanbanBoardPage() {
     }
   };
 
-  // ── Board management ──────────────────────────────────
+  // ── Board management ──
 
   const handleCreateBoard = async () => {
     if (!newBoardName.trim()) return;
@@ -546,7 +722,7 @@ export default function KanbanBoardPage() {
     }
   };
 
-  // ── Column management ─────────────────────────────────
+  // ── Column management ──
 
   const handleAddColumn = async () => {
     if (!activeBoard || !colTitle.trim()) return;
@@ -612,13 +788,7 @@ export default function KanbanBoardPage() {
     await loadBoard(boardId);
   };
 
-  // ── Filter apps by search (client-side for instant results) ──
-
-  const getColumnApps = (colId: string): LoanApplication[] => {
-    return appsByColumn[colId] || [];
-  };
-
-  // ── Active filter count ─────────────────────────────────
+  const getColumnApps = (colId: string): LoanApplication[] => appsByColumn[colId] || [];
 
   const activeFilterCount = [loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter].filter(Boolean).length;
   const formatStatusLabel = (status: string) => STATUS_LABEL[status as keyof typeof STATUS_LABEL] || status.replace(/_/g, ' ');
@@ -630,318 +800,331 @@ export default function KanbanBoardPage() {
     setDateRangeFilter('');
   };
 
-  // ── Render ─────────────────────────────────────────────
+  // Filter pill values
+  const loanTypePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
+  const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'All';
+  const clientPill = clientFilter ? (clientsList.find((c) => c.id === clientFilter)?.full_name.split(' ')[0] || 'All') : 'All';
+  const datePill = dateRangeFilter
+    ? { this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter', last_quarter: 'Last quarter', this_year: 'This year' }[dateRangeFilter] || 'All'
+    : 'All time';
+
+  // ── Render ──
 
   return (
-    <div>
+    <div className="ledger-theme led-fade-up" style={{ minHeight: '100%', background: 'var(--led-bg)', margin: -24, padding: 0 }}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <PageHeader title={activeBoard?.name || 'Application Board'} subtitle="Kanban view of all loan applications" />
-          {boards.length > 1 && (
-            <select
-              className="text-[13px] bg-secondary border border-border rounded-lg px-2 py-1 text-foreground ml-2"
-              value={activeBoard?.id || ''}
-              onChange={(e) => handleSwitchBoard(e.target.value)}
-            >
-              {boards.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <Input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients..." className="w-44" />
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 text-[13px] font-medium transition-colors whitespace-nowrap ${activeFilterCount > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" /></svg>
-            Filters{activeFilterCount > 0 && ` (${activeFilterCount})`}
-          </button>
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => setShowAddColumn(true)}
-                className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
-              >
-                + Column
-              </button>
-              <button
-                onClick={() => setShowCreateBoard(true)}
-                className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
-              >
-                + Board
-              </button>
-              {activeBoard && (
-                <button
-                  onClick={() => {
-                    setNewBoardName(activeBoard.name);
-                    setNewBoardDesc(activeBoard.description || '');
-                    setShowBoardSettings(true);
-                  }}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                  title="Board settings"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, paddingBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 className="led-h-page" style={{ margin: 0 }}>{activeBoard?.name || 'Pipeline'}</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--led-muted)' }}>
+              Drag cards between stages · live sync
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="led-segment">
+              <button type="button" className="led-active"><Icon name="board" size={12} /> Board</button>
+              <Link to="/admin/applications" style={{ textDecoration: 'none' }}>
+                <button type="button"><Icon name="list" size={12} /> Table</button>
+              </Link>
+            </div>
+            {isAdmin && (
+              <>
+                <button type="button" className="led-btn led-btn-outline led-btn-sm" onClick={() => setShowCreateBoard(true)}>
+                  <Icon name="plus" size={12} /> Board
                 </button>
-              )}
-            </>
-          )}
-          <Link to="/admin/applications" className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
-            List view
-          </Link>
+                {activeBoard && (
+                  <button
+                    type="button"
+                    className="led-btn led-btn-outline led-btn-sm led-btn-icon"
+                    onClick={() => {
+                      setNewBoardName(activeBoard.name);
+                      setNewBoardDesc(activeBoard.description || '');
+                      setShowBoardSettings(true);
+                    }}
+                    title="Board settings"
+                  >
+                    <Icon name="settings" size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+
+        {/* Board tabs */}
+        {boards.length > 1 && (
+          <div className="led-tabs">
+            {boards.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className={`led-tab ${activeBoard?.id === b.id ? 'led-active' : ''}`}
+                onClick={() => handleSwitchBoard(b.id)}
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </header>
 
       {/* Filter bar */}
-      {showFilters && (
-        <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-xl bg-secondary/30 border border-border">
-          {/* Loan type */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Loan Type</label>
-            <select
-              className="text-[13px] bg-background border border-border rounded-lg px-2.5 py-1.5 text-foreground min-w-[130px]"
-              value={loanTypeFilter}
-              onChange={(e) => setLoanTypeFilter(e.target.value)}
-            >
-              <option value="">All types</option>
-              <option value="personal">Personal</option>
-              <option value="home">Home</option>
-              <option value="business">Business</option>
-              <option value="vehicle">Vehicle</option>
-            </select>
-          </div>
+      <div style={{ padding: '40px 24px 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="led-search">
+          <Icon name="search" size={13} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search clients…"
+          />
+        </div>
 
-          {/* Broker */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Broker</label>
-            <select
-              className="text-[13px] bg-background border border-border rounded-lg px-2.5 py-1.5 text-foreground min-w-[150px]"
-              value={brokerFilter}
-              onChange={(e) => setBrokerFilter(e.target.value)}
-            >
-              <option value="">All brokers</option>
-              {brokersList.map((b) => (
-                <option key={b.id} value={b.id}>{b.full_name}</option>
+        <FilterPill label="Type" value={loanTypePill} active={!!loanTypeFilter} icon="filter">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!loanTypeFilter ? 'led-active' : ''}`} onClick={() => { setLoanTypeFilter(''); close(); }}>All types</button>
+              {['personal', 'home', 'business', 'vehicle'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`led-popover-item ${loanTypeFilter === t ? 'led-active' : ''}`}
+                  onClick={() => { setLoanTypeFilter(t); close(); }}
+                >
+                  <Icon name={LOAN_TYPE_ICON[t]} size={13} />
+                  {LOAN_TYPE_LABEL[t]}
+                </button>
               ))}
-            </select>
-          </div>
+            </>
+          )}
+        </FilterPill>
 
-          {/* Client */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Client</label>
-            <select
-              className="text-[13px] bg-background border border-border rounded-lg px-2.5 py-1.5 text-foreground min-w-[150px]"
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-            >
-              <option value="">All clients</option>
-              {clientsList.map((c) => (
-                <option key={c.id} value={c.id}>{c.full_name} ({c.email})</option>
+        {brokersList.length > 0 && (
+          <FilterPill label="Broker" value={brokerPill} active={!!brokerFilter} icon="users">
+            {(close) => (
+              <>
+                <button type="button" className={`led-popover-item ${!brokerFilter ? 'led-active' : ''}`} onClick={() => { setBrokerFilter(''); close(); }}>All brokers</button>
+                {brokersList.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className={`led-popover-item ${brokerFilter === b.id ? 'led-active' : ''}`}
+                    onClick={() => { setBrokerFilter(b.id); close(); }}
+                  >
+                    <Avatar name={b.full_name} size="sm" />{b.full_name}
+                  </button>
+                ))}
+              </>
+            )}
+          </FilterPill>
+        )}
+
+        {clientsList.length > 0 && (
+          <FilterPill label="Client" value={clientPill} active={!!clientFilter} icon="user">
+            {(close) => (
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                <button type="button" className={`led-popover-item ${!clientFilter ? 'led-active' : ''}`} onClick={() => { setClientFilter(''); close(); }}>All clients</button>
+                {clientsList.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`led-popover-item ${clientFilter === c.id ? 'led-active' : ''}`}
+                    onClick={() => { setClientFilter(c.id); close(); }}
+                  >
+                    <Avatar name={c.full_name} size="sm" />{c.full_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </FilterPill>
+        )}
+
+        <FilterPill label="Period" value={datePill} active={!!dateRangeFilter} icon="calendar">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!dateRangeFilter ? 'led-active' : ''}`} onClick={() => { setDateRangeFilter(''); close(); }}>All time</button>
+              {[
+                { v: 'this_month', l: 'This month' },
+                { v: 'last_month', l: 'Last month' },
+                { v: 'this_quarter', l: 'This quarter' },
+                { v: 'last_quarter', l: 'Last quarter' },
+                { v: 'this_year', l: 'This year' },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  className={`led-popover-item ${dateRangeFilter === o.v ? 'led-active' : ''}`}
+                  onClick={() => { setDateRangeFilter(o.v); close(); }}
+                >
+                  {o.l}
+                </button>
               ))}
-            </select>
-          </div>
+            </>
+          )}
+        </FilterPill>
 
-          {/* Date range */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Period</label>
-            <select
-              className="text-[13px] bg-background border border-border rounded-lg px-2.5 py-1.5 text-foreground min-w-[140px]"
-              value={dateRangeFilter}
-              onChange={(e) => setDateRangeFilter(e.target.value)}
-            >
-              <option value="">All time</option>
-              <option value="this_month">This month</option>
-              <option value="last_month">Last month</option>
-              <option value="this_quarter">This quarter</option>
-              <option value="last_quarter">Last quarter</option>
-              <option value="this_year">This year</option>
-            </select>
-          </div>
+        {activeFilterCount > 0 && (
+          <button
+            type="button"
+            className="led-btn led-btn-ghost led-btn-sm"
+            style={{ color: 'var(--led-muted)' }}
+            onClick={clearAllFilters}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
-          {/* Clear all */}
-          {activeFilterCount > 0 && (
-            <button
-              onClick={clearAllFilters}
-              className="self-end text-[12px] font-medium text-muted-foreground hover:text-destructive transition-colors pb-1.5"
-            >
-              Clear all
+      {/* Board canvas */}
+      {loading ? (
+        <div style={{ padding: '4px 24px 32px' }}>
+          <div className="led-kanban-scroller">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="led-kanban-col">
+                <div style={{ height: 28, marginBottom: 8 }} className="shimmer" />
+                <div style={{ height: 14, marginBottom: 10, width: '60%' }} className="shimmer" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[1, 2].map((j) => <div key={j} style={{ height: 96, borderRadius: 10 }} className="shimmer" />)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : activeBoard ? (
+        <div style={{ padding: '4px 24px 32px' }}>
+          <div className="led-kanban-scroller">
+            {activeBoard.columns.map((col) => (
+              <BoardColumn
+                key={col.id}
+                col={col}
+                apps={getColumnApps(col.id)}
+                dragOverColumn={dragOverColumn}
+                dropValidity={dragOverColumn === col.id ? dragOverValidity : null}
+                draggedAppId={draggedApp?.id || null}
+                isAdmin={isAdmin}
+                flashIds={flashIds}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onDragLeave={handleDragLeave}
+                onEditColumn={openEditColumn}
+                onDeleteColumn={handleDeleteColumn}
+              />
+            ))}
+            {isAdmin && (
+              <button
+                type="button"
+                className="led-kanban-add-col"
+                onClick={() => setShowAddColumn(true)}
+              >
+                <Icon name="plus" size={13} /> Add stage
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <p style={{ color: 'var(--led-muted)', marginBottom: 16 }}>No boards found.</p>
+          {isAdmin && (
+            <button type="button" className="led-btn led-btn-accent" onClick={() => setShowCreateBoard(true)}>
+              <Icon name="plus" size={13} /> Create your first board
             </button>
           )}
         </div>
       )}
 
-      {/* Board columns */}
-      {loading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="min-w-[280px] flex-1">
-              <div className="h-8 w-24 rounded-lg shimmer mb-3" />
-              <div className="space-y-3">
-                {[1, 2, 3].map((j) => <div key={j} className="h-28 rounded-xl shimmer" />)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : activeBoard ? (
-        <div className="flex gap-4 overflow-x-auto pb-6 pt-2 px-2 -mx-2">
-          {activeBoard.columns.map((col) => (
-            <BoardColumn
-              key={col.id}
-              col={col}
-              apps={getColumnApps(col.id)}
-              dragOverColumn={dragOverColumn}
-              dropValidity={dragOverColumn === col.id ? dragOverValidity : null}
-              draggedAppId={draggedApp?.id || null}
-              isAdmin={isAdmin}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onDragLeave={handleDragLeave}
-              onEditColumn={openEditColumn}
-              onDeleteColumn={handleDeleteColumn}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">No boards found.</p>
-          {isAdmin && <Button onClick={() => setShowCreateBoard(true)}>Create your first board</Button>}
-        </div>
-      )}
-
-      {/* ── Create Board Modal ───────────────────────────── */}
-      <Modal open={showCreateBoard} onClose={() => setShowCreateBoard(false)} title="Create Board">
-        <div className="space-y-3">
-          <Input placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
-          <Input placeholder="Description (optional)" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
-          <p className="text-[12px] text-muted-foreground">Default columns (Draft, Submitted, Reviewing, Approved, Rejected) will be created automatically.</p>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setShowCreateBoard(false)}>Cancel</Button>
-            <Button onClick={handleCreateBoard} disabled={!newBoardName.trim()}>Create</Button>
+      {/* ── Create Board Modal ── */}
+      <Modal open={showCreateBoard} onClose={() => setShowCreateBoard(false)} title="Create board">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input className="led-input" placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} autoFocus />
+          <input className="led-input" placeholder="Description (optional)" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
+          <p className="led-caption" style={{ margin: 0 }}>Default columns will be created automatically.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button type="button" className="led-btn led-btn-ghost" onClick={() => setShowCreateBoard(false)}>Cancel</button>
+            <button type="button" className="led-btn led-btn-accent" onClick={handleCreateBoard} disabled={!newBoardName.trim()}>
+              Create board
+            </button>
           </div>
         </div>
       </Modal>
 
-      {/* ── Board Settings Modal ─────────────────────────── */}
-      <Modal open={showBoardSettings} onClose={() => setShowBoardSettings(false)} title="Board Settings">
-        <div className="space-y-3">
-          <Input placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
-          <Input placeholder="Description" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
-          <div className="flex justify-between pt-2">
-            <Button variant="secondary" onClick={handleDeleteBoard} className="text-destructive">Delete Board</Button>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setShowBoardSettings(false)}>Cancel</Button>
-              <Button onClick={handleSaveBoardSettings} disabled={!newBoardName.trim()}>Save</Button>
+      {/* ── Board Settings Modal ── */}
+      <Modal open={showBoardSettings} onClose={() => setShowBoardSettings(false)} title="Board settings">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input className="led-input" placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
+          <input className="led-input" placeholder="Description" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            <button type="button" className="led-btn led-btn-danger" onClick={handleDeleteBoard}>
+              <Icon name="trash" size={12} /> Delete
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="led-btn led-btn-ghost" onClick={() => setShowBoardSettings(false)}>Cancel</button>
+              <button type="button" className="led-btn led-btn-accent" onClick={handleSaveBoardSettings} disabled={!newBoardName.trim()}>Save</button>
             </div>
           </div>
         </div>
       </Modal>
 
-      {/* ── Add Column Modal ─────────────────────────────── */}
-      <Modal open={showAddColumn} onClose={() => { setShowAddColumn(false); resetColForm(); }} title="Add Column">
-        <div className="space-y-3">
-          <Input placeholder="Column title" value={colTitle} onChange={(e) => setColTitle(e.target.value)} />
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">Map to application status (optional)</label>
-            <select
-              className="w-full text-[13px] bg-secondary border border-border rounded-lg px-3 py-2 text-foreground"
-              value={colMappedStatus}
-              onChange={(e) => setColMappedStatus(e.target.value)}
-            >
-              <option value="">None (organizational only)</option>
-              <option value="draft">Draft</option>
-              <option value="application_received">Application Received</option>
-              <option value="application_assessed">Application Assessed</option>
-              <option value="submitted">Submitted</option>
-              <option value="approval">Approval</option>
-              <option value="settled">Settled</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">Color</label>
-            <div className="flex gap-2">
-              {COLUMN_COLOR_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setColColor(opt.value)}
-                  className={`h-6 w-6 rounded-full ${COLUMN_COLOR_BG[opt.value] || 'bg-muted-foreground'} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
-                  title={opt.label}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => { setShowAddColumn(false); resetColForm(); }}>Cancel</Button>
-            <Button onClick={handleAddColumn} disabled={!colTitle.trim()}>Add</Button>
-          </div>
+      {/* ── Add Column Modal ── */}
+      <Modal open={showAddColumn} onClose={() => { setShowAddColumn(false); resetColForm(); }} title="Add stage">
+        <ColumnForm
+          title={colTitle} setTitle={setColTitle}
+          mappedStatus={colMappedStatus} setMappedStatus={setColMappedStatus}
+          color={colColor} setColor={setColColor}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setShowAddColumn(false); resetColForm(); }}>Cancel</button>
+          <button type="button" className="led-btn led-btn-accent" onClick={handleAddColumn} disabled={!colTitle.trim()}>Add stage</button>
         </div>
       </Modal>
 
-      {/* ── Edit Column Modal ────────────────────────────── */}
-      <Modal open={!!editingColumn} onClose={() => { setEditingColumn(null); resetColForm(); }} title="Edit Column">
-        <div className="space-y-3">
-          <Input placeholder="Column title" value={colTitle} onChange={(e) => setColTitle(e.target.value)} />
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">Map to application status (optional)</label>
-            <select
-              className="w-full text-[13px] bg-secondary border border-border rounded-lg px-3 py-2 text-foreground"
-              value={colMappedStatus}
-              onChange={(e) => setColMappedStatus(e.target.value)}
-            >
-              <option value="">None (organizational only)</option>
-              <option value="draft">Draft</option>
-              <option value="application_received">Application Received</option>
-              <option value="application_assessed">Application Assessed</option>
-              <option value="submitted">Submitted</option>
-              <option value="approval">Approval</option>
-              <option value="settled">Settled</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">Color</label>
-            <div className="flex gap-2">
-              {COLUMN_COLOR_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setColColor(opt.value)}
-                  className={`h-6 w-6 rounded-full ${COLUMN_COLOR_BG[opt.value] || 'bg-muted-foreground'} transition-all ${colColor === opt.value ? 'ring-2 ring-offset-2 ring-primary ring-offset-background' : 'opacity-60 hover:opacity-100'}`}
-                  title={opt.label}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => { setEditingColumn(null); resetColForm(); }}>Cancel</Button>
-            <Button onClick={handleEditColumn} disabled={!colTitle.trim()}>Save</Button>
-          </div>
+      {/* ── Edit Column Modal ── */}
+      <Modal open={!!editingColumn} onClose={() => { setEditingColumn(null); resetColForm(); }} title="Edit stage">
+        <ColumnForm
+          title={colTitle} setTitle={setColTitle}
+          mappedStatus={colMappedStatus} setMappedStatus={setColMappedStatus}
+          color={colColor} setColor={setColColor}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setEditingColumn(null); resetColForm(); }}>Cancel</button>
+          <button type="button" className="led-btn led-btn-accent" onClick={handleEditColumn} disabled={!colTitle.trim()}>Save</button>
         </div>
       </Modal>
 
-      {/* ── Drag Overlay ─────────────────────────────────── */}
+      {/* ── Drag Overlay ── */}
       {draggedApp && createPortal(
-        <div
-          ref={dragOverlayRef}
-          className="fixed left-0 top-0 pointer-events-none z-[9999] will-change-transform"
-          style={{ transform: 'translate3d(-9999px, -9999px, 0)' }}
-        >
-          <div className="w-[260px] rounded-xl bg-background/80 backdrop-blur-2xl border-2 border-primary/40 p-3.5 shadow-[0_20px_50px_rgba(var(--primary),0.15)] opacity-100 rotate-[3deg] scale-[1.02]">
-            <div className="flex items-center gap-2.5 mb-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                <span className="text-[10px] font-semibold text-muted-foreground">
-                  {draggedApp.user_name ? getInitials(draggedApp.user_name) : '??'}
+        <div className="ledger-theme" style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none' }}>
+          <div
+            ref={dragOverlayRef}
+            style={{ position: 'fixed', left: 0, top: 0, willChange: 'transform', transform: 'translate3d(-9999px, -9999px, 0)' }}
+          >
+            <div
+              style={{
+                width: 260,
+                background: 'var(--led-surface)',
+                border: '1px solid var(--led-line)',
+                borderRadius: 10,
+                padding: 12,
+                boxShadow: 'var(--led-shadow-lg)',
+                transform: 'rotate(2deg)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
+                <span className="led-mono" style={{ fontSize: 10.5, color: 'var(--led-muted)', letterSpacing: 0.3 }}>
+                  APP-{draggedApp.id.replace(/-/g, '').slice(-6).toUpperCase()}
+                </span>
+                <span style={{ fontSize: 10.5, color: 'var(--led-ink-2)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Icon name={LOAN_TYPE_ICON[draggedApp.loan_type] || 'user'} size={11} />
+                  {LOAN_TYPE_LABEL[draggedApp.loan_type] || draggedApp.loan_type}
                 </span>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium text-foreground truncate">{draggedApp.user_name || 'Unknown'}</p>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {draggedApp.user_name || 'Unknown'}
               </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-medium text-muted-foreground capitalize">{draggedApp.loan_type}</span>
-              <span className="text-[13px] font-semibold text-foreground">${Number(draggedApp.amount).toLocaleString()}</span>
+              <div className="led-mono led-tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--led-ink)' }}>
+                {fmtMoneyK(Number(draggedApp.amount) || 0)}
+              </div>
             </div>
           </div>
         </div>,
@@ -956,7 +1139,7 @@ export default function KanbanBoardPage() {
             Move this application from <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.app.status)}</span> to <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.targetMappedStatus)}</span>?
           </>
         ) : null}
-        confirmText="Confirm Move"
+        confirmText="Confirm move"
         cancelText="Cancel"
         variant={pendingMove?.targetMappedStatus === 'rejected' ? 'danger' : pendingMove?.targetMappedStatus === 'approval' || pendingMove?.targetMappedStatus === 'settled' ? 'success' : 'primary'}
         loading={movingApp}
@@ -968,3 +1151,63 @@ export default function KanbanBoardPage() {
     </div>
   );
 }
+
+// ── Column form (shared between Add + Edit) ──
+
+function ColumnForm({
+  title, setTitle,
+  mappedStatus, setMappedStatus,
+  color, setColor,
+}: {
+  title: string; setTitle: (s: string) => void;
+  mappedStatus: string; setMappedStatus: (s: string) => void;
+  color: string; setColor: (s: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <input className="led-input" placeholder="Stage title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <div>
+        <div className="led-label" style={{ marginBottom: 6 }}>Map to status (optional)</div>
+        <select
+          className="led-input"
+          value={mappedStatus}
+          onChange={(e) => setMappedStatus(e.target.value)}
+          style={{ cursor: 'pointer' }}
+        >
+          <option value="">None (organizational only)</option>
+          <option value="draft">Draft</option>
+          <option value="application_received">Application Received</option>
+          <option value="application_assessed">Application Assessed</option>
+          <option value="submitted">Submitted</option>
+          <option value="approval">Approval</option>
+          <option value="settled">Settled</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div>
+        <div className="led-label" style={{ marginBottom: 6 }}>Color</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {COLUMN_COLOR_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setColor(opt.value)}
+              title={opt.label}
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: colorDot(opt.value),
+                border: 0,
+                cursor: 'pointer',
+                opacity: color === opt.value ? 1 : 0.55,
+                outline: color === opt.value ? '2px solid var(--led-accent)' : 'none',
+                outlineOffset: 2,
+                transition: 'opacity 120ms ease, outline-offset 120ms ease',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+

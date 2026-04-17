@@ -320,15 +320,13 @@ export default function ApplicationDetail() {
                       )}
                       <button
                         onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })}
-                        className="rounded-xl bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground transition-all duration-200 hover:bg-secondary/80"
-                        style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
+                        className="led-btn led-btn-outline led-btn-sm"
                       >
                         View
                       </button>
                       <button
                         onClick={() => handleDownload(doc.id, doc.original_filename)}
-                        className="hidden sm:inline-block rounded-xl bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground transition-all duration-200 hover:bg-secondary/80"
-                        style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
+                        className="hidden sm:inline-block led-btn led-btn-outline led-btn-sm"
                       >
                         Download
                       </button>
@@ -336,8 +334,7 @@ export default function ApplicationDetail() {
                         <button
                           onClick={() => handleDelete(doc.id)}
                           disabled={deletingId === doc.id}
-                          className="rounded-xl bg-destructive/10 px-3 py-1.5 text-[12px] font-medium text-destructive transition-all duration-200 hover:bg-destructive/20 disabled:opacity-50"
-                          style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
+                          className="led-btn led-btn-danger led-btn-sm"
                         >
                           {deletingId === doc.id ? 'Deleting...' : 'Delete'}
                         </button>
@@ -486,7 +483,7 @@ export default function ApplicationDetail() {
                 <select
                   value={docType}
                   onChange={(e) => setDocType(e.target.value)}
-                  className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 h-10 border border-transparent"
+                  className="led-input"
                 >
                   {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>

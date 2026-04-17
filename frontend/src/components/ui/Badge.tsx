@@ -28,7 +28,8 @@ export default function Badge({ type = 'status', value, className = '' }: BadgeP
         : value;
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium capitalize ${colorClass} ${className}`}>
+    <span className={`led-chip ${colorClass} ${className}`}>
+      {type === 'status' && <span className="led-chip-dot" />}
       {display}
     </span>
   );

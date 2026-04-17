@@ -1,20 +1,127 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useRef, useMemo, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, Badge, PageHeader, Button, Select, Input } from '../../components/ui';
-import type { LoanApplication } from '../../types';
+import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
+import { STATUS_LABEL } from '../../lib/constants';
+import type { LoanApplication, ApplicationStatus, User } from '../../types';
+
+// ── Icons ──
+
+function Icon({ name, size = 14, strokeWidth = 1.75, className = '' }: { name: string; size?: number; strokeWidth?: number; className?: string }) {
+  const paths: Record<string, ReactNode> = {
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    check: <path d="m4 12 5 5L20 6" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
+    chevronLeft: <path d="m15 6-6 6 6 6" />,
+    chevronRight: <path d="m9 6 6 6-6 6" />,
+    chevronsLeft: <path d="m11 6-6 6 6 6M17 6l-6 6 6 6" />,
+    chevronsRight: <path d="m7 6 6 6-6 6M13 6l6 6-6 6" />,
+    arrowDown: <path d="M12 5v14M5 12l7 7 7-7" />,
+    arrowUp: <path d="M12 19V5M5 12l7-7 7 7" />,
+    board: <><rect x="3" y="4" width="6" height="16" rx="1.2" /><rect x="11" y="4" width="6" height="10" rx="1.2" /><rect x="19" y="4" width="2.5" height="7" rx="1" /></>,
+    list: <><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></>,
+    filter: <path d="M4 5h16l-6 8v6l-4-2v-4L4 5Z" />,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.5c3 0 5.5 2 5.5 5" /></>,
+    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></>,
+    car: <path d="M3 13h18l-2-6H5l-2 6Zm0 0v4a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2m10 0v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-4M7 16h.01M17 16h.01" />,
+    home: <path d="M3 12 12 4l9 8v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-7 8-7s8 3 8 7" /></>,
+    dotsV: <><circle cx="12" cy="5" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="12" cy="19" r="1.3" /></>,
+    circle: <circle cx="12" cy="12" r="9" />,
+    refresh: <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 4v4h-4M21 12a9 9 0 0 1-15 6.7L3 16M3 20v-4h4" />,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {paths[name] || null}
+    </svg>
+  );
+}
+
+const LOAN_TYPE_ICON: Record<string, string> = { business: 'briefcase', vehicle: 'car', home: 'home', personal: 'user' };
+const LOAN_TYPE_LABEL: Record<string, string> = { business: 'Business', vehicle: 'Vehicle', home: 'Home', personal: 'Personal' };
+
+const STATUS_CHIP: Record<ApplicationStatus, { cls: string; dot: string }> = {
+  draft: { cls: '', dot: 'oklch(0.62 0.02 0)' },
+  application_received: { cls: 'led-chip-info', dot: 'oklch(0.62 0.12 230)' },
+  application_assessed: { cls: 'led-chip-violet', dot: 'oklch(0.55 0.19 300)' },
+  submitted: { cls: 'led-chip-accent', dot: 'oklch(0.55 0.22 268)' },
+  approval: { cls: 'led-chip-warning', dot: 'oklch(0.72 0.15 65)' },
+  settled: { cls: 'led-chip-success', dot: 'oklch(0.62 0.15 155)' },
+  rejected: { cls: 'led-chip-danger', dot: 'oklch(0.58 0.20 20)' },
+};
+
+// ── Avatar ──
+
+function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'md' }) {
+  return (
+    <span
+      className={`led-avatar ${size === 'sm' ? 'led-avatar-sm' : ''}`}
+      style={{ background: avatarColor(name) }}
+      title={name}
+    >
+      {getInitials(name)}
+    </span>
+  );
+}
+
+// ── Filter Pill ──
+
+function FilterPill({
+  label, value, active, icon, children,
+}: {
+  label: string; value: string; active: boolean; icon?: string;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" className={`led-filter-pill ${active ? 'led-active' : ''}`} onClick={() => setOpen((o) => !o)}>
+        {icon && <Icon name={icon} size={12} />}
+        <span className="led-pill-label">{label}:</span>
+        <span>{value}</span>
+        <Icon name="chevronDown" size={11} />
+      </button>
+      {open && (
+        <div className="led-popover" style={{ top: 'calc(100% + 6px)', left: 0 }}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main ──
+
+type SortKey = 'user_name' | 'amount' | 'status' | 'updated_at';
+type SortDir = 'asc' | 'desc';
 
 export default function AllApplications() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [loanTypeFilter, setLoanTypeFilter] = useState('');
+  const [brokerFilter, setBrokerFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'updated_at', dir: 'desc' });
+  const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const perPage = 15;
 
   const fetchData = () => {
@@ -38,185 +145,347 @@ export default function AllApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, statusFilter, loanTypeFilter]);
+  }, [page, statusFilter, loanTypeFilter, search]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    api.get('/users')
+      .then(({ data }) => {
+        const users = data as User[];
+        setBrokersList(users.filter((u) => u.role === 'broker' || u.role === 'admin').map((u) => ({ id: u.id, full_name: u.full_name })));
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // debounced search
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchDraft !== search) {
+        setPage(1);
+        setSearch(searchDraft);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sorted = useMemo(() => {
+    let arr = applications.slice();
+    if (brokerFilter) {
+      arr = arr.filter((a) => a.assigned_brokers?.some((ab) => ab.id === brokerFilter));
+    }
+    arr.sort((a, b) => {
+      let av: any = a[sort.key];
+      let bv: any = b[sort.key];
+      if (sort.key === 'user_name') { av = a.user_name || ''; bv = b.user_name || ''; }
+      if (sort.key === 'amount') { av = Number(a.amount) || 0; bv = Number(b.amount) || 0; }
+      if (sort.key === 'status') { av = STATUS_LABEL[a.status] || a.status; bv = STATUS_LABEL[b.status] || b.status; }
+      if (sort.key === 'updated_at') { av = new Date(a.updated_at).getTime(); bv = new Date(b.updated_at).getTime(); }
+      if (av < bv) return sort.dir === 'asc' ? -1 : 1;
+      if (av > bv) return sort.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [applications, brokerFilter, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const activeFilterCount = [statusFilter, loanTypeFilter, brokerFilter, search].filter(Boolean).length;
+
+  const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
+
+  const clearFilters = () => {
+    setStatusFilter('');
+    setLoanTypeFilter('');
+    setBrokerFilter('');
+    setSearchDraft('');
+    setSearch('');
     setPage(1);
-    fetchData();
   };
 
-  const totalPages = Math.ceil(total / perPage);
+  // Filter pill values
+  const statusPill = statusFilter ? (STATUS_LABEL[statusFilter as ApplicationStatus] || statusFilter) : 'All';
+  const typePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
+  const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'Any';
+
+  const SortHead = ({ k, children, align = 'left' }: { k: SortKey; children: ReactNode; align?: 'left' | 'right' }) => (
+    <th style={{ textAlign: align }}>
+      <button
+        type="button"
+        className={`led-sort-head ${sort.key === k ? 'led-sort-active' : ''}`}
+        onClick={() => toggleSort(k)}
+      >
+        {children}
+        {sort.key === k && <Icon name={sort.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={10} />}
+      </button>
+    </th>
+  );
 
   return (
-    <div>
-      <PageHeader title="All Applications" subtitle="Manage and review all loan applications" />
-
-      {/* Filters */}
-      <GlassCard className="mb-6">
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
-          <Select
-            label="Status"
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="application_received">Application Received</option>
-            <option value="application_assessed">Application Assessed</option>
-            <option value="submitted">Submitted</option>
-            <option value="approval">Approval</option>
-            <option value="settled">Settled</option>
-            <option value="rejected">Rejected</option>
-          </Select>
-          <Select
-            label="Loan Type"
-            value={loanTypeFilter}
-            onChange={(e) => { setLoanTypeFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Types</option>
-            <option value="personal">Personal</option>
-            <option value="home">Home</option>
-            <option value="business">Business</option>
-            <option value="vehicle">Vehicle</option>
-          </Select>
-          <div className="flex-1 min-w-[140px] sm:min-w-[200px]">
-            <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Search Client</label>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Name or email..."
-                className="flex-1"
-              />
-              <Button type="submit">Search</Button>
-            </div>
+    <div className="ledger-theme led-fade-up" style={{ minHeight: '100%', background: 'var(--led-bg)', margin: -24, padding: 0 }}>
+      {/* Header */}
+      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, paddingBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 className="led-h-page" style={{ margin: 0 }}>Applications</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--led-muted)' }}>
+              <span className="led-mono led-tnum">{sorted.length}</span> of <span className="led-mono led-tnum">{total}</span> shown
+            </p>
           </div>
-        </form>
-      </GlassCard>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="led-segment">
+              <button type="button" className="led-active"><Icon name="list" size={12} /> Table</button>
+              <Link to="/admin/board" style={{ textDecoration: 'none' }}>
+                <button type="button"><Icon name="board" size={12} /> Board</button>
+              </Link>
+            </div>
+            <button type="button" className="led-btn led-btn-outline led-btn-sm led-btn-icon" onClick={fetchData} title="Refresh">
+              <Icon name="refresh" size={13} />
+            </button>
+          </div>
+        </div>
+      </header>
 
-      {/* Table */}
-      <GlassCard padding="none">
-        {loading ? (
-          <div className="p-6">
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-lg shimmer" />
-                    <div className="space-y-2">
-                      <div className="h-4 w-32 rounded-lg shimmer" />
-                      <div className="h-3 w-24 rounded-lg shimmer" />
-                    </div>
-                  </div>
-                  <div className="h-6 w-20 rounded-full shimmer" />
-                </div>
+      {/* Filter bar */}
+      <div style={{ padding: '40px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="led-search">
+          <Icon name="search" size={13} />
+          <input
+            type="text"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="Name or email…"
+            style={{ width: 240 }}
+          />
+        </div>
+
+        <FilterPill label="Status" value={statusPill} active={!!statusFilter} icon="filter">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!statusFilter ? 'led-active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); close(); }}>All statuses</button>
+              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected'] as ApplicationStatus[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`led-popover-item ${statusFilter === s ? 'led-active' : ''}`}
+                  onClick={() => { setStatusFilter(s); setPage(1); close(); }}
+                >
+                  <span className="led-sdot" style={{ background: STATUS_CHIP[s].dot, width: 6, height: 6 }} />
+                  {STATUS_LABEL[s]}
+                </button>
               ))}
-            </div>
-          </div>
-        ) : applications.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-            </div>
-            <p className="text-[14px] text-muted-foreground">No applications found</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[14px]">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Client</th>
-                    <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Type</th>
-                    <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
-                    <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Assigned Broker</th>
-                    <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Created</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {applications.map((app) => (
-                    <tr key={app.id} className="transition-colors hover:bg-secondary/50 cursor-pointer" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                      <Link to={`/admin/applications/${app.id}`} className="contents">
-                        <td className="px-3 sm:px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                              <span className="text-[11px] font-semibold text-muted-foreground">
-                                {app.user_name
-                                  ? getInitials(app.user_name)
-                                  : app.user_id.slice(0, 2).toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[14px] font-medium text-foreground truncate">{app.user_name || app.user_id.slice(0, 8) + '...'}</p>
-                              {app.user_email && <p className="text-[12px] text-muted-foreground truncate">{app.user_email}</p>}
-                              <p className="sm:hidden text-[12px] text-muted-foreground capitalize">{app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium capitalize text-foreground">{app.loan_type}</td>
-                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>
-                        <td className="px-3 sm:px-6 py-4">
-                          <Badge value={app.status} />
-                        </td>
-                        <td className="hidden lg:table-cell px-3 sm:px-6 py-4">
-                          {app.assigned_brokers.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {app.assigned_brokers.map((ab) => (
-                                <span key={ab.id} className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                  {ab.full_name}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[13px] text-muted-foreground">N/A</span>
-                          )}
-                        </td>
-                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
-                          {formatDate(app.created_at)}
-                        </td>
-                        <td className="px-3 sm:px-6 py-4">
-                          <Button variant="ghost" size="sm">Review</Button>
-                        </td>
-                      </Link>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            </>
+          )}
+        </FilterPill>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-3 sm:px-6 py-4">
-                <span className="text-[13px] text-muted-foreground">
-                  {(page - 1) * perPage + 1}&ndash;{Math.min(page * perPage, total)} of {total}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
+        <FilterPill label="Type" value={typePill} active={!!loanTypeFilter} icon="filter">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!loanTypeFilter ? 'led-active' : ''}`} onClick={() => { setLoanTypeFilter(''); setPage(1); close(); }}>All types</button>
+              {['personal', 'home', 'business', 'vehicle'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`led-popover-item ${loanTypeFilter === t ? 'led-active' : ''}`}
+                  onClick={() => { setLoanTypeFilter(t); setPage(1); close(); }}
+                >
+                  <Icon name={LOAN_TYPE_ICON[t]} size={13} />
+                  {LOAN_TYPE_LABEL[t]}
+                </button>
+              ))}
+            </>
+          )}
+        </FilterPill>
+
+        {brokersList.length > 0 && (
+          <FilterPill label="Broker" value={brokerPill} active={!!brokerFilter} icon="users">
+            {(close) => (
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                <button type="button" className={`led-popover-item ${!brokerFilter ? 'led-active' : ''}`} onClick={() => { setBrokerFilter(''); close(); }}>Any broker</button>
+                {brokersList.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className={`led-popover-item ${brokerFilter === b.id ? 'led-active' : ''}`}
+                    onClick={() => { setBrokerFilter(b.id); close(); }}
                   >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+                    <Avatar name={b.full_name} size="sm" />{b.full_name}
+                  </button>
+                ))}
               </div>
             )}
-          </>
+          </FilterPill>
         )}
-      </GlassCard>
+
+        {activeFilterCount > 0 && (
+          <button type="button" className="led-btn led-btn-ghost led-btn-sm" onClick={clearFilters} style={{ color: 'var(--led-muted)' }}>
+            <Icon name="close" size={12} /> Clear
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ padding: '0 24px 32px' }}>
+        <div className="led-card">
+          <div className="led-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <table className="led-table">
+              <thead>
+                <tr>
+                  <SortHead k="user_name">Applicant</SortHead>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <SortHead k="amount" align="right">Amount</SortHead>
+                  <SortHead k="status">Status</SortHead>
+                  <th>Broker</th>
+                  <SortHead k="updated_at" align="right">Updated</SortHead>
+                  <th style={{ width: 36 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  [1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i}>
+                      <td colSpan={8}>
+                        <div style={{ height: 22 }} className="shimmer" />
+                      </td>
+                    </tr>
+                  ))
+                ) : sorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="led-empty">
+                        <div className="led-empty-icon"><Icon name="search" size={18} /></div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 4 }}>No applications found</div>
+                        <div style={{ fontSize: 12.5 }}>Try adjusting your filters or search terms.</div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : sorted.map((app) => {
+                  const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
+                  const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
+                  const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
+                  const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
+                  const firstBroker = app.assigned_brokers?.[0];
+                  const subtitle = app.business_name || app.user_email || '';
+
+                  return (
+                    <tr key={app.id} onClick={() => navigate(`/admin/applications/${app.id}`)}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <Avatar name={app.user_name || app.user_email || 'Unknown'} size="sm" />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, color: 'var(--led-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                              {app.user_name || 'Unknown'}
+                            </div>
+                            {subtitle && (
+                              <div style={{ fontSize: 12, color: 'var(--led-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                                {subtitle}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="led-mono" style={{ fontSize: 11.5, color: 'var(--led-muted)', letterSpacing: 0.3 }}>
+                          APP-{shortId}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--led-ink-2)' }}>
+                          <Icon name={ltIcon} size={13} /> {ltLabel}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="led-mono led-tnum" style={{ fontWeight: 500 }}>
+                          {fmtMoneyK(Number(app.amount) || 0)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`led-chip ${chip.cls}`} style={{ height: 22 }}>
+                          <span className="led-chip-dot" style={{ background: chip.dot }} />
+                          {STATUS_LABEL[app.status] || app.status}
+                        </span>
+                      </td>
+                      <td>
+                        {firstBroker ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <Avatar name={firstBroker.full_name} size="sm" />
+                            <span style={{ fontSize: 12.5 }}>
+                              {firstBroker.full_name.split(' ')[0]}
+                              {app.assigned_brokers.length > 1 && (
+                                <span style={{ color: 'var(--led-muted)' }}> +{app.assigned_brokers.length - 1}</span>
+                              )}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="led-chip" style={{ color: 'var(--led-muted)' }}>
+                            <Icon name="plus" size={10} /> Unassigned
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="led-mono led-tnum" style={{ fontSize: 12, color: 'var(--led-muted)' }}>
+                          {relativeTime(app.updated_at)}
+                        </span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button type="button" className="led-btn led-btn-ghost led-btn-sm led-btn-icon">
+                          <Icon name="dotsV" size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="led-pagination">
+            <span className="led-mono led-tnum">
+              {total === 0 ? '0' : (page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                onClick={() => setPage(1)}
+                disabled={page === 1}
+                style={{ opacity: page === 1 ? 0.4 : 1 }}
+              >
+                <Icon name="chevronsLeft" size={13} />
+              </button>
+              <button
+                type="button"
+                className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={{ opacity: page === 1 ? 0.4 : 1 }}
+              >
+                <Icon name="chevronLeft" size={13} />
+              </button>
+              <span className="led-mono led-tnum" style={{ padding: '0 8px' }}>
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                style={{ opacity: page >= totalPages ? 0.4 : 1 }}
+              >
+                <Icon name="chevronRight" size={13} />
+              </button>
+              <button
+                type="button"
+                className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages}
+                style={{ opacity: page >= totalPages ? 0.4 : 1 }}
+              >
+                <Icon name="chevronsRight" size={13} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

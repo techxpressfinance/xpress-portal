@@ -9,10 +9,10 @@ import PageTransition from './PageTransition';
 import GlobalSearch from './GlobalSearch';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
-  `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2 text-[14px] font-medium transition-all duration-200 ${
+  `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border ${
     isActive
-      ? 'bg-secondary text-foreground'
-      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+      ? 'bg-[var(--led-surface-2)] text-[var(--led-ink)] border-[var(--led-line)] shadow-sm'
+      : 'text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)] border-transparent'
   }`;
 
 export default function Layout() {
@@ -56,7 +56,7 @@ export default function Layout() {
     navLinkClass(props.isActive, collapsed);
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="ledger-theme flex h-screen text-foreground" style={{ background: 'var(--led-bg)', color: 'var(--led-ink)' }}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -68,10 +68,10 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:static lg:translate-x-0 ${
           collapsed ? 'w-[72px]' : 'w-64'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={sidebarOpen ? { animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : undefined}
+        style={sidebarOpen ? { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)', animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)' }}
       >
         {/* Logo */}
         <div className={`flex h-14 items-center ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
@@ -143,14 +143,14 @@ export default function Layout() {
             <>
               <button
                 onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2 text-[14px] font-medium transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-secondary/60 w-full`}
+                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)] border border-transparent w-full`}
                 title="Search (⌘K)"
               >
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left">Search</span>
-                    <kbd className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/70">⌘K</kbd>
+                    <kbd className="rounded-md bg-[var(--led-surface-2)] border border-[var(--led-line)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--led-muted)] shadow-sm">⌘K</kbd>
                   </>
                 )}
               </button>
@@ -235,7 +235,7 @@ export default function Layout() {
         <div className="hidden lg:flex items-center justify-center py-2 px-3">
           <button
             onClick={toggleCollapsed}
-            className="w-full flex items-center justify-center rounded-xl p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all duration-200"
+            className="w-full flex items-center justify-center rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] transition-all duration-200"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             <svg className={`h-4 w-4 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -249,12 +249,12 @@ export default function Layout() {
           <div className="px-3 pb-3">
             {collapsed ? (
               <div className="flex flex-col items-center gap-1.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-[12px] font-semibold text-foreground" title={user.full_name}>
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--led-surface-2)] border border-[var(--led-line)] text-[12px] font-semibold text-[var(--led-ink)] shadow-sm" title={user.full_name}>
                   {user.full_name.charAt(0).toUpperCase()}
                 </div>
                 <button
                   onClick={toggleTheme}
-                  className="rounded-xl p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all duration-200"
+                  className="rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] transition-all duration-200"
                   title={theme === 'light' ? 'Dark mode' : 'Light mode'}
                 >
                   {theme === 'light' ? (
@@ -265,25 +265,25 @@ export default function Layout() {
                 </button>
                 <button
                   onClick={confirmLogout}
-                  className="rounded-xl p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all duration-200"
+                  className="rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-danger-tint)] hover:text-[var(--led-danger)] transition-all duration-200"
                   title="Sign out"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-3 rounded-xl bg-secondary/60 p-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-[12px] font-semibold text-background">
+              <div className="flex items-center gap-3 rounded-xl bg-[var(--led-surface-2)] border border-[var(--led-line)] p-3 shadow-sm">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--led-ink)] text-[12px] font-semibold text-[var(--led-surface)]">
                   {user.full_name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[13px] font-medium text-foreground">{user.full_name}</p>
-                  <p className="text-[11px] text-muted-foreground capitalize">{user.role}</p>
+                  <p className="truncate text-[13px] font-medium text-[var(--led-ink)]">{user.full_name}</p>
+                  <p className="text-[11px] text-[var(--led-muted)] capitalize">{user.role}</p>
                 </div>
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={toggleTheme}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                    className="rounded-lg p-1.5 text-[var(--led-muted)] hover:text-[var(--led-ink)] transition-colors"
                     title={theme === 'light' ? 'Dark mode' : 'Light mode'}
                   >
                     {theme === 'light' ? (
@@ -294,7 +294,7 @@ export default function Layout() {
                   </button>
                   <button
                     onClick={confirmLogout}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                    className="rounded-lg p-1.5 text-[var(--led-muted)] hover:text-[var(--led-danger)] hover:bg-[var(--led-danger-tint)] transition-colors"
                     title="Sign out"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>

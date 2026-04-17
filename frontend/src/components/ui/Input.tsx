@@ -17,15 +17,15 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           <div className="relative">
             <input
               ref={ref}
-              className={`w-full rounded-xl bg-secondary px-4 py-2.5 pr-8 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground h-11 border border-transparent ${error ? 'ring-2 ring-destructive/30 bg-destructive/5' : ''} ${className}`}
+              className={`led-input !h-10 !text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
               {...props}
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{suffix}</span>
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--led-muted)] text-sm">{suffix}</span>
           </div>
         ) : (
           <input
             ref={ref}
-            className={`w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground h-11 border border-transparent ${error ? 'ring-2 ring-destructive/30 bg-destructive/5' : ''} ${className}`}
+            className={`led-input !h-10 !text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
             {...props}
           />
         )}

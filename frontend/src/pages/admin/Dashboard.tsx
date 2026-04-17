@@ -3,23 +3,15 @@ import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, PageHeader, Badge, Button } from '../../components/ui';
-import { getInitials } from '../../lib/utils';
-import { ACTION_ICON_CONFIG, ACTION_LABELS, LOAN_TYPE_ICONS, STATUS_BADGE } from '../../lib/constants';
+import { GlassCard, Badge, Button } from '../../components/ui';
+import { ACTION_ICON_CONFIG, ACTION_LABELS, LOAN_TYPE_ICONS } from '../../lib/constants';
 import type { ActivityLog, DashboardStats, LoanApplication, User } from '../../types';
-
 
 function formatVolume(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
   return `$${v.toLocaleString()}`;
 }
-
-function monthLabel(ym: string): string {
-  const [y, m] = ym.split('-');
-  return new Date(+y, +m - 1).toLocaleString('default', { month: 'short' });
-}
-
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -29,13 +21,14 @@ export default function AdminDashboard() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
   useEffect(() => {
     const isAdmin = user?.role === 'admin';
     Promise.allSettled([
       api.get('/dashboard/stats'),
       api.get('/applications?per_page=100'),
-      isAdmin ? api.get('/activity-logs?per_page=10') : Promise.resolve(null),
+      isAdmin ? api.get('/activity-logs?per_page=15') : Promise.resolve(null),
       api.get('/users'),
     ])
       .then(([statsRes, appRes, logRes, usersRes]) => {
@@ -52,7 +45,6 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [user?.role]);
 
-  // Derive counts from stats endpoint (accurate across all data, not capped by per_page)
   const counts = {
     total: dashStats ? Object.values(dashStats.status_counts).reduce((a, b) => a + b, 0) : 0,
     draft: dashStats?.status_counts.draft ?? 0,
@@ -66,412 +58,389 @@ export default function AdminDashboard() {
 
   const totalVolume = dashStats ? Object.values(dashStats.volume_by_status).reduce((a, b) => a + b, 0) : 0;
 
+  const brokerAssignments = brokers.map((broker) => {
+    const assigned = applications.filter((a) => a.assigned_brokers?.some((ab) => ab.id === broker.id));
+    return { broker, applications: assigned };
+  });
+
   const weekDelta = dashStats
     ? dashStats.apps_last_week > 0
       ? Math.round(((dashStats.apps_this_week - dashStats.apps_last_week) / dashStats.apps_last_week) * 100)
       : dashStats.apps_this_week > 0 ? 100 : 0
     : 0;
 
-  const stats = [
-    { label: 'Total', value: counts.total, gradient: 'from-primary to-primary', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg> },
-    { label: 'Received', value: counts.application_received, gradient: 'from-chart-2 to-chart-2', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg> },
-    { label: 'Assessed', value: counts.application_assessed, gradient: 'from-chart-4 to-chart-4', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg> },
-    { label: 'Settled', value: counts.settled, gradient: 'from-success to-success', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>, valueColor: 'text-success' },
-    { label: 'Rejected', value: counts.rejected, gradient: 'from-destructive to-destructive', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>, valueColor: 'text-destructive' },
-  ];
-
-  // Group applications by broker for the assignments section (many-to-many)
-  const brokerAssignments = brokers.map((broker) => {
-    const assigned = applications.filter((a) => a.assigned_brokers?.some((ab) => ab.id === broker.id));
-    return { broker, applications: assigned };
-  });
-  const unassigned = applications.filter((a) => (!a.assigned_brokers || a.assigned_brokers.length === 0) && a.status !== 'draft');
-
   const loanTypes = ['personal', 'home', 'business', 'vehicle'] as const;
   const maxLoanTypeVolume = dashStats ? Math.max(...loanTypes.map((t) => dashStats.volume_by_loan_type[t] ?? 0), 1) : 1;
-  const maxMonthCount = dashStats ? Math.max(...dashStats.monthly_trend.map((m) => m.count), 1) : 1;
+
+  const selectedApp = applications.find(a => a.id === selectedAppId);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  };
 
   return (
-    <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle={`Welcome back, ${user?.full_name?.split(' ')[0]}`}
-        action={
+    <div className="flex flex-col h-full min-h-[calc(100vh-4rem)] pb-8">
+      <div className="flex items-center justify-between mb-8 mt-2">
+        <div>
+          <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
+            {getGreeting()}, {user?.full_name?.split(' ')[0] || 'Admin'}
+          </h1>
+          <p className="text-[15px] text-muted-foreground mt-1">Here's what's happening with your applications today.</p>
+        </div>
+        <div className="flex gap-3">
           <Link to="/admin/applications">
-            <Button>View All Applications</Button>
+            <Button className="rounded-full px-5 h-10 shadow-sm transition-transform hover:scale-105 active:scale-95">All Applications</Button>
           </Link>
-        }
-      />
-
-      {/* Stats Grid */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5 mb-5">
-        {stats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            loading={loading}
-            gradient={stat.gradient}
-            icon={stat.icon}
-            valueColor={stat.valueColor}
-          />
-        ))}
+        </div>
       </div>
 
-      {/* Metrics row: Total Volume, This Week, Avg Turnaround */}
-      <div className="grid gap-5 sm:grid-cols-3 mb-8">
-        <StatCard
-          label="Total Loan Volume"
-          value={loading ? 0 : formatVolume(totalVolume)}
-          loading={loading}
-          gradient="from-chart-5 to-chart-5"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
-        />
-        <div className="rounded-2xl bg-card text-card-foreground shadow-[0_0_0_1px_var(--border),0_1px_3px_0_rgba(0,0,0,0.04),0_2px_8px_0_rgba(0,0,0,0.02)] relative overflow-hidden p-5">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[13px] font-medium text-muted-foreground">This Week</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
-            </div>
-          </div>
-          {loading ? (
-            <div className="h-8 w-16 rounded-lg shimmer" />
-          ) : (
-            <div className="flex items-baseline gap-3">
-              <p className="text-[28px] font-semibold tracking-tight text-foreground">{dashStats?.apps_this_week ?? 0}</p>
-              <div className="flex items-center gap-1">
-                {weekDelta !== 0 && (
-                  <svg className={`h-3.5 w-3.5 ${weekDelta > 0 ? 'text-success' : 'text-destructive'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d={weekDelta > 0 ? 'M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25' : 'M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25'} />
-                  </svg>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
+        {/* Left Column (Main Data) */}
+        <div className="lg:col-span-8 flex flex-col gap-5">
+
+          {/* Top HUD (Heads Up Display) */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+            <GlassCard className="flex flex-col justify-center p-5">
+              <span className="text-[13px] font-medium text-muted-foreground mb-1">Total Pipeline</span>
+              <span className="text-[32px] font-semibold led-tnum text-foreground tracking-tight">{loading ? '--' : formatVolume(totalVolume)}</span>
+            </GlassCard>
+            <GlassCard className="flex flex-col justify-center p-5">
+              <span className="text-[13px] font-medium text-muted-foreground mb-1">Active Apps</span>
+              <span className="text-[32px] font-semibold led-tnum text-foreground tracking-tight">{loading ? '--' : counts.total - counts.draft - counts.settled - counts.rejected}</span>
+            </GlassCard>
+            <GlassCard className="flex flex-col justify-center p-5">
+              <span className="text-[13px] font-medium text-success mb-1">Settled</span>
+              <span className="text-[32px] font-semibold led-tnum text-foreground tracking-tight">{loading ? '--' : counts.settled}</span>
+            </GlassCard>
+            <GlassCard className="flex flex-col justify-center p-5 relative overflow-hidden">
+              <span className="text-[13px] font-medium text-muted-foreground mb-1">This Week</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[32px] font-semibold led-tnum text-foreground tracking-tight">{loading ? '--' : dashStats?.apps_this_week ?? 0}</span>
+                {!loading && weekDelta !== 0 && (
+                  <span className={`text-[13px] font-medium ${weekDelta > 0 ? 'text-success' : 'text-destructive'}`}>
+                    {weekDelta > 0 ? '+' : ''}{weekDelta}%
+                  </span>
                 )}
-                <span className={`text-[13px] font-medium ${weekDelta > 0 ? 'text-success' : weekDelta < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {weekDelta > 0 ? '+' : ''}{weekDelta}% vs last week
-                </span>
               </div>
-            </div>
-          )}
-        </div>
-        <StatCard
-          label="Avg. Turnaround"
-          value={loading ? 0 : dashStats?.avg_turnaround_days != null ? `${dashStats.avg_turnaround_days}d` : '--'}
-          loading={loading}
-          gradient="from-chart-2 to-chart-2"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
-        />
-      </div>
-
-      {/* Volume by Loan Type + Monthly Trend */}
-      <div className="grid gap-6 lg:grid-cols-2 mb-8">
-        <GlassCard>
-          <h2 className="text-[15px] font-semibold text-foreground mb-5">Volume by Loan Type</h2>
-          {loading ? (
-            <div className="space-y-4">
-              {[1, 2, 3, 4].map((i) => <div key={i} className="h-10 rounded-lg shimmer" />)}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {loanTypes.map((type) => {
-                const count = dashStats?.count_by_loan_type[type] ?? 0;
-                const volume = dashStats?.volume_by_loan_type[type] ?? 0;
-                const pct = (volume / maxLoanTypeVolume) * 100;
-                return (
-                  <div key={type}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[16px]">{LOAN_TYPE_ICONS[type]}</span>
-                        <span className="text-[14px] font-medium text-foreground capitalize">{type}</span>
-                        <span className="text-[12px] text-muted-foreground">{count} app{count !== 1 ? 's' : ''}</span>
-                      </div>
-                      <span className="text-[14px] font-semibold text-foreground">{formatVolume(volume)}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-500"
-                        style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </GlassCard>
-
-        <GlassCard>
-          <h2 className="text-[15px] font-semibold text-foreground mb-5">Monthly Applications</h2>
-          {loading ? (
-            <div className="h-36 rounded-lg shimmer" />
-          ) : (
-            <div className="flex items-end gap-2 h-36">
-              {dashStats?.monthly_trend.map(({ month, count }) => {
-                const height = Math.max((count / maxMonthCount) * 100, count > 0 ? 8 : 2);
-                return (
-                  <div key={month} className="flex-1 flex flex-col items-center gap-1.5">
-                    <span className="text-[12px] font-semibold text-foreground">{count}</span>
-                    <div className="w-full flex items-end" style={{ height: '100px' }}>
-                      <div
-                        className="w-full rounded-t-md bg-primary/80 transition-all duration-500"
-                        style={{ height: `${height}%` }}
-                      />
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">{monthLabel(month)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </GlassCard>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2 mb-8">
-        {/* Status Breakdown (enhanced with volume) */}
-        <GlassCard>
-          <h2 className="text-[15px] font-semibold text-foreground mb-5">Status Overview</h2>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-8 rounded-lg shimmer" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected'] as const).map((status) => {
-                const count = counts[status];
-                const pct = counts.total > 0 ? (count / counts.total) * 100 : 0;
-                const volume = dashStats?.volume_by_status[status] ?? 0;
-                return (
-                  <div key={status} className="flex items-center gap-4">
-                    <div className="w-24">
-                      <Badge value={status} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${STATUS_BADGE[status].split(' ')[0].replace('/10', '')}`}
-                          style={{ width: `${pct}%`, backgroundColor: 'currentColor', opacity: 0.6 }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-[12px] text-muted-foreground w-16 text-right">{formatVolume(volume)}</span>
-                    <span className="text-[14px] font-semibold text-foreground w-8 text-right">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </GlassCard>
-
-        {/* Broker Workload */}
-        <GlassCard>
-          <h2 className="text-[15px] font-semibold text-foreground mb-5">Broker Workload</h2>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-lg shimmer" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-32 rounded-lg shimmer" />
-                    <div className="h-3 w-20 rounded-lg shimmer" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : brokers.length === 0 ? (
-            <div className="rounded-xl bg-secondary/50 p-6 text-center">
-              <p className="text-[14px] text-muted-foreground">No brokers registered</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {brokerAssignments.map(({ broker, applications: apps }) => (
-                <div key={broker.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 p-3 transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                    <span className="text-[11px] font-semibold text-primary-foreground">
-                      {getInitials(broker.full_name)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-medium text-foreground truncate">{broker.full_name}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      {apps.length === 0
-                        ? 'No assignments'
-                        : `${apps.length} application${apps.length !== 1 ? 's' : ''}`}
-                    </p>
-                  </div>
-                  <span className="text-[20px] font-semibold text-foreground">{apps.length}</span>
-                </div>
-              ))}
-              {unassigned.length > 0 && (
-                <div className="flex items-center gap-3 rounded-xl bg-warning/5 border border-warning/20 p-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
-                    <svg className="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-medium text-warning">Unassigned</p>
-                    <p className="text-[12px] text-muted-foreground">{unassigned.length} application{unassigned.length !== 1 ? 's' : ''} need assignment</p>
-                  </div>
-                  <span className="text-[20px] font-semibold text-warning">{unassigned.length}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </GlassCard>
-      </div>
-
-      {/* Broker Assignments Detail */}
-      <GlassCard padding="none" className="mb-8">
-        <div className="flex items-center justify-between border-b border-border px-6 py-5">
-          <h2 className="text-[15px] font-semibold text-foreground">Broker Assignments</h2>
-          <Link to="/admin/applications" className="text-[13px] font-medium text-primary hover:text-primary/80 transition-colors" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-            Manage all
-          </Link>
-        </div>
-        {loading ? (
-          <div className="p-6">
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="h-9 w-9 rounded-lg shimmer" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-48 rounded-lg shimmer" />
-                    <div className="h-3 w-32 rounded-lg shimmer" />
-                  </div>
-                </div>
-              ))}
-            </div>
+            </GlassCard>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[14px]">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-3 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Application</th>
-                  <th className="hidden sm:table-cell px-3 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Client</th>
-                  <th className="px-3 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Status</th>
-                  <th className="hidden md:table-cell px-3 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Assigned Broker</th>
-                  <th className="px-3 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {applications
-                  .filter((a) => a.status !== 'draft')
-                  .slice(0, 10)
-                  .map((app) => (
-                    <tr key={app.id} className="transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                      <td className="px-3 sm:px-6 py-3">
-                        <p className="text-[14px] font-medium text-foreground capitalize">{app.loan_type} Loan</p>
-                        <p className="text-[12px] text-muted-foreground">${Number(app.amount).toLocaleString()}</p>
-                        <p className="sm:hidden text-[12px] text-muted-foreground">{app.user_name || 'Unknown'}</p>
-                      </td>
-                      <td className="hidden sm:table-cell px-3 sm:px-6 py-3 text-[14px] text-foreground">{app.user_name || 'Unknown'}</td>
-                      <td className="px-3 sm:px-6 py-3"><Badge value={app.status} /></td>
-                      <td className="hidden md:table-cell px-3 sm:px-6 py-3">
-                        {app.assigned_brokers?.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {app.assigned_brokers.map((ab) => (
-                              <div key={ab.id} className="flex items-center gap-1.5">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-                                  <span className="text-[9px] font-semibold text-primary-foreground">
-                                    {getInitials(ab.full_name)}
-                                  </span>
-                                </div>
-                                <span className="text-[13px] font-medium text-foreground">{ab.full_name}</span>
-                              </div>
-                            ))}
+
+          <div className="grid grid-cols-2 gap-5">
+            {/* 30-Day Velocity */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">30-Day Velocity</h2>
+              </div>
+              <div className="p-5 pt-4">
+                <div className="flex items-end gap-[2px] h-16 w-full">
+                  {dashStats?.daily_trend?.map((d, i) => (
+                    <div key={i} className="flex-1 bg-primary/20 rounded-[2px] hover:bg-primary transition-all duration-300 relative group" style={{ height: `${Math.max((d.count / (Math.max(...(dashStats.daily_trend.map(x => x.count)) || [1]))) * 100, 5)}%` }}>
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-[11px] font-medium px-2 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm z-10 pointer-events-none">{d.count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* 6-Month Trend */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">6-Month Trend</h2>
+              </div>
+              <div className="p-5 pt-4">
+                <div className="flex items-end gap-[4px] h-16 w-full">
+                  {dashStats?.monthly_trend?.map((m, i) => (
+                    <div key={i} className="flex-1 bg-primary/30 rounded-sm hover:bg-primary transition-all duration-300 relative group" style={{ height: `${Math.max((m.count / (Math.max(...(dashStats.monthly_trend.map(x => x.count)) || [1]))) * 100, 5)}%` }}>
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-[11px] font-medium px-2 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm z-10 pointer-events-none">{m.count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* Volume by Loan Type */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Volume by Type</h2>
+              </div>
+              <div className="p-5 pt-2 space-y-4">
+                {loanTypes.map((type) => {
+                  const count = dashStats?.count_by_loan_type[type] ?? 0;
+                  const volume = dashStats?.volume_by_loan_type[type] ?? 0;
+                  const pct = (volume / maxLoanTypeVolume) * 100;
+                  return (
+                    <div key={type}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center text-muted-foreground">
+                            {LOAN_TYPE_ICONS[type]}
                           </div>
-                        ) : (
-                          <span className="text-[13px] text-muted-foreground italic">Unassigned</span>
-                        )}
+                          <span className="text-[14px] font-medium text-foreground capitalize">{type}</span>
+                          <span className="text-[12px] text-muted-foreground ml-1">({count})</span>
+                        </div>
+                        <span className="text-[14px] font-semibold led-tnum text-foreground">{formatVolume(volume)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-secondary/50 overflow-hidden">
+                        <div className="h-full bg-primary rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </GlassCard>
+
+            {/* Status Breakdown */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Status Breakdown</h2>
+              </div>
+              <div className="p-5 pt-2 space-y-4">
+                {(['application_received', 'application_assessed', 'submitted', 'approval'] as const).map((status) => {
+                  const count = counts[status];
+                  const pct = counts.total > 0 ? (count / counts.total) * 100 : 0;
+                  const volume = dashStats?.volume_by_status[status] ?? 0;
+                  return (
+                    <div key={status} className="flex items-center gap-3">
+                      <div className="w-[140px] shrink-0 flex items-center">
+                        <Badge value={status} className="truncate" />
+                      </div>
+                      <div className="flex-1 min-w-[50px]">
+                        <div className="h-2 rounded-full bg-secondary/50 overflow-hidden">
+                          <div className={`h-full bg-primary opacity-70 rounded-full transition-all duration-1000 ease-out`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end w-16 shrink-0">
+                        <span className="text-[13px] font-semibold led-tnum text-foreground">{count}</span>
+                        <span className="text-[11px] text-muted-foreground">{formatVolume(volume)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </GlassCard>
+            
+            {/* Lender Insights */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Top Lenders</h2>
+              </div>
+              <div className="p-5 pt-2 space-y-3">
+                {dashStats?.top_lenders?.map((lender, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">{i + 1}</div>
+                      <span className="text-[14px] font-medium text-foreground">{lender.name}</span>
+                    </div>
+                    <span className="text-[13px] font-semibold led-tnum">{lender.approvals}</span>
+                  </div>
+                ))}
+                {(!dashStats?.top_lenders || dashStats.top_lenders.length === 0) && !loading && (
+                  <div className="text-[13px] text-muted-foreground italic text-center py-2">No lender data</div>
+                )}
+              </div>
+            </GlassCard>
+            
+            {/* Referral Leaderboard */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Top Referrers</h2>
+              </div>
+              <div className="p-5 pt-2 space-y-3">
+                {dashStats?.top_referrers?.map((ref, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-full bg-accent/10 text-accent flex items-center justify-center font-bold text-[10px]">{i + 1}</div>
+                      <span className="text-[14px] font-medium text-foreground">{ref.name}</span>
+                    </div>
+                    <span className="text-[13px] font-semibold led-tnum">{ref.count}</span>
+                  </div>
+                ))}
+                {(!dashStats?.top_referrers || dashStats.top_referrers.length === 0) && !loading && (
+                  <div className="text-[13px] text-muted-foreground italic text-center py-2">No referral data</div>
+                )}
+              </div>
+            </GlassCard>
+          </div>
+
+          {/* Active Applications Dense Table */}
+          <GlassCard padding="none" className="flex-1 min-h-[400px] flex flex-col overflow-hidden">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between">
+              <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Active Queue</h2>
+            </div>
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-left text-[14px]">
+                <thead className="bg-surface/50 backdrop-blur-md sticky top-0 z-10 border-y border-border/50">
+                  <tr>
+                    <th className="px-5 py-3 text-[12px] font-medium text-muted-foreground">ID</th>
+                    <th className="px-5 py-3 text-[12px] font-medium text-muted-foreground">Client</th>
+                    <th className="px-5 py-3 text-[12px] font-medium text-muted-foreground">Type / Amount</th>
+                    <th className="px-5 py-3 text-[12px] font-medium text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {applications.filter(a => !['draft', 'settled', 'rejected'].includes(a.status)).map((app) => (
+                    <tr
+                      key={app.id}
+                      className={`cursor-pointer transition-colors hover:bg-secondary/30 ${selectedAppId === app.id ? 'bg-secondary/50' : ''}`}
+                      onClick={() => setSelectedAppId(app.id)}
+                    >
+                      <td className="px-5 py-4 led-tnum text-muted-foreground">{app.id.substring(0, 8)}</td>
+                      <td className="px-5 py-4 font-medium text-foreground">{app.user_name || 'Unknown'}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-secondary/50 flex items-center justify-center text-[10px] text-muted-foreground">
+                            {LOAN_TYPE_ICONS[app.loan_type]}
+                          </div>
+                          <span className="led-tnum">${Number(app.amount).toLocaleString()}</span>
+                        </div>
                       </td>
-                      <td className="px-3 sm:px-6 py-3">
-                        <Link to={`/admin/applications/${app.id}`}>
-                          <Button variant="ghost" size="sm">View</Button>
-                        </Link>
-                      </td>
+                      <td className="px-5 py-4"><Badge value={app.status} className="py-1 px-3" /></td>
                     </tr>
                   ))}
-                {applications.filter((a) => a.status !== 'draft').length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-[14px] text-muted-foreground">
-                      No active applications
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </GlassCard>
-
-      {/* Recent Activity (admin only) */}
-      {user?.role === 'admin' && (
-      <GlassCard padding="none">
-        <div className="flex items-center justify-between border-b border-border px-6 py-5">
-          <h2 className="text-[15px] font-semibold text-foreground">Recent Activity</h2>
-          <Link to="/admin/activity" className="text-[13px] font-medium text-primary hover:text-primary/80 transition-colors" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-            View all
-          </Link>
+                  {applications.length === 0 && !loading && (
+                    <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No active applications in queue.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
         </div>
-        {loading ? (
-          <div className="p-6">
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="h-9 w-9 rounded-xl shimmer" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-48 rounded-lg shimmer" />
-                    <div className="h-3 w-32 rounded-lg shimmer" />
+
+        {/* Right Column (Insights & Activity) */}
+        <div className="lg:col-span-4 flex flex-col gap-5">
+          
+          {/* Needs Attention (Tasks) */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="px-5 pt-5 pb-2 flex justify-between items-center">
+              <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Needs Attention</h2>
+            </div>
+            <div className="p-3 pt-1 space-y-2">
+              {dashStats?.action_items?.map((task) => (
+                <div key={task.id} className="p-3 rounded-xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-border/30">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-[14px] font-medium text-foreground leading-snug">{task.title}</span>
+                    {task.priority === 'urgent' && <span className="w-2 h-2 rounded-full bg-destructive mt-1.5 shrink-0" />}
+                    {task.priority === 'high' && <span className="w-2 h-2 rounded-full bg-warning mt-1.5 shrink-0" />}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[12px] text-muted-foreground capitalize">{task.status.replace('_', ' ')}</span>
+                    {task.due_date && <span className="text-[11px] text-muted-foreground led-tnum">Due {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+                  </div>
+                </div>
+              ))}
+              {(!dashStats?.action_items || dashStats.action_items.length === 0) && !loading && (
+                <div className="text-[13px] text-muted-foreground italic text-center py-4">You're all caught up!</div>
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Broker Workload Compact */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="px-5 pt-5 pb-2">
+              <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Workload</h2>
+            </div>
+            <div className="p-3 pt-1 space-y-1">
+              {brokerAssignments.map(({ broker, applications: apps }) => (
+                <div key={broker.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-secondary/40 transition-colors cursor-default">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-[12px]">
+                      {broker.full_name?.substring(0, 2).toUpperCase() || 'BR'}
+                    </div>
+                    <span className="text-[14px] font-medium">{broker.full_name}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[14px] font-semibold led-tnum text-foreground">{apps.length}</span>
+                    <span className="text-[11px] text-muted-foreground">apps</span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-[14px] text-muted-foreground">No activity yet</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {logs.map((log) => {
-              let details: Record<string, string> = {};
-              try {
-                if (log.details) details = JSON.parse(log.details);
-              } catch {}
+          </GlassCard>
 
-              return (
-                <div key={log.id} className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-                  {ACTION_ICON_CONFIG[log.action] ? (
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${ACTION_ICON_CONFIG[log.action].bg}`}>
-                      {ACTION_ICON_CONFIG[log.action].icon}
-                    </div>
-                  ) : (
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary">
-                      <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold text-foreground">
-                      {ACTION_LABELS[log.action] || log.action}
-                    </p>
-                    <p className="text-[13px] text-muted-foreground truncate">
-                      {log.user_name && <span className="text-foreground font-medium">{log.user_name}</span>}
-                      {log.user_name && ' \u00b7 '}
-                      {details.from && details.to
-                        ? `${details.from} \u2192 ${details.to}`
-                        : details.broker_name
-                          ? `to ${details.broker_name}`
-                          : details.filename || log.entity_type}
-                    </p>
+          {/* Activity Feed */}
+          <GlassCard padding="none" className="flex-1 min-h-[300px] flex flex-col">
+            <div className="px-5 pt-5 pb-2">
+              <h2 className="text-[16px] font-semibold text-foreground tracking-tight">Live Feed</h2>
+            </div>
+            <div className="overflow-auto p-3 pt-1 space-y-2 flex-1">
+              {logs.map(log => (
+                <div key={log.id} className="flex gap-4 p-3 rounded-xl hover:bg-secondary/40 transition-colors text-[13px]">
+                  <div className="mt-1 w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center text-muted-foreground shrink-0">
+                    {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
                   </div>
-                  <span className="text-[12px] text-muted-foreground whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString()}
-                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <div>
+                      <span className="font-semibold text-foreground">{log.user_name || 'System'}</span>
+                      <span className="text-muted-foreground mx-1.5">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
+                      <span className="font-medium text-foreground">{log.entity_type}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/80">{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          </GlassCard>
+        </div>
+      </div>
+
+      {/* Master-Detail Inspector Panel (Apple Sheet style) */}
+      {selectedAppId && selectedApp && (
+        <>
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity" onClick={() => setSelectedAppId(null)} />
+          <div className="fixed inset-y-4 right-4 w-full max-w-md bg-card/90 backdrop-blur-2xl shadow-2xl border border-border/50 rounded-[32px] z-50 transform transition-transform duration-300 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 pb-4">
+              <div className="flex items-center gap-3">
+                <Badge value={selectedApp.status} className="py-1 px-3 shadow-sm" />
+                <span className="text-[13px] font-medium text-muted-foreground led-tnum">{selectedApp.id.substring(0, 8)}</span>
+              </div>
+              <button onClick={() => setSelectedAppId(null)} className="w-8 h-8 rounded-full bg-secondary/80 flex items-center justify-center hover:bg-secondary text-muted-foreground transition-colors">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 pt-2 flex-1 overflow-auto">
+              <h2 className="text-[28px] font-semibold mb-2 tracking-tight">{selectedApp.user_name || 'Unknown Client'}</h2>
+              <div className="flex items-center gap-2 mb-8">
+                <div className="w-6 h-6 rounded-full bg-secondary/50 flex items-center justify-center text-[10px] text-muted-foreground">
+                  {LOAN_TYPE_ICONS[selectedApp.loan_type]}
+                </div>
+                <p className="text-[16px] text-muted-foreground capitalize">{selectedApp.loan_type} Loan &middot; <span className="led-tnum font-semibold text-foreground">${Number(selectedApp.amount).toLocaleString()}</span></p>
+              </div>
+
+              <div className="space-y-6 bg-secondary/20 p-5 rounded-[24px] border border-border/30">
+                <div>
+                  <label className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Assigned Broker</label>
+                  {selectedApp.assigned_brokers?.length ? (
+                    selectedApp.assigned_brokers.map(b => (
+                      <div key={b.id} className="flex items-center gap-3 mb-2 last:mb-0">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-[12px]">
+                          {b.full_name?.substring(0, 2).toUpperCase() || 'BR'}
+                        </div>
+                        <div className="text-[15px] font-medium">{b.full_name}</div>
+                      </div>
+                    ))
+                  ) : <div className="text-[14px] text-warning italic">Unassigned</div>}
+                </div>
+                <div className="h-[1px] w-full bg-border/50" />
+                <div>
+                  <label className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Created At</label>
+                  <div className="text-[15px] font-medium">{new Date(selectedApp.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 pt-4 bg-gradient-to-t from-card to-card/0">
+              <Link to={`/admin/applications/${selectedApp.id}`} className="block">
+                <Button className="w-full h-12 rounded-[16px] text-[15px] font-semibold shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98]">
+                  Open Full File
+                </Button>
+              </Link>
+            </div>
           </div>
-        )}
-      </GlassCard>
+        </>
       )}
     </div>
   );

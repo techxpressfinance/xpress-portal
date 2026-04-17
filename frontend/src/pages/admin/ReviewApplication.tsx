@@ -552,7 +552,7 @@ export default function ReviewApplication() {
                           <select
                             value={editLoanType}
                             onChange={(e) => setEditLoanType(e.target.value as LoanType)}
-                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            className="led-input"
                           >
                             <option value="personal">Personal</option>
                             <option value="home">Home</option>
@@ -562,7 +562,7 @@ export default function ReviewApplication() {
                         </div>
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
-                          <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="Enter amount" />
+                          <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="led-input" placeholder="Enter amount" />
                         </div>
                       </div>
 
@@ -571,39 +571,39 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-4">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                          <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="led-input">
                             <option value="">Select...</option>
                             {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                          <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                          <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                          <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="led-input" />
                         </div>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                          <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                          <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="led-input">
                             <option value="">Select...</option>
                             {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                          <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="led-input">
                             <option value="">Select...</option>
                             {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -614,23 +614,23 @@ export default function ReviewApplication() {
                       <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
                       <div>
                         <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                        <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="led-input" />
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                          <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                          <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                          <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="led-input">
                             <option value="">Select...</option>
                             {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                          <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="led-input" />
                         </div>
                       </div>
 
@@ -641,25 +641,25 @@ export default function ReviewApplication() {
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                              <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="led-input" />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                              <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="led-input" />
                             </div>
                           </div>
                           <div className="grid gap-3 sm:grid-cols-3">
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                              <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                              <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="led-input" />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                              <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                              <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="led-input" />
                             </div>
                           </div>
                         </>
@@ -670,15 +670,15 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                          <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                          <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="led-input" />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                          <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                          <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="led-input" />
                         </div>
                       </div>
 
@@ -910,14 +910,14 @@ export default function ReviewApplication() {
 
                             <div className="h-4 w-[1px] bg-border mx-1" />
 
-                            <button onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })} className="p-1.5 text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-primary/10" title="View Document">
+                            <button onClick={() => setPreviewDoc({ id: doc.id, filename: doc.original_filename, ocrStatus: doc.ocr_status })} className="led-btn led-btn-ghost led-btn-sm !px-1.5 hover:!text-[var(--led-info)] hover:!bg-[var(--led-info-tint)]" title="View Document">
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
                             </button>
-                            <button onClick={() => handleDownloadDoc(doc)} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary" title="Download">
+                            <button onClick={() => handleDownloadDoc(doc)} className="led-btn led-btn-ghost led-btn-sm !px-1.5" title="Download">
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
                             </button>
                             {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
-                              <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary disabled:opacity-50" title="Redo OCR">
+                              <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="led-btn led-btn-ghost led-btn-sm !px-1.5 disabled:opacity-50" title="Redo OCR">
                                 <svg className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                               </button>
                             )}
@@ -1257,39 +1257,39 @@ export default function ReviewApplication() {
                         <div className="grid gap-3 sm:grid-cols-4">
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                            <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="led-input">
                               <option value="">Select...</option>
                               {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                            <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                            <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                            <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="led-input" />
                           </div>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-3">
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                            <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                            <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="led-input">
                               <option value="">Select...</option>
                               {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                            <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="led-input">
                               <option value="">Select...</option>
                               {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
@@ -1301,24 +1301,24 @@ export default function ReviewApplication() {
                         <div className="grid gap-3 sm:grid-cols-1">
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                            <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="led-input" />
                           </div>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-3">
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                            <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                            <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30">
+                            <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="led-input">
                               <option value="">Select...</option>
                               {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                            <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="led-input" />
                           </div>
                         </div>
 
@@ -1329,25 +1329,25 @@ export default function ReviewApplication() {
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div>
                                 <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                                <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="led-input" />
                               </div>
                               <div>
                                 <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                                <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="led-input" />
                               </div>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-3">
                               <div>
                                 <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                                <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
                               </div>
                               <div>
                                 <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                                <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="led-input" />
                               </div>
                               <div>
                                 <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                                <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="led-input" />
                               </div>
                             </div>
                           </>
@@ -1358,19 +1358,19 @@ export default function ReviewApplication() {
                         <div className="grid gap-3 sm:grid-cols-3">
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Amount</label>
-                            <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                            <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                            <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="led-input" />
                           </div>
                           <div>
                             <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                            <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="w-full rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] text-foreground border border-transparent focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="led-input" />
                           </div>
                         </div>
                       </div>
@@ -1385,7 +1385,7 @@ export default function ReviewApplication() {
                             type="number"
                             value={lendProductTypeId}
                             onChange={(e) => setLendProductTypeId(e.target.value)}
-                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            className="led-input"
                             placeholder="e.g. 25"
                           />
                         </div>
@@ -1395,7 +1395,7 @@ export default function ReviewApplication() {
                             <select
                               value={lendOwnerType}
                               onChange={(e) => setLendOwnerType(e.target.value)}
-                              className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              className="led-input"
                             >
                               <option value="">Select...</option>
                               <option value="Sole Trader">Sole Trader</option>
@@ -1412,7 +1412,7 @@ export default function ReviewApplication() {
                           <select
                             value={lendSendType}
                             onChange={(e) => setLendSendType(e.target.value)}
-                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            className="led-input"
                           >
                             <option value="Auto">Auto</option>
                             <option value="Manual">Manual</option>
@@ -1423,7 +1423,7 @@ export default function ReviewApplication() {
                           <select
                             value={lendWhoToContact}
                             onChange={(e) => setLendWhoToContact(e.target.value)}
-                            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            className="led-input"
                           >
                             <option value="Broker">Broker</option>
                             <option value="Client">Client</option>
@@ -2068,7 +2068,7 @@ export default function ReviewApplication() {
                         handleAssignBroker(val);
                       }
                     }}
-                    className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="led-input"
                     style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
                   >
                     <option value="">Assign broker or group...</option>

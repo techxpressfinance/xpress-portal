@@ -252,6 +252,17 @@ export interface DashboardStats {
   apps_last_week: number;
   avg_turnaround_days: number | null;
   monthly_trend: { month: string; count: number }[];
+  daily_trend: { date: string; count: number }[];
+  action_items: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    due_date: string | null;
+    application_id: string | null;
+  }[];
+  top_lenders: { name: string; approvals: number }[];
+  top_referrers: { name: string; count: number }[];
 }
 
 export interface SearchResultApplication {

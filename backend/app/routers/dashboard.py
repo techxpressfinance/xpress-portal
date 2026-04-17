@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,6 +11,10 @@ from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
+from app.models.task import Task, TaskStatus
+from app.models.lender_submission import LenderSubmission, SubmissionStatus
+from app.models.lender import Lender
+from app.models.referral import Referral
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -112,6 +116,65 @@ def get_dashboard_stats(
         key = created_at.strftime("%Y-%m")
         if key in month_counts:
             month_counts[key] += 1
+            
+    # ── 30-Day Daily Trend ──
+    day_keys: list[str] = []
+    d_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    for _ in range(30):
+        day_keys.insert(0, d_day.strftime("%Y-%m-%d"))
+        d_day = d_day - timedelta(days=1)
+        
+    start_day = datetime.strptime(day_keys[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    day_rows = scoped(
+        db.query(LoanApplication.created_at).filter(LoanApplication.created_at >= start_day)
+    ).all()
+    
+    day_counts = {k: 0 for k in day_keys}
+    for (created_at,) in day_rows:
+        key = created_at.strftime("%Y-%m-%d")
+        if key in day_counts:
+            day_counts[key] += 1
+
+    # ── Action Items (Tasks) ──
+    tasks_query = db.query(Task).filter(
+        Task.tenant_id == tenant_id,
+        Task.status.in_([TaskStatus.todo, TaskStatus.in_progress])
+    )
+    if current_user.role == UserRole.broker:
+        tasks_query = tasks_query.filter(Task.assigned_to_id == current_user.id)
+    
+    action_items = tasks_query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(5).all()
+    
+    action_items_list = []
+    for t in action_items:
+        action_items_list.append({
+            "id": t.id,
+            "title": t.title,
+            "status": t.status.value,
+            "priority": t.priority.value,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "application_id": t.application_id
+        })
+
+    # ── Lender Insights ──
+    lender_query = db.query(
+        Lender.name,
+        func.count(LenderSubmission.id).label("approvals")
+    ).select_from(LenderSubmission).join(Lender, LenderSubmission.lender_id == Lender.id)\
+    .filter(LenderSubmission.tenant_id == tenant_id, LenderSubmission.status == SubmissionStatus.approved)
+    
+    top_lenders_rows = lender_query.group_by(Lender.id).order_by(desc("approvals")).limit(3).all()
+    top_lenders = [{"name": r[0], "approvals": r[1]} for r in top_lenders_rows]
+    
+    # ── Referral Leaderboard ──
+    referral_query = db.query(
+        User.full_name,
+        func.count(Referral.id).label("count")
+    ).select_from(Referral).join(User, Referral.referrer_id == User.id)\
+    .filter(Referral.tenant_id == tenant_id)
+    
+    top_referrers_rows = referral_query.group_by(User.id).order_by(desc("count")).limit(3).all()
+    top_referrers = [{"name": r[0], "count": r[1]} for r in top_referrers_rows]
 
     return {
         "status_counts": status_counts,
@@ -122,4 +185,8 @@ def get_dashboard_stats(
         "apps_last_week": apps_last_week,
         "avg_turnaround_days": avg_turnaround_days,
         "monthly_trend": [{"month": k, "count": v} for k, v in month_counts.items()],
+        "daily_trend": [{"date": k, "count": v} for k, v in day_counts.items()],
+        "action_items": action_items_list,
+        "top_lenders": top_lenders,
+        "top_referrers": top_referrers,
     }

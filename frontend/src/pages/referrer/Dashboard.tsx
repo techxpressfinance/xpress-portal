@@ -61,7 +61,7 @@ export default function ReferrerDashboard() {
       setEmail('');
       setFullName('');
       toast('Referral sent successfully', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send referral'), 'error');
     } finally {
       setSubmitting(false);

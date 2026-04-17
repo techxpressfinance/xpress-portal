@@ -14,7 +14,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
         )}
         <select
           ref={ref}
-          className={`rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background h-10 border border-transparent cursor-pointer ${className}`}
+          className={`led-input !h-10 !text-[14px] cursor-pointer ${className}`}
           {...props}
         >
           {children}

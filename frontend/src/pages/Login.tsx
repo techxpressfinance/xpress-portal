@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
-import { Button, Input } from '../components/ui';
+import { Button, Input, GlassCard } from '../components/ui';
 
 interface LoginForm {
   email: string;
@@ -111,7 +111,7 @@ export default function Login() {
 
   const renderAlert = (message: string, color: string, icon: React.ReactNode) => (
     <div
-      className={`mb-6 flex items-center gap-3 rounded-xl bg-[${color}]/8 px-4 py-3`}
+      className={`mb-6 flex items-center gap-3 rounded-xl bg-[${color}]/8 px-4 py-3 w-full text-left`}
       style={{ animation: `fadeInUp 0.3s ${easing} both` }}
     >
       {icon}
@@ -120,60 +120,40 @@ export default function Login() {
   );
 
   return (
-    <div className="flex min-h-screen" style={{ fontFamily: "'Outfit', sans-serif" }}>
-      {/* Left - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-secondary relative overflow-hidden items-center justify-center">
-        <div
-          className="relative z-10 px-20 max-w-lg"
-          style={{ animation: `fadeInUp 0.7s ${easing} both` }}
-        >
-          <div className="flex items-center gap-3 mb-16">
-            {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={brandName} className="h-11 w-11 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-[18px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
-            <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>
-          </div>
-
-          <h2
-            className="text-[34px] font-semibold text-foreground leading-[1.15] mb-4"
-          >
-            Smarter loans,{' '}
-            <span className="text-[#0071e3]">faster approvals.</span>
-          </h2>
-          <p className="text-[15px] text-muted-foreground leading-relaxed max-w-sm">
-            The modern way to manage loan applications. Upload documents, track progress, and get approved faster.
-          </p>
-        </div>
+    <div
+      className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
+      style={{ fontFamily: "'Outfit', sans-serif" }}
+    >
+      {/* Dynamic Ambient Background */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full bg-primary/20 blur-[120px] opacity-50 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-info/20 blur-[100px] opacity-40 animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+        <div className="absolute top-[20%] right-[10%] w-[40%] h-[40%] rounded-full bg-accent/10 blur-[100px] opacity-30 animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
       </div>
 
-      {/* Right - Form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center bg-background px-6">
-        <div
-          className="w-full max-w-[380px]"
-          style={{ animation: `fadeInUp 0.6s ${easing} 0.1s both` }}
-        >
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-12 lg:hidden">
-            {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={brandName} className="h-10 w-10 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-[16px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
-            <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>
-          </div>
+      <div
+        className="relative z-10 w-full max-w-[420px]"
+        style={{ animation: `fadeInUp 0.8s ${easing} both` }}
+      >
+        <GlassCard padding="none" className="p-8 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
 
-          <h1 className="text-[28px] font-semibold text-foreground mb-2 tracking-tight">
-            Welcome back
-          </h1>
-          <p className="text-[15px] text-muted-foreground mb-8">
-            {codeMode ? 'Sign in with your one-time code' : 'Sign in to your account to continue'}
-          </p>
+          <div className="flex flex-col items-center mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              {tenant?.logo_url ? (
+                <img src={tenant.logo_url} alt={brandName} className="h-12 w-12 rounded-xl object-contain drop-shadow-sm" />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-sm">
+                  <span className="text-[18px] font-bold text-white">{brandName.charAt(0).toUpperCase()}</span>
+                </div>
+              )}
+            </div>
+            <h1 className="text-[28px] font-semibold text-foreground tracking-tight text-center">
+              {codeMode ? 'Enter Code' : 'Welcome back'}
+            </h1>
+            <p className="text-[15px] text-muted-foreground mt-2 text-center max-w-[280px]">
+              {codeMode ? 'Check your email for the code to securely sign in.' : 'Enter your credentials to securely access your account.'}
+            </p>
+          </div>
 
           {registered && renderAlert(
             'Check your email to verify your account before signing in.',
@@ -193,20 +173,20 @@ export default function Login() {
 
           {error && (
             <div
-              className="mb-6 flex items-center gap-3 rounded-xl bg-[#ff3b30]/8 px-4 py-3"
+              className="mb-6 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 w-full border border-destructive/20 text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#ff3b30] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
               </svg>
-              <div>
-                <span className="text-[13px] text-[#ff3b30]">{error}</span>
+              <div className="flex-1">
+                <span className="text-[13px] text-destructive leading-tight block">{error}</span>
                 {showResend && (
                   <Link
                     to="/resend-verification"
-                    className="block mt-1 text-[13px] font-medium text-[#0071e3] hover:text-[#0071e3]/70 transition-colors duration-200"
+                    className="block mt-1.5 text-[13px] font-medium text-destructive/80 hover:text-destructive transition-colors duration-200"
                   >
-                    Resend verification email
+                    Resend verification email &rarr;
                   </Link>
                 )}
               </div>
@@ -215,126 +195,148 @@ export default function Login() {
 
           {!codeMode ? (
             /* Password login */
-            <>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-                <Input
-                  label="Email"
-                  type="email"
-                  placeholder="you@company.com"
-                  {...registerField('email', { required: true })}
-                />
-                <Input
-                  label="Password"
-                  type="password"
-                  placeholder="Enter your password"
-                  {...registerField('password', { required: true })}
-                />
-                <div className="pt-1">
+            <div className="w-full">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <div>
+                  <Input
+                    label="Email Address"
+                    type="email"
+                    placeholder="name@example.com"
+                    className="bg-background/50 border-border/60 focus:bg-background transition-colors"
+                    {...registerField('email', { required: true })}
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-[13px] font-medium text-foreground">Password</label>
+                  </div>
+                  <Input
+                    type="password"
+                    placeholder="Enter your password"
+                    className="bg-background/50 border-border/60 focus:bg-background transition-colors"
+                    {...registerField('password', { required: true })}
+                  />
+                </div>
+                <div className="pt-2">
                   <Button
                     type="submit"
                     loading={isSubmitting}
                     size="lg"
-                    className="w-full"
+                    className="w-full h-12 text-[15px] rounded-2xl shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98]"
                   >
-                    {isSubmitting ? 'Signing in...' : 'Sign in'}
+                    {isSubmitting ? 'Signing in...' : 'Sign In'}
                   </Button>
                 </div>
               </form>
 
-              <button
-                type="button"
-                onClick={() => { setCodeMode(true); setError(''); }}
-                className="mt-5 w-full text-center text-[13px] font-medium text-[#0071e3] hover:text-[#0071e3]/70 transition-colors duration-200"
-              >
-                Invited user? Sign in with a code
-              </button>
-            </>
+              <div className="mt-6 pt-6 border-t border-border/40 text-center space-y-4">
+                <button
+                  type="button"
+                  onClick={() => { setCodeMode(true); setError(''); }}
+                  className="w-full text-center text-[13px] font-medium text-primary hover:text-primary/70 transition-colors duration-200"
+                >
+                  Invited user? Sign in with a code
+                </button>
+              </div>
+            </div>
           ) : !codeSent ? (
             /* Code mode — Step 1: request code */
-            <>
-              <form onSubmit={handleRequestCode} className="space-y-5">
+            <div className="w-full">
+              <form onSubmit={handleRequestCode} className="space-y-4">
                 <Input
-                  label="Email"
+                  label="Email Address"
                   type="email"
                   name="request_email"
-                  placeholder="you@company.com"
+                  placeholder="name@example.com"
+                  className="bg-background/50 border-border/60 focus:bg-background transition-colors"
                   required
                 />
-                <div className="pt-1">
+                <div className="pt-2">
                   <Button
                     type="submit"
                     loading={sendingCode}
                     size="lg"
-                    className="w-full"
+                    className="w-full h-12 text-[15px] rounded-2xl shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98]"
                   >
-                    {sendingCode ? 'Sending...' : 'Send login code'}
+                    {sendingCode ? 'Sending...' : 'Send Login Code'}
                   </Button>
                 </div>
               </form>
 
-              <button
-                type="button"
-                onClick={() => { setCodeMode(false); setError(''); }}
-                className="mt-5 w-full text-center text-[13px] font-medium text-[#0071e3] hover:text-[#0071e3]/70 transition-colors duration-200"
-              >
-                Sign in with password instead
-              </button>
-            </>
+              <div className="mt-6 pt-6 border-t border-border/40 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setCodeMode(false); setError(''); }}
+                  className="w-full text-center text-[13px] font-medium text-primary hover:text-primary/70 transition-colors duration-200"
+                >
+                  Sign in with password instead
+                </button>
+              </div>
+            </div>
           ) : (
             /* Code mode — Step 2: enter code */
-            <>
+            <div className="w-full">
               <div
-                className="mb-6 flex items-center gap-3 rounded-xl bg-[#0071e3]/8 px-4 py-3"
+                className="mb-6 flex items-center gap-3 rounded-xl bg-info/10 px-4 py-3 border border-info/20 text-left"
                 style={{ animation: `fadeInUp 0.3s ${easing} both` }}
               >
-                <svg className="h-4 w-4 text-[#0071e3] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <svg className="h-4 w-4 text-info shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
                 </svg>
-                <span className="text-[13px] text-[#0071e3]">Code sent to {codeEmail}. Check your inbox.</span>
+                <span className="text-[13px] text-info">Code sent to <span className="font-semibold">{codeEmail}</span>.</span>
               </div>
 
-              <form onSubmit={handleCodeSubmit(onCodeSubmit)} className="space-y-5">
+              <form onSubmit={handleCodeSubmit(onCodeSubmit)} className="space-y-4">
                 <Input
-                  label="Login code"
+                  label="Login Code"
                   type="text"
                   placeholder="ABCD1234"
                   maxLength={8}
                   autoComplete="one-time-code"
-                  className="text-center text-[20px] tracking-[0.3em] font-mono uppercase"
+                  className="text-center text-[22px] tracking-[0.4em] font-mono uppercase bg-background/50 border-border/60 focus:bg-background transition-colors h-14"
                   {...registerCode('code', { required: true, pattern: /^[A-Z0-9]{8}$/i })}
                 />
-                <div className="pt-1">
+                <div className="pt-2">
                   <Button
                     type="submit"
                     loading={isCodeSubmitting}
                     size="lg"
-                    className="w-full"
+                    className="w-full h-12 text-[15px] rounded-2xl shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98]"
                   >
-                    {isCodeSubmitting ? 'Verifying...' : 'Verify & sign in'}
+                    {isCodeSubmitting ? 'Verifying...' : 'Verify & Sign In'}
                   </Button>
                 </div>
               </form>
 
-              <button
-                type="button"
-                onClick={() => { setCodeSent(false); setError(''); }}
-                className="mt-5 w-full text-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
-              >
-                Didn't receive it? Send a new code
-              </button>
-            </>
+              <div className="mt-6 pt-6 border-t border-border/40 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setCodeSent(false); setError(''); }}
+                  className="w-full text-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
+                >
+                  Didn't receive it? Send a new code
+                </button>
+              </div>
+            </div>
           )}
 
-          <p className="mt-8 text-center text-[13px] text-muted-foreground">
+        </GlassCard>
+
+        {/* Footer Links */}
+        <div
+          className="mt-8 text-center space-y-3"
+          style={{ animation: `fadeInUp 0.8s ${easing} 0.2s both` }}
+        >
+          <p className="text-[13px] text-muted-foreground font-medium">
             Don't have an account?{' '}
             <Link
               to="/register"
-              className="font-medium text-[#0071e3] hover:text-[#0071e3]/70 transition-colors duration-200"
+              className="text-primary hover:text-primary/70 transition-colors duration-200"
             >
               Create one
             </Link>
           </p>
-          <p className="mt-3 text-center text-[12px] text-muted-foreground/60">
+          <p className="text-[12px] text-muted-foreground/60 font-medium">
             <Link
               to="/platform-login"
               className="hover:text-muted-foreground transition-colors duration-200"
