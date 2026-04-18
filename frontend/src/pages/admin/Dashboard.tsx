@@ -173,8 +173,8 @@ export default function AdminDashboard() {
 
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const overdueActions = dashStats?.action_items.filter((task) => task.due_date && new Date(task.due_date) < startOfToday).length ?? 0;
-  const urgentActions = dashStats?.action_items.filter((task) => task.priority === 'urgent').length ?? 0;
+  const overdueActions = dashStats?.action_items?.filter((task) => task.due_date && new Date(task.due_date) < startOfToday).length ?? 0;
+  const urgentActions = dashStats?.action_items?.filter((task) => task.priority === 'urgent').length ?? 0;
 
   const brokerAssignments = brokers
     .map((broker) => {
