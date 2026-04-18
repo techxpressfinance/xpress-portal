@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, Badge } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import type { BrokerGroup, User } from '../../types';
 
@@ -44,8 +44,8 @@ export default function BrokerManagement() {
   const [savingGroupEdit, setSavingGroupEdit] = useState(false);
 
   useEffect(() => {
-    api.get('/users').then(({ data }) => setBrokers(data.filter((u: User) => u.role === 'broker'))).catch(() => {}).finally(() => setLoadingBrokers(false));
-    api.get('/broker-groups').then(({ data }) => setGroups(data)).catch(() => {});
+    api.get('/users').then(({ data }) => setBrokers(data.filter((u: User) => u.role === 'broker'))).catch(() => { }).finally(() => setLoadingBrokers(false));
+    api.get('/broker-groups').then(({ data }) => setGroups(data)).catch(() => { });
   }, []);
 
   const validate = (): boolean => {
