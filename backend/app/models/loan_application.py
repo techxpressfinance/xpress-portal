@@ -100,6 +100,9 @@ class LoanApplication(Base):
     lend_send_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_who_to_contact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # Kanban board position (independent of workflow status)
+    kanban_column_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
     # Contact linkage
     contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=True)
 

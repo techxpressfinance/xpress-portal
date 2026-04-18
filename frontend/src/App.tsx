@@ -13,10 +13,9 @@ const AllApplications = lazy(() => import('./pages/admin/AllApplications'));
 const KanbanBoard = lazy(() => import('./pages/admin/KanbanBoard'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
-const InviteClients = lazy(() => import('./pages/admin/InviteClients'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
-const CreateBroker = lazy(() => import('./pages/admin/CreateBroker'));
-const CreateReferrer = lazy(() => import('./pages/admin/CreateReferrer'));
+const BrokerManagement = lazy(() => import('./pages/admin/BrokerManagement'));
+const ReferrerManagement = lazy(() => import('./pages/admin/ReferrerManagement'));
 const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderAnalytics = lazy(() => import('./pages/admin/LenderAnalytics'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
@@ -174,14 +173,9 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/admin/invite-clients"
-                element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
-                    <InviteClients />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/admin/invite-clients" element={<Navigate to="/admin/users" replace />} />
+              <Route path="/admin/create-broker" element={<Navigate to="/admin/brokers" replace />} />
+              <Route path="/admin/create-referrer" element={<Navigate to="/admin/referrers" replace />} />
               <Route
                 path="/admin/users"
                 element={
@@ -191,18 +185,18 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/create-broker"
+                path="/admin/brokers"
                 element={
                   <ProtectedRoute roles={['admin']}>
-                    <CreateBroker />
+                    <BrokerManagement />
                   </ProtectedRoute>
                 }
               />
               <Route
-                path="/admin/create-referrer"
+                path="/admin/referrers"
                 element={
                   <ProtectedRoute roles={['admin']}>
-                    <CreateReferrer />
+                    <ReferrerManagement />
                   </ProtectedRoute>
                 }
               />

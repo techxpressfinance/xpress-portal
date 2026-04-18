@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.lender import Lender
+from app.models.lender import Lender, LenderContact
 from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
-from app.schemas.lender import LenderCreate, LenderOut, LenderUpdate
+from app.schemas.lender import LenderContactCreate, LenderContactOut, LenderContactUpdate, LenderCreate, LenderOut, LenderUpdate
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/lenders", tags=["lenders"])
@@ -83,6 +83,68 @@ def deactivate_lender(
     db.commit()
 
 
+# --- Contact endpoints ---
+
+@router.post("/{lender_id}/contacts", response_model=LenderContactOut, status_code=status.HTTP_201_CREATED)
+def add_contact(
+    lender_id: str,
+    data: LenderContactCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
+    if not lender:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
+    contact = LenderContact(**data.model_dump(), lender_id=lender_id, tenant_id=tenant_id)
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.patch("/{lender_id}/contacts/{contact_id}", response_model=LenderContactOut)
+def update_contact(
+    lender_id: str,
+    contact_id: str,
+    data: LenderContactUpdate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    contact = db.query(LenderContact).filter(
+        LenderContact.id == contact_id,
+        LenderContact.lender_id == lender_id,
+        LenderContact.tenant_id == tenant_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(contact, field, value)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.delete("/{lender_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_contact(
+    lender_id: str,
+    contact_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    contact = db.query(LenderContact).filter(
+        LenderContact.id == contact_id,
+        LenderContact.lender_id == lender_id,
+        LenderContact.tenant_id == tenant_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    db.delete(contact)
+    db.commit()
+
+
 @router.get("/analytics")
 def lender_analytics(
     period: str = Query("all", pattern="^(30d|90d|6m|1y|all)$"),
@@ -90,7 +152,6 @@ def lender_analytics(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    # Determine date cutoff
     now = datetime.now(timezone.utc)
     cutoff = None
     if period == "30d":

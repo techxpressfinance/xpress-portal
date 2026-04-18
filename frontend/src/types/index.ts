@@ -61,6 +61,7 @@ export interface LoanApplication {
   completed_by_id: string | null;
   completed_by_name: string | null;
   completed_at: string | null;
+  kanban_column_id: string | null;
   // Client-filled — Personal
   applicant_title: string | null;
   applicant_first_name: string | null;
@@ -317,14 +318,21 @@ export interface BrokerGroup {
 
 export type LenderSubmissionStatus = 'pending' | 'approved' | 'declined' | 'conditional' | 'withdrawn';
 
+export interface LenderContact {
+  id: string;
+  name: string;
+  designation: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+}
+
 export interface Lender {
   id: string;
   name: string;
-  contact_name: string | null;
-  contact_email: string | null;
-  contact_phone: string | null;
   notes: string | null;
   is_active: boolean;
+  contacts: LenderContact[];
   created_at: string;
   updated_at: string;
 }

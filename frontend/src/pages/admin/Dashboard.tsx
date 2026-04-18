@@ -540,7 +540,7 @@ export default function AdminDashboard() {
                       <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
                         <div className="h-full rounded-full bg-[var(--led-accent)]" style={{ width: `${row.pct}%` }} />
                       </div>
-                      <p className="text-[12px] text-[var(--led-muted)]">{formatPercent(row.pct)} of total file count</p>
+
                     </div>
                     <div className="text-right">
                       <p className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{row.count}</p>

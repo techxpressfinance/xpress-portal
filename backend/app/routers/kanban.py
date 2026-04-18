@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -21,11 +22,10 @@ from app.schemas.kanban import (
     KanbanColumnOut,
     KanbanColumnUpdate,
 )
-from app.constants import DEFAULT_KANBAN_COLUMNS, VALID_TRANSITIONS
+from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.date_filter import apply_date_range_filter
-from app.services.email import send_status_notification
 from app.services.query_utils import escape_like
 from app.services.serialization import app_with_user
 from app.services.tenant_scope import get_tenant_id
@@ -196,6 +196,7 @@ def add_column(
         tenant_id=tenant_id,
     )
     db.add(col)
+    db.flush()
     log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": data.title, "board_id": board_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
@@ -245,6 +246,11 @@ def delete_column(
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
     if len(board.columns) <= 1:
         raise HTTPException(status_code=400, detail="Cannot delete the last column")
+    # Reset kanban position for any apps explicitly placed in this column
+    db.query(LoanApplication).filter(
+        LoanApplication.kanban_column_id == column_id,
+        LoanApplication.tenant_id == tenant_id,
+    ).update({"kanban_column_id": None})
     log_activity(db, current_user.id, "column_deleted", "kanban_column", col.id, {"title": col.title}, tenant_id=tenant_id)
     db.delete(col)
     # Reorder remaining columns
@@ -285,6 +291,8 @@ def get_board_applications(
     broker_id: Optional[str] = None,
     client_id: Optional[str] = None,
     date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
+    updated_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
+    min_days_in_stage: Optional[int] = Query(None, ge=1, le=365),
     per_column: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
@@ -328,20 +336,44 @@ def get_board_applications(
     if client_id:
         query = query.filter(LoanApplication.user_id == client_id)
 
-    # Date range filter
+    # Date range filter (created_at)
     if date_range:
         query = apply_date_range_filter(query, LoanApplication.created_at, date_range)
 
+    # Updated range filter (updated_at)
+    if updated_range:
+        query = apply_date_range_filter(query, LoanApplication.updated_at, updated_range)
+
+    # Stage age filter: cards updated more than N days ago
+    if min_days_in_stage:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=min_days_in_stage)
+        query = query.filter(LoanApplication.updated_at <= cutoff)
+
     apps = query.order_by(LoanApplication.created_at.desc()).all()
 
-    # Group by column
-    result = {}
+    # Build set of valid column IDs on this board for quick lookup
+    board_col_ids = {col.id for col in board.columns}
+    # Map mapped_status → column id (for fallback placement)
+    status_to_col_id: dict[str, str] = {}
     for col in board.columns:
-        if col.mapped_status:
-            col_apps = [app_with_user(a) for a in apps if a.status.value == col.mapped_status][:per_column]
+        if col.mapped_status and col.mapped_status not in status_to_col_id:
+            status_to_col_id[col.mapped_status] = col.id
+
+    result: dict[str, list] = {col.id: [] for col in board.columns}
+
+    for app in apps:
+        # Explicit kanban placement takes priority
+        if app.kanban_column_id and app.kanban_column_id in board_col_ids:
+            result[app.kanban_column_id].append(app_with_user(app))
         else:
-            col_apps = []
-        result[col.id] = col_apps
+            # Fall back to status-based placement
+            fallback = status_to_col_id.get(app.status.value)
+            if fallback:
+                result[fallback].append(app_with_user(app))
+
+    # Apply per_column limit
+    for col_id in result:
+        result[col_id] = result[col_id][:per_column]
 
     return result
 
@@ -361,37 +393,16 @@ def move_card(
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
 
-    application = db.query(LoanApplication).options(
-        selectinload(LoanApplication.brokers),
-        joinedload(LoanApplication.user),
-    ).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
+    ).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    if not col.mapped_status:
-        return {"status": "ok", "message": "Column has no mapped status — no change"}
-
-    current = application.status.value
-    new_status = col.mapped_status
-
-    if current == new_status:
-        return {"status": "ok", "message": "Already in this status"}
-
-    allowed = VALID_TRANSITIONS.get(current, [])
-    if new_status not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot transition from '{current}' to '{new_status}'. Allowed: {allowed}",
-        )
-
-    old_status = current
-    application.status = ApplicationStatus(new_status)
-    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status}, tenant_id=tenant_id)
+    old_col_id = application.kanban_column_id
+    application.kanban_column_id = column_id
+    log_activity(db, current_user.id, "kanban_moved", "application", app_id, {"to_column": col.title, "from_column_id": old_col_id}, tenant_id=tenant_id)
     db.commit()
 
-    # Email notification
-    if application.user:
-        send_status_notification(application.user.email, application.user.full_name, application.loan_type.value, new_status)
-
-    return {"status": "ok", "from": old_status, "to": new_status}
+    return {"status": "ok", "column_id": column_id, "column_title": col.title}

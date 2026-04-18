@@ -5,9 +5,9 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
-import { VALID_TRANSITIONS, COLUMN_COLOR_OPTIONS, STATUS_LABEL } from '../../lib/constants';
+import { COLUMN_COLOR_OPTIONS } from '../../lib/constants';
 import { ConfirmDialog } from '../../components/ui';
-import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, ApplicationStatus, User } from '../../types';
+import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, User } from '../../types';
 
 // ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
 
@@ -411,6 +411,8 @@ export default function KanbanBoardPage() {
   const [brokerFilter, setBrokerFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [dateRangeFilter, setDateRangeFilter] = useState('');
+  const [updatedRangeFilter, setUpdatedRangeFilter] = useState('');
+  const [stageAgeFilter, setStageAgeFilter] = useState('');
   const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const [clientsList, setClientsList] = useState<{ id: string; full_name: string; email: string }[]>([]);
 
@@ -433,7 +435,6 @@ export default function KanbanBoardPage() {
     sourceColumnId: string;
     targetColumnId: string;
     targetColumnTitle: string;
-    targetMappedStatus: ApplicationStatus;
   } | null>(null);
   const [movingApp, setMovingApp] = useState(false);
 
@@ -460,7 +461,7 @@ export default function KanbanBoardPage() {
 
   const fetchApplications = useCallback(async (
     boardId: string,
-    filters: { search?: string; loan_type?: string; broker_id?: string; client_id?: string; date_range?: string } = {},
+    filters: { search?: string; loan_type?: string; broker_id?: string; client_id?: string; date_range?: string; updated_range?: string; min_days_in_stage?: string } = {},
   ) => {
     const params = new URLSearchParams();
     if (filters.search) params.set('search', filters.search);
@@ -468,6 +469,8 @@ export default function KanbanBoardPage() {
     if (filters.broker_id) params.set('broker_id', filters.broker_id);
     if (filters.client_id) params.set('client_id', filters.client_id);
     if (filters.date_range) params.set('date_range', filters.date_range);
+    if (filters.updated_range) params.set('updated_range', filters.updated_range);
+    if (filters.min_days_in_stage) params.set('min_days_in_stage', filters.min_days_in_stage);
     const { data } = await api.get(`/kanban/boards/${boardId}/applications?${params}`);
     setAppsByColumn(data);
   }, []);
@@ -476,13 +479,13 @@ export default function KanbanBoardPage() {
     setLoading(true);
     try {
       await fetchBoard(boardId);
-      await fetchApplications(boardId, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter });
+      await fetchApplications(boardId, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
     } catch {
       toast('Failed to load board', 'error');
     } finally {
       setLoading(false);
     }
-  }, [fetchBoard, fetchApplications, search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, toast]);
+  }, [fetchBoard, fetchApplications, search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -519,21 +522,18 @@ export default function KanbanBoardPage() {
   useEffect(() => {
     if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
-      fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
+      fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, activeBoard, fetchApplications]);
+  }, [search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
 
   // ── Drag and drop ──
 
   const getDropValidity = useCallback((targetColumnId: string): DropValidity => {
-    if (!draggedApp || !activeBoard) return null;
+    if (!draggedApp) return null;
     if (dragSourceColumn.current === targetColumnId) return 'same';
-    const targetCol = activeBoard.columns.find((c) => c.id === targetColumnId);
-    if (!targetCol?.mapped_status) return 'invalid';
-    const allowed = VALID_TRANSITIONS[draggedApp.status] || [];
-    return allowed.includes(targetCol.mapped_status) ? 'valid' : 'invalid';
-  }, [draggedApp, activeBoard]);
+    return 'valid';
+  }, [draggedApp]);
 
   const handleDragStart = (e: DragEvent, app: LoanApplication) => {
     setDraggedApp(app);
@@ -615,15 +615,7 @@ export default function KanbanBoardPage() {
     }
 
     const targetCol = activeBoard.columns.find((c) => c.id === targetColumnId);
-    if (!targetCol?.mapped_status) {
-      setDraggedApp(null);
-      return;
-    }
-
-    const currentStatus = draggedApp.status;
-    const allowed = VALID_TRANSITIONS[currentStatus] || [];
-    if (!allowed.includes(targetCol.mapped_status)) {
-      toast(`Cannot move from "${currentStatus}" to "${targetCol.mapped_status}"`, 'error');
+    if (!targetCol) {
       setDraggedApp(null);
       return;
     }
@@ -643,7 +635,6 @@ export default function KanbanBoardPage() {
       sourceColumnId: sourceColId,
       targetColumnId,
       targetColumnTitle: targetCol.title,
-      targetMappedStatus: targetCol.mapped_status as ApplicationStatus,
     });
   };
 
@@ -658,7 +649,7 @@ export default function KanbanBoardPage() {
       updated[pendingMove.sourceColumnId] = (prev[pendingMove.sourceColumnId] || []).filter((a) => a.id !== pendingMove.app.id);
       updated[pendingMove.targetColumnId] = [
         ...(prev[pendingMove.targetColumnId] || []),
-        { ...pendingMove.app, status: pendingMove.targetMappedStatus, updated_at: new Date().toISOString() },
+        { ...pendingMove.app, kanban_column_id: pendingMove.targetColumnId },
       ];
       return updated;
     });
@@ -790,23 +781,25 @@ export default function KanbanBoardPage() {
 
   const getColumnApps = (colId: string): LoanApplication[] => appsByColumn[colId] || [];
 
-  const activeFilterCount = [loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter].filter(Boolean).length;
-  const formatStatusLabel = (status: string) => STATUS_LABEL[status as keyof typeof STATUS_LABEL] || status.replace(/_/g, ' ');
-
+  const activeFilterCount = [loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter].filter(Boolean).length;
   const clearAllFilters = () => {
     setLoanTypeFilter('');
     setBrokerFilter('');
     setClientFilter('');
     setDateRangeFilter('');
+    setUpdatedRangeFilter('');
+    setStageAgeFilter('');
   };
 
   // Filter pill values
   const loanTypePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
   const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'All';
   const clientPill = clientFilter ? (clientsList.find((c) => c.id === clientFilter)?.full_name.split(' ')[0] || 'All') : 'All';
-  const datePill = dateRangeFilter
-    ? { this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter', last_quarter: 'Last quarter', this_year: 'This year' }[dateRangeFilter] || 'All'
-    : 'All time';
+  const DATE_RANGE_LABELS: Record<string, string> = { this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter', last_quarter: 'Last quarter', this_year: 'This year' };
+  const datePill = dateRangeFilter ? (DATE_RANGE_LABELS[dateRangeFilter] || 'All') : 'All time';
+  const updatedPill = updatedRangeFilter ? (DATE_RANGE_LABELS[updatedRangeFilter] || 'All') : 'All time';
+  const STAGE_AGE_LABELS: Record<string, string> = { '7': '7+ days', '14': '14+ days', '30': '30+ days', '60': '60+ days' };
+  const stageAgePill = stageAgeFilter ? (STAGE_AGE_LABELS[stageAgeFilter] || stageAgeFilter) : 'Any';
 
   // ── Render ──
 
@@ -940,7 +933,7 @@ export default function KanbanBoardPage() {
           </FilterPill>
         )}
 
-        <FilterPill label="Period" value={datePill} active={!!dateRangeFilter} icon="calendar">
+        <FilterPill label="Created" value={datePill} active={!!dateRangeFilter} icon="calendar">
           {(close) => (
             <>
               <button type="button" className={`led-popover-item ${!dateRangeFilter ? 'led-active' : ''}`} onClick={() => { setDateRangeFilter(''); close(); }}>All time</button>
@@ -956,6 +949,53 @@ export default function KanbanBoardPage() {
                   type="button"
                   className={`led-popover-item ${dateRangeFilter === o.v ? 'led-active' : ''}`}
                   onClick={() => { setDateRangeFilter(o.v); close(); }}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </>
+          )}
+        </FilterPill>
+
+        <FilterPill label="Updated" value={updatedPill} active={!!updatedRangeFilter} icon="calendar">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!updatedRangeFilter ? 'led-active' : ''}`} onClick={() => { setUpdatedRangeFilter(''); close(); }}>All time</button>
+              {[
+                { v: 'this_month', l: 'This month' },
+                { v: 'last_month', l: 'Last month' },
+                { v: 'this_quarter', l: 'This quarter' },
+                { v: 'last_quarter', l: 'Last quarter' },
+                { v: 'this_year', l: 'This year' },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  className={`led-popover-item ${updatedRangeFilter === o.v ? 'led-active' : ''}`}
+                  onClick={() => { setUpdatedRangeFilter(o.v); close(); }}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </>
+          )}
+        </FilterPill>
+
+        <FilterPill label="In stage" value={stageAgePill} active={!!stageAgeFilter} icon="clock">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!stageAgeFilter ? 'led-active' : ''}`} onClick={() => { setStageAgeFilter(''); close(); }}>Any</button>
+              {[
+                { v: '7', l: '7+ days' },
+                { v: '14', l: '14+ days' },
+                { v: '30', l: '30+ days' },
+                { v: '60', l: '60+ days' },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  className={`led-popover-item ${stageAgeFilter === o.v ? 'led-active' : ''}`}
+                  onClick={() => { setStageAgeFilter(o.v); close(); }}
                 >
                   {o.l}
                 </button>
@@ -1133,15 +1173,15 @@ export default function KanbanBoardPage() {
 
       <ConfirmDialog
         open={!!pendingMove}
-        title="Confirm status change"
+        title="Move card"
         message={pendingMove ? (
           <>
-            Move this application from <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.app.status)}</span> to <span className="font-semibold text-foreground capitalize">{formatStatusLabel(pendingMove.targetMappedStatus)}</span>?
+            Move <span className="font-semibold text-foreground">{pendingMove.app.user_name || 'this application'}</span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
           </>
         ) : null}
-        confirmText="Confirm move"
+        confirmText="Move"
         cancelText="Cancel"
-        variant={pendingMove?.targetMappedStatus === 'rejected' ? 'danger' : pendingMove?.targetMappedStatus === 'approval' || pendingMove?.targetMappedStatus === 'settled' ? 'success' : 'primary'}
+        variant="primary"
         loading={movingApp}
         onConfirm={confirmMoveApplication}
         onCancel={() => {

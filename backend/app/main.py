@@ -19,7 +19,7 @@ from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure t
 from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
-from app.models.lender import Lender  # noqa: F401 — ensure table is created
+from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
@@ -128,6 +128,8 @@ _MIGRATIONS = [
     ("application_notes", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("application_brokers", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("broker_groups", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    # Kanban board position (independent of workflow status)
+    ("loan_applications", "kanban_column_id", "VARCHAR(36)"),
 ]
 
 _logger = logging.getLogger(__name__)
