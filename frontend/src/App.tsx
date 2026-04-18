@@ -23,6 +23,7 @@ const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
 const Contacts = lazy(() => import('./pages/admin/Contacts'));
 const ContactDetail = lazy(() => import('./pages/admin/ContactDetail'));
 const QuoteSheets = lazy(() => import('./pages/admin/QuoteSheets'));
+const BasCalculator = lazy(() => import('./pages/admin/BasCalculator'));
 const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
@@ -237,6 +238,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <QuoteSheets />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/calculators"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <BasCalculator />
                   </ProtectedRoute>
                 }
               />

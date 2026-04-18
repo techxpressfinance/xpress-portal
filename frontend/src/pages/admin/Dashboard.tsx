@@ -130,6 +130,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
+
   useEffect(() => {
     const isAdmin = user?.role === 'admin';
     Promise.allSettled([
@@ -225,6 +226,7 @@ export default function AdminDashboard() {
   }, null);
 
   const selectedApp = activeApplications.find((app) => app.id === selectedAppId);
+
 
   const stageRows = ([
     'application_received',
@@ -595,11 +597,6 @@ export default function AdminDashboard() {
                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">{signal.label}</p>
                     <p className="mt-3 text-[26px] font-semibold tracking-[-0.04em] led-tnum text-[var(--led-ink)]">{signal.value}</p>
                     <p className="mt-3 text-[13px] leading-6 text-[var(--led-muted)]">{signal.detail}</p>
-                    <div className="mt-4">
-                      <span className={`led-chip ${signal.tone === 'warning' ? 'led-chip-warning' : signal.tone === 'accent' ? 'led-chip-accent' : ''}`}>
-                        {signal.tone === 'warning' ? 'Action Required' : signal.tone === 'accent' ? 'In Motion' : 'Within Guardrails'}
-                      </span>
-                    </div>
                   </div>
                 ))}
               </div>
