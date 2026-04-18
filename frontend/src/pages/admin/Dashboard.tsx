@@ -691,7 +691,7 @@ export default function AdminDashboard() {
                   <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Needs Attention</h2>
                 </div>
                 <span className={`led-chip ${overdueActions > 0 ? 'led-chip-warning' : 'led-chip-accent'}`}>
-                  {loading ? '--' : `${dashStats?.action_items.length ?? 0} open`}
+                  {loading ? '--' : `${dashStats?.action_items?.length ?? 0} open`}
                 </span>
               </div>
             </div>
