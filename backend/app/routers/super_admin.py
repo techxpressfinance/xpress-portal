@@ -35,7 +35,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         secure=ENVIRONMENT != "development",
         samesite="lax",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path="/",
+        path="/api/auth",
     )
 
 

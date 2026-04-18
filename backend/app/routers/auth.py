@@ -164,6 +164,7 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     user.locked_until = None
     db.commit()
 
+    response.delete_cookie(key="refresh_token", path="/")
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
     return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
 
