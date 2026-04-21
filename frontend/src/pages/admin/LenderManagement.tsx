@@ -73,8 +73,8 @@ export default function LenderManagement() {
         const { data: newLender } = await api.post('/lenders', payload);
         const contacts: LenderContact[] = pendingContacts.length > 0
           ? await Promise.all(pendingContacts.map(c =>
-              api.post(`/lenders/${newLender.id}/contacts`, c).then(r => r.data)
-            ))
+            api.post(`/lenders/${newLender.id}/contacts`, c).then(r => r.data)
+          ))
           : [];
         setLenders(prev => [...prev, { ...newLender, contacts }]);
         toast('Lender created', 'success');

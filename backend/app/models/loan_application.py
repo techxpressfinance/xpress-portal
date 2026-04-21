@@ -19,6 +19,10 @@ class LoanType(str, enum.Enum):
     home = "home"
     business = "business"
     vehicle = "vehicle"
+    equipment_finance = "equipment_finance"
+    business_loan = "business_loan"
+    commercial_property = "commercial_property"
+    home_loan = "home_loan"
 
 
 class ApplicationStatus(str, enum.Enum):
@@ -93,6 +97,46 @@ class LoanApplication(Base):
 
     # Client-filled — Overflow JSON (identification, employment, income, etc.)
     lend_extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Client-filled — Contact
+    applicant_mobile: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    preferred_contact_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Client-filled — Identification extra
+    id_expiry_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    applicant_residency_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Client-filled — Living situation
+    residential_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    time_at_address: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    applicant_num_dependants: Mapped[Optional[int]] = mapped_column(nullable=True)
+    has_partner: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    partner_working: Mapped[Optional[bool]] = mapped_column(nullable=True)
+
+    # Client-filled — Employment
+    employment_category: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    employer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    employer_industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    job_title: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    income_frequency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    gross_income: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+
+    # Client-filled — Business extra
+    trading_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    business_structure: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    gst_registered: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    num_directors: Mapped[Optional[int]] = mapped_column(nullable=True)
+    time_trading: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Client-filled — Declarations
+    previously_declined: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    change_of_circumstances: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    signature_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Client-filled — Emergency contact
+    emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    emergency_contact_relationship: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Broker-filled — Lend controls
     lend_product_type_id: Mapped[Optional[int]] = mapped_column(nullable=True)

@@ -81,6 +81,21 @@ export const LOAN_TYPE_ICONS: Record<string, string> = {
   home: '\u{1F3E0}',
   business: '\u{1F4BC}',
   vehicle: '\u{1F697}',
+  equipment_finance: '\u{1F3D7}',
+  business_loan: '\u{1F4BC}',
+  commercial_property: '\u{1F3E2}',
+  home_loan: '\u{1F3E0}',
+};
+
+export const LOAN_TYPE_LABELS: Record<string, string> = {
+  personal: 'Personal Loan',
+  home: 'Home Loan',
+  business: 'Business Loan',
+  vehicle: 'Vehicle Loan',
+  equipment_finance: 'Equipment Finance',
+  business_loan: 'Business Loan',
+  commercial_property: 'Commercial Property',
+  home_loan: 'Home Loan',
 };
 
 export const ACTION_LABELS: Record<string, string> = {

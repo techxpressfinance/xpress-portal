@@ -1,7 +1,7 @@
 export type UserRole = 'client' | 'broker' | 'admin' | 'referrer' | 'super_admin';
 export type AuthMethod = 'password' | 'code';
 export type KYCStatus = 'pending' | 'verified' | 'rejected';
-export type LoanType = 'personal' | 'home' | 'business' | 'vehicle';
+export type LoanType = 'personal' | 'home' | 'business' | 'vehicle' | 'equipment_finance' | 'business_loan' | 'commercial_property' | 'home_loan';
 export type ApplicationStatus = 'draft' | 'application_received' | 'application_assessed' | 'submitted' | 'approval' | 'settled' | 'rejected';
 export type DocType = 'id_proof' | 'address_proof' | 'bank_statement' | 'payslip' | 'tax_return' | 'other';
 export type OcrStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -86,6 +86,33 @@ export interface LoanApplication {
   loan_term_requested: number | null;
   // Overflow JSON
   lend_extra_data: string | null;
+  // Extended applicant fields
+  applicant_mobile: string | null;
+  preferred_contact_method: string | null;
+  id_expiry_date: string | null;
+  applicant_residency_status: string | null;
+  residential_status: string | null;
+  time_at_address: string | null;
+  applicant_num_dependants: number | null;
+  has_partner: boolean | null;
+  partner_working: boolean | null;
+  employment_category: string | null;
+  employer_name: string | null;
+  employer_industry: string | null;
+  job_title: string | null;
+  income_frequency: string | null;
+  gross_income: number | null;
+  trading_name: string | null;
+  business_structure: string | null;
+  gst_registered: boolean | null;
+  num_directors: number | null;
+  time_trading: string | null;
+  previously_declined: boolean | null;
+  change_of_circumstances: boolean | null;
+  signature_name: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
   // Broker-filled — Lend controls
   lend_product_type_id: number | null;
   lend_owner_type: string | null;

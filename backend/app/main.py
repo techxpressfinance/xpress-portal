@@ -130,6 +130,33 @@ _MIGRATIONS = [
     ("broker_groups", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     # Kanban board position (independent of workflow status)
     ("loan_applications", "kanban_column_id", "VARCHAR(36)"),
+    # Extended applicant form fields
+    ("loan_applications", "applicant_mobile", "VARCHAR(20)"),
+    ("loan_applications", "preferred_contact_method", "VARCHAR(50)"),
+    ("loan_applications", "id_expiry_date", "VARCHAR(10)"),
+    ("loan_applications", "applicant_residency_status", "VARCHAR(50)"),
+    ("loan_applications", "residential_status", "VARCHAR(50)"),
+    ("loan_applications", "time_at_address", "VARCHAR(50)"),
+    ("loan_applications", "applicant_num_dependants", "INTEGER"),
+    ("loan_applications", "has_partner", "BOOLEAN"),
+    ("loan_applications", "partner_working", "BOOLEAN"),
+    ("loan_applications", "employment_category", "VARCHAR(30)"),
+    ("loan_applications", "employer_name", "VARCHAR(200)"),
+    ("loan_applications", "employer_industry", "VARCHAR(100)"),
+    ("loan_applications", "job_title", "VARCHAR(100)"),
+    ("loan_applications", "income_frequency", "VARCHAR(20)"),
+    ("loan_applications", "gross_income", "NUMERIC(12,2)"),
+    ("loan_applications", "trading_name", "VARCHAR(200)"),
+    ("loan_applications", "business_structure", "VARCHAR(50)"),
+    ("loan_applications", "gst_registered", "BOOLEAN"),
+    ("loan_applications", "num_directors", "INTEGER"),
+    ("loan_applications", "time_trading", "VARCHAR(50)"),
+    ("loan_applications", "previously_declined", "BOOLEAN"),
+    ("loan_applications", "change_of_circumstances", "BOOLEAN"),
+    ("loan_applications", "signature_name", "VARCHAR(200)"),
+    ("loan_applications", "emergency_contact_name", "VARCHAR(200)"),
+    ("loan_applications", "emergency_contact_relationship", "VARCHAR(100)"),
+    ("loan_applications", "emergency_contact_phone", "VARCHAR(20)"),
 ]
 
 _logger = logging.getLogger(__name__)

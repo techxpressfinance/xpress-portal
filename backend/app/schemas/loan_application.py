@@ -37,6 +37,33 @@ class LoanApplicationCreate(BaseModel):
     loan_term_requested: Optional[int] = None
     # Overflow JSON
     lend_extra_data: Optional[str] = None
+    # Extended fields
+    applicant_mobile: Optional[str] = None
+    preferred_contact_method: Optional[str] = None
+    id_expiry_date: Optional[str] = None
+    applicant_residency_status: Optional[str] = None
+    residential_status: Optional[str] = None
+    time_at_address: Optional[str] = None
+    applicant_num_dependants: Optional[int] = None
+    has_partner: Optional[bool] = None
+    partner_working: Optional[bool] = None
+    employment_category: Optional[str] = None
+    employer_name: Optional[str] = None
+    employer_industry: Optional[str] = None
+    job_title: Optional[str] = None
+    income_frequency: Optional[str] = None
+    gross_income: Optional[Decimal] = Field(None, ge=0)
+    trading_name: Optional[str] = None
+    business_structure: Optional[str] = None
+    gst_registered: Optional[bool] = None
+    num_directors: Optional[int] = None
+    time_trading: Optional[str] = None
+    previously_declined: Optional[bool] = None
+    change_of_circumstances: Optional[bool] = None
+    signature_name: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
 
 
 class LoanApplicationUpdate(BaseModel):
@@ -73,6 +100,33 @@ class LoanApplicationUpdate(BaseModel):
     lend_owner_type: Optional[str] = None
     lend_send_type: Optional[str] = None
     lend_who_to_contact: Optional[str] = None
+    # Extended fields
+    applicant_mobile: Optional[str] = None
+    preferred_contact_method: Optional[str] = None
+    id_expiry_date: Optional[str] = None
+    applicant_residency_status: Optional[str] = None
+    residential_status: Optional[str] = None
+    time_at_address: Optional[str] = None
+    applicant_num_dependants: Optional[int] = None
+    has_partner: Optional[bool] = None
+    partner_working: Optional[bool] = None
+    employment_category: Optional[str] = None
+    employer_name: Optional[str] = None
+    employer_industry: Optional[str] = None
+    job_title: Optional[str] = None
+    income_frequency: Optional[str] = None
+    gross_income: Optional[Decimal] = Field(None, ge=0)
+    trading_name: Optional[str] = None
+    business_structure: Optional[str] = None
+    gst_registered: Optional[bool] = None
+    num_directors: Optional[int] = None
+    time_trading: Optional[str] = None
+    previously_declined: Optional[bool] = None
+    change_of_circumstances: Optional[bool] = None
+    signature_name: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
 
 
 class AssignedBroker(BaseModel):
@@ -137,6 +191,33 @@ class LoanApplicationOut(BaseModel):
     lend_sync_status: Optional[str] = None
     lend_sync_error: Optional[str] = None
     lend_synced_at: Optional[datetime] = None
+    # Extended fields
+    applicant_mobile: Optional[str] = None
+    preferred_contact_method: Optional[str] = None
+    id_expiry_date: Optional[str] = None
+    applicant_residency_status: Optional[str] = None
+    residential_status: Optional[str] = None
+    time_at_address: Optional[str] = None
+    applicant_num_dependants: Optional[int] = None
+    has_partner: Optional[bool] = None
+    partner_working: Optional[bool] = None
+    employment_category: Optional[str] = None
+    employer_name: Optional[str] = None
+    employer_industry: Optional[str] = None
+    job_title: Optional[str] = None
+    income_frequency: Optional[str] = None
+    gross_income: Optional[Decimal] = None
+    trading_name: Optional[str] = None
+    business_structure: Optional[str] = None
+    gst_registered: Optional[bool] = None
+    num_directors: Optional[int] = None
+    time_trading: Optional[str] = None
+    previously_declined: Optional[bool] = None
+    change_of_circumstances: Optional[bool] = None
+    signature_name: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
