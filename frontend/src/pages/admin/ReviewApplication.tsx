@@ -12,9 +12,9 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
+import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LendSyncStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
+import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
@@ -41,7 +41,7 @@ export default function ReviewApplication() {
   const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'integrations' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'messages'>('overview');
 
   // Quote sheets state
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
@@ -93,18 +93,6 @@ export default function ReviewApplication() {
   const [fileLabel, setFileLabel] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // Lend integration state
-  const [lendEnabled, setLendEnabled] = useState(false);
-  const [lendProductTypeId, setLendProductTypeId] = useState('');
-  const [lendOwnerType, setLendOwnerType] = useState('');
-  const [lendSendType, setLendSendType] = useState('Manual');
-  const [lendWhoToContact, setLendWhoToContact] = useState('Broker');
-  const [savingLend, setSavingLend] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [docLendTypes, setDocLendTypes] = useState<Record<string, string>>({});
-  const [showLendDetails, setShowLendDetails] = useState(false);
-
-  // Editable lead fields (applicant + business + loan)
   const [leadFields, setLeadFields] = useState({
     applicant_title: '', applicant_first_name: '', applicant_last_name: '', applicant_middle_name: '',
     applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
@@ -116,8 +104,6 @@ export default function ReviewApplication() {
 
   useEffect(() => {
     if (!id) return;
-    // Check Lend config
-    api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => { });
     // Fetch broker groups
     api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => { });
     // Fetch lender submissions and available lenders
@@ -137,14 +123,7 @@ export default function ReviewApplication() {
         setAppNotes(notesRes.data);
         // Init broker edit fields
         setEditLoanType(appRes.data.loan_type);
-        updateLeadField('amount', String(appRes.data.amount || ''));
         setEditNotes(appRes.data.notes || '');
-        // Init Lend fields
-        setLendProductTypeId(appRes.data.lend_product_type_id ? String(appRes.data.lend_product_type_id) : '');
-        setLendOwnerType(appRes.data.lend_owner_type || '');
-        setLendSendType(appRes.data.lend_send_type || 'Manual');
-        setLendWhoToContact(appRes.data.lend_who_to_contact || 'Broker');
-        // Init editable lead fields
         const d = appRes.data;
         setLeadFields({
           applicant_title: d.applicant_title || '', applicant_first_name: d.applicant_first_name || '',
@@ -162,10 +141,6 @@ export default function ReviewApplication() {
           loan_purpose_id: d.loan_purpose_id ? String(d.loan_purpose_id) : '',
           amount: d.amount ? String(d.amount) : '',
         });
-        // Init doc lend types
-        const dtMap: Record<string, string> = {};
-        docRes.data.forEach((d: Document) => { if (d.lend_document_type) dtMap[d.id] = d.lend_document_type; });
-        setDocLendTypes(dtMap);
 
         const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
         setClient(clientUser || null);
@@ -367,76 +342,6 @@ export default function ReviewApplication() {
     }
   };
 
-  const handleSaveLendFields = async () => {
-    if (!id) return;
-    setSavingLend(true);
-    try {
-      const { data } = await api.patch(`/applications/${id}`, {
-        lend_product_type_id: lendProductTypeId ? parseInt(lendProductTypeId) : null,
-        lend_owner_type: lendOwnerType || null,
-        lend_send_type: lendSendType,
-        lend_who_to_contact: lendWhoToContact,
-        // Lead detail overrides
-        applicant_title: leadFields.applicant_title || null,
-        applicant_first_name: leadFields.applicant_first_name || null,
-        applicant_last_name: leadFields.applicant_last_name || null,
-        applicant_middle_name: leadFields.applicant_middle_name || null,
-        applicant_dob: leadFields.applicant_dob || null,
-        applicant_gender: leadFields.applicant_gender || null,
-        applicant_marital_status: leadFields.applicant_marital_status || null,
-        applicant_address: leadFields.applicant_address || null,
-        applicant_suburb: leadFields.applicant_suburb || null,
-        applicant_state: leadFields.applicant_state || null,
-        applicant_postcode: leadFields.applicant_postcode || null,
-        business_name: leadFields.business_name || null,
-        business_abn: leadFields.business_abn || null,
-        business_registration_date: leadFields.business_registration_date || null,
-        business_industry_id: leadFields.business_industry_id ? parseInt(leadFields.business_industry_id) : null,
-        business_monthly_sales: leadFields.business_monthly_sales ? parseFloat(leadFields.business_monthly_sales) : null,
-        loan_term_requested: (leadFields.loan_term_years || leadFields.loan_term_months)
-          ? (parseInt(leadFields.loan_term_years || '0') * 12) + parseInt(leadFields.loan_term_months || '0')
-          : null,
-        loan_purpose_id: leadFields.loan_purpose_id ? parseInt(leadFields.loan_purpose_id) : null,
-        amount: leadFields.amount ? parseFloat(leadFields.amount) : undefined,
-      });
-      setApplication(data);
-      toast('Lend settings saved', 'success');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to save Lend settings'), 'error');
-    } finally {
-      setSavingLend(false);
-    }
-  };
-
-  const handleLendSync = async () => {
-    if (!id) return;
-    setSyncing(true);
-    try {
-      await api.post(`/lend/sync/${id}`);
-      toast('Lend sync started', 'success');
-      // Poll for status
-      setTimeout(async () => {
-        try {
-          const { data } = await api.get(`/lend/status/${id}`);
-          setApplication((prev) => prev ? { ...prev, ...data } : prev);
-        } catch { /* ignore */ }
-        setSyncing(false);
-      }, 3000);
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to start sync'), 'error');
-      setSyncing(false);
-    }
-  };
-
-  const handleDocLendTypeChange = async (docId: string, lendDocType: string) => {
-    setDocLendTypes((prev) => ({ ...prev, [docId]: lendDocType }));
-    try {
-      await api.patch(`/lend/documents/${docId}`, { lend_document_type: lendDocType || null });
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to set document type'), 'error');
-    }
-  };
-
   const isDraft = application?.status === 'draft';
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
   const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
@@ -491,7 +396,7 @@ export default function ReviewApplication() {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'submissions', 'quotes', 'integrations', 'messages'] as const).map((tab) => (
+            {(['overview', 'documents', 'submissions', 'quotes', 'messages'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -500,7 +405,7 @@ export default function ReviewApplication() {
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                   }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'integrations' ? 'Integrations' : 'Messages'}
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : 'Messages'}
                 {activeTab === tab && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
                 )}
@@ -1196,287 +1101,6 @@ export default function ReviewApplication() {
                 </GlassCard>
               </>
             )}
-
-            {activeTab === 'integrations' && (
-              <>
-                {/* Lend.com.au Integration */}
-                {lendEnabled && !isDraft && (
-                  <GlassCard>
-                    <div className="flex items-center justify-between mb-5">
-                      <h2 className="text-[15px] font-semibold text-foreground">Lend.com.au</h2>
-                      {application.lend_sync_status && LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus] && (
-                        <Badge type="custom" value={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].label} className={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].className} />
-                      )}
-                    </div>
-
-                    {/* Sync status info */}
-                    {application.lend_ref && (
-                      <div className="mb-4 rounded-xl bg-success/5 border border-success/20 px-4 py-2.5">
-                        <span className="text-[13px] font-medium text-success">Lend Ref: {application.lend_ref}</span>
-                        {application.lend_synced_at && (
-                          <span className="text-[12px] text-success/70 ml-3">Synced: {formatDate(application.lend_synced_at)}</span>
-                        )}
-                      </div>
-                    )}
-                    {application.lend_sync_error && (
-                      <div className="mb-4 rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
-                          <div>
-                            <p className="text-[13px] font-semibold text-destructive mb-1">Sync Failed</p>
-                            {application.lend_sync_error.includes(';') ? (
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {application.lend_sync_error.split(';').map((err, i) => (
-                                  <li key={i} className="text-[12px] text-destructive/90">{err.trim()}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="text-[12px] text-destructive/90">{application.lend_sync_error}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Editable lead details */}
-                    <button
-                      type="button"
-                      onClick={() => setShowLendDetails(!showLendDetails)}
-                      className="flex items-center justify-between w-full rounded-xl bg-secondary/50 hover:bg-secondary px-4 py-2.5 mb-4 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                        <span className="text-[13px] font-medium text-foreground">Edit Lead Details</span>
-                      </div>
-                      <svg className={`h-4 w-4 text-muted-foreground transition-transform ${showLendDetails ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-                    </button>
-                    {showLendDetails && (
-                      <div className="space-y-4 mb-5 rounded-xl bg-secondary/30 p-4">
-                        {/* Applicant */}
-                        <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
-                        <div className="grid gap-3 sm:grid-cols-4">
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                            <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="led-input">
-                              <option value="">Select...</option>
-                              {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                            <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                            <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                            <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="led-input" />
-                          </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                            <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                            <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="led-input">
-                              <option value="">Select...</option>
-                              {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                            <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="led-input">
-                              <option value="">Select...</option>
-                              {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Address */}
-                        <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Address</h3>
-                        <div className="grid gap-3 sm:grid-cols-1">
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                            <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="led-input" />
-                          </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                            <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                            <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="led-input">
-                              <option value="">Select...</option>
-                              {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                            <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="led-input" />
-                          </div>
-                        </div>
-
-                        {/* Business (only for business loans) */}
-                        {application.loan_type === 'business' && (
-                          <>
-                            <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Business</h3>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                                <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="led-input" />
-                              </div>
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                                <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="led-input" />
-                              </div>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                                <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
-                              </div>
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                                <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="led-input" />
-                              </div>
-                              <div>
-                                <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                                <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="led-input" />
-                              </div>
-                            </div>
-                          </>
-                        )}
-
-                        {/* Loan */}
-                        <h3 className="text-[13px] font-medium text-muted-foreground mt-2">Loan</h3>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Amount</label>
-                            <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                            <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                            <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="led-input" />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                            <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="led-input" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Broker Lend fields */}
-                    <div className="space-y-4 mb-5">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Product Type ID</label>
-                          <input
-                            type="number"
-                            value={lendProductTypeId}
-                            onChange={(e) => setLendProductTypeId(e.target.value)}
-                            className="led-input"
-                            placeholder="e.g. 25"
-                          />
-                        </div>
-                        {application.loan_type === 'business' && (
-                          <div>
-                            <label className="block text-[13px] font-medium text-muted-foreground mb-2">Owner Type</label>
-                            <select
-                              value={lendOwnerType}
-                              onChange={(e) => setLendOwnerType(e.target.value)}
-                              className="led-input"
-                            >
-                              <option value="">Select...</option>
-                              <option value="Sole Trader">Sole Trader</option>
-                              <option value="Partnership">Partnership</option>
-                              <option value="Company">Company</option>
-                              <option value="Trust">Trust</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Send Type</label>
-                          <select
-                            value={lendSendType}
-                            onChange={(e) => setLendSendType(e.target.value)}
-                            className="led-input"
-                          >
-                            <option value="Auto">Auto</option>
-                            <option value="Manual">Manual</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[13px] font-medium text-muted-foreground mb-2">Who to Contact</label>
-                          <select
-                            value={lendWhoToContact}
-                            onChange={(e) => setLendWhoToContact(e.target.value)}
-                            className="led-input"
-                          >
-                            <option value="Broker">Broker</option>
-                            <option value="Client">Client</option>
-                          </select>
-                        </div>
-                      </div>
-                      <Button onClick={handleSaveLendFields} loading={savingLend} size="sm">Save Lend Settings</Button>
-                    </div>
-
-                    {/* Document type mapping */}
-                    {documents.length > 0 && (
-                      <div className="border-t border-border pt-4 mb-4">
-                        <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Document Type Mapping</h3>
-                        <div className="space-y-2">
-                          {documents.map((doc) => (
-                            <div key={doc.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 p-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate text-[13px] font-medium text-foreground">{doc.original_filename}</p>
-                              </div>
-                              {doc.lend_uploaded && (
-                                <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                              )}
-                              <input
-                                type="text"
-                                value={docLendTypes[doc.id] || ''}
-                                onChange={(e) => handleDocLendTypeChange(doc.id, e.target.value)}
-                                className="w-40 rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                placeholder="Lend doc type"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Sync button */}
-                    <Button
-                      onClick={handleLendSync}
-                      loading={syncing}
-                      disabled={application.lend_sync_status === 'pending' || syncing}
-                      variant={application.lend_sync_status === 'failed' ? 'danger' : 'primary'}
-                    >
-                      {application.lend_sync_status === 'failed' ? 'Re-sync to Lend' :
-                        application.lend_sync_status === 'synced' ? 'Re-sync to Lend' :
-                          application.lend_sync_status === 'pending' ? 'Syncing...' :
-                            'Sync to Lend'}
-                    </Button>
-                  </GlassCard>
-                )}
-
-              </>
-            )}
-
             {activeTab === 'messages' && (
               <>
                 {/* Notes & Messages */}
