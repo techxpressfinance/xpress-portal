@@ -17,6 +17,11 @@ class ExternalReferralStatus(str, enum.Enum):
     applied = "applied"
 
 
+class ClientEngagementModel(str, enum.Enum):
+    self_managed = "self_managed"
+    direct_engagement = "direct_engagement"
+
+
 class ExternalReferral(Base):
     __tablename__ = "external_referrals"
 
@@ -27,6 +32,9 @@ class ExternalReferral(Base):
     referred_client_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     status: Mapped[ExternalReferralStatus] = mapped_column(
         Enum(ExternalReferralStatus), default=ExternalReferralStatus.pending, nullable=False
+    )
+    client_engagement_model: Mapped[Optional[ClientEngagementModel]] = mapped_column(
+        Enum(ClientEngagementModel), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

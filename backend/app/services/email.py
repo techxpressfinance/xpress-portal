@@ -490,3 +490,50 @@ def send_login_code_email(to_email: str, name: str, code: str) -> None:
     ])
 
     _send_async(to_email, subject, body, html_body)
+
+
+def send_document_request_email(
+    to_email: str,
+    client_name: str,
+    broker_name: str,
+    description: str,
+    application_id: str,
+    loan_type: str,
+) -> None:
+    """Notify a client that the broker has requested additional documents. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping document request notification")
+        return
+
+    application_url = f"{FRONTEND_URL}/applications/{application_id}"
+    subject = "Action Required: Documents Requested - Xpress Tech Portal"
+    body = (
+        f"Dear {client_name},\n\n"
+        f"Your broker {broker_name} has requested additional documents for your "
+        f"{loan_type.replace('_', ' ').capitalize()} loan application.\n\n"
+        f"Documents required:\n{description}\n\n"
+        f"Please log in to the portal and upload the requested documents:\n{application_url}\n\n"
+        f"Best regards,\nXpress Tech Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            Your broker <strong>{_esc(broker_name)}</strong> has requested additional documents for your
+            <strong>{_esc(loan_type.replace('_', ' ').capitalize())}</strong> loan application.
+        </p>
+        <div style="margin: 24px 0; padding: 20px 24px; background-color: #fefce8; border: 1px solid #fde047; border-radius: 8px; border-left: 4px solid #eab308;">
+            <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #713f12; text-transform: uppercase; letter-spacing: 0.5px;">Documents Required</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #18181b; white-space: pre-wrap;">{_esc(description)}</p>
+        </div>
+        <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #3f3f46;">
+            Please log in to the portal to upload the requested documents.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(application_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Upload Documents</a>
+        </div>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+    _send_async(to_email, subject, body, html_body)

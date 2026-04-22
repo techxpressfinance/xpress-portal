@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Input } from '../../components/ui';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import type { ExternalReferral, ExternalReferrerStats } from '../../types';
+import type { ClientEngagementModel, ExternalReferral, ExternalReferrerStats } from '../../types';
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'bg-secondary text-muted-foreground' },
@@ -20,6 +20,7 @@ export default function ReferrerDashboard() {
   // Refer form
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
+  const [engagementModel, setEngagementModel] = useState<ClientEngagementModel | ''>('');
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = () => {
@@ -51,6 +52,7 @@ export default function ReferrerDashboard() {
       const { data } = await api.post('/external-referrers/refer', {
         email: email.trim().toLowerCase(),
         full_name: fullName.trim() || null,
+        client_engagement_model: engagementModel || null,
       });
       setReferrals((prev) => [data, ...prev]);
       setStats((prev) => ({
@@ -60,6 +62,7 @@ export default function ReferrerDashboard() {
       }));
       setEmail('');
       setFullName('');
+      setEngagementModel('');
       toast('Referral sent successfully', 'success');
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send referral'), 'error');
@@ -120,7 +123,41 @@ export default function ReferrerDashboard() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
-            <Button type="submit" disabled={submitting}>
+            <div>
+              <p className="text-[13px] font-medium text-foreground mb-2">Preferred Client Engagement Model *</p>
+              <p className="text-[12px] text-muted-foreground mb-3">How would you like us to manage this client relationship?</p>
+              <div className="space-y-2">
+                <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'self_managed' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
+                  <input
+                    type="radio"
+                    name="engagement_model"
+                    value="self_managed"
+                    checked={engagementModel === 'self_managed'}
+                    onChange={() => setEngagementModel('self_managed')}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">I'll manage the client relationship</p>
+                    <p className="text-[12px] text-muted-foreground">I will provide all required information — no direct client contact from your side.</p>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
+                  <input
+                    type="radio"
+                    name="engagement_model"
+                    value="direct_engagement"
+                    checked={engagementModel === 'direct_engagement'}
+                    onChange={() => setEngagementModel('direct_engagement')}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">You may engage the client directly</p>
+                    <p className="text-[12px] text-muted-foreground">I'm comfortable with you contacting and working with the client directly.</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <Button type="submit" disabled={submitting || !engagementModel}>
               {submitting ? 'Sending...' : 'Send Referral'}
             </Button>
           </form>

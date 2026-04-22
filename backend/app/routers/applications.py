@@ -146,10 +146,6 @@ def update_application(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    # Referrers have read-only access
-    if current_user.role == UserRole.referrer:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers have read-only access")
-
     check_application_access(application, current_user, db=db)
 
     is_draft = application.status.value == "draft"
@@ -217,7 +213,7 @@ def change_status(
     app_id: str,
     new_status: ApplicationStatus = Query(..., alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
@@ -348,7 +344,7 @@ def trigger_analysis(
     app_id: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     if not LLM_ANALYSIS_ENABLED:
@@ -393,7 +389,7 @@ def trigger_analysis(
 def get_analysis(
     app_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()

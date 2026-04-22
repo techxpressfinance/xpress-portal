@@ -11,7 +11,7 @@ import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ApplicationNote, Document, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
+import type { ApplicationNote, Document, DocumentRequest, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +34,8 @@ export default function ApplicationDetail() {
   const [submittingApplication, setSubmittingApplication] = useState(false);
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
+  const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
+  const [fulfillingRequestId, setFulfillingRequestId] = useState<string | null>(null);
 
   const handleDownloadPdf = async (sheet: QuoteSheet) => {
     setPdfRenderSheet(sheet);
@@ -69,6 +71,7 @@ export default function ApplicationDetail() {
       .finally(() => setLoading(false));
     // Fetch sent quote sheets (backend filters to sent-only for clients)
     api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
+    api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)).catch(() => { });
   }, [id]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +119,19 @@ export default function ApplicationDetail() {
   };
 
   const handleDownload = (docId: string, filename: string) => downloadFile(docId, filename);
+
+  const handleFulfillRequest = async (requestId: string) => {
+    setFulfillingRequestId(requestId);
+    try {
+      const { data } = await api.patch(`/documents/requests/${requestId}/fulfill`);
+      setDocRequests((prev) => prev.map((r) => (r.id === requestId ? data : r)));
+      toast('Request marked as fulfilled', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update request'), 'error');
+    } finally {
+      setFulfillingRequestId(null);
+    }
+  };
 
   const handleDeleteApplication = async () => {
     if (!id) return;
@@ -282,6 +298,38 @@ export default function ApplicationDetail() {
               </div>
             )}
           </GlassCard>
+
+          {/* Pending Document Requests */}
+          {docRequests.some((r) => r.status === 'pending') && (
+            <GlassCard className="border-warning/30 bg-warning/5">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-warning/15">
+                  <svg className="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-semibold text-foreground">Documents Requested</h2>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">Your broker has requested additional documents. Please upload them below and mark each request as fulfilled.</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {docRequests.filter((r) => r.status === 'pending').map((req) => (
+                  <div key={req.id} className="flex items-center gap-3 rounded-xl bg-background/70 border border-warning/20 p-3.5">
+                    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-warning/20">
+                      <svg className="h-3 w-3 text-warning" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                    </div>
+                    <p className="flex-1 text-[13px] text-foreground font-medium">{req.description}</p>
+                    <button
+                      onClick={() => handleFulfillRequest(req.id)}
+                      disabled={fulfillingRequestId === req.id}
+                      className="shrink-0 led-btn led-btn-sm led-btn-outline disabled:opacity-50"
+                    >
+                      {fulfillingRequestId === req.id ? 'Saving...' : 'Mark Fulfilled'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
 
           {/* Documents */}
           <GlassCard>

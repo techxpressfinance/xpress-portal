@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.external_referral import ExternalReferral, ExternalReferralStatus
+from app.models.external_referral import ClientEngagementModel, ExternalReferral, ExternalReferralStatus
 from app.models.user import User, UserRole
 from app.schemas.external_referrer import (
     ExternalReferralInvite,
@@ -136,12 +136,14 @@ def refer_client(
     # Check if client exists
     existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
 
+    engagement = ClientEngagementModel(data.client_engagement_model) if data.client_engagement_model else None
     referral = ExternalReferral(
         referrer_id=current_user.id,
         referred_email=email,
         referred_client_id=existing_user.id if existing_user else None,
         status=ExternalReferralStatus.signed_up if existing_user else ExternalReferralStatus.pending,
         converted_at=datetime.now(timezone.utc) if existing_user else None,
+        client_engagement_model=engagement,
         tenant_id=tenant_id,
     )
     db.add(referral)
@@ -235,6 +237,7 @@ def _serialize_referral(referral: ExternalReferral, db: Session) -> dict:
         "referred_client_id": referral.referred_client_id,
         "referred_client_name": client.full_name if client else None,
         "status": referral.status.value,
+        "client_engagement_model": referral.client_engagement_model.value if referral.client_engagement_model else None,
         "created_at": referral.created_at,
         "converted_at": referral.converted_at,
     }
@@ -261,6 +264,7 @@ def _serialize_referrals(referrals: list[ExternalReferral], db: Session) -> list
             "referred_client_id": r.referred_client_id,
             "referred_client_name": client.full_name if client else None,
             "status": r.status.value,
+            "client_engagement_model": r.client_engagement_model.value if r.client_engagement_model else None,
             "created_at": r.created_at,
             "converted_at": r.converted_at,
         })

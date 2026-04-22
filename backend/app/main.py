@@ -23,6 +23,7 @@ from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tab
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
+from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, standalone_quote_sheets, super_admin, tasks, tenants, users
@@ -95,6 +96,7 @@ _MIGRATIONS = [
     ("users", "license_number", "VARCHAR(100)"),
     # Referrer-specific fields
     ("users", "organization_name", "VARCHAR(255)"),
+    ("external_referrals", "client_engagement_model", "VARCHAR(20)"),
     # Token revocation timestamp (for bulk invalidation on password change)
     ("users", "tokens_revoked_at", "TIMESTAMP"),
     # Note visibility: comma-separated roles (replaces is_internal boolean)

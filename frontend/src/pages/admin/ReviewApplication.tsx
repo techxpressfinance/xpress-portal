@@ -14,7 +14,7 @@ import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ApplicationNote, BrokerGroup, DocType, Document, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
+import type { ApplicationNote, BrokerGroup, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
@@ -42,6 +42,12 @@ export default function ReviewApplication() {
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'messages'>('overview');
+
+  // Document requests state
+  const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
+  const [showDocRequestForm, setShowDocRequestForm] = useState(false);
+  const [docRequestDescription, setDocRequestDescription] = useState('');
+  const [submittingDocRequest, setSubmittingDocRequest] = useState(false);
 
   // Quote sheets state
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
@@ -110,6 +116,7 @@ export default function ReviewApplication() {
     api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => { });
     api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => { });
     api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
+    api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)).catch(() => { });
 
     Promise.all([
       api.get(`/applications/${id}`),
@@ -235,6 +242,22 @@ export default function ReviewApplication() {
       toast('Document verified', 'success');
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to verify'), 'error');
+    }
+  };
+
+  const handleSubmitDocRequest = async () => {
+    if (!id || !docRequestDescription.trim()) return;
+    setSubmittingDocRequest(true);
+    try {
+      const { data } = await api.post(`/documents/requests/${id}`, { description: docRequestDescription.trim() });
+      setDocRequests((prev) => [...prev, data]);
+      setDocRequestDescription('');
+      setShowDocRequestForm(false);
+      toast('Document request sent to client', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to send request'), 'error');
+    } finally {
+      setSubmittingDocRequest(false);
     }
   };
 
@@ -745,43 +768,106 @@ export default function ReviewApplication() {
                   </GlassCard>
                 )}
 
+                {/* Document Requests */}
+                {docRequests.length > 0 && (
+                  <GlassCard className="mb-6 border-warning/20 bg-warning/5">
+                    <h2 className="text-[15px] font-semibold text-foreground mb-4">Document Requests</h2>
+                    <div className="space-y-2">
+                      {docRequests.map((req) => (
+                        <div key={req.id} className={`flex items-start gap-3 rounded-xl p-3.5 border ${req.status === 'fulfilled' ? 'bg-success/5 border-success/20' : 'bg-warning/5 border-warning/20'}`}>
+                          <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${req.status === 'fulfilled' ? 'bg-success/20' : 'bg-warning/20'}`}>
+                            {req.status === 'fulfilled' ? (
+                              <svg className="h-3 w-3 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                            ) : (
+                              <svg className="h-3 w-3 text-warning" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-foreground">{req.description}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Requested by {req.requested_by_name} &middot; {new Date(req.created_at).toLocaleDateString()}
+                              {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${new Date(req.fulfilled_at).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${req.status === 'fulfilled' ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
+                            {req.status === 'fulfilled' ? 'Fulfilled' : 'Pending'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </GlassCard>
+                )}
+
                 {/* Documents */}
                 <GlassCard>
                   <div className="flex items-center justify-between mb-5">
                     <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
-                    {!isDraft && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={fileLabel}
-                          onChange={(e) => setFileLabel(e.target.value)}
-                          placeholder="Label (optional)"
-                          className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 w-36 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                        />
-                        <select
-                          value={docType}
-                          onChange={(e) => setDocType(e.target.value as DocType)}
-                          className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        >
-                          {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                        <div className="relative">
+                    <div className="flex items-center gap-2">
+                      {!isDraft && (
+                        <>
                           <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={handleUploadDoc}
-                            disabled={uploading}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            type="text"
+                            value={fileLabel}
+                            onChange={(e) => setFileLabel(e.target.value)}
+                            placeholder="Label (optional)"
+                            className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 w-36 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
                           />
-                          <Button size="sm" variant="secondary" className="h-8 pointer-events-none" loading={uploading}>
-                            {uploading ? 'Uploading...' : 'Upload'}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+                          <select
+                            value={docType}
+                            onChange={(e) => setDocType(e.target.value as DocType)}
+                            className="rounded-lg bg-secondary px-2.5 py-1.5 text-[12px] text-foreground h-8 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          >
+                            {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                          <div className="relative">
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={handleUploadDoc}
+                              disabled={uploading}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <Button size="sm" variant="secondary" className="h-8 pointer-events-none" loading={uploading}>
+                              {uploading ? 'Uploading...' : 'Upload'}
+                            </Button>
+                          </div>
+                          <div className="h-4 w-[1px] bg-border" />
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-8"
+                        onClick={() => setShowDocRequestForm((v) => !v)}
+                      >
+                        <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        Request Docs
+                      </Button>
+                    </div>
                   </div>
+
+                  {showDocRequestForm && (
+                    <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-[13px] font-medium text-foreground mb-2">Specify which documents you need from the client</p>
+                      <textarea
+                        value={docRequestDescription}
+                        onChange={(e) => setDocRequestDescription(e.target.value)}
+                        placeholder="e.g. Last 3 months of bank statements, most recent payslip..."
+                        rows={3}
+                        className="w-full rounded-xl bg-background px-3.5 py-2.5 text-[13px] text-foreground border border-border/50 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                      />
+                      <div className="flex items-center gap-2 mt-3">
+                        <Button size="sm" variant="primary" onClick={handleSubmitDocRequest} disabled={!docRequestDescription.trim() || submittingDocRequest} loading={submittingDocRequest}>
+                          Send Request
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowDocRequestForm(false); setDocRequestDescription(''); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {documents.length === 0 ? (
                     <div className="rounded-xl bg-secondary/50 p-6 text-center">
                       <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>

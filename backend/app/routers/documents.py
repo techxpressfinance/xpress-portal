@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, status
@@ -12,11 +13,14 @@ from app.middleware.rate_limit import RateLimiter
 from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.middleware.auth import get_current_user, require_role
 from app.models.document import DocType, Document
+from app.models.document_request import DocumentRequest
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.document import DocumentOut
+from app.schemas.document_request import DocumentRequestCreate, DocumentRequestOut
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.email import send_document_request_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -227,12 +231,104 @@ def get_ocr_text(
     }
 
 
+def _serialize_request(req: DocumentRequest) -> dict:
+    return {
+        "id": req.id,
+        "application_id": req.application_id,
+        "requested_by_id": req.requested_by_id,
+        "requested_by_name": req.requested_by.full_name if req.requested_by else None,
+        "description": req.description,
+        "status": req.status,
+        "created_at": req.created_at,
+        "fulfilled_at": req.fulfilled_at,
+    }
+
+
+@router.post("/requests/{application_id}", response_model=DocumentRequestOut, status_code=status.HTTP_201_CREATED)
+def create_document_request(
+    application_id: str,
+    body: DocumentRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    if not body.description.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Description is required")
+
+    req = DocumentRequest(
+        application_id=application_id,
+        requested_by_id=current_user.id,
+        description=body.description.strip(),
+        tenant_id=tenant_id,
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    log_activity(db, current_user.id, "document_requested", "application", application_id, {"description": req.description}, tenant_id=tenant_id)
+
+    client = db.query(User).filter(User.id == application.user_id).first()
+    if client:
+        send_document_request_email(
+            to_email=client.email,
+            client_name=client.full_name,
+            broker_name=current_user.full_name,
+            description=req.description,
+            application_id=application_id,
+            loan_type=application.loan_type.value,
+        )
+
+    return _serialize_request(req)
+
+
+@router.get("/requests/{application_id}", response_model=list[DocumentRequestOut])
+def list_document_requests(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+    requests = db.query(DocumentRequest).filter(DocumentRequest.application_id == application_id).order_by(DocumentRequest.created_at).all()
+    return [_serialize_request(r) for r in requests]
+
+
+@router.patch("/requests/{request_id}/fulfill", response_model=DocumentRequestOut)
+def fulfill_document_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    req = db.query(DocumentRequest).filter(DocumentRequest.id == request_id, DocumentRequest.tenant_id == tenant_id).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
+
+    application = db.query(LoanApplication).filter(LoanApplication.id == req.application_id).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    req.status = "fulfilled"
+    req.fulfilled_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(req)
+    return _serialize_request(req)
+
+
 @router.post("/{doc_id}/retry-ocr")
 def retry_ocr(
     doc_id: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    _current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
@@ -270,7 +366,7 @@ def retry_ocr(
 def verify_document(
     doc_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    _current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()

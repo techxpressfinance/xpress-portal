@@ -168,6 +168,19 @@ export interface Document {
   lend_uploaded: boolean;
 }
 
+export type DocumentRequestStatus = 'pending' | 'fulfilled';
+
+export interface DocumentRequest {
+  id: string;
+  application_id: string;
+  requested_by_id: string;
+  requested_by_name: string | null;
+  description: string;
+  status: DocumentRequestStatus;
+  created_at: string;
+  fulfilled_at: string | null;
+}
+
 export interface ActivityLog {
   id: string;
   user_id: string;
@@ -188,6 +201,7 @@ export interface PaginatedResponse<T> {
 
 export type ReferralStatus = 'pending' | 'signed_up' | 'applied';
 export type ExternalReferralStatus = 'pending' | 'signed_up' | 'applied';
+export type ClientEngagementModel = 'self_managed' | 'direct_engagement';
 
 export interface ExternalReferral {
   id: string;
@@ -197,6 +211,7 @@ export interface ExternalReferral {
   referred_client_id: string | null;
   referred_client_name: string | null;
   status: ExternalReferralStatus;
+  client_engagement_model: ClientEngagementModel | null;
   created_at: string;
   converted_at: string | null;
 }

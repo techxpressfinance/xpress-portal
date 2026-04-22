@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
+
+ClientEngagementModel = Literal["self_managed", "direct_engagement"]
 
 
 class ReferrerCreate(BaseModel):
@@ -23,6 +25,7 @@ class ReferrerCreate(BaseModel):
 class ExternalReferralInvite(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+    client_engagement_model: Optional[ClientEngagementModel] = None
 
     @field_validator("email")
     @classmethod
@@ -40,6 +43,7 @@ class ExternalReferralOut(BaseModel):
     referred_client_id: Optional[str] = None
     referred_client_name: Optional[str] = None
     status: str
+    client_engagement_model: Optional[str] = None
     created_at: datetime
     converted_at: Optional[datetime] = None
 
