@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
-from app.models.user import KYCStatus, UserRole
+from app.models.user import UserRole
 
 
 def _validate_password(v: str) -> str:
@@ -48,7 +48,6 @@ class UserOut(BaseModel):
     full_name: str
     phone: Optional[str]
     role: UserRole
-    kyc_status: KYCStatus
     is_active: bool
     email_verified: bool
     auth_method: str = "password"
@@ -80,10 +79,6 @@ class AccessTokenResponse(BaseModel):
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
-
-
-class KYCStatusUpdate(BaseModel):
-    kyc_status: KYCStatus
 
 
 class UserRoleUpdate(BaseModel):

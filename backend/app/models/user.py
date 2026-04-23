@@ -19,12 +19,6 @@ class UserRole(str, enum.Enum):
     super_admin = "super_admin"
 
 
-class KYCStatus(str, enum.Enum):
-    pending = "pending"
-    verified = "verified"
-    rejected = "rejected"
-
-
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),)
@@ -37,7 +31,6 @@ class User(Base):
     auth_method: Mapped[str] = mapped_column(String(10), default="password", nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.client, nullable=False)
-    kyc_status: Mapped[KYCStatus] = mapped_column(Enum(KYCStatus), default=KYCStatus.pending, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

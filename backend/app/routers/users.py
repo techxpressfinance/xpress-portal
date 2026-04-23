@@ -14,7 +14,7 @@ from app.models.loan_application import LoanApplication
 from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User
-from app.schemas.user import BrokerCreate, KYCStatusUpdate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
+from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import hash_password
 from app.services.email import send_broker_welcome_email
@@ -149,25 +149,6 @@ def get_user(
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
-
-
-@router.patch("/{user_id}/kyc", response_model=UserOut)
-def update_kyc_status(
-    user_id: str,
-    data: KYCStatusUpdate,
-    db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    old_kyc = user.kyc_status.value
-    user.kyc_status = data.kyc_status
-    log_activity(db, _current_user.id, "kyc_status_changed", "user", user_id, {"from": old_kyc, "to": data.kyc_status.value}, tenant_id=tenant_id)
-    db.commit()
-    db.refresh(user)
     return user
 
 

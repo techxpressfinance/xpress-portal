@@ -25,8 +25,9 @@ from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables 
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
+from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -315,9 +316,9 @@ with engine.begin() as conn:
         _sa_password = _os.getenv("SUPER_ADMIN_PASSWORD", "Admin123!")
         _now = _dt.now(_tz.utc)
         conn.execute(text(
-            "INSERT INTO users (id, email, password_hash, full_name, role, kyc_status, is_active, email_verified, auth_method, "
+            "INSERT INTO users (id, email, password_hash, full_name, role, is_active, email_verified, auth_method, "
             "failed_login_attempts, login_code_attempts, created_at, updated_at) "
-            "VALUES (:id, :email, :pw, :name, 'super_admin', 'verified', 1, 1, 'password', 0, 0, :now, :now)"
+            "VALUES (:id, :email, :pw, :name, 'super_admin', 1, 1, 'password', 0, 0, :now, :now)"
         ), {"id": str(_uuid.uuid4()), "email": _sa_email, "pw": _hash_pw(_sa_password), "name": "Super Admin", "now": _now})
         _logger.info("Seeded super_admin user: %s (change password immediately!)", _sa_email)
 
@@ -405,6 +406,7 @@ app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
 app.include_router(contacts.router)
+app.include_router(service_requests.router)
 
 
 @app.get("/api/health")

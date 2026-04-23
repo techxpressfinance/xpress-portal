@@ -1,12 +1,12 @@
 export type UserRole = 'client' | 'broker' | 'admin' | 'referrer' | 'super_admin';
 export type AuthMethod = 'password' | 'code';
-export type KYCStatus = 'pending' | 'verified' | 'rejected';
 export type LoanType = 'personal' | 'home' | 'business' | 'vehicle' | 'equipment_finance' | 'business_loan' | 'commercial_property' | 'home_loan';
 export type ApplicationStatus = 'draft' | 'application_received' | 'application_assessed' | 'submitted' | 'approval' | 'settled' | 'rejected';
 export type DocType = 'id_proof' | 'address_proof' | 'bank_statement' | 'payslip' | 'tax_return' | 'other';
 export type OcrStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type LendSyncStatus = 'pending' | 'synced' | 'failed';
+export type ServiceRequestStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
 
 export interface User {
   id: string;
@@ -14,7 +14,6 @@ export interface User {
   full_name: string;
   phone: string | null;
   role: UserRole;
-  kyc_status: KYCStatus;
   is_active: boolean;
   email_verified: boolean;
   auth_method: AuthMethod;
@@ -614,6 +613,19 @@ export interface KanbanBoardListItem {
   description: string | null;
   is_default: boolean;
   column_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceRequest {
+  id: string;
+  request_type: string;
+  custom_request: string | null;
+  description: string | null;
+  status: ServiceRequestStatus;
+  client_id: string;
+  client_name: string | null;
+  client_email: string | null;
   created_at: string;
   updated_at: string;
 }

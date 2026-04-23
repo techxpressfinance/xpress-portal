@@ -478,10 +478,6 @@ export default function ReferrerApplicationDetail() {
                         <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
                         <dd className="mt-1 text-[14px] font-medium text-foreground">{client.phone || 'Not provided'}</dd>
                       </div>
-                      <div>
-                        <dt className="text-[13px] font-medium text-muted-foreground">KYC Status</dt>
-                        <dd className="mt-1"><Badge type="kyc" value={client.kyc_status} /></dd>
-                      </div>
                     </dl>
                   </GlassCard>
                 )}

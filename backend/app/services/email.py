@@ -536,4 +536,59 @@ def send_document_request_email(
 
     _send_async(to_email, subject, body, html_body)
 
+
+def send_service_request_notification(
+    to_email: str,
+    broker_name: str,
+    client_name: str,
+    request_type: str,
+    custom_request: Optional[str] = None,
+    description: Optional[str] = None,
+) -> None:
+    """Notify a broker/admin of a new client service request. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping service request notification")
+        return
+
+    display_request = custom_request or request_type
+    subject = f"New Service Request: {display_request} - Xpress Tech Portal"
+
+    body_lines = [
+        f"Dear {broker_name},",
+        "",
+        f"A client has submitted a new service request.",
+        "",
+        f"Client: {client_name}",
+        f"Request Type: {request_type}",
+    ]
+    if custom_request:
+        body_lines.append(f"Custom Request: {custom_request}")
+    if description:
+        body_lines.append(f"Details: {description}")
+    body_lines += ["", "Please log in to the portal to review this request.", "", "Best regards,", "Xpress Tech Team"]
+    body = "\n".join(body_lines)
+
+    details_rows = f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Client:</strong> {_esc(client_name)}</p>'
+    details_rows += f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Request Type:</strong> {_esc(request_type)}</p>'
+    if custom_request:
+        details_rows += f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Custom Request:</strong> {_esc(custom_request)}</p>'
+    if description:
+        details_rows += f'<p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Details:</strong> {_esc(description)}</p>'
+
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(broker_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            A client has submitted a new service request.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    {details_rows}
+                </td>
+            </tr>
+        </table>
+        <p style="margin: 0; font-size: 15px; color: #3f3f46;">Please log in to the portal to review and respond to this request.</p>
+    """
+    html_body = _get_base_html(content)
+
     _send_async(to_email, subject, body, html_body)

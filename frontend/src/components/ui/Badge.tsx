@@ -1,6 +1,6 @@
-import { STATUS_BADGE, STATUS_LABEL, ROLE_BADGE, KYC_CONFIG } from '../../lib/constants';
+import { STATUS_BADGE, STATUS_LABEL, ROLE_BADGE } from '../../lib/constants';
 
-type BadgeType = 'status' | 'role' | 'kyc' | 'custom';
+type BadgeType = 'status' | 'role' | 'custom';
 
 interface BadgeProps {
   type?: BadgeType;
@@ -15,15 +15,10 @@ export default function Badge({ type = 'status', value, className = '' }: BadgeP
     colorClass = STATUS_BADGE[value as keyof typeof STATUS_BADGE] || colorClass;
   } else if (type === 'role') {
     colorClass = ROLE_BADGE[value as keyof typeof ROLE_BADGE] || colorClass;
-  } else if (type === 'kyc') {
-    const kyc = KYC_CONFIG[value as keyof typeof KYC_CONFIG];
-    colorClass = kyc ? `${kyc.bg} ${kyc.color}` : colorClass;
   }
 
   const display =
-    type === 'kyc'
-      ? KYC_CONFIG[value as keyof typeof KYC_CONFIG]?.label || value
-      : type === 'status'
+    type === 'status'
         ? STATUS_LABEL[value as keyof typeof STATUS_LABEL] || value
         : value;
 

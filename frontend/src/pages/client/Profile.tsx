@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Badge, Button, Input, PageHeader } from '../../components/ui';
+import { GlassCard, Button, Input, PageHeader } from '../../components/ui';
 
 interface FormData {
   full_name: string;
@@ -58,12 +58,6 @@ export default function Profile() {
             <div className="rounded-xl bg-secondary/50 p-4">
               <dt className="text-[13px] font-medium text-muted-foreground">Role</dt>
               <dd className="mt-1 text-[15px] font-semibold text-foreground capitalize">{user?.role}</dd>
-            </div>
-            <div className="rounded-xl bg-secondary/50 p-4">
-              <dt className="text-[13px] font-medium text-muted-foreground">KYC Status</dt>
-              <dd className="mt-1">
-                <Badge type="kyc" value={user?.kyc_status || 'pending'} />
-              </dd>
             </div>
             <div className="rounded-xl bg-secondary/50 p-4">
               <dt className="text-[13px] font-medium text-muted-foreground">Email</dt>

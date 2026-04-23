@@ -106,16 +106,6 @@ export default function UserManagement() {
     }
   };
 
-  const handleKycChange = async (userId: string, kyc_status: string) => {
-    try {
-      const { data } = await api.patch(`/users/${userId}/kyc`, { kyc_status });
-      setUsers(prev => prev.map(u => u.id === userId ? data : u));
-      toast(`KYC updated to ${kyc_status}`, 'success');
-    } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to update KYC'), 'error');
-    }
-  };
-
   const handleResendCode = async (user: User) => {
     try {
       await api.post('/invitations', { email: user.email, full_name: user.full_name, phone: user.phone });
@@ -188,8 +178,6 @@ export default function UserManagement() {
   };
 
   const totalPages = Math.ceil(historyTotal / perPage);
-  const verified = users.filter(u => u.kyc_status === 'verified').length;
-  const pending = users.filter(u => u.kyc_status === 'pending').length;
 
   return (
     <div>
@@ -197,15 +185,9 @@ export default function UserManagement() {
       <PeopleNav />
 
       {/* Stats */}
-      <div className="grid gap-5 sm:grid-cols-3 mb-8">
+      <div className="grid gap-5 sm:grid-cols-1 mb-8">
         <StatCard label="Total Clients" value={users.length} loading={loading} gradient="from-primary to-primary"
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>}
-        />
-        <StatCard label="KYC Verified" value={verified} loading={loading} gradient="from-success to-success" valueColor="text-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
-        />
-        <StatCard label="KYC Pending" value={pending} loading={loading} gradient="from-chart-4 to-chart-4" valueColor="text-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
         />
       </div>
 
@@ -233,7 +215,6 @@ export default function UserManagement() {
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Client</th>
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Auth</th>
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Role</th>
-                  <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">KYC</th>
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Joined</th>
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>
@@ -268,17 +249,6 @@ export default function UserManagement() {
                           </select>
                         ) : (
                           <Badge type="role" value={user.role} />
-                        )}
-                      </td>
-                      <td className="hidden md:table-cell px-6 py-4">
-                        {currentUser?.role === 'admin' ? (
-                          <select value={user.kyc_status} onChange={e => handleKycChange(user.id, e.target.value)} className={selectClass}>
-                            <option value="pending">Pending</option>
-                            <option value="verified">Verified</option>
-                            <option value="rejected">Rejected</option>
-                          </select>
-                        ) : (
-                          <Badge type="kyc" value={user.kyc_status} />
                         )}
                       </td>
                       <td className="px-3 sm:px-6 py-4">

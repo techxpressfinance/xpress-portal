@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, KYCStatus, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, ServiceRequestStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -19,12 +19,6 @@ export const STATUS_LABEL: Record<ApplicationStatus, string> = {
   approval: 'Approval',
   settled: 'Settled',
   rejected: 'Rejected',
-};
-
-export const KYC_CONFIG: Record<KYCStatus, { color: string; bg: string; label: string; gradient: string }> = {
-  pending: { color: 'text-[var(--led-warning)]', bg: 'led-chip-warning', label: 'Pending Verification', gradient: 'from-warning to-warning' },
-  verified: { color: 'text-[var(--led-success)]', bg: 'led-chip-success', label: 'Verified', gradient: 'from-success to-success' },
-  rejected: { color: 'text-[var(--led-danger)]', bg: 'led-chip-danger', label: 'Rejected', gradient: 'from-destructive to-destructive' },
 };
 
 export const ROLE_BADGE: Record<UserRole, string> = {
@@ -66,6 +60,23 @@ export const FLAG_SEVERITY_STYLES: Record<string, { bg: string; border: string; 
   warning: { bg: 'bg-warning/5', border: 'border-warning/20', text: 'text-warning' },
   critical: { bg: 'bg-destructive/5', border: 'border-destructive/20', text: 'text-destructive' },
 };
+
+export const SERVICE_REQUEST_STATUS_BADGE: Record<ServiceRequestStatus, { label: string; className: string }> = {
+  pending: { label: 'Pending', className: 'led-chip-warning' },
+  in_progress: { label: 'In Progress', className: 'led-chip-info' },
+  resolved: { label: 'Resolved', className: 'led-chip-success' },
+  closed: { label: 'Closed', className: '' },
+};
+
+export const SERVICE_REQUEST_TYPES = [
+  'Status Update',
+  'Document Update',
+  'Callback Request',
+  'Change of Details',
+  'General Enquiry',
+  'Complaint',
+  'Other',
+] as const;
 
 export const DOC_TYPE_LABELS: Record<string, string> = {
   id_proof: 'ID Proof',
