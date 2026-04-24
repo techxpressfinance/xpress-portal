@@ -25,13 +25,14 @@ function resolveSlug(): string | null {
   const stored = localStorage.getItem('dev-tenant-slug');
   if (stored) return stored;
 
-  // 2. Subdomain extraction: <slug>.localhost or <slug>.xpresstech.com
+  // 2. Subdomain extraction: <slug>.localhost or <slug>.xpresstech.ai
   const host = window.location.hostname;
   const parts = host.split('.');
-  if (parts.length >= 2) {
+  const isSubdomain = parts.length >= 3 || (parts.length === 2 && parts[1] === 'localhost');
+  if (isSubdomain) {
     const sub = parts[0];
-    // Skip if it's www, localhost alone, or an IP
-    if (sub !== 'www' && sub !== 'localhost' && !/^\d+$/.test(sub)) {
+    // Skip if it's www or an IP segment
+    if (sub !== 'www' && !/^\d+$/.test(sub)) {
       return sub;
     }
   }

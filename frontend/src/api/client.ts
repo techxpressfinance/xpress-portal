@@ -37,9 +37,10 @@ export function getTenantSlug(): string | null {
 
   const host = window.location.hostname;
   const parts = host.split('.');
-  if (parts.length >= 2) {
+  const isSubdomain = parts.length >= 3 || (parts.length === 2 && parts[1] === 'localhost');
+  if (isSubdomain) {
     const sub = parts[0];
-    if (sub !== 'www' && sub !== 'localhost' && !/^\d+$/.test(sub)) {
+    if (sub !== 'www' && !/^\d+$/.test(sub)) {
       return sub;
     }
   }
