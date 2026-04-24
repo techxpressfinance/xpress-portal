@@ -9,20 +9,24 @@ import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
+import { ACTION_ICON_CONFIG, ACTION_LABELS, DOC_TYPE_LABELS, LEND_SYNC_BADGE, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ApplicationNote, Document, DocumentRequest, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
+import { useAuth } from '../../hooks/useAuth';
+import type { ActivityLog, ClientMessage, Document, DocumentRequest, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { downloadFile } = useFileDownload();
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
+  const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
+  const [newClientMsgContent, setNewClientMsgContent] = useState('');
+  const [sendingClientMsg, setSendingClientMsg] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -36,6 +40,8 @@ export default function ApplicationDetail() {
   const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [fulfillingRequestId, setFulfillingRequestId] = useState<string | null>(null);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
 
   const handleDownloadPdf = async (sheet: QuoteSheet) => {
     setPdfRenderSheet(sheet);
@@ -60,19 +66,28 @@ export default function ApplicationDetail() {
     Promise.all([
       api.get(`/applications/${id}`),
       api.get(`/documents/application/${id}`),
-      api.get(`/applications/${id}/notes`),
     ])
-      .then(([appRes, docRes, notesRes]) => {
+      .then(([appRes, docRes]) => {
         setApplication(appRes.data);
         setDocuments(docRes.data);
-        setAppNotes(notesRes.data);
       })
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
     // Fetch sent quote sheets (backend filters to sent-only for clients)
     api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
     api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)).catch(() => { });
+    api.get(`/activity-logs/application/${id}`)
+      .then(({ data }) => setActivityLogs(data))
+      .catch(() => {})
+      .finally(() => setActivityLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api.get(`/clients/${user.id}/messages`)
+      .then(({ data }) => setClientMessages(data))
+      .catch(() => { });
+  }, [user?.id]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -437,32 +452,68 @@ export default function ApplicationDetail() {
             </GlassCard>
           )}
 
-          {/* Messages from Team */}
+          {/* Messages */}
           <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-5">Messages from Team</h2>
-            {appNotes.length === 0 ? (
-              <div className="rounded-xl bg-secondary/50 p-6 text-center">
-                <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" /></svg>
-                <p className="text-[14px] text-muted-foreground">No messages yet</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {appNotes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-xl bg-secondary/30 p-4 transition-all duration-200"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                      <span className="text-[12px] text-muted-foreground">
-                        {formatDate(note.created_at)} {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-[14px] text-foreground whitespace-pre-wrap">{note.content}</p>
+            <h2 className="text-[15px] font-semibold text-foreground mb-5">Messages</h2>
+            <div className="flex flex-col gap-4">
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {clientMessages.length === 0 ? (
+                  <div className="rounded-xl bg-secondary/50 p-6 text-center">
+                    <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" /></svg>
+                    <p className="text-[14px] text-muted-foreground">No messages yet</p>
                   </div>
-                ))}
+                ) : (
+                  clientMessages.map((msg) => {
+                    const isOwn = msg.author_id === user?.id;
+                    return (
+                      <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Staff')}</span>
+                          <span className="text-[11px] text-muted-foreground">{formatDate(msg.created_at)} {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div className={`rounded-2xl px-4 py-2.5 text-[14px] max-w-[85%] ${isOwn ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground'}`}>
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            )}
+              <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 transition-all duration-300 flex flex-col pt-1">
+                <textarea
+                  value={newClientMsgContent}
+                  onChange={(e) => setNewClientMsgContent(e.target.value)}
+                  rows={2}
+                  className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
+                  placeholder="Write a message to your broker..."
+                />
+                <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                  <Button
+                    size="sm"
+                    className="rounded-xl px-4 h-9"
+                    loading={sendingClientMsg}
+                    disabled={!newClientMsgContent.trim() || !user?.id}
+                    onClick={async () => {
+                      if (!user?.id || !newClientMsgContent.trim()) return;
+                      setSendingClientMsg(true);
+                      try {
+                        const { data } = await api.post(`/clients/${user.id}/messages`, { content: newClientMsgContent.trim() });
+                        setClientMessages((prev) => [...prev, data]);
+                        setNewClientMsgContent('');
+                        toast('Message sent', 'success');
+                      } catch (err: unknown) {
+                        toast(getErrorMessage(err, 'Failed to send'), 'error');
+                      } finally {
+                        setSendingClientMsg(false);
+                      }
+                    }}
+                  >
+                    <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </div>
           </GlassCard>
 
           {/* Quote Sheets (sent by broker) */}
@@ -560,6 +611,73 @@ export default function ApplicationDetail() {
                 </div>
               )}
             </div>
+          </GlassCard>
+
+          {/* Activity */}
+          <GlassCard padding="none">
+            <div className="px-6 py-4 border-b border-border">
+              <h2 className="text-[15px] font-semibold text-foreground">Activity</h2>
+              <p className="text-[13px] text-muted-foreground mt-0.5">History of actions on this application</p>
+            </div>
+            {activityLoading ? (
+              <div className="p-6 space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-xl shimmer shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-40 rounded-lg shimmer" />
+                      <div className="h-3 w-52 rounded-lg shimmer" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : activityLogs.length === 0 ? (
+              <div className="px-6 py-10 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
+                  <svg className="h-7 w-7 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                </div>
+                <p className="text-[14px] text-muted-foreground font-medium">No activity yet</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {activityLogs.map(log => {
+                  let details: Record<string, string> = {};
+                  try { if (log.details) details = JSON.parse(log.details); } catch {}
+                  let description = '';
+                  if (log.action === 'status_changed' && details.from && details.to) {
+                    description = `${details.from} → ${details.to}`;
+                  } else if ((log.action === 'broker_assigned' || log.action === 'broker_unassigned') && details.broker_name) {
+                    description = details.broker_name;
+                  } else if (log.action === 'document_verified' && details.filename) {
+                    description = `${details.filename}${details.doc_type ? ` (${details.doc_type})` : ''}`;
+                  } else if (log.action === 'created' && details.loan_type) {
+                    description = `${details.loan_type} loan · $${Number(details.amount || 0).toLocaleString()}`;
+                  }
+                  const actionConfig = ACTION_ICON_CONFIG[log.action];
+                  return (
+                    <div key={log.id} className="flex items-start gap-4 px-6 py-4 hover:bg-secondary/50 transition-colors">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${actionConfig?.bg || 'bg-secondary text-muted-foreground'}`}>
+                        {actionConfig?.icon || (
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[13.5px] font-semibold text-foreground">{ACTION_LABELS[log.action] || log.action}</span>
+                          {log.user_name && (
+                            <span className="text-[12.5px] text-muted-foreground">by <span className="font-medium text-foreground">{log.user_name}</span></span>
+                          )}
+                        </div>
+                        {description && <p className="text-[12.5px] text-muted-foreground">{description}</p>}
+                      </div>
+                      <span className="text-[12px] text-muted-foreground whitespace-nowrap pt-0.5">
+                        {formatDate(log.created_at)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </GlassCard>
         </div>
       </div>

@@ -51,6 +51,7 @@ const STATUS_CHIP: Record<ApplicationStatus, { cls: string; dot: string }> = {
   approval: { cls: 'led-chip-warning', dot: 'oklch(0.72 0.15 65)' },
   settled: { cls: 'led-chip-success', dot: 'oklch(0.62 0.15 155)' },
   rejected: { cls: 'led-chip-danger', dot: 'oklch(0.58 0.20 20)' },
+  not_proceeding: { cls: '', dot: 'oklch(0.50 0.08 40)' },
 };
 
 // ── Avatar ──
@@ -230,6 +231,14 @@ export default function AllApplications() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="led-btn led-btn-primary led-btn-sm"
+              onClick={() => navigate('/admin/applications/new')}
+              style={{ gap: 6 }}
+            >
+              <Icon name="plus" size={12} /> New Application
+            </button>
             <div className="led-segment">
               <button type="button" className="led-active"><Icon name="list" size={12} /> Table</button>
               <Link to="/admin/board" style={{ textDecoration: 'none' }}>
@@ -260,7 +269,7 @@ export default function AllApplications() {
           {(close) => (
             <>
               <button type="button" className={`led-popover-item ${!statusFilter ? 'led-active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); close(); }}>All statuses</button>
-              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected'] as ApplicationStatus[]).map((s) => (
+              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected', 'not_proceeding'] as ApplicationStatus[]).map((s) => (
                 <button
                   key={s}
                   type="button"

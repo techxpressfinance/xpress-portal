@@ -138,7 +138,7 @@ def update_board(
     board_id: str,
     data: KanbanBoardUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
@@ -157,7 +157,7 @@ def update_board(
 def delete_board(
     board_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
@@ -178,7 +178,7 @@ def add_column(
     board_id: str,
     data: KanbanColumnCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
@@ -212,7 +212,7 @@ def update_column(
     column_id: str,
     data: KanbanColumnUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
@@ -237,7 +237,7 @@ def delete_column(
     board_id: str,
     column_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
@@ -265,7 +265,7 @@ def reorder_columns(
     board_id: str,
     data: ColumnReorderRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()

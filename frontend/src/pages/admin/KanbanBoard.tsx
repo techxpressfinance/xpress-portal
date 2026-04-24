@@ -37,7 +37,7 @@ function Icon({ name, size = 14, className = '' }: { name: string; size?: number
     chevronRight: <path d="m9 6 6 6-6 6" />,
     board: <><rect x="3" y="4" width="6" height="16" rx="1.2" /><rect x="11" y="4" width="6" height="10" rx="1.2" /><rect x="19" y="4" width="2.5" height="7" rx="1" /></>,
     list: <><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
     edit: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />,
     trash: <><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" /></>,
     dotsV: <><circle cx="12" cy="5" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="12" cy="19" r="1.3" /></>,
@@ -45,6 +45,8 @@ function Icon({ name, size = 14, className = '' }: { name: string; size?: number
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>,
     users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.5c3 0 5.5 2 5.5 5" /></>,
     filter: <path d="M4 5h16l-6 8v6l-4-2v-4L4 5Z" />,
+    arrowLeft: <path d="M19 12H5M12 5l-7 7 7 7" />,
+    arrowRight: <path d="M5 12h14M12 19l7-7-7-7" />,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -226,6 +228,8 @@ function BoardColumn({
   dropValidity,
   draggedAppId,
   isAdmin,
+  isFirst,
+  isLast,
   flashIds,
   onDragStart,
   onDragOver,
@@ -233,6 +237,7 @@ function BoardColumn({
   onDragLeave,
   onEditColumn,
   onDeleteColumn,
+  onMoveColumn,
 }: {
   col: KanbanColumn;
   apps: LoanApplication[];
@@ -240,6 +245,8 @@ function BoardColumn({
   dropValidity: DropValidity;
   draggedAppId: string | null;
   isAdmin: boolean;
+  isFirst: boolean;
+  isLast: boolean;
   flashIds: Set<string>;
   onDragStart: (e: DragEvent, app: LoanApplication) => void;
   onDragOver: (e: DragEvent, columnId: string) => void;
@@ -247,6 +254,7 @@ function BoardColumn({
   onDragLeave: (e: DragEvent, columnId: string) => void;
   onEditColumn: (col: KanbanColumn) => void;
   onDeleteColumn: (col: KanbanColumn) => void;
+  onMoveColumn: (col: KanbanColumn, direction: 'left' | 'right') => void;
 }) {
   const isOver = dragOverColumn === col.id;
   const dragCounterRef = useRef(0);
@@ -304,6 +312,30 @@ function BoardColumn({
           {col.title}
         </div>
         <span className="led-chip led-mono led-tnum" style={{ height: 20, fontSize: 11 }}>{apps.length}</span>
+        {isAdmin && (
+          <>
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+              onClick={() => onMoveColumn(col, 'left')}
+              disabled={isFirst}
+              title="Move left"
+              style={{ opacity: isFirst ? 0.25 : 1 }}
+            >
+              <Icon name="arrowLeft" size={11} />
+            </button>
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+              onClick={() => onMoveColumn(col, 'right')}
+              disabled={isLast}
+              title="Move right"
+              style={{ opacity: isLast ? 0.25 : 1 }}
+            >
+              <Icon name="arrowRight" size={11} />
+            </button>
+          </>
+        )}
         {isAdmin && (
           <div ref={menuRef} style={{ position: 'relative' }}>
             <button
@@ -397,7 +429,7 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
 export default function KanbanBoardPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'broker';
 
   // Board state
   const [boards, setBoards] = useState<KanbanBoardListItem[]>([]);
@@ -750,6 +782,30 @@ export default function KanbanBoardPage() {
     }
   };
 
+  const handleMoveColumn = async (col: KanbanColumn, direction: 'left' | 'right') => {
+    if (!activeBoard) return;
+    const sorted = [...activeBoard.columns].sort((a, b) => a.position - b.position);
+    const idx = sorted.findIndex((c) => c.id === col.id);
+    const swapIdx = direction === 'left' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const newOrder = sorted.map((c) => c.id);
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+
+    // Optimistic update — reorder in place without touching scroll position
+    const snapshot = activeBoard;
+    setActiveBoard({
+      ...activeBoard,
+      columns: activeBoard.columns.map((c) => ({ ...c, position: newOrder.indexOf(c.id) })),
+    });
+
+    try {
+      await api.put(`/kanban/boards/${activeBoard.id}/columns/reorder`, { column_ids: newOrder });
+    } catch (err: any) {
+      setActiveBoard(snapshot);
+      toast(err?.response?.data?.detail || 'Failed to reorder columns', 'error');
+    }
+  };
+
   const handleDeleteColumn = async (col: KanbanColumn) => {
     if (!activeBoard) return;
     if (!confirm(`Delete column "${col.title}"?`)) return;
@@ -1034,7 +1090,7 @@ export default function KanbanBoardPage() {
       ) : activeBoard ? (
         <div style={{ padding: '4px 24px 32px' }}>
           <div className="led-kanban-scroller">
-            {activeBoard.columns.map((col) => (
+            {[...activeBoard.columns].sort((a, b) => a.position - b.position).map((col, idx, sorted) => (
               <BoardColumn
                 key={col.id}
                 col={col}
@@ -1043,6 +1099,8 @@ export default function KanbanBoardPage() {
                 dropValidity={dragOverColumn === col.id ? dragOverValidity : null}
                 draggedAppId={draggedApp?.id || null}
                 isAdmin={isAdmin}
+                isFirst={idx === 0}
+                isLast={idx === sorted.length - 1}
                 flashIds={flashIds}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
@@ -1050,6 +1108,7 @@ export default function KanbanBoardPage() {
                 onDragLeave={handleDragLeave}
                 onEditColumn={openEditColumn}
                 onDeleteColumn={handleDeleteColumn}
+                onMoveColumn={handleMoveColumn}
               />
             ))}
             {isAdmin && (
@@ -1222,6 +1281,7 @@ function ColumnForm({
           <option value="approval">Approval</option>
           <option value="settled">Settled</option>
           <option value="rejected">Rejected</option>
+          <option value="not_proceeding">Not Proceeding</option>
         </select>
       </div>
       <div>

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 # NOTE: frontend copy at frontend/src/lib/constants.ts — keep in sync
 VALID_TRANSITIONS: dict[str, list[str]] = {
-    "draft": ["application_received", "rejected"],
-    "application_received": ["application_assessed", "submitted", "rejected", "draft"],
-    "application_assessed": ["submitted", "approval", "rejected", "application_received", "draft"],
-    "submitted": ["approval", "rejected", "application_assessed", "application_received", "draft"],
-    "approval": ["settled", "rejected", "submitted"],
+    "draft": ["application_received", "rejected", "not_proceeding"],
+    "application_received": ["application_assessed", "submitted", "settled", "rejected", "not_proceeding", "draft"],
+    "application_assessed": ["submitted", "approval", "settled", "rejected", "not_proceeding", "application_received", "draft"],
+    "submitted": ["approval", "settled", "rejected", "not_proceeding", "application_assessed", "application_received", "draft"],
+    "approval": ["settled", "rejected", "not_proceeding", "submitted"],
     "settled": [],
     "rejected": ["draft", "application_received", "application_assessed", "submitted"],
+    "not_proceeding": ["draft", "application_received"],
 }
 
 DEFAULT_KANBAN_COLUMNS = [

@@ -9,6 +9,7 @@ export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   approval: 'led-chip-warning',
   settled: 'led-chip-success',
   rejected: 'led-chip-danger',
+  not_proceeding: '',
 };
 
 export const STATUS_LABEL: Record<ApplicationStatus, string> = {
@@ -19,6 +20,7 @@ export const STATUS_LABEL: Record<ApplicationStatus, string> = {
   approval: 'Approval',
   settled: 'Settled',
   rejected: 'Rejected',
+  not_proceeding: 'Not Proceeding',
 };
 
 export const ROLE_BADGE: Record<UserRole, string> = {
@@ -189,13 +191,14 @@ export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'b
 
 // NOTE: backend source of truth at backend/app/constants.py — keep in sync
 export const VALID_TRANSITIONS: Record<string, string[]> = {
-  draft: ['application_received', 'rejected'],
-  application_received: ['application_assessed', 'submitted', 'rejected', 'draft'],
-  application_assessed: ['submitted', 'approval', 'rejected', 'application_received', 'draft'],
-  submitted: ['approval', 'rejected', 'application_assessed', 'application_received', 'draft'],
-  approval: ['settled', 'rejected', 'submitted'],
+  draft: ['application_received', 'rejected', 'not_proceeding'],
+  application_received: ['application_assessed', 'submitted', 'settled', 'rejected', 'not_proceeding', 'draft'],
+  application_assessed: ['submitted', 'approval', 'settled', 'rejected', 'not_proceeding', 'application_received', 'draft'],
+  submitted: ['approval', 'settled', 'rejected', 'not_proceeding', 'application_assessed', 'application_received', 'draft'],
+  approval: ['settled', 'rejected', 'not_proceeding', 'submitted'],
   settled: [],
   rejected: ['draft', 'application_received', 'application_assessed', 'submitted'],
+  not_proceeding: ['draft', 'application_received'],
 };
 
 export const COLUMN_COLOR_OPTIONS = [

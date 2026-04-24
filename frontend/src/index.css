@@ -123,21 +123,22 @@ body {
   letter-spacing: -0.011em;
 }
 
-/* ─── Scrollbar — invisible until hover ─── */
+/* ─── Scrollbar — slim, invisible until hover ─── */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 3px;
+  border-radius: 9999px;
   transition: background 0.2s;
 }
 *:hover > ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 50%, transparent);
 }
 
 /* ─── Selection ─── */
@@ -783,7 +784,8 @@ table {
 }
 
 /* Table */
-.led-table-wrap { overflow: auto; }
+.led-table-wrap { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.led-table-wrap:hover { scrollbar-color: color-mix(in oklch, var(--muted-foreground) 50%, transparent) transparent; }
 .led-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .led-table thead th {
   text-align: left;

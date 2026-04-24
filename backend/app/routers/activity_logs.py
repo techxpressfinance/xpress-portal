@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.middleware.auth import require_role
+from app.middleware.auth import get_current_user, require_role
 from app.models.activity_log import ActivityLog
+from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.activity_log import ActivityLogOut, PaginatedActivityLogs
 from app.services.date_filter import apply_date_range_filter
@@ -54,3 +55,43 @@ def list_activity_logs(
         items.append(item)
 
     return PaginatedActivityLogs(items=items, total=total, page=page, per_page=per_page)
+
+
+@router.get("/application/{application_id}", response_model=list[ActivityLogOut])
+def list_application_activity(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Return all activity logs for a specific application. Clients may only see their own."""
+    if current_user.role.value == "client":
+        app = db.query(LoanApplication).filter(
+            LoanApplication.id == application_id,
+            LoanApplication.user_id == current_user.id,
+            LoanApplication.tenant_id == tenant_id,
+        ).first()
+        if not app:
+            raise HTTPException(status_code=404, detail="Application not found")
+
+    logs = (
+        db.query(ActivityLog)
+        .filter(
+            ActivityLog.entity_type == "application",
+            ActivityLog.entity_id == application_id,
+            ActivityLog.tenant_id == tenant_id,
+        )
+        .order_by(ActivityLog.created_at.desc())
+        .all()
+    )
+
+    user_ids = {log.user_id for log in logs}
+    users = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+
+    items = []
+    for log in logs:
+        item = ActivityLogOut.model_validate(log)
+        item.user_name = users.get(log.user_id)
+        items.append(item)
+
+    return items

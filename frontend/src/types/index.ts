@@ -1,7 +1,7 @@
 export type UserRole = 'client' | 'broker' | 'admin' | 'referrer' | 'super_admin';
 export type AuthMethod = 'password' | 'code';
 export type LoanType = 'personal' | 'home' | 'business' | 'vehicle' | 'equipment_finance' | 'business_loan' | 'commercial_property' | 'home_loan';
-export type ApplicationStatus = 'draft' | 'application_received' | 'application_assessed' | 'submitted' | 'approval' | 'settled' | 'rejected';
+export type ApplicationStatus = 'draft' | 'application_received' | 'application_assessed' | 'submitted' | 'approval' | 'settled' | 'rejected' | 'not_proceeding';
 export type DocType = 'id_proof' | 'address_proof' | 'bank_statement' | 'payslip' | 'tax_return' | 'other';
 export type OcrStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -252,6 +252,26 @@ export interface ApplicationNoteMessage {
   loan_type: string;
   author_id: string;
   author_name: string | null;
+  content: string;
+  created_at: string;
+}
+
+export interface ClientMessage {
+  id: string;
+  client_id: string;
+  author_id: string;
+  author_name: string | null;
+  author_role: string | null;
+  content: string;
+  created_at: string;
+}
+
+export interface ClientAlert {
+  id: string;
+  client_id: string;
+  author_id: string;
+  author_name: string | null;
+  author_role: string | null;
   content: string;
   created_at: string;
 }

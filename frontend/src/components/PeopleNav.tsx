@@ -1,15 +1,20 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
-const TABS = [
-  { label: 'Clients', to: '/admin/users' },
-  { label: 'Brokers', to: '/admin/brokers' },
-  { label: 'Referrers', to: '/admin/referrers' },
+const ALL_TABS = [
+  { label: 'Clients', to: '/admin/users', adminOnly: false },
+  { label: 'Brokers', to: '/admin/brokers', adminOnly: true },
+  { label: 'Referrers', to: '/admin/referrers', adminOnly: true },
 ];
 
 export default function PeopleNav() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const tabs = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly);
+
   return (
     <div className="flex gap-0 border-b border-border mb-6">
-      {TABS.map(tab => (
+      {tabs.map(tab => (
         <NavLink
           key={tab.to}
           to={tab.to}

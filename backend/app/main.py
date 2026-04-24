@@ -26,8 +26,10 @@ from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ens
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
+from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
+from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -288,6 +290,7 @@ with engine.begin() as conn:
             "kanban_columns", "tasks", "checklist_items", "quote_sheets", "quote_options",
             "activity_logs", "direct_messages", "referrals", "external_referrals",
             "application_notes", "application_brokers", "broker_groups",
+            "client_messages", "client_alerts",
         ]
         for _tbl in _tenant_tables:
             try:
@@ -390,6 +393,8 @@ app.include_router(invitations.router)
 app.include_router(users.router)
 app.include_router(applications.router)
 app.include_router(application_notes.router)
+app.include_router(client_messages.router)
+app.include_router(client_alerts.router)
 app.include_router(documents.router)
 app.include_router(messages.router)
 app.include_router(referrals.router)

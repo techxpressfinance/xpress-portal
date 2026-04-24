@@ -33,6 +33,7 @@ class ApplicationStatus(str, enum.Enum):
     approval = "approval"
     settled = "settled"
     rejected = "rejected"
+    not_proceeding = "not_proceeding"
 
 
 class AnalysisStatus(str, enum.Enum):

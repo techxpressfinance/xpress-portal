@@ -14,7 +14,8 @@ import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ApplicationNote, BrokerGroup, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, NoteVisibility, QuoteSheet, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
+import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
@@ -31,17 +32,21 @@ export default function ReviewApplication() {
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
-  const [noteTab, setNoteTab] = useState<'messages' | 'referrer'>('messages');
+  const [msgTab, setMsgTab] = useState<'client_messages' | 'deal_notes' | 'alerts'>('client_messages');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
-  const [noteVisibility, setNoteVisibility] = useState<NoteVisibility[]>(['broker']);
+  const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
+  const [newClientMsgContent, setNewClientMsgContent] = useState('');
+  const [sendingClientMsg, setSendingClientMsg] = useState(false);
+  const [alerts, setAlerts] = useState<ClientAlert[]>([]);
+  const [newAlertContent, setNewAlertContent] = useState('');
+  const [sendingAlert, setSendingAlert] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
-  const [referrerMsgSubject, setReferrerMsgSubject] = useState('');
-  const [referrerMsgContent, setReferrerMsgContent] = useState('');
-  const [sendingReferrerMsg, setSendingReferrerMsg] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'messages' | 'activity'>('overview');
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   // Document requests state
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
@@ -109,6 +114,15 @@ export default function ReviewApplication() {
   const updateLeadField = (field: string, value: string) => setLeadFields((prev) => ({ ...prev, [field]: value }));
 
   useEffect(() => {
+    if (!id || activeTab !== 'activity') return;
+    setActivityLoading(true);
+    api.get(`/activity-logs/application/${id}`)
+      .then(({ data }) => setActivityLogs(data))
+      .catch(() => toast('Failed to load activity', 'error'))
+      .finally(() => setActivityLoading(false));
+  }, [id, activeTab]);
+
+  useEffect(() => {
     if (!id) return;
     // Fetch broker groups
     api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => { });
@@ -163,31 +177,23 @@ export default function ReviewApplication() {
       .finally(() => setLoading(false));
   }, [id, toast]);
 
+  useEffect(() => {
+    if (!client?.id) return;
+    Promise.all([
+      api.get(`/clients/${client.id}/messages`),
+      api.get(`/clients/${client.id}/alerts`),
+    ]).then(([msgsRes, alertsRes]) => {
+      setClientMessages(msgsRes.data);
+      setAlerts(alertsRes.data);
+    }).catch(() => { });
+  }, [client?.id]);
+
   const refetchApplication = async () => {
     if (!id) return;
     try {
       const { data } = await api.get(`/applications/${id}`);
       setApplication(data);
     } catch { /* ignore */ }
-  };
-
-  const handleSendReferrerMessage = async () => {
-    if (!referrer || !referrerMsgSubject.trim() || !referrerMsgContent.trim()) return;
-    setSendingReferrerMsg(true);
-    try {
-      await api.post('/messages', {
-        recipient_id: referrer.id,
-        subject: referrerMsgSubject.trim(),
-        content: referrerMsgContent.trim(),
-      });
-      toast('Message sent to referrer', 'success');
-      setReferrerMsgSubject('');
-      setReferrerMsgContent('');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to send message'), 'error');
-    } finally {
-      setSendingReferrerMsg(false);
-    }
   };
 
   const handleStatusChange = (newStatus: string) => {
@@ -419,7 +425,7 @@ export default function ReviewApplication() {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'submissions', 'quotes', 'messages'] as const).map((tab) => (
+            {(['overview', 'documents', 'submissions', 'quotes', 'messages', 'activity'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -428,7 +434,7 @@ export default function ReviewApplication() {
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                   }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : 'Messages'}
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'messages' ? 'Messages' : 'Activity'}
                 {activeTab === tab && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
                 )}
@@ -1185,84 +1191,32 @@ export default function ReviewApplication() {
             )}
             {activeTab === 'messages' && (
               <>
-                {/* Notes & Messages */}
                 <GlassCard>
-                  <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
-                    <h2 className="text-[16px] font-semibold text-foreground">Notes & Messages</h2>
-                    {referrer && (
-                      <div className="flex rounded-xl bg-secondary/80 p-1">
-                        <button
-                          onClick={() => setNoteTab('messages')}
-                          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${noteTab === 'messages'
-                              ? 'bg-background text-foreground shadow-sm'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                            }`}
-                        >
-                          Messages
-                        </button>
-                        <button
-                          onClick={() => {
-                            setNoteTab('referrer');
-                            if (!referrerMsgSubject) setReferrerMsgSubject(`Re: Referral - ${client?.full_name || 'Client'}`);
-                          }}
-                          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-300 ${noteTab === 'referrer'
-                              ? 'bg-background text-foreground shadow-sm'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                            }`}
-                        >
-                          DM Referrer
-                        </button>
-                      </div>
-                    )}
+                  {/* Tab bar */}
+                  <div className="flex items-center gap-1 border-b border-border pb-4 mb-4 bg-secondary/50 rounded-xl p-1">
+                    {([
+                      { key: 'client_messages' as const, label: 'Client Messages' },
+                      { key: 'deal_notes' as const, label: 'Deal Notes' },
+                      { key: 'alerts' as const, label: 'Alerts' },
+                    ]).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => setMsgTab(key)}
+                        className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all duration-200 ${msgTab === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
+                      >
+                        {label}
+                        {key === 'alerts' && alerts.length > 0 && (
+                          <span className="ml-1.5 inline-flex items-center justify-center h-4 w-4 rounded-full bg-destructive/20 text-destructive text-[10px] font-bold">{alerts.length}</span>
+                        )}
+                      </button>
+                    ))}
                   </div>
 
-                  {noteTab === 'referrer' && referrer ? (
-                    /* Referrer direct message compose */
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <div className="flex items-center gap-3 rounded-2xl bg-secondary/30 p-4 border border-border/50">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-chart-4/15 text-chart-4 shadow-inner">
-                          <span className="text-[13px] font-bold">{referrer.full_name.charAt(0).toUpperCase()}</span>
-                        </div>
-                        <div>
-                          <p className="text-[14px] font-semibold text-foreground">{referrer.full_name}</p>
-                          <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <input
-                          type="text"
-                          value={referrerMsgSubject}
-                          onChange={(e) => setReferrerMsgSubject(e.target.value)}
-                          placeholder="Subject..."
-                          className="w-full rounded-2xl bg-secondary/50 px-4 py-3 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                        />
-                        <div className="relative">
-                          <textarea
-                            value={referrerMsgContent}
-                            onChange={(e) => setReferrerMsgContent(e.target.value)}
-                            rows={4}
-                            placeholder="Write a message to the referrer..."
-                            className="w-full rounded-2xl bg-secondary/50 px-4 py-3 pb-16 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground resize-none"
-                          />
-                          <div className="absolute bottom-3 right-3">
-                            <Button
-                              size="sm"
-                              onClick={handleSendReferrerMessage}
-                              loading={sendingReferrerMsg}
-                              disabled={!referrerMsgSubject.trim() || !referrerMsgContent.trim()}
-                              className="rounded-xl px-4"
-                            >
-                              Send
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      {/* All notes list */}
+                  {/* Client Messages tab */}
+                  {msgTab === 'client_messages' && (
+                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
                       <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                        {appNotes.length === 0 ? (
+                        {clientMessages.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
                             <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
                               <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
@@ -1270,17 +1224,100 @@ export default function ReviewApplication() {
                             <p className="text-[13px] font-medium text-muted-foreground">No messages yet</p>
                           </div>
                         ) : (
-                          appNotes.map((note) => {
-                            const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
-                            return (
+                          clientMessages.map((msg) => (
+                            <div key={msg.id} className="flex flex-col gap-1.5 group/msg">
+                              <div className="flex items-baseline justify-between px-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[13px] font-semibold text-foreground">{msg.author_name || 'Staff'}</span>
+                                  {msg.author_role && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{msg.author_role}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={async () => {
+                                      if (!client?.id) return;
+                                      try {
+                                        await api.delete(`/clients/${client.id}/messages/${msg.id}`);
+                                        setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                                        toast('Message deleted', 'success');
+                                      } catch (err: unknown) {
+                                        toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                                      }
+                                    }}
+                                    className="opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                    title="Delete"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                  </button>
+                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDate(msg.created_at)} &middot; {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              </div>
+                              <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-primary/10 text-primary border border-primary/20">
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
+                        <textarea
+                          value={newClientMsgContent}
+                          onChange={(e) => setNewClientMsgContent(e.target.value)}
+                          rows={2}
+                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
+                          placeholder="Write a message to the client..."
+                        />
+                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                          <Button
+                            size="sm"
+                            className="rounded-xl px-4 h-9"
+                            loading={sendingClientMsg}
+                            disabled={!newClientMsgContent.trim() || !client?.id}
+                            onClick={async () => {
+                              if (!client?.id || !newClientMsgContent.trim()) return;
+                              setSendingClientMsg(true);
+                              try {
+                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() });
+                                setClientMessages((prev) => [...prev, data]);
+                                setNewClientMsgContent('');
+                                toast('Message sent', 'success');
+                              } catch (err: unknown) {
+                                toast(getErrorMessage(err, 'Failed to send'), 'error');
+                              } finally {
+                                setSendingClientMsg(false);
+                              }
+                            }}
+                          >
+                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                            Send
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deal Notes tab */}
+                  {msgTab === 'deal_notes' && (
+                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
+                        {appNotes.filter((n) => n.visibility.length === 1 && n.visibility[0] === 'broker').length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
+                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                            </div>
+                            <p className="text-[13px] font-medium text-muted-foreground">No deal notes yet</p>
+                          </div>
+                        ) : (
+                          appNotes
+                            .filter((n) => n.visibility.length === 1 && n.visibility[0] === 'broker')
+                            .map((note) => (
                               <div key={note.id} className="flex flex-col gap-1.5 group/note">
                                 <div className="flex items-baseline justify-between px-1">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
                                     {note.author_role && (
-                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">
-                                        {note.author_role}
-                                      </span>
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{note.author_role}</span>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -1290,100 +1327,39 @@ export default function ReviewApplication() {
                                         try {
                                           await api.delete(`/applications/${id}/notes/${note.id}`);
                                           setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
-                                          toast('Message deleted', 'success');
+                                          toast('Note deleted', 'success');
                                         } catch (err: unknown) {
                                           toast(getErrorMessage(err, 'Failed to delete'), 'error');
                                         }
                                       }}
                                       className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                      title="Delete message"
+                                      title="Delete"
                                     >
                                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                                     </button>
-                                    <span className="text-[11px] font-medium text-muted-foreground">
-                                      {formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
+                                    <span className="text-[11px] font-medium text-muted-foreground">{formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                   </div>
                                 </div>
-                                <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed relative ${isInternal ? 'bg-secondary/40 text-foreground border border-transparent' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                                <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-secondary/40 text-foreground border border-transparent">
                                   <p className="whitespace-pre-wrap">{note.content}</p>
-
-                                  {/* Visibility Indicators */}
                                   <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
-                                    <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                                    {isInternal ? (
-                                      <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
-                                    ) : (
-                                      <div className="flex gap-1.5">
-                                        {note.visibility.filter((v) => v !== 'broker').map((v) => (
-                                          <span
-                                            key={v}
-                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${v === 'client' ? 'bg-chart-2/20 text-chart-2' :
-                                                'bg-chart-4/20 text-chart-4'
-                                              }`}
-                                          >
-                                            {v}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                                    <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
                                   </div>
                                 </div>
                               </div>
-                            );
-                          })
+                            ))
                         )}
                       </div>
-
-                      {/* Sleek Compose Area */}
                       <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
                         <textarea
                           value={newNoteContent}
                           onChange={(e) => setNewNoteContent(e.target.value)}
                           rows={2}
                           className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                          placeholder="Write a message..."
+                          placeholder="Write an internal note..."
                         />
-
-                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
-                          <div className="flex items-center gap-1 bg-background/50 rounded-xl p-1 backdrop-blur-sm border border-border/50">
-                            {([
-                              { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
-                              { key: 'client' as NoteVisibility, label: 'Client', locked: false },
-                              { key: 'referrer' as NoteVisibility, label: 'Referrer', locked: false },
-                            ]).map(({ key, label, locked }) => {
-                              const active = noteVisibility.includes(key);
-                              return (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  disabled={locked}
-                                  onClick={() => {
-                                    if (locked) return;
-                                    setNoteVisibility((prev) =>
-                                      active ? prev.filter((v) => v !== key) : [...prev, key]
-                                    );
-                                  }}
-                                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all duration-200 ${active
-                                      ? locked
-                                        ? 'bg-muted/80 text-muted-foreground/80 cursor-default'
-                                        : key === 'client'
-                                          ? 'bg-chart-2/20 text-chart-2 shadow-sm'
-                                          : 'bg-chart-4/20 text-chart-4 shadow-sm'
-                                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-secondary'
-                                    }`}
-                                >
-                                  {active ? (
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                                  ) : (
-                                    <div className="h-3 w-3 rounded-full border border-current" />
-                                  )}
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-
+                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
                           <Button
                             size="sm"
                             className="rounded-xl px-4 h-9"
@@ -1393,23 +1369,105 @@ export default function ReviewApplication() {
                               if (!id || !newNoteContent.trim()) return;
                               setSendingNote(true);
                               try {
-                                const { data } = await api.post(`/applications/${id}/notes`, {
-                                  content: newNoteContent.trim(),
-                                  visibility: noteVisibility,
-                                });
+                                const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: ['broker'] });
                                 setAppNotes((prev) => [...prev, data]);
                                 setNewNoteContent('');
-                                const targets = noteVisibility.filter((v) => v !== 'broker');
-                                toast(targets.length > 0 ? `Message sent (visible to ${targets.join(', ')})` : 'Internal note added', 'success');
+                                toast('Deal note added', 'success');
                               } catch (err: unknown) {
-                                toast(getErrorMessage(err, 'Failed to send message'), 'error');
+                                toast(getErrorMessage(err, 'Failed to save note'), 'error');
                               } finally {
                                 setSendingNote(false);
                               }
                             }}
                           >
-                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
-                            {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Note' : 'Send'}
+                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                            Add Note
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Alerts tab */}
+                  {msgTab === 'alerts' && (
+                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
+                        {alerts.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
+                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                            </div>
+                            <p className="text-[13px] font-medium text-muted-foreground">No alerts for this client</p>
+                          </div>
+                        ) : (
+                          alerts.map((alert) => (
+                            <div key={alert.id} className="flex flex-col gap-1.5 group/alert">
+                              <div className="flex items-baseline justify-between px-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[13px] font-semibold text-foreground">{alert.author_name || 'Staff'}</span>
+                                  {alert.author_role && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{alert.author_role}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={async () => {
+                                      if (!client?.id) return;
+                                      try {
+                                        await api.delete(`/clients/${client.id}/alerts/${alert.id}`);
+                                        setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+                                        toast('Alert deleted', 'success');
+                                      } catch (err: unknown) {
+                                        toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                                      }
+                                    }}
+                                    className="opacity-0 group-hover/alert:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                    title="Delete"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                  </button>
+                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDate(alert.created_at)} &middot; {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              </div>
+                              <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-destructive/8 text-foreground border border-destructive/20">
+                                <p className="whitespace-pre-wrap">{alert.content}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-destructive/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
+                        <textarea
+                          value={newAlertContent}
+                          onChange={(e) => setNewAlertContent(e.target.value)}
+                          rows={2}
+                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
+                          placeholder="Add a client alert (internal only)..."
+                        />
+                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            className="rounded-xl px-4 h-9"
+                            loading={sendingAlert}
+                            disabled={!newAlertContent.trim() || !client?.id}
+                            onClick={async () => {
+                              if (!client?.id || !newAlertContent.trim()) return;
+                              setSendingAlert(true);
+                              try {
+                                const { data } = await api.post(`/clients/${client.id}/alerts`, { content: newAlertContent.trim() });
+                                setAlerts((prev) => [...prev, data]);
+                                setNewAlertContent('');
+                                toast('Alert added', 'success');
+                              } catch (err: unknown) {
+                                toast(getErrorMessage(err, 'Failed to add alert'), 'error');
+                              } finally {
+                                setSendingAlert(false);
+                              }
+                            }}
+                          >
+                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                            Add Alert
                           </Button>
                         </div>
                       </div>
@@ -1701,6 +1759,74 @@ export default function ReviewApplication() {
                 )}
               </>
             )}
+
+            {activeTab === 'activity' && (
+              <GlassCard padding="none">
+                <div className="px-6 py-4 border-b border-border">
+                  <h2 className="text-[15px] font-semibold text-foreground">Activity</h2>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">All actions recorded for this application</p>
+                </div>
+                {activityLoading ? (
+                  <div className="p-6 space-y-4">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-xl shimmer shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-40 rounded-lg shimmer" />
+                          <div className="h-3 w-56 rounded-lg shimmer" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <div className="px-6 py-12 text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
+                      <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    </div>
+                    <p className="text-[14px] text-muted-foreground font-medium">No activity recorded yet</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {activityLogs.map(log => {
+                      let details: Record<string, string> = {};
+                      try { if (log.details) details = JSON.parse(log.details); } catch {}
+                      let description = '';
+                      if (log.action === 'status_changed' && details.from && details.to) {
+                        description = `${details.from} → ${details.to}`;
+                      } else if ((log.action === 'broker_assigned' || log.action === 'broker_unassigned') && details.broker_name) {
+                        description = details.broker_name;
+                      } else if (log.action === 'document_verified' && details.filename) {
+                        description = `${details.filename}${details.doc_type ? ` (${details.doc_type})` : ''}`;
+                      } else if (log.action === 'created' && details.loan_type) {
+                        description = `${details.loan_type} loan · $${Number(details.amount || 0).toLocaleString()}`;
+                      }
+                      const actionConfig = ACTION_ICON_CONFIG[log.action];
+                      return (
+                        <div key={log.id} className="flex items-start gap-4 px-6 py-4 hover:bg-secondary/50 transition-colors">
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${actionConfig?.bg || 'bg-secondary text-muted-foreground'}`}>
+                            {actionConfig?.icon || (
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-[13.5px] font-semibold text-foreground">{ACTION_LABELS[log.action] || log.action}</span>
+                              {log.user_name && (
+                                <span className="text-[12.5px] text-muted-foreground">by <span className="font-medium text-foreground">{log.user_name}</span></span>
+                              )}
+                            </div>
+                            {description && <p className="text-[12.5px] text-muted-foreground">{description}</p>}
+                          </div>
+                          <span className="text-[12px] text-muted-foreground whitespace-nowrap pt-0.5">
+                            {formatDate(log.created_at)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </GlassCard>
+            )}
           </div>
         </div>
 
@@ -1720,7 +1846,7 @@ export default function ReviewApplication() {
                 {allowedTransitions.map((s) => (
                   <Button
                     key={s}
-                    variant={s === 'settled' || s === 'approval' ? 'success' : s === 'rejected' ? 'danger' : 'primary'}
+                    variant={s === 'settled' || s === 'approval' ? 'success' : s === 'rejected' || s === 'not_proceeding' ? 'danger' : 'primary'}
                     size="lg"
                     className="w-full capitalize"
                     onClick={() => handleStatusChange(s)}
@@ -1822,7 +1948,7 @@ export default function ReviewApplication() {
         ) : null}
         confirmText="Change Status"
         cancelText="Cancel"
-        variant={pendingStatus === 'rejected' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
+        variant={pendingStatus === 'rejected' || pendingStatus === 'not_proceeding' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
         loading={changingStatus}
         onConfirm={confirmStatusChange}
         onCancel={() => {
