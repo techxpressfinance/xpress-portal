@@ -378,6 +378,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/referrer/quote-sheets"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <QuoteSheets />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
           </Routes>
           </Suspense>

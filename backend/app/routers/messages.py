@@ -154,34 +154,8 @@ def list_message_recipients(
     return recipients
 
 
-@router.get("/client-inbox")
-def list_client_inbox(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    """Return one conversation summary per referred client for the current referrer."""
-    if current_user.role.value != "referrer":
-        return []
-
-    ext_ids = [
-        r.referred_client_id
-        for r in db.query(ExternalReferral.referred_client_id).filter(
-            ExternalReferral.referrer_id == current_user.id
-        ).all()
-    ]
-    ref_ids = [
-        r.referred_user_id
-        for r in db.query(Referral.referred_user_id).filter(
-            Referral.referrer_id == current_user.id,
-            Referral.tenant_id == tenant_id,
-        ).all()
-    ]
-
-    client_ids = list(set(ext_ids + ref_ids))
-    if not client_ids:
-        return []
-
+def _build_conversations(client_ids: list, db: Session, tenant_id: str) -> list:
+    from datetime import datetime
     conversations = []
     for client_id in client_ids:
         client = db.query(User).filter(User.id == client_id).first()
@@ -206,10 +180,50 @@ def list_client_inbox(
             "last_message_author_name": last_msg.author.full_name if last_msg and last_msg.author else None,
             "message_count": msg_count,
         })
-
-    from datetime import datetime
     conversations.sort(key=lambda c: c["last_message_at"] or datetime.min, reverse=True)
     return conversations
+
+
+@router.get("/client-inbox")
+def list_client_inbox(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Return one conversation summary per client, scoped by role."""
+    role = current_user.role.value
+
+    if role == "referrer":
+        ext_ids = [
+            r.referred_client_id
+            for r in db.query(ExternalReferral.referred_client_id).filter(
+                ExternalReferral.referrer_id == current_user.id
+            ).all()
+        ]
+        ref_ids = [
+            r.referred_user_id
+            for r in db.query(Referral.referred_user_id).filter(
+                Referral.referrer_id == current_user.id,
+                Referral.tenant_id == tenant_id,
+            ).all()
+        ]
+        client_ids = list(set(ext_ids + ref_ids))
+
+    elif role in ("admin", "broker"):
+        client_ids = list({
+            r.client_id
+            for r in db.query(ClientMessage.client_id)
+            .filter(ClientMessage.tenant_id == tenant_id)
+            .all()
+        })
+
+    else:
+        return []
+
+    if not client_ids:
+        return []
+
+    return _build_conversations(client_ids, db, tenant_id)
 
 
 @router.get("/{message_id}", response_model=MessageOut)

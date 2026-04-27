@@ -107,7 +107,7 @@ def _next_version(db: Session) -> int:
 @router.get("")
 def list_standalone_quote_sheets(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheets = (
@@ -125,7 +125,7 @@ def list_standalone_quote_sheets(
 def create_standalone_quote_sheet(
     data: QuoteSheetCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = QuoteSheet(
@@ -160,7 +160,7 @@ def create_standalone_quote_sheet(
 def get_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -174,7 +174,7 @@ def update_standalone_quote_sheet(
     sheet_id: str,
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -208,7 +208,7 @@ def update_standalone_quote_sheet(
 def delete_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -223,7 +223,7 @@ def delete_standalone_quote_sheet(
 def duplicate_standalone_quote_sheet(
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     source = _get_sheet(db, sheet_id)
@@ -283,7 +283,7 @@ def add_standalone_option(
     sheet_id: str,
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -302,7 +302,7 @@ def update_standalone_option(
     opt_id: str,
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -325,7 +325,7 @@ def delete_standalone_option(
     sheet_id: str,
     opt_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
@@ -346,7 +346,7 @@ def send_standalone_quote_email(
     sheet_id: str,
     data: QuoteSheetEmailRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)

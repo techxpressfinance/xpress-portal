@@ -77,6 +77,12 @@ export const SERVICE_REQUEST_TYPES = [
   'Change of Details',
   'General Enquiry',
   'Complaint',
+  'SOA',
+  'Amortization Schedule',
+  'Accountant Pack',
+  'Payout Figure',
+  'Change of Direct Debit Details',
+  'Loan Details Sheet (PPSR)',
   'Other',
 ] as const;
 

@@ -61,6 +61,21 @@ class ContactDetailOut(ContactOut):
     applications: list[ContactApplicationOut] = []
 
 
+class ContactCreate(BaseModel):
+    first_name: str
+    last_name: str
+    middle_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    drivers_license_number: Optional[str] = None
+    address: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class ContactUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None

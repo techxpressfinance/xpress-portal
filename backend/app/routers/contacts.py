@@ -13,6 +13,7 @@ from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.contact import (
+    ContactCreate,
     ContactDetailOut,
     ContactOrganizationLink,
     ContactOut,
@@ -103,6 +104,23 @@ def list_contacts(
         page=page,
         per_page=per_page,
     )
+
+
+@router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
+def create_contact(
+    data: ContactCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    contact = Contact(
+        tenant_id=tenant_id,
+        **data.model_dump(exclude_unset=True),
+    )
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return _contact_with_count(contact, db)
 
 
 @router.get("/{contact_id}", response_model=ContactDetailOut)

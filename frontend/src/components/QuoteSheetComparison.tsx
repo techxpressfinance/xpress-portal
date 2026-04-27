@@ -60,7 +60,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
 }
 
 // ── On-screen term block (unchanged card style) ──────────────────────
-function TermBlock({ group, isClientView, assetDescription }: { group: TermGroup; isClientView: boolean; assetDescription: string }) {
+function TermBlock({ group, isClientView, assetDescription, showInterestRate }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -81,7 +81,7 @@ function TermBlock({ group, isClientView, assetDescription }: { group: TermGroup
             value={fmtCurrency(opt.balloon_residual ?? 0)}
           />
           <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold />
-          {!isClientView && (
+          {(!isClientView || showInterestRate) && (
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
           )}
           <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} />
@@ -124,7 +124,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 }
 
 // ── PDF table-based term block ───────────────────────────────────────
-function PdfTermTable({ group, isClientView, assetDescription }: { group: TermGroup; isClientView: boolean; assetDescription: string }) {
+function PdfTermTable({ group, isClientView, assetDescription, showInterestRate }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -132,16 +132,16 @@ function PdfTermTable({ group, isClientView, assetDescription }: { group: TermGr
     const balloonPct = opt.lender_name.match(/(\d+)%\s*Balloon/);
     const balloonLabel = balloonPct ? `Balloon ${balloonPct[1]}%` : 'Balloon';
 
-    const rows: { label: string; value: string; bold?: boolean }[] = [
+    const rows: { label: string; value: string; highlight?: boolean }[] = [
       { label: `${assetDescription} price`, value: fmtCurrency(opt.purchase_price) },
       { label: 'Deposit', value: fmtCurrency(opt.deposit) },
       { label: 'Loan applied for', value: fmtCurrency(opt.loan_amount) },
       { label: 'Term (in years)', value: String(termYears) },
       { label: (opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon', value: fmtCurrency(opt.balloon_residual ?? 0) },
-      { label: 'Repayments per month', value: fmtCurrency(opt.repayment_monthly), bold: true },
+      { label: 'Repayments per month', value: fmtCurrency(opt.repayment_monthly), highlight: true },
     ];
 
-    if (!isClientView) {
+    if (!isClientView || showInterestRate) {
       rows.push({ label: 'Rate of Interest', value: fmtPercent(opt.interest_rate) });
     }
 
@@ -153,38 +153,21 @@ function PdfTermTable({ group, isClientView, assetDescription }: { group: TermGr
     return rows;
   };
 
-  const renderTable = (opt: QuoteOption, subtitle?: string) => (
-    <div style={{ flex: '1 1 0', minWidth: 0 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-        <thead>
-          <tr>
-            <th
-              colSpan={2}
-              style={{
-                padding: '10px 12px',
-                textAlign: 'center',
-                fontSize: '15px',
-                fontWeight: 700,
-                color: '#1a1a1a',
-                borderBottom: '2px solid #e5e7eb',
-              }}
-            >
-              {termYears} Year Term
-              {subtitle && <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#6b7280', marginTop: '2px' }}>{subtitle}</span>}
-            </th>
-          </tr>
-        </thead>
+  const renderCol = (opt: QuoteOption, subtitle?: string) => (
+    <div style={{ flex: '1 1 0', minWidth: 0, borderRight: subtitle === 'No Balloon' && hasTwo ? '1px solid #e2e8f0' : undefined }}>
+      {subtitle && (
+        <div style={{ padding: '6px 14px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: '10px', fontWeight: 700, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
+          {subtitle}
+        </div>
+      )}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
         <tbody>
           {renderRows(opt).map((row, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
-              <td style={{ padding: '8px 12px', color: '#374151', fontWeight: row.bold ? 600 : 400 }}>{row.label}</td>
-              <td style={{
-                padding: '8px 12px',
-                textAlign: 'right',
-                fontWeight: row.bold ? 700 : 600,
-                color: row.bold ? '#2563eb' : '#1a1a1a',
-                whiteSpace: 'nowrap',
-              }}>
+            <tr key={i} style={{ background: row.highlight ? '#eff6ff' : i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+              <td style={{ padding: '7px 14px', color: row.highlight ? '#1e40af' : '#4b5563', fontWeight: row.highlight ? 600 : 400, borderBottom: '1px solid #e9edf2', width: '58%' }}>
+                {row.label}
+              </td>
+              <td style={{ padding: '7px 14px', textAlign: 'right', color: row.highlight ? '#1d4ed8' : '#111827', fontWeight: row.highlight ? 800 : 600, borderBottom: '1px solid #e9edf2', whiteSpace: 'nowrap', fontSize: row.highlight ? '13px' : '11.5px' }}>
                 {row.value}
               </td>
             </tr>
@@ -194,18 +177,26 @@ function PdfTermTable({ group, isClientView, assetDescription }: { group: TermGr
     </div>
   );
 
-  if (hasTwo) {
-    return (
-      <div style={{ display: 'flex', gap: '16px' }}>
-        {noBalloon && renderTable(noBalloon, 'No Balloon')}
-        {withBalloon && renderTable(withBalloon, 'With Balloon')}
+  return (
+    <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+      {/* Term header */}
+      <div style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: 700, letterSpacing: '0.02em' }}>{termYears} Year Term</span>
+        {hasTwo && <span style={{ color: '#bfdbfe', fontSize: '10px', fontWeight: 500 }}>No Balloon &amp; With Balloon</span>}
       </div>
-    );
-  }
-
-  const opt = noBalloon || withBalloon;
-  if (!opt) return null;
-  return renderTable(opt);
+      {/* Columns */}
+      <div style={{ display: 'flex' }}>
+        {hasTwo ? (
+          <>
+            {noBalloon && renderCol(noBalloon, 'No Balloon')}
+            {withBalloon && renderCol(withBalloon, 'With Balloon')}
+          </>
+        ) : (
+          renderCol((noBalloon || withBalloon)!)
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Parse input_parameters to get fee details, asset description, and selected terms
@@ -222,6 +213,7 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       interestRate: params.interest_rate ?? null,
       feesFinanced: params.fees_financed ?? true,
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
+      showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
     };
   } catch {
     return null;
@@ -247,6 +239,7 @@ export default function QuoteSheetComparison({
   const assetDescription = parsedParams?.assetDescription || 'Asset';
   const feesFinanced = parsedParams?.feesFinanced ?? true;
   const selectedTerms = parsedParams?.selectedTerms;
+  const showInterestRate = parsedParams?.showInterestRate ?? false;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -261,100 +254,124 @@ export default function QuoteSheetComparison({
 
   // ── PDF Export Layout ────────────────────────────────────────────────
   if (isPdfExport) {
-    return (
-      <div id={`quote-sheet-${quoteSheet.id}`} style={{ background: '#ffffff', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1a1a1a' }}>
+    const whyItems = [
+      'We specialise in end to end account management.',
+      'We act as one point of contact for all your admin needs for the life of the loan — payout letters, updating account information and changing address on the loan contracts.',
+      'We take the stress away at the end of the financial year. We are just a phone call away for any tax related information such as interest paid on the loan and outstanding balance on the contract.',
+    ];
 
-        {/* ── Branded Header ──────────────────────────────────── */}
-        <div style={{ textAlign: 'center', paddingBottom: '20px', borderBottom: '3px solid #2563eb', marginBottom: '24px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              fontSize: '22px',
-              fontWeight: 800,
-            }}>
+    return (
+      <div id={`quote-sheet-${quoteSheet.id}`} style={{ background: '#ffffff', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1a1a1a', padding: '32px' }}>
+
+        {/* ── Header bar ──────────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '20px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0' }}>
+          {/* Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #1e40af, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontSize: '24px', fontWeight: 900, flexShrink: 0 }}>
               X
             </div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '24px', fontWeight: 800, color: '#1a1a1a', letterSpacing: '-0.5px', lineHeight: 1.1 }}>
+            <div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px', lineHeight: 1.3 }}>
                 XPRESS <span style={{ color: '#2563eb' }}>FINANCE</span>
               </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', fontWeight: 500 }}>Finance &amp; Lending Solutions</div>
             </div>
           </div>
-          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-            123 Business Road, Sydney NSW 2000 &nbsp;|&nbsp; Ph: (02) 9876 5432
+          {/* Contact */}
+          <div style={{ textAlign: 'right', fontSize: '11px', color: '#64748b', lineHeight: 1.8 }}>
+            <div style={{ fontWeight: 600, color: '#374151' }}>123 Business Road, Sydney NSW 2000</div>
+            <div>Ph: (02) 9876 5432</div>
           </div>
         </div>
 
-        {/* ── Document Info ───────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', fontSize: '13px' }}>
+        {/* ── Document identity ───────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px' }}>
           <div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: '#1a1a1a', marginBottom: '4px' }}>Quote Sheet</div>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.4, marginBottom: '8px' }}>Quote Sheet</div>
             {assetDescription && assetDescription !== 'Asset' && (
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#2563eb' }}>{assetDescription} Finance</div>
+              <div style={{ display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
+                {assetDescription} Finance
+              </div>
             )}
             {quoteSheet.title && (
-              <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>{quoteSheet.title}</div>
+              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>{quoteSheet.title}</div>
             )}
           </div>
-          <div style={{ textAlign: 'right', color: '#374151' }}>
-            {clientName && <div><span style={{ color: '#6b7280' }}>Client:</span> <strong>{clientName}</strong></div>}
-            {applicationRef && <div><span style={{ color: '#6b7280' }}>Ref:</span> {applicationRef}</div>}
-            <div><span style={{ color: '#6b7280' }}>Date:</span> {new Date().toLocaleDateString('en-AU')}</div>
+          {/* Meta box */}
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', fontSize: '12px', color: '#374151', minWidth: '180px', textAlign: 'right' }}>
+            {clientName && (
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#94a3b8', fontWeight: 500 }}>Prepared for </span>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>{clientName}</span>
+              </div>
+            )}
+            {applicationRef && (
+              <div style={{ marginBottom: '4px' }}>
+                <span style={{ color: '#94a3b8' }}>Ref: </span>
+                <span style={{ fontWeight: 600 }}>{applicationRef}</span>
+              </div>
+            )}
+            <div>
+              <span style={{ color: '#94a3b8' }}>Date: </span>
+              <span style={{ fontWeight: 600 }}>{new Date().toLocaleDateString('en-AU')}</span>
+            </div>
           </div>
+        </div>
+
+        {/* ── Divider label ───────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+          <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Finance Scenarios</div>
+          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
         </div>
 
         {/* ── Term Tables ─────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {rows.map((row, ri) => (
-            <div key={ri} style={{ display: 'flex', gap: '16px' }} className="break-inside-avoid">
+            <div key={ri} style={{ display: 'flex', gap: '14px' }} className="break-inside-avoid">
               {row.map(group => (
-                <div key={group.termYears} style={{ flex: '1 1 0', minWidth: 0, border: '1px solid #d1d5db', borderRadius: '8px', overflow: 'hidden' }}>
-                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} />
+                <div key={group.termYears} style={{ flex: '1 1 0', minWidth: 0 }}>
+                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} />
                 </div>
               ))}
-              {/* If odd number, add empty spacer to keep layout balanced */}
               {row.length === 1 && <div style={{ flex: '1 1 0', minWidth: 0 }} />}
             </div>
           ))}
         </div>
 
-        {/* ── Non-Financed Fees Section ───────────────────────── */}
+        {/* ── Non-Financed Fees ───────────────────────────────── */}
         {!feesFinanced && parsedParams && (
-          <div style={{ marginTop: '24px', border: '1px solid #d1d5db', borderRadius: '8px', overflow: 'hidden' }} className="break-inside-avoid">
-            <div style={{ background: '#fef3c7', padding: '10px 16px', borderBottom: '1px solid #d1d5db' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400e' }}>Fees Payable (Not Financed)</div>
-              <div style={{ fontSize: '11px', color: '#a16207', marginTop: '2px' }}>These fees are charged separately and are not included in the loan amount.</div>
+          <div style={{ marginTop: '20px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #fde68a' }} className="break-inside-avoid">
+            <div style={{ background: '#fffbeb', padding: '10px 16px', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400e' }}>Fees Payable (Not Financed)</div>
+                <div style={{ fontSize: '10px', color: '#a16207', marginTop: '1px' }}>These fees are charged separately and are not included in the loan amount.</div>
+              </div>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
               <tbody>
                 {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#ffffff' }}>
                     <td style={{ padding: '8px 16px', color: '#374151' }}>Loan Establishment Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
                   </tr>
                 )}
                 {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#f8fafc' }}>
                     <td style={{ padding: '8px 16px', color: '#374151' }}>PPSR</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
                   </tr>
                 )}
                 {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#ffffff' }}>
                     <td style={{ padding: '8px 16px', color: '#374151' }}>Origination Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.originationFee)}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.originationFee)}</td>
                   </tr>
                 )}
-                <tr style={{ background: '#f9fafb' }}>
-                  <td style={{ padding: '8px 16px', fontWeight: 700, color: '#1a1a1a' }}>Total Fees</td>
-                  <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 700, color: '#2563eb' }}>
+                <tr style={{ background: '#fffbeb' }}>
+                  <td style={{ padding: '9px 16px', fontWeight: 700, color: '#92400e' }}>Total Fees</td>
+                  <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>
                     {fmtCurrency((parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0))}
                   </td>
                 </tr>
@@ -363,48 +380,48 @@ export default function QuoteSheetComparison({
           </div>
         )}
 
-        {/* ── Fee Summary (broker internal PDF only) ──────────── */}
+        {/* ── Fee & Rate Summary (broker internal only) ────────── */}
         {parsedParams && !isClientView && (
-          <div style={{ marginTop: '24px', border: '1px solid #d1d5db', borderRadius: '8px', overflow: 'hidden' }} className="break-inside-avoid">
-            <div style={{ background: '#f0f9ff', padding: '10px 16px', borderBottom: '1px solid #d1d5db' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e40af' }}>Fee &amp; Rate Summary (Internal)</div>
+          <div style={{ marginTop: '20px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #bfdbfe' }} className="break-inside-avoid">
+            <div style={{ background: '#eff6ff', padding: '10px 16px', borderBottom: '1px solid #bfdbfe' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e40af', letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>Fee &amp; Rate Summary — Internal</div>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
               <tbody>
                 {parsedParams.establishmentFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Loan Establishment Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
+                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
+                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Loan Establishment Fee</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
                   </tr>
                 )}
                 {parsedParams.ppsrFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>PPSR</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
+                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#f8fafc' }}>
+                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>PPSR</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
                   </tr>
                 )}
                 {parsedParams.originationFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Origination Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtCurrency(parsedParams.originationFee)}</td>
+                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
+                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Origination Fee</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.originationFee)}</td>
                   </tr>
                 )}
                 {parsedParams.interestRate != null && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Lender's Rate</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{fmtPercent(parsedParams.interestRate)}</td>
+                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#f8fafc' }}>
+                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Lender's Rate</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtPercent(parsedParams.interestRate)}</td>
                   </tr>
                 )}
                 {parsedParams.brokeragePercent != null && (
-                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Brokerage %</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{parsedParams.brokeragePercent}%</td>
+                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
+                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Brokerage %</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{parsedParams.brokeragePercent}%</td>
                   </tr>
                 )}
                 {options[0]?.brokerage != null && (
-                  <tr style={{ background: '#f9fafb' }}>
-                    <td style={{ padding: '8px 16px', fontWeight: 700, color: '#1a1a1a' }}>Brokerage $</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 700, color: '#2563eb' }}>{fmtCurrency(options[0].brokerage)}</td>
+                  <tr style={{ background: '#eff6ff' }}>
+                    <td style={{ padding: '9px 16px', fontWeight: 700, color: '#1e40af' }}>Brokerage $</td>
+                    <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 800, color: '#1d4ed8' }}>{fmtCurrency(options[0].brokerage)}</td>
                   </tr>
                 )}
               </tbody>
@@ -412,20 +429,23 @@ export default function QuoteSheetComparison({
           </div>
         )}
 
-        {/* ── Why Choose Us Section ───────────────────────────── */}
+        {/* ── Why Choose Us ───────────────────────────────────── */}
         {isClientView && (
-          <div style={{ marginTop: '32px', paddingTop: '20px', borderTop: '2px solid #2563eb' }} className="break-inside-avoid">
-            <div style={{ fontSize: '18px', fontWeight: 800, color: '#2563eb', marginBottom: '14px' }}>WHY CHOOSE US?</div>
-            <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.7 }}>
-              <div style={{ marginBottom: '10px' }}>
-                <strong>1)</strong> We specialise in end to end account management.
-              </div>
-              <div style={{ marginBottom: '10px' }}>
-                <strong>2)</strong> We act as one point of contact for all your admin needs for the life of the loan. This includes payout letters, updating account information and changing address on the loan contracts.
-              </div>
-              <div>
-                <strong>3)</strong> We take the stress away at the end of the financial year. We are just a phone call away for any tax related information such as interest paid on the loan and outstanding balance on the contract.
-              </div>
+          <div style={{ marginTop: '32px' }} className="break-inside-avoid">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.08em', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Why Choose Us</div>
+              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {whyItems.map((text, i) => (
+                <div key={i} style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', borderTop: '3px solid #2563eb' }}>
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#2563eb', color: '#ffffff', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#374151', lineHeight: 1.65 }}>{text}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -446,7 +466,7 @@ export default function QuoteSheetComparison({
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-6 break-inside-avoid">
             {row.map(group => (
-              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} />
+              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} />
             ))}
           </div>
         ))}

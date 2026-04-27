@@ -145,7 +145,7 @@ def create_quote_sheet(
     app_id: str,
     data: QuoteSheetCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -207,7 +207,7 @@ def update_quote_sheet(
     sheet_id: str,
     data: QuoteSheetUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -244,7 +244,7 @@ def delete_quote_sheet(
     app_id: str,
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -262,7 +262,7 @@ def duplicate_quote_sheet(
     app_id: str,
     sheet_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -323,7 +323,7 @@ def add_option(
     sheet_id: str,
     data: QuoteOptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -345,7 +345,7 @@ def update_option(
     opt_id: str,
     data: QuoteOptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)
@@ -371,7 +371,7 @@ def delete_option(
     sheet_id: str,
     opt_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     app = _get_application(db, app_id)

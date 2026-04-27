@@ -30,6 +30,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   gst_percent: 10,
   balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
   fees_financed: true,
+  show_interest_rate: false,
 };
 
 // ── PMT — Excel-compatible (type=0, arrears) ─────────────────────────
@@ -429,6 +430,19 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Show Rate to Client</label>
+              <button
+                type="button"
+                onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
+                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.show_interest_rate
+                  ? 'bg-primary/10 text-primary border border-primary/30'
+                  : 'bg-muted text-muted-foreground border border-transparent'
+                  }`}
+              >
+                {inputs.show_interest_rate ? 'Visible to client' : 'Hidden from client'}
+              </button>
             </div>
           </div>
 
