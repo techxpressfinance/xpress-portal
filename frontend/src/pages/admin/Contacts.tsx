@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input } from '../../components/ui';
