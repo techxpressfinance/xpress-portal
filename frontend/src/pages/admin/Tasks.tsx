@@ -1,42 +1,56 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
-import { formatDate, getErrorMessage } from '../../lib/utils';
-import { TASK_STATUS_BADGE, TASK_PRIORITY_BADGE } from '../../lib/constants';
-import { GlassCard, Badge, PageHeader, Button, Select, Input, StatCard } from '../../components/ui';
+import { getErrorMessage } from '../../lib/utils';
+import { GlassCard } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
 
-interface CreateFormData {
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  due_date: string;
-  assigned_to_id: string;
+const STATUS_TABS = [
+  { label: 'All', value: '' },
+  { label: 'To Do', value: 'todo' },
+  { label: 'Completed', value: 'completed' },
+];
+
+function relativeDueDate(dateStr: string): { label: string; overdue: boolean } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < -1) return { label: `${Math.abs(diff)}d overdue`, overdue: true };
+  if (diff === -1) return { label: 'Yesterday', overdue: true };
+  if (diff === 0) return { label: 'Today', overdue: true };
+  if (diff === 1) return { label: 'Tomorrow', overdue: false };
+  if (diff < 7) return { label: due.toLocaleDateString('en-AU', { weekday: 'short' }), overdue: false };
+  return { label: due.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), overdue: false };
 }
 
 export default function Tasks() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
   const [staff, setStaff] = useState<User[]>([]);
-  const [stats, setStats] = useState({ total: 0, todo: 0, in_progress: 0, completed: 0 });
-  const perPage = 15;
+  const [newTitle, setNewTitle] = useState('');
+  const [newUrgent, setNewUrgent] = useState(false);
+  const [newDueDate, setNewDueDate] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [completedCollapsed, setCompletedCollapsed] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
-    defaultValues: { status: 'todo', priority: 'medium', assigned_to_id: '', description: '', due_date: '' },
-  });
+  const isAllTab = statusFilter === '';
+  const perPage = isAllTab ? 100 : 25;
 
   const fetchData = () => {
     setLoading(true);
@@ -44,359 +58,354 @@ export default function Tasks() {
     params.set('page', String(page));
     params.set('per_page', String(perPage));
     if (statusFilter) params.set('status', statusFilter);
-    if (priorityFilter) params.set('priority', priorityFilter);
     if (assigneeFilter) params.set('assigned_to_id', assigneeFilter);
     if (search) params.set('search', search);
-
-    api
-      .get(`/tasks?${params}`)
-      .then(({ data }) => {
-        setTasks(data.items);
-        setTotal(data.total);
-      })
+    api.get(`/tasks?${params}`)
+      .then(({ data }) => { setTasks(data.items); setTotal(data.total); })
       .catch(() => toast('Failed to load tasks', 'error'))
       .finally(() => setLoading(false));
   };
 
-  const fetchStats = () => {
-    Promise.all([
-      api.get('/tasks?per_page=1&status=todo'),
-      api.get('/tasks?per_page=1&status=in_progress'),
-      api.get('/tasks?per_page=1&status=completed'),
-      api.get('/tasks?per_page=1'),
-    ]).then(([todo, inProgress, completed, all]) => {
-      setStats({
-        total: all.data.total,
-        todo: todo.data.total,
-        in_progress: inProgress.data.total,
-        completed: completed.data.total,
+  const fetchStaff = () => {
+    api.get('/users?role=admin&per_page=100').then(({ data }) => {
+      const admins = data.items || data;
+      api.get('/users?role=broker&per_page=100').then(({ data: brokerData }) => {
+        const combined = [...admins, ...(brokerData.items || brokerData)];
+        setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
       });
     }).catch(() => {});
   };
 
-  const fetchStaff = () => {
-    api.get('/users?role=admin&per_page=100')
-      .then(({ data }) => {
-        const admins = data.items || data;
-        api.get('/users?role=broker&per_page=100')
-          .then(({ data: brokerData }) => {
-            const brokers = brokerData.items || brokerData;
-            setStaff([...admins, ...brokers]);
-          });
-      })
-      .catch(() => {});
-  };
-
+  useEffect(() => { fetchData(); }, [page, statusFilter, assigneeFilter]);
+  useEffect(() => { fetchStaff(); }, []);
   useEffect(() => {
-    fetchData();
-  }, [page, statusFilter, priorityFilter, assigneeFilter]);
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
-  useEffect(() => {
-    fetchStats();
-    fetchStaff();
-  }, []);
+  const handleTabChange = (value: string) => { setStatusFilter(value); setPage(1); };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchData();
-  };
-
-  const onCreateSubmit = async (data: CreateFormData) => {
+  const handleToggleComplete = async (task: TaskListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (toggling) return;
+    setToggling(task.id);
+    const newStatus = task.status === 'completed' ? 'todo' : 'completed';
     try {
-      const payload: Record<string, unknown> = {
-        title: data.title.trim(),
-        description: data.description.trim() || null,
-        status: data.status,
-        priority: data.priority,
-        due_date: data.due_date || null,
-        assigned_to_id: data.assigned_to_id || null,
-      };
-      await api.post('/tasks', payload);
-      toast('Task created', 'success');
-      reset();
-      setShowForm(false);
-      setPage(1);
+      await api.patch(`/tasks/${task.id}`, { status: newStatus });
       fetchData();
-      fetchStats();
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to create task'), 'error');
+    } catch {
+      toast('Failed to update task', 'error');
+    } finally {
+      setToggling(null);
     }
   };
 
+  const handleStartEdit = (task: TaskListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(task.id);
+    setEditingTitle(task.title);
+  };
+
+  const handleSaveEdit = async (taskId: string) => {
+    const trimmed = editingTitle.trim();
+    setEditingId(null);
+    if (!trimmed) return;
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: trimmed } : t));
+    try {
+      await api.patch(`/tasks/${taskId}`, { title: trimmed });
+    } catch {
+      toast('Failed to rename task', 'error');
+      fetchData();
+    }
+  };
+
+  const handleQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setAdding(true);
+    try {
+      const payload: Record<string, unknown> = {
+        title: newTitle.trim(),
+        status: 'todo',
+        priority: newUrgent ? 'urgent' : 'low',
+      };
+      if (newDueDate) payload.due_date = new Date(newDueDate).toISOString();
+      await api.post('/tasks', payload);
+      setNewTitle('');
+      setNewUrgent(false);
+      setNewDueDate('');
+      setPage(1);
+      fetchData();
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to create task'), 'error');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const renderTask = (task: TaskListItem) => {
+    const isCompleted = task.status === 'completed';
+    const isUrgent = task.priority === 'urgent' && !isCompleted;
+    const isEditing = editingId === task.id;
+    const initials = task.assigned_to_name
+      ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+      : null;
+    const due = task.due_date ? relativeDueDate(task.due_date) : null;
+    const dueOverdue = due?.overdue && !isCompleted;
+
+    return (
+      <div
+        key={task.id}
+        onClick={() => { if (!isEditing) navigate(`/admin/tasks/${task.id}`); }}
+        className={`flex items-center gap-3 px-4 py-2.5 transition-colors group border-l-2 ${
+          isUrgent ? 'border-destructive bg-destructive/[0.03] hover:bg-destructive/[0.06]' : 'border-transparent hover:bg-secondary/40'
+        } ${isEditing ? 'cursor-default' : 'cursor-pointer'}`}
+      >
+        {/* Circle toggle */}
+        <button
+          onClick={(e) => handleToggleComplete(task, e)}
+          disabled={toggling === task.id}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+            isCompleted
+              ? 'border-success bg-success text-white'
+              : isUrgent
+              ? 'border-destructive hover:bg-destructive/10'
+              : 'border-border hover:border-primary'
+          }`}
+        >
+          {isCompleted && (
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+          )}
+        </button>
+
+        {/* Title */}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <input
+              ref={editInputRef}
+              value={editingTitle}
+              onChange={(e) => setEditingTitle(e.target.value)}
+              onBlur={() => handleSaveEdit(task.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveEdit(task.id);
+                if (e.key === 'Escape') setEditingId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-transparent text-[14px] text-foreground focus:outline-none border-b border-primary pb-px"
+            />
+          ) : (
+            <span
+              onClick={(e) => handleStartEdit(task, e)}
+              title="Click to rename"
+              className={`text-[14px] cursor-text ${isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+            >
+              {task.title}
+            </span>
+          )}
+          {task.application_label && !isEditing && (
+            <span className="ml-2 text-[12px] text-muted-foreground">{task.application_label}</span>
+          )}
+        </div>
+
+        {/* Checklist progress */}
+        {task.checklist_total > 0 && (
+          <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+            {task.checklist_completed}/{task.checklist_total}
+          </span>
+        )}
+
+        {/* Due date */}
+        {due ? (
+          <span className={`shrink-0 text-[12px] font-medium ${dueOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {due.label}
+          </span>
+        ) : (
+          <span className="shrink-0 w-14" />
+        )}
+
+        {/* Assignee initials */}
+        {initials ? (
+          <div className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
+            {initials}
+          </div>
+        ) : (
+          <div className="shrink-0 w-6" />
+        )}
+      </div>
+    );
+  };
+
+  const todoTasks = isAllTab ? tasks.filter((t) => t.status !== 'completed') : tasks;
+  const completedTasks = isAllTab ? tasks.filter((t) => t.status === 'completed') : [];
   const totalPages = Math.ceil(total / perPage);
 
   return (
-    <div>
-      <PageHeader
-        title="Tasks"
-        subtitle="Manage team tasks and checklists"
-        action={
-          <Button onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ New Task'}
-          </Button>
-        }
-      />
+    <div className="mx-auto max-w-3xl">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-[22px] font-semibold text-foreground">Tasks</h1>
+        <span className="text-[13px] text-muted-foreground">{total} task{total !== 1 ? 's' : ''}</span>
+      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Total"
-          value={stats.total}
-          loading={loading && page === 1}
-          gradient=""
-          icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>}
-        />
-        <StatCard
-          label="To Do"
-          value={stats.todo}
-          loading={loading && page === 1}
-          gradient=""
-          icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
-        />
-        <StatCard
-          label="In Progress"
-          value={stats.in_progress}
-          loading={loading && page === 1}
-          gradient=""
-          icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" /></svg>}
-        />
-        <StatCard
-          label="Completed"
-          value={stats.completed}
-          loading={loading && page === 1}
-          gradient=""
-          icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+      {/* Tab pills */}
+      <div className="flex gap-1 mb-4 p-1 bg-secondary rounded-xl w-fit">
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => handleTabChange(tab.value)}
+            className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
+              statusFilter === tab.value
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select
+          value={assigneeFilter}
+          onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}
+          className="text-[13px] rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">All people</option>
+          {currentUser && <option value={currentUser.id}>My tasks</option>}
+          {staff.filter((u) => u.id !== currentUser?.id).map((u) => (
+            <option key={u.id} value={u.id}>{u.full_name}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchData(); } }}
+          placeholder="Search tasks..."
+          className="text-[13px] rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[140px]"
         />
       </div>
 
-      {/* Create Form */}
-      {showForm && (
-        <GlassCard className="mb-6">
-          <h3 className="text-[15px] font-semibold text-foreground mb-4">New Task</h3>
-          <form onSubmit={handleSubmit(onCreateSubmit)} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Title *"
-                placeholder="Task title"
-                error={errors.title?.message}
-                {...register('title', { required: 'Title is required' })}
-              />
-              <Select label="Priority" {...register('priority')}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </Select>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select label="Status" {...register('status')}>
-                <option value="todo">To Do</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-              </Select>
-              <Select label="Assign To" {...register('assigned_to_id')}>
-                <option value="">Unassigned</option>
-                {staff.map((u) => (
-                  <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
-                ))}
-              </Select>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Due Date" type="date" {...register('due_date')} />
-              <Input label="Description" placeholder="Optional description" {...register('description')} />
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Creating...' : 'Create Task'}
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => { reset(); setShowForm(false); }}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </GlassCard>
-      )}
-
-      {/* Filters */}
-      <GlassCard className="mb-6">
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
-          <Select
-            label="Status"
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Statuses</option>
-            <option value="todo">To Do</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-          </Select>
-          <Select
-            label="Priority"
-            value={priorityFilter}
-            onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Priorities</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </Select>
-          <Select
-            label="Assigned To"
-            value={assigneeFilter}
-            onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All</option>
-            {currentUser && <option value={currentUser.id}>My Tasks</option>}
-            {staff.filter((u) => u.id !== currentUser?.id).map((u) => (
-              <option key={u.id} value={u.id}>{u.full_name}</option>
-            ))}
-          </Select>
-          <div className="flex-1 min-w-[140px] sm:min-w-[200px]">
-            <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Search</label>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Task title..."
-                className="flex-1"
-              />
-              <Button type="submit">Search</Button>
-            </div>
-          </div>
-        </form>
-      </GlassCard>
-
-      {/* Table */}
       <GlassCard padding="none">
         {loading ? (
-          <div className="p-6">
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="space-y-2">
-                      <div className="h-4 w-48 rounded-lg shimmer" />
-                      <div className="h-3 w-24 rounded-lg shimmer" />
-                    </div>
-                  </div>
-                  <div className="h-6 w-20 rounded-full shimmer" />
-                </div>
-              ))}
-            </div>
+          <div className="p-4 space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="h-5 w-5 rounded-full shimmer shrink-0" />
+                <div className="h-4 rounded-lg shimmer flex-1" />
+                <div className="h-4 w-16 rounded-lg shimmer" />
+              </div>
+            ))}
           </div>
-        ) : tasks.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-            </div>
-            <p className="text-[14px] text-muted-foreground">No tasks found</p>
-          </div>
-        ) : (
+        ) : isAllTab ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[14px]">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Task</th>
-                    <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Priority</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
-                    <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Assigned To</th>
-                    <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Checklist</th>
-                    <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Due Date</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {tasks.map((task) => {
-                    const isOverdue = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
-                    return (
-                      <tr key={task.id} className="transition-colors hover:bg-secondary/50">
-                        <td className="px-3 sm:px-6 py-4">
-                          <div className="min-w-0">
-                            <p className="text-[14px] font-medium text-foreground truncate">{task.title}</p>
-                            {task.application_label && (
-                              <p className="text-[12px] text-muted-foreground truncate">{task.application_label}</p>
-                            )}
-                            <p className="sm:hidden text-[12px] text-muted-foreground">
-                              {TASK_PRIORITY_BADGE[task.priority].label} &middot; {task.assigned_to_name || 'Unassigned'}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="hidden sm:table-cell px-3 sm:px-6 py-4">
-                          <Badge type="custom" value={TASK_PRIORITY_BADGE[task.priority].label} className={TASK_PRIORITY_BADGE[task.priority].className} />
-                        </td>
-                        <td className="px-3 sm:px-6 py-4">
-                          <Badge type="custom" value={TASK_STATUS_BADGE[task.status].label} className={TASK_STATUS_BADGE[task.status].className} />
-                        </td>
-                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-foreground">
-                          {task.assigned_to_name || <span className="text-muted-foreground">Unassigned</span>}
-                        </td>
-                        <td className="hidden lg:table-cell px-3 sm:px-6 py-4">
-                          {task.checklist_total > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <div className="h-1.5 w-16 rounded-full bg-secondary overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-success transition-all"
-                                  style={{ width: `${(task.checklist_completed / task.checklist_total) * 100}%` }}
-                                />
-                              </div>
-                              <span className="text-[12px] text-muted-foreground">{task.checklist_completed}/{task.checklist_total}</span>
-                            </div>
-                          ) : (
-                            <span className="text-[12px] text-muted-foreground">&mdash;</span>
-                          )}
-                        </td>
-                        <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px]">
-                          {task.due_date ? (
-                            <span className={isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                              {formatDate(task.due_date)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">&mdash;</span>
-                          )}
-                        </td>
-                        <td className="px-3 sm:px-6 py-4">
-                          <Link to={`/admin/tasks/${task.id}`}>
-                            <Button variant="ghost" size="sm">View</Button>
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* To Do group */}
+            <div>
+              <div className="px-4 pt-3 pb-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  To Do · {todoTasks.length}
+                </span>
+              </div>
+              {todoTasks.length === 0 ? (
+                <p className="px-4 py-3 text-[13px] text-muted-foreground italic">All caught up!</p>
+              ) : (
+                <div className="divide-y divide-border">{todoTasks.map(renderTask)}</div>
+              )}
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-3 sm:px-6 py-4">
-                <span className="text-[13px] text-muted-foreground">
-                  {(page - 1) * perPage + 1}&ndash;{Math.min(page * perPage, total)} of {total}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
+            {/* Completed group */}
+            {completedTasks.length > 0 && (
+              <div className="border-t border-border">
+                <button
+                  onClick={() => setCompletedCollapsed((c) => !c)}
+                  className="w-full flex items-center gap-2 px-4 pt-3 pb-1.5 text-left hover:bg-secondary/30 transition-colors"
+                >
+                  <svg
+                    className={`h-3 w-3 text-muted-foreground transition-transform ${completedCollapsed ? '-rotate-90' : ''}`}
+                    fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
                   >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Completed · {completedTasks.length}
+                  </span>
+                </button>
+                {!completedCollapsed && (
+                  <div className="divide-y divide-border">{completedTasks.map(renderTask)}</div>
+                )}
               </div>
             )}
           </>
+        ) : tasks.length === 0 ? (
+          <div className="py-12 text-center">
+            <p className="text-[14px] text-muted-foreground italic">Nothing here</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">{tasks.map(renderTask)}</div>
+        )}
+
+        {/* Quick-add */}
+        <div className="border-t border-border px-4 py-3">
+          <form onSubmit={handleQuickAdd} className="flex items-center gap-2 flex-wrap">
+            <button
+              type="submit"
+              disabled={adding || !newTitle.trim()}
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border hover:border-primary transition-colors text-muted-foreground hover:text-primary disabled:opacity-40"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="New task..."
+              disabled={adding}
+              className="flex-1 min-w-[120px] bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              title="Due date"
+              className="text-[12px] rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <button
+              type="button"
+              onClick={() => setNewUrgent((u) => !u)}
+              className={`shrink-0 text-[12px] font-medium px-2 py-0.5 rounded transition-colors ${
+                newUrgent ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Urgent
+            </button>
+          </form>
+        </div>
+
+        {/* Pagination — only for To Do / Completed tabs */}
+        {!isAllTab && totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <span className="text-[12px] text-muted-foreground">
+              {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
+            </span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1 rounded-lg text-[13px] text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-colors"
+              >←</button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded-lg text-[13px] text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-colors"
+              >→</button>
+            </div>
+          </div>
         )}
       </GlassCard>
     </div>
