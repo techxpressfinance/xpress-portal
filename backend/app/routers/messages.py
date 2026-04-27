@@ -144,10 +144,10 @@ def list_message_recipients(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    if current_user.role.value == "client":
+    if current_user.role.value in {"client", "referrer"}:
         recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
     else:
-        recipients = db.query(User).filter(User.role == UserRole.client, User.tenant_id == tenant_id).all()
+        recipients = db.query(User).filter(User.role.in_([UserRole.client, UserRole.referrer]), User.tenant_id == tenant_id).all()
     return recipients
 
 
@@ -191,8 +191,10 @@ def send_message(
     recipient_role = recipient.role.value
     if sender_role == "client" and recipient_role not in {"broker", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Clients can only message brokers or admins")
-    if sender_role in {"broker", "admin"} and recipient_role != "client":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers and admins can only message clients")
+    if sender_role == "referrer" and recipient_role not in {"broker", "admin"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers can only message brokers or admins")
+    if sender_role in {"broker", "admin"} and recipient_role not in {"client", "referrer"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers and admins can only message clients or referrers")
 
     msg = DirectMessage(
         sender_id=current_user.id,

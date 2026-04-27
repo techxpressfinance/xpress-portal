@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/client';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import StatusTimeline from '../../components/StatusTimeline';
@@ -8,11 +9,12 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
-import type { ApplicationNote, DocType, Document, DocumentRequest, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
+import type { ApplicationNote, ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
 
 export default function ReferrerApplicationDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const { downloadFile } = useFileDownload();
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -43,6 +45,12 @@ export default function ReferrerApplicationDetail() {
   const [newNoteContent, setNewNoteContent] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<NoteVisibility[]>(['broker']);
   const [sendingNote, setSendingNote] = useState(false);
+
+  // Client messages
+  const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
+  const [newClientMsgContent, setNewClientMsgContent] = useState('');
+  const [sendingClientMsg, setSendingClientMsg] = useState(false);
+  const [msgTab, setMsgTab] = useState<'client_chat' | 'notes'>('client_chat');
 
   // Doc requests
   const [showDocRequestForm, setShowDocRequestForm] = useState(false);
@@ -90,6 +98,7 @@ export default function ReferrerApplicationDetail() {
         });
         if (d.user_id) {
           api.get(`/users/${d.user_id}`).then(({ data }) => setClient(data)).catch(() => {});
+          api.get(`/clients/${d.user_id}/messages`).then(({ data }) => setClientMessages(data)).catch(() => {});
         }
       })
       .catch(() => toast('Failed to load application', 'error'))
@@ -734,117 +743,213 @@ export default function ReferrerApplicationDetail() {
             {/* ── MESSAGES ── */}
             {activeTab === 'messages' && (
               <GlassCard>
-                <h2 className="text-[16px] font-semibold text-foreground mb-4 border-b border-border pb-4">Notes & Messages</h2>
-                <div className="flex flex-col h-[500px]">
-                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                    {appNotes.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                        <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                          <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
-                        </div>
-                        <p className="text-[13px] font-medium text-muted-foreground">No messages yet</p>
-                      </div>
-                    ) : (
-                      appNotes.map((note) => {
-                        const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
-                        return (
-                          <div key={note.id} className="flex flex-col gap-1.5">
-                            <div className="flex items-baseline justify-between px-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                                {note.author_role && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{note.author_role}</span>
-                                )}
-                              </div>
-                              <span className="text-[11px] font-medium text-muted-foreground">
-                                {formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed ${isInternal ? 'bg-secondary/40 text-foreground border border-transparent' : 'bg-primary/10 text-primary border border-primary/20'}`}>
-                              <p className="whitespace-pre-wrap">{note.content}</p>
-                              <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
-                                <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                                {isInternal ? (
-                                  <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
-                                ) : (
-                                  <div className="flex gap-1.5">
-                                    {note.visibility.filter((v) => v !== 'broker').map((v) => (
-                                      <span key={v} className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${v === 'client' ? 'bg-chart-2/20 text-chart-2' : 'bg-chart-4/20 text-chart-4'}`}>{v}</span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                {/* Tab toggle */}
+                <div className="flex gap-1 mb-5 border-b border-border pb-4">
+                  {([
+                    { key: 'client_chat' as const, label: 'Client Chat' },
+                    { key: 'notes' as const, label: 'Notes' },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setMsgTab(key)}
+                      className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${
+                        msgTab === key
+                          ? 'bg-foreground text-background'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
 
-                  {/* Compose */}
-                  <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
-                    <textarea
-                      value={newNoteContent}
-                      onChange={(e) => setNewNoteContent(e.target.value)}
-                      rows={2}
-                      className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                      placeholder="Write a message..."
-                    />
-                    <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
-                      <div className="flex items-center gap-1 bg-background/50 rounded-xl p-1 backdrop-blur-sm border border-border/50">
-                        {([
-                          { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
-                          { key: 'client' as NoteVisibility, label: 'Client', locked: false },
-                        ]).map(({ key, label, locked }) => {
-                          const active = noteVisibility.includes(key);
+                {/* ── Client Chat ── */}
+                {msgTab === 'client_chat' && (
+                  <div className="flex flex-col h-[460px]">
+                    <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
+                      {clientMessages.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
+                          <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                          <p className="text-[13px] text-muted-foreground">No messages yet — say hello</p>
+                        </div>
+                      ) : (
+                        clientMessages.map((msg) => {
+                          const isOwn = msg.author_id === currentUser?.id;
                           return (
-                            <button
-                              key={key}
-                              type="button"
-                              disabled={locked}
-                              onClick={() => {
-                                if (locked) return;
-                                setNoteVisibility((prev) => active ? prev.filter((v) => v !== key) : [...prev, key]);
-                              }}
-                              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all duration-200 ${active ? locked ? 'bg-muted/80 text-muted-foreground/80 cursor-default' : 'bg-chart-2/20 text-chart-2 shadow-sm' : 'text-muted-foreground/60 hover:text-foreground hover:bg-secondary'}`}
-                            >
-                              {active ? (
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                              ) : (
-                                <div className="h-3 w-3 rounded-full border border-current" />
-                              )}
-                              {label}
-                            </button>
+                            <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                              <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                                <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
+                                isOwn
+                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                  : 'bg-secondary text-foreground rounded-tl-sm'
+                              }`}>
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                              </div>
+                            </div>
                           );
-                        })}
-                      </div>
-                      <Button
-                        size="sm"
-                        className="rounded-xl px-4 h-9"
-                        loading={sendingNote}
-                        disabled={!newNoteContent.trim()}
-                        onClick={async () => {
-                          if (!id || !newNoteContent.trim()) return;
-                          setSendingNote(true);
-                          try {
-                            const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: noteVisibility });
-                            setAppNotes((prev) => [...prev, data]);
-                            setNewNoteContent('');
-                            const targets = noteVisibility.filter((v) => v !== 'broker');
-                            toast(targets.length > 0 ? `Message sent (visible to ${targets.join(', ')})` : 'Internal note added', 'success');
-                          } catch (err: unknown) {
-                            toast(getErrorMessage(err, 'Failed to send message'), 'error');
-                          } finally {
-                            setSendingNote(false);
+                        })
+                      )}
+                    </div>
+
+                    {/* Compose */}
+                    <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
+                      <textarea
+                        value={newClientMsgContent}
+                        onChange={(e) => setNewClientMsgContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            if (client?.id && newClientMsgContent.trim()) {
+                              setSendingClientMsg(true);
+                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() })
+                                .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
+                                .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
+                                .finally(() => setSendingClientMsg(false));
+                            }
                           }
                         }}
-                      >
-                        <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
-                        {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Note' : 'Send'}
-                      </Button>
+                        rows={2}
+                        className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                        placeholder={`Message ${client?.full_name || 'client'}…`}
+                      />
+                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                        <span className="text-[11px] text-muted-foreground">⌘↵ to send</span>
+                        <Button
+                          size="sm"
+                          className="rounded-xl h-8 px-3.5"
+                          loading={sendingClientMsg}
+                          disabled={!newClientMsgContent.trim() || !client?.id}
+                          onClick={async () => {
+                            if (!client?.id || !newClientMsgContent.trim()) return;
+                            setSendingClientMsg(true);
+                            try {
+                              const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() });
+                              setClientMessages((prev) => [...prev, data]);
+                              setNewClientMsgContent('');
+                              toast('Message sent', 'success');
+                            } catch (err: unknown) {
+                              toast(getErrorMessage(err, 'Failed to send'), 'error');
+                            } finally {
+                              setSendingClientMsg(false);
+                            }
+                          }}
+                        >
+                          <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                          Send
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* ── Notes ── */}
+                {msgTab === 'notes' && (
+                  <div className="flex flex-col h-[460px]">
+                    <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
+                      {appNotes.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
+                          <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                          <p className="text-[13px] text-muted-foreground">No notes yet</p>
+                        </div>
+                      ) : (
+                        appNotes.map((note) => {
+                          const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
+                          const visibleToClient = note.visibility.includes('client');
+                          return (
+                            <div key={note.id} className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between px-1">
+                                <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                                <div className="flex items-center gap-2">
+                                  {isInternal ? (
+                                    <span className="text-[10px] font-semibold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Internal</span>
+                                  ) : visibleToClient ? (
+                                    <span className="text-[10px] font-semibold text-chart-2 bg-chart-2/10 px-2 py-0.5 rounded-full">Visible to client</span>
+                                  ) : null}
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isInternal ? 'bg-secondary/60 text-foreground' : 'bg-primary/8 text-foreground border border-primary/15'}`}>
+                                <p className="whitespace-pre-wrap">{note.content}</p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Compose note */}
+                    <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
+                      <textarea
+                        value={newNoteContent}
+                        onChange={(e) => setNewNoteContent(e.target.value)}
+                        rows={2}
+                        className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                        placeholder="Add a note…"
+                      />
+                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                        <div className="flex items-center gap-1">
+                          {([
+                            { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
+                            { key: 'client' as NoteVisibility, label: 'Client', locked: false },
+                          ]).map(({ key, label, locked }) => {
+                            const active = noteVisibility.includes(key);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={locked}
+                                onClick={() => {
+                                  if (locked) return;
+                                  setNoteVisibility((prev) => active ? prev.filter((v) => v !== key) : [...prev, key]);
+                                }}
+                                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 ${
+                                  active
+                                    ? locked
+                                      ? 'bg-secondary text-muted-foreground cursor-default'
+                                      : 'bg-chart-2/15 text-chart-2'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                              >
+                                <div className={`h-1.5 w-1.5 rounded-full ${active ? (locked ? 'bg-muted-foreground' : 'bg-chart-2') : 'bg-muted-foreground/40'}`} />
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <Button
+                          size="sm"
+                          className="rounded-xl h-8 px-3.5"
+                          loading={sendingNote}
+                          disabled={!newNoteContent.trim()}
+                          onClick={async () => {
+                            if (!id || !newNoteContent.trim()) return;
+                            setSendingNote(true);
+                            try {
+                              const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: noteVisibility });
+                              setAppNotes((prev) => [...prev, data]);
+                              setNewNoteContent('');
+                              const targets = noteVisibility.filter((v) => v !== 'broker');
+                              toast(targets.length > 0 ? `Note sent to ${targets.join(' & ')}` : 'Internal note added', 'success');
+                            } catch (err: unknown) {
+                              toast(getErrorMessage(err, 'Failed to send'), 'error');
+                            } finally {
+                              setSendingNote(false);
+                            }
+                          }}
+                        >
+                          {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Save' : 'Send'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </GlassCard>
             )}
           </div>

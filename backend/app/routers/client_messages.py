@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.client_message import ClientMessage
+from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User, UserRole
 from app.services.tenant_scope import get_tenant_id
@@ -27,13 +28,18 @@ def _check_access(client_id: str, current_user: User, tenant_id: str, db: Sessio
         if client_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     elif current_user.role == UserRole.referrer:
-        referral = db.query(Referral).filter(
-            Referral.referrer_id == current_user.id,
-            Referral.referred_user_id == client_id,
-            Referral.tenant_id == tenant_id,
+        ext_referral = db.query(ExternalReferral).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id == client_id,
         ).first()
-        if not referral:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        if not ext_referral:
+            referral = db.query(Referral).filter(
+                Referral.referrer_id == current_user.id,
+                Referral.referred_user_id == client_id,
+                Referral.tenant_id == tenant_id,
+            ).first()
+            if not referral:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 

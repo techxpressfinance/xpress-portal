@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, Badge, PageHeader, Button, Select, Input } from '../../components/ui';
+
 import type { LoanApplication } from '../../types';
 
 export default function ReferrerApplications() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -133,12 +135,15 @@ export default function ReferrerApplications() {
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
                     <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Created</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {applications.map((app) => (
-                    <tr key={app.id} className="transition-colors hover:bg-secondary/50">
+                    <tr
+                      key={app.id}
+                      className="transition-colors hover:bg-secondary/50 cursor-pointer"
+                      onClick={() => navigate(`/referrer/applications/${app.id}`)}
+                    >
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
@@ -162,11 +167,6 @@ export default function ReferrerApplications() {
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
                         {formatDate(app.created_at)}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4">
-                        <Link to={`/referrer/applications/${app.id}`}>
-                          <Button variant="ghost" size="sm">View</Button>
-                        </Link>
                       </td>
                     </tr>
                   ))}

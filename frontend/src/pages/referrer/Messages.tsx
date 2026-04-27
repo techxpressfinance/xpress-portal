@@ -3,48 +3,41 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, PageHeader, Button } from '../../components/ui';
-import type { ApplicationNoteMessage, DirectMessage, User } from '../../types';
+import type { DirectMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 
-type UnifiedMessage =
-  | { kind: 'dm'; data: DirectMessage }
-  | { kind: 'note'; data: ApplicationNoteMessage };
-
-export default function AdminMessages() {
+export default function ReferrerMessages() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [messages, setMessages] = useState<DirectMessage[]>([]);
-  const [appNotes, setAppNotes] = useState<ApplicationNoteMessage[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
+  const [recipients, setRecipients] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCompose, setShowCompose] = useState(false);
   const [recipientId, setRecipientId] = useState('');
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [subject, setSubject] = useState('');
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'inbox' | 'sent'>('inbox');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       api.get('/messages?per_page=50'),
-      api.get('/users'),
-      api.get('/messages/application-notes'),
+      api.get('/messages/recipients'),
     ])
-      .then(([msgRes, usersRes, notesRes]) => {
+      .then(([msgRes, recipientsRes]) => {
         setMessages(msgRes.data.items);
-        setClients(usersRes.data.filter((u: User) => u.role === 'client' || u.role === 'referrer'));
-        setAppNotes(notesRes.data);
+        setRecipients(recipientsRes.data);
       })
-      .catch(() => toast('Failed to load data', 'error'))
+      .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
-  const filteredClients = clients.filter(
-    (c) =>
-      c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(clientSearch.toLowerCase())
+  const filteredRecipients = recipients.filter(
+    (r) =>
+      r.full_name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
+      r.email.toLowerCase().includes(recipientSearch.toLowerCase())
   );
 
   const handleSend = async () => {
@@ -64,9 +57,9 @@ export default function AdminMessages() {
       setRecipientId('');
       setSubject('');
       setContent('');
-      setClientSearch('');
+      setRecipientSearch('');
       toast('Message sent', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send message'), 'error');
     } finally {
       setSending(false);
@@ -92,7 +85,7 @@ export default function AdminMessages() {
   if (loading) {
     return (
       <div>
-        <PageHeader title="Messages" subtitle="Send and manage messages" />
+        <PageHeader title="Messages" subtitle="Send messages to your broker team" />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-20 rounded-2xl shimmer" />
@@ -102,27 +95,15 @@ export default function AdminMessages() {
     );
   }
 
-  // Inbox: DMs received + (no app notes in inbox for admin, they authored them)
-  const inboxDMs: UnifiedMessage[] = messages
-    .filter((msg) => msg.recipient_id === user?.id)
-    .map((msg) => ({ kind: 'dm' as const, data: msg }));
-
-  // Sent: DMs sent + application notes authored by this user
-  const sentDMs: UnifiedMessage[] = messages
-    .filter((msg) => msg.sender_id === user?.id)
-    .map((msg) => ({ kind: 'dm' as const, data: msg }));
-  const sentNotes: UnifiedMessage[] = appNotes.map((note) => ({ kind: 'note' as const, data: note }));
-  const sentMessages = [...sentDMs, ...sentNotes].sort(
-    (a, b) => new Date(b.data.created_at).getTime() - new Date(a.data.created_at).getTime()
-  );
-
-  const visibleMessages = activeTab === 'inbox' ? inboxDMs : sentMessages;
+  const inboxMessages = messages.filter((msg) => msg.recipient_id === user?.id);
+  const sentMessages = messages.filter((msg) => msg.sender_id === user?.id);
+  const visibleMessages = activeTab === 'inbox' ? inboxMessages : sentMessages;
 
   return (
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Send and manage messages"
+        subtitle="Send messages to your broker team"
         action={
           <Button onClick={() => setShowCompose(!showCompose)}>
             {showCompose ? 'Cancel' : '+ New Message'}
@@ -140,30 +121,30 @@ export default function AdminMessages() {
               </label>
               <input
                 type="text"
-                value={clientSearch}
+                value={recipientSearch}
                 onChange={(e) => {
-                  setClientSearch(e.target.value);
+                  setRecipientSearch(e.target.value);
                   setRecipientId('');
                 }}
-                placeholder="Search clients by name or email..."
+                placeholder="Search brokers or admins..."
                 className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
               />
-              {clientSearch && !recipientId && (
+              {recipientSearch && !recipientId && (
                 <div className="mt-1 max-h-40 overflow-y-auto rounded-xl bg-secondary border border-border">
-                  {filteredClients.length === 0 ? (
-                    <p className="px-3 py-2 text-[13px] text-muted-foreground">No clients found</p>
+                  {filteredRecipients.length === 0 ? (
+                    <p className="px-3 py-2 text-[13px] text-muted-foreground">No staff found</p>
                   ) : (
-                    filteredClients.slice(0, 10).map((c) => (
+                    filteredRecipients.slice(0, 10).map((r) => (
                       <button
-                        key={c.id}
+                        key={r.id}
                         onClick={() => {
-                          setRecipientId(c.id);
-                          setClientSearch(c.full_name);
+                          setRecipientId(r.id);
+                          setRecipientSearch(r.full_name);
                         }}
                         className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-background/50 transition-colors"
                       >
-                        <span className="font-medium">{c.full_name}</span>{' '}
-                        <span className="text-muted-foreground">{c.email}</span>
+                        <span className="font-medium">{r.full_name}</span>{' '}
+                        <span className="text-muted-foreground capitalize">({r.role})</span>
                       </button>
                     ))
                   )}
@@ -229,54 +210,14 @@ export default function AdminMessages() {
             </p>
             <p className="text-[13px] text-muted-foreground mt-1">
               {activeTab === 'inbox'
-                ? 'Client messages will appear here'
-                : 'Messages and application notes you\'ve sent will appear here'}
+                ? 'Messages from your broker team will appear here'
+                : 'Messages you\'ve sent will appear here'}
             </p>
           </div>
         </GlassCard>
       ) : (
         <div className="space-y-3">
-          {visibleMessages.map((unified) => {
-            if (unified.kind === 'note') {
-              const note = unified.data;
-              const noteId = `note-${note.id}`;
-              return (
-                <div
-                  key={noteId}
-                  className="cursor-pointer"
-                  onClick={() => handleExpand(noteId)}
-                >
-                  <GlassCard>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-chart-4/15">
-                          <svg className="h-5 w-5 text-chart-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-[14px] font-semibold text-foreground">
-                            Application Note
-                            <span className="ml-2 text-[12px] font-normal text-muted-foreground capitalize">
-                              ({note.loan_type} loan)
-                            </span>
-                          </p>
-                          <p className="text-[12px] text-muted-foreground">
-                            {formatDate(note.created_at)}
-                          </p>
-                        </div>
-                      </div>
-                      <svg className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${expandedId === noteId ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-                    </div>
-                    {expandedId === noteId && (
-                      <div className="mt-4 pt-4 border-t border-border">
-                        <p className="text-[14px] text-foreground whitespace-pre-wrap leading-relaxed">{note.content}</p>
-                      </div>
-                    )}
-                  </GlassCard>
-                </div>
-              );
-            }
-
-            const msg = unified.data;
+          {visibleMessages.map((msg) => {
             const isInbox = activeTab === 'inbox';
             return (
               <div
@@ -296,8 +237,8 @@ export default function AdminMessages() {
                         </p>
                         <p className="text-[12px] text-muted-foreground">
                           {isInbox
-                            ? `From ${msg.sender_name || 'Client'}`
-                            : `To ${msg.recipient_name || 'Client'}`} &middot; {formatDate(msg.created_at)}
+                            ? `From ${msg.sender_name || 'Staff'}`
+                            : `To ${msg.recipient_name || 'Broker'}`} &middot; {formatDate(msg.created_at)}
                         </p>
                       </div>
                     </div>

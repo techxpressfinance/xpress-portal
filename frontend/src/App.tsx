@@ -18,6 +18,7 @@ const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const BrokerManagement = lazy(() => import('./pages/admin/BrokerManagement'));
 const ReferrerManagement = lazy(() => import('./pages/admin/ReferrerManagement'));
 const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
+const LenderDetail = lazy(() => import('./pages/admin/LenderDetail'));
 const LenderAnalytics = lazy(() => import('./pages/admin/LenderAnalytics'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
@@ -30,6 +31,7 @@ const ClientServiceRequests = lazy(() => import('./pages/client/ServiceRequests'
 const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
+const ReferrerMessages = lazy(() => import('./pages/referrer/Messages'));
 import ApplicationDetail from './pages/client/ApplicationDetail';
 import Applications from './pages/client/Applications';
 import ClientDashboard from './pages/client/Dashboard';
@@ -237,6 +239,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/admin/lenders/:id"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <LenderDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin/tasks"
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
@@ -357,6 +367,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['referrer']}>
                     <ReferrerApplicationDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/referrer/messages"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <ReferrerMessages />
                   </ProtectedRoute>
                 }
               />

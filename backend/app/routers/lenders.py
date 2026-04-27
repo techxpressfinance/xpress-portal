@@ -248,3 +248,19 @@ def lender_analytics(
             "avg_turnaround_days": round(sum(all_turnaround) / len(all_turnaround), 1) if all_turnaround else None,
         },
     }
+
+
+@router.get("/{lender_id}", response_model=LenderOut)
+def get_lender(
+    lender_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    query = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id)
+    if current_user.role.value != "admin":
+        query = query.filter(Lender.is_active.is_(True))
+    lender = query.first()
+    if not lender:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
+    return lender

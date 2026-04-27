@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
@@ -9,6 +10,7 @@ type ContactDraft = { name: string; designation: string; email: string; phone: s
 const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: '' };
 
 export default function LenderManagement() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [lenders, setLenders] = useState<Lender[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,17 +49,6 @@ export default function LenderManagement() {
     setEditingPendingIdx(null);
   };
 
-  const startEdit = (lender: Lender) => {
-    setForm({ name: lender.name, notes: lender.notes || '' });
-    setEditingId(lender.id);
-    setShowForm(true);
-    setShowContactForm(false);
-    setContactDraft(emptyDraft);
-    setEditingContactId(null);
-    setPendingContacts([]);
-    setEditingPendingIdx(null);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
@@ -84,22 +75,6 @@ export default function LenderManagement() {
       toast(getErrorMessage(err, 'Operation failed'), 'error');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const toggleActive = async (lender: Lender) => {
-    try {
-      if (lender.is_active) {
-        await api.delete(`/lenders/${lender.id}`);
-        setLenders(prev => prev.map(l => l.id === lender.id ? { ...l, is_active: false } : l));
-        toast('Lender deactivated', 'success');
-      } else {
-        const { data } = await api.patch(`/lenders/${lender.id}`, { is_active: true });
-        setLenders(prev => prev.map(l => l.id === lender.id ? data : l));
-        toast('Lender reactivated', 'success');
-      }
-    } catch (err) {
-      toast(getErrorMessage(err, 'Operation failed'), 'error');
     }
   };
 
@@ -398,7 +373,6 @@ export default function LenderManagement() {
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Notes</th>
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Created</th>
-                <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
@@ -410,7 +384,7 @@ export default function LenderManagement() {
                 </tr>
               ) : (
                 lenders.map(lender => (
-                  <tr key={lender.id} className="hover:bg-secondary/30 transition-colors">
+                  <tr key={lender.id} onClick={() => navigate(`/admin/lenders/${lender.id}`)} className="hover:bg-secondary/30 transition-colors cursor-pointer">
                     <td className="px-5 py-3 text-[14px] font-medium text-foreground">{lender.name}</td>
                     <td className="px-5 py-3 text-[13px] text-muted-foreground">
                       {lender.contacts.length === 0 ? (
@@ -432,18 +406,6 @@ export default function LenderManagement() {
                       <Badge type="custom" value={lender.is_active ? 'Active' : 'Inactive'} className={lender.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'} />
                     </td>
                     <td className="px-5 py-3 text-[13px] text-muted-foreground">{formatDate(lender.created_at)}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => startEdit(lender)}>Edit</Button>
-                        <Button
-                          size="sm"
-                          variant={lender.is_active ? 'danger' : 'success'}
-                          onClick={() => toggleActive(lender)}
-                        >
-                          {lender.is_active ? 'Deactivate' : 'Activate'}
-                        </Button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}
