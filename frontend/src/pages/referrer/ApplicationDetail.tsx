@@ -9,7 +9,7 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
-import type { ApplicationNote, ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, NoteVisibility, User } from '../../types';
+import type { ApplicationNote, ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
 export default function ReferrerApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -43,7 +43,6 @@ export default function ReferrerApplicationDetail() {
 
   // Notes
   const [newNoteContent, setNewNoteContent] = useState('');
-  const [noteVisibility, setNoteVisibility] = useState<NoteVisibility[]>(['broker']);
   const [sendingNote, setSendingNote] = useState(false);
 
   // Client messages
@@ -857,30 +856,19 @@ export default function ReferrerApplicationDetail() {
                           <p className="text-[13px] text-muted-foreground">No notes yet</p>
                         </div>
                       ) : (
-                        appNotes.map((note) => {
-                          const isInternal = note.visibility.length === 1 && note.visibility[0] === 'broker';
-                          const visibleToClient = note.visibility.includes('client');
-                          return (
-                            <div key={note.id} className="flex flex-col gap-1">
-                              <div className="flex items-center justify-between px-1">
-                                <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                                <div className="flex items-center gap-2">
-                                  {isInternal ? (
-                                    <span className="text-[10px] font-semibold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Internal</span>
-                                  ) : visibleToClient ? (
-                                    <span className="text-[10px] font-semibold text-chart-2 bg-chart-2/10 px-2 py-0.5 rounded-full">Visible to client</span>
-                                  ) : null}
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isInternal ? 'bg-secondary/60 text-foreground' : 'bg-primary/8 text-foreground border border-primary/15'}`}>
-                                <p className="whitespace-pre-wrap">{note.content}</p>
-                              </div>
+                        appNotes.map((note) => (
+                          <div key={note.id} className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             </div>
-                          );
-                        })
+                            <div className="rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed bg-secondary/60 text-foreground">
+                              <p className="whitespace-pre-wrap">{note.content}</p>
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
 
@@ -893,36 +881,7 @@ export default function ReferrerApplicationDetail() {
                         className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
                         placeholder="Add a note…"
                       />
-                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                        <div className="flex items-center gap-1">
-                          {([
-                            { key: 'broker' as NoteVisibility, label: 'Internal', locked: true },
-                            { key: 'client' as NoteVisibility, label: 'Client', locked: false },
-                          ]).map(({ key, label, locked }) => {
-                            const active = noteVisibility.includes(key);
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                disabled={locked}
-                                onClick={() => {
-                                  if (locked) return;
-                                  setNoteVisibility((prev) => active ? prev.filter((v) => v !== key) : [...prev, key]);
-                                }}
-                                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 ${
-                                  active
-                                    ? locked
-                                      ? 'bg-secondary text-muted-foreground cursor-default'
-                                      : 'bg-chart-2/15 text-chart-2'
-                                    : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                              >
-                                <div className={`h-1.5 w-1.5 rounded-full ${active ? (locked ? 'bg-muted-foreground' : 'bg-chart-2') : 'bg-muted-foreground/40'}`} />
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                      <div className="flex items-center justify-end px-3 pb-2.5 pt-1">
                         <Button
                           size="sm"
                           className="rounded-xl h-8 px-3.5"
@@ -932,19 +891,18 @@ export default function ReferrerApplicationDetail() {
                             if (!id || !newNoteContent.trim()) return;
                             setSendingNote(true);
                             try {
-                              const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: noteVisibility });
+                              const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: ['broker'] });
                               setAppNotes((prev) => [...prev, data]);
                               setNewNoteContent('');
-                              const targets = noteVisibility.filter((v) => v !== 'broker');
-                              toast(targets.length > 0 ? `Note sent to ${targets.join(' & ')}` : 'Internal note added', 'success');
+                              toast('Note saved', 'success');
                             } catch (err: unknown) {
-                              toast(getErrorMessage(err, 'Failed to send'), 'error');
+                              toast(getErrorMessage(err, 'Failed to save'), 'error');
                             } finally {
                               setSendingNote(false);
                             }
                           }}
                         >
-                          {noteVisibility.length === 1 && noteVisibility[0] === 'broker' ? 'Save' : 'Send'}
+                          Save
                         </Button>
                       </div>
                     </div>

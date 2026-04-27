@@ -266,6 +266,15 @@ export interface ClientMessage {
   created_at: string;
 }
 
+export interface ClientConversation {
+  client_id: string;
+  client_name: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
+  last_message_author_name: string | null;
+  message_count: number;
+}
+
 export interface ClientAlert {
   id: string;
   client_id: string;

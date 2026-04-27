@@ -59,7 +59,7 @@ def create_note(
     app_id: str,
     data: ApplicationNoteCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
@@ -68,10 +68,13 @@ def create_note(
 
     check_application_access(application, current_user, db=db)
 
-    from app.models.application_note import VALID_VISIBILITY
-    visibility_set = {v for v in data.visibility if v in VALID_VISIBILITY}
-    if not visibility_set:
-        visibility_set = {"broker"}
+    if current_user.role == UserRole.referrer:
+        visibility_set = {"referrer"}
+    else:
+        from app.models.application_note import VALID_VISIBILITY
+        visibility_set = {v for v in data.visibility if v in VALID_VISIBILITY}
+        if not visibility_set:
+            visibility_set = {"broker"}
 
     note = ApplicationNote(
         application_id=app_id,

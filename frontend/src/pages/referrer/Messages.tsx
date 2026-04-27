@@ -1,271 +1,232 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, PageHeader, Button } from '../../components/ui';
-import type { DirectMessage, User } from '../../types';
+import type { ClientConversation, ClientMessage } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function ReferrerMessages() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
-  const [recipients, setRecipients] = useState<User[]>([]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [conversations, setConversations] = useState<ClientConversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCompose, setShowCompose] = useState(false);
-  const [recipientId, setRecipientId] = useState('');
-  const [recipientSearch, setRecipientSearch] = useState('');
-  const [subject, setSubject] = useState('');
-  const [content, setContent] = useState('');
-  const [sending, setSending] = useState(false);
-  const [activeTab, setActiveTab] = useState<'inbox' | 'sent'>('inbox');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedConv, setSelectedConv] = useState<ClientConversation | null>(null);
+  const [chatMessages, setChatMessages] = useState<ClientMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [newChatMsg, setNewChatMsg] = useState('');
+  const [sendingChatMsg, setSendingChatMsg] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/messages?per_page=50'),
-      api.get('/messages/recipients'),
-    ])
-      .then(([msgRes, recipientsRes]) => {
-        setMessages(msgRes.data.items);
-        setRecipients(recipientsRes.data);
-      })
-      .catch(() => toast('Failed to load messages', 'error'))
+    api.get('/messages/client-inbox')
+      .then(({ data }) => setConversations(data))
+      .catch(() => toast('Failed to load conversations', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
-  const filteredRecipients = recipients.filter(
-    (r) =>
-      r.full_name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
-      r.email.toLowerCase().includes(recipientSearch.toLowerCase())
-  );
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
-  const handleSend = async () => {
-    if (!recipientId || !subject.trim() || !content.trim()) {
-      toast('Please fill in all fields', 'error');
-      return;
-    }
-    setSending(true);
+  const openConversation = async (conv: ClientConversation) => {
+    setSelectedConv(conv);
+    setChatLoading(true);
     try {
-      const { data } = await api.post('/messages', {
-        recipient_id: recipientId,
-        subject: subject.trim(),
-        content: content.trim(),
-      });
-      setMessages((prev) => [data, ...prev]);
-      setShowCompose(false);
-      setRecipientId('');
-      setSubject('');
-      setContent('');
-      setRecipientSearch('');
-      toast('Message sent', 'success');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to send message'), 'error');
+      const { data } = await api.get(`/clients/${conv.client_id}/messages`);
+      setChatMessages(data);
+    } catch {
+      toast('Failed to load chat', 'error');
     } finally {
-      setSending(false);
+      setChatLoading(false);
     }
   };
 
-  const handleExpand = async (id: string, msg?: DirectMessage) => {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(id);
-    if (msg && !msg.is_read && msg.recipient_id === user?.id) {
-      try {
-        await api.get(`/messages/${msg.id}`);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id ? { ...m, is_read: true } : m))
-        );
-      } catch { /* ignore */ }
+  const handleSendChat = async () => {
+    if (!selectedConv || !newChatMsg.trim()) return;
+    setSendingChatMsg(true);
+    try {
+      const { data } = await api.post(`/clients/${selectedConv.client_id}/messages`, {
+        content: newChatMsg.trim(),
+      });
+      setChatMessages((prev) => [...prev, data]);
+      setNewChatMsg('');
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.client_id === selectedConv.client_id
+            ? { ...c, last_message: data.content, last_message_at: data.created_at, last_message_author_name: 'You', message_count: c.message_count + 1 }
+            : c
+        )
+      );
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to send'), 'error');
+    } finally {
+      setSendingChatMsg(false);
     }
   };
 
   if (loading) {
     return (
       <div>
-        <PageHeader title="Messages" subtitle="Send messages to your broker team" />
+        <PageHeader title="Messages" subtitle="Chat with your referred clients" />
         <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 rounded-2xl shimmer" />
-          ))}
+          {[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-2xl shimmer" />)}
         </div>
       </div>
     );
   }
 
-  const inboxMessages = messages.filter((msg) => msg.recipient_id === user?.id);
-  const sentMessages = messages.filter((msg) => msg.sender_id === user?.id);
-  const visibleMessages = activeTab === 'inbox' ? inboxMessages : sentMessages;
-
   return (
     <div>
-      <PageHeader
-        title="Messages"
-        subtitle="Send messages to your broker team"
-        action={
-          <Button onClick={() => setShowCompose(!showCompose)}>
-            {showCompose ? 'Cancel' : '+ New Message'}
-          </Button>
-        }
-      />
+      <PageHeader title="Messages" subtitle="Chat with your referred clients" />
 
-      {showCompose && (
-        <GlassCard className="mb-6">
-          <h3 className="text-[15px] font-semibold text-foreground mb-4">New Message</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[13px] font-medium text-muted-foreground mb-2">
-                Recipient
-              </label>
-              <input
-                type="text"
-                value={recipientSearch}
-                onChange={(e) => {
-                  setRecipientSearch(e.target.value);
-                  setRecipientId('');
-                }}
-                placeholder="Search brokers or admins..."
-                className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-              />
-              {recipientSearch && !recipientId && (
-                <div className="mt-1 max-h-40 overflow-y-auto rounded-xl bg-secondary border border-border">
-                  {filteredRecipients.length === 0 ? (
-                    <p className="px-3 py-2 text-[13px] text-muted-foreground">No staff found</p>
-                  ) : (
-                    filteredRecipients.slice(0, 10).map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => {
-                          setRecipientId(r.id);
-                          setRecipientSearch(r.full_name);
-                        }}
-                        className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-background/50 transition-colors"
-                      >
-                        <span className="font-medium">{r.full_name}</span>{' '}
-                        <span className="text-muted-foreground capitalize">({r.role})</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-muted-foreground mb-2">
-                Subject
-              </label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Message subject..."
-                className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-muted-foreground mb-2">
-                Message
-              </label>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={5}
-                placeholder="Write your message..."
-                className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-              />
-            </div>
-            <Button onClick={handleSend} loading={sending} disabled={!recipientId || !subject.trim() || !content.trim()}>
-              Send Message
-            </Button>
-          </div>
-        </GlassCard>
-      )}
-
-      <div className="mb-4 inline-flex rounded-xl border border-border bg-secondary p-1">
-        <button
-          type="button"
-          onClick={() => setActiveTab('inbox')}
-          className={`px-4 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${activeTab === 'inbox' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Inbox
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('sent')}
-          className={`px-4 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${activeTab === 'sent' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Sent
-        </button>
-      </div>
-
-      {visibleMessages.length === 0 ? (
+      {conversations.length === 0 ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+              </svg>
             </div>
-            <p className="text-[15px] font-medium text-muted-foreground">
-              {activeTab === 'inbox' ? 'No inbox messages yet' : 'No sent messages yet'}
-            </p>
-            <p className="text-[13px] text-muted-foreground mt-1">
-              {activeTab === 'inbox'
-                ? 'Messages from your broker team will appear here'
-                : 'Messages you\'ve sent will appear here'}
-            </p>
+            <p className="text-[15px] font-medium text-muted-foreground">No client conversations yet</p>
+            <p className="text-[13px] text-muted-foreground mt-1">Chats with your referred clients will appear here</p>
           </div>
         </GlassCard>
       ) : (
-        <div className="space-y-3">
-          {visibleMessages.map((msg) => {
-            const isInbox = activeTab === 'inbox';
-            return (
-              <div
-                key={msg.id}
-                className={isInbox ? 'cursor-pointer' : ''}
-                onClick={isInbox ? () => handleExpand(msg.id, msg) : undefined}
-              >
-                <GlassCard>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isInbox && !msg.is_read ? 'bg-primary' : 'bg-secondary'}`}>
-                        <svg className={`h-5 w-5 ${isInbox && !msg.is_read ? 'text-primary-foreground' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="flex h-[560px]">
+            {/* Conversation list */}
+            <div className={`flex flex-col border-r border-border/60 ${selectedConv ? 'hidden sm:flex sm:w-72' : 'flex w-full sm:w-72'}`}>
+              <div className="px-4 py-3 border-b border-border/60">
+                <p className="text-[13px] font-semibold text-foreground">Conversations</p>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {conversations.map((conv) => (
+                  <button
+                    key={conv.client_id}
+                    onClick={() => openConversation(conv)}
+                    className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${selectedConv?.client_id === conv.client_id ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                        <span className="text-[13px] font-semibold text-primary">
+                          {conv.client_name?.charAt(0).toUpperCase() ?? '?'}
+                        </span>
                       </div>
-                      <div className="min-w-0">
-                        <p className={`truncate text-[14px] ${isInbox && !msg.is_read ? 'font-semibold' : 'font-medium'} text-foreground`}>
-                          {msg.subject}
-                        </p>
-                        <p className="text-[12px] text-muted-foreground">
-                          {isInbox
-                            ? `From ${msg.sender_name || 'Staff'}`
-                            : `To ${msg.recipient_name || 'Broker'}`} &middot; {formatDate(msg.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isInbox && !msg.is_read && (
-                        <span className="h-2 w-2 rounded-full bg-primary" />
-                      )}
-                      {!isInbox && (
-                        msg.is_read ? (
-                          <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 py-0.5 text-[11px] font-medium text-success">Read</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold text-foreground truncate">{conv.client_name ?? 'Unknown'}</p>
+                        {conv.last_message ? (
+                          <p className="text-[12px] text-muted-foreground truncate">
+                            {conv.last_message_author_name}: {conv.last_message}
+                          </p>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">Unread</span>
-                        )
+                          <p className="text-[12px] text-muted-foreground italic">No messages yet</p>
+                        )}
+                      </div>
+                      {conv.last_message_at && (
+                        <span className="text-[11px] text-muted-foreground shrink-0">{formatDate(conv.last_message_at)}</span>
                       )}
-                      <svg className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${expandedId === msg.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat thread */}
+            <div className={`flex-1 flex flex-col ${selectedConv ? 'flex' : 'hidden sm:flex'}`}>
+              {!selectedConv ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 opacity-50">
+                  <svg className="h-10 w-10 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+                  </svg>
+                  <p className="text-[13px] text-muted-foreground">Select a conversation</p>
+                </div>
+              ) : (
+                <>
+                  {/* Chat header */}
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0">
+                    <button
+                      onClick={() => setSelectedConv(null)}
+                      className="sm:hidden flex items-center justify-center h-7 w-7 rounded-lg hover:bg-secondary transition-colors"
+                    >
+                      <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                    </button>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15">
+                      <span className="text-[12px] font-semibold text-primary">
+                        {selectedConv.client_name?.charAt(0).toUpperCase() ?? '?'}
+                      </span>
+                    </div>
+                    <p className="text-[14px] font-semibold text-foreground">{selectedConv.client_name}</p>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+                    {chatLoading ? (
+                      <div className="flex items-center justify-center h-full">
+                        <svg className="h-5 w-5 animate-spin text-muted-foreground" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      </div>
+                    ) : chatMessages.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-2 opacity-50">
+                        <p className="text-[13px] text-muted-foreground">No messages yet — say hello</p>
+                      </div>
+                    ) : (
+                      chatMessages.map((msg) => {
+                        const isOwn = msg.author_id === user?.id;
+                        return (
+                          <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                            <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                              <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Staff')}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                              <p className="whitespace-pre-wrap">{msg.content}</p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Compose */}
+                  <div className="shrink-0 px-4 pb-4 pt-2 border-t border-border/60">
+                    <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
+                      <textarea
+                        value={newChatMsg}
+                        onChange={(e) => setNewChatMsg(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            handleSendChat();
+                          }
+                        }}
+                        rows={2}
+                        className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                        placeholder={`Message ${selectedConv.client_name ?? 'client'}…`}
+                      />
+                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                        <span className="text-[11px] text-muted-foreground">⌘↵ to send</span>
+                        <Button
+                          size="sm"
+                          className="rounded-xl h-8 px-3.5"
+                          loading={sendingChatMsg}
+                          disabled={!newChatMsg.trim()}
+                          onClick={handleSendChat}
+                        >
+                          <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                          Send
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  {expandedId === msg.id && (
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <p className="text-[14px] text-foreground whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                    </div>
-                  )}
-                </GlassCard>
-              </div>
-            );
-          })}
-        </div>
+                </>
+              )}
+            </div>
+          </div>
+        </GlassCard>
       )}
     </div>
   );

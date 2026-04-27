@@ -119,6 +119,68 @@ def list_applications(
     return PaginatedApplications(items=[_app_with_user(app) for app in items], total=total, page=page, per_page=per_page)
 
 
+@router.get("/analytics")
+def get_application_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    from sqlalchemy import func
+
+    query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id)
+
+    if current_user.role == UserRole.client:
+        query = query.filter(LoanApplication.user_id == current_user.id)
+    elif current_user.role == UserRole.broker:
+        query = query.filter(
+            LoanApplication.id.in_(
+                db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
+            )
+        )
+    elif current_user.role == UserRole.referrer:
+        referred_client_ids = db.query(ExternalReferral.referred_client_id).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id.isnot(None),
+        )
+        query = query.filter(LoanApplication.user_id.in_(referred_client_ids))
+
+    apps = query.all()
+
+    by_status: dict[str, int] = {}
+    by_loan_type: dict[str, int] = {}
+    total_value = 0.0
+    settled_count = 0
+    settled_value = 0.0
+    approval_count = 0
+    active_statuses = {"application_received", "application_assessed", "submitted", "approval"}
+
+    for app in apps:
+        s = app.status.value if hasattr(app.status, "value") else str(app.status)
+        lt = app.loan_type.value if hasattr(app.loan_type, "value") else str(app.loan_type)
+        by_status[s] = by_status.get(s, 0) + 1
+        by_loan_type[lt] = by_loan_type.get(lt, 0) + 1
+        amt = float(app.amount or 0)
+        total_value += amt
+        if s == "settled":
+            settled_count += 1
+            settled_value += amt
+        if s == "approval":
+            approval_count += 1
+
+    active_count = sum(by_status.get(s, 0) for s in active_statuses)
+
+    return {
+        "total_applications": len(apps),
+        "total_value": total_value,
+        "settled_count": settled_count,
+        "settled_value": settled_value,
+        "approval_count": approval_count,
+        "active_count": active_count,
+        "by_status": by_status,
+        "by_loan_type": by_loan_type,
+    }
+
+
 @router.get("/{app_id}", response_model=LoanApplicationOut)
 def get_application(
     app_id: str,

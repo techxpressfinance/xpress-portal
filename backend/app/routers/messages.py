@@ -11,8 +11,11 @@ from app.config import EMAIL_ENABLED
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.application_note import ApplicationNote
+from app.models.client_message import ClientMessage
 from app.models.direct_message import DirectMessage
+from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
+from app.models.referral import Referral
 from app.models.user import User
 from app.models.user import UserRole
 from app.schemas.message import ApplicationNoteMessageOut, MessageCreate, MessageOut, MessageRecipientOut, PaginatedMessages
@@ -149,6 +152,64 @@ def list_message_recipients(
     else:
         recipients = db.query(User).filter(User.role.in_([UserRole.client, UserRole.referrer]), User.tenant_id == tenant_id).all()
     return recipients
+
+
+@router.get("/client-inbox")
+def list_client_inbox(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Return one conversation summary per referred client for the current referrer."""
+    if current_user.role.value != "referrer":
+        return []
+
+    ext_ids = [
+        r.referred_client_id
+        for r in db.query(ExternalReferral.referred_client_id).filter(
+            ExternalReferral.referrer_id == current_user.id
+        ).all()
+    ]
+    ref_ids = [
+        r.referred_user_id
+        for r in db.query(Referral.referred_user_id).filter(
+            Referral.referrer_id == current_user.id,
+            Referral.tenant_id == tenant_id,
+        ).all()
+    ]
+
+    client_ids = list(set(ext_ids + ref_ids))
+    if not client_ids:
+        return []
+
+    conversations = []
+    for client_id in client_ids:
+        client = db.query(User).filter(User.id == client_id).first()
+        if not client:
+            continue
+        last_msg = (
+            db.query(ClientMessage)
+            .filter(ClientMessage.client_id == client_id, ClientMessage.tenant_id == tenant_id)
+            .order_by(ClientMessage.created_at.desc())
+            .first()
+        )
+        msg_count = (
+            db.query(ClientMessage)
+            .filter(ClientMessage.client_id == client_id, ClientMessage.tenant_id == tenant_id)
+            .count()
+        )
+        conversations.append({
+            "client_id": client_id,
+            "client_name": client.full_name,
+            "last_message": last_msg.content if last_msg else None,
+            "last_message_at": last_msg.created_at if last_msg else None,
+            "last_message_author_name": last_msg.author.full_name if last_msg and last_msg.author else None,
+            "message_count": msg_count,
+        })
+
+    from datetime import datetime
+    conversations.sort(key=lambda c: c["last_message_at"] or datetime.min, reverse=True)
+    return conversations
 
 
 @router.get("/{message_id}", response_model=MessageOut)
