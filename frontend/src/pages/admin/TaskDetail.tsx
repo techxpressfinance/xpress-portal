@@ -46,12 +46,17 @@ export default function TaskDetail() {
   };
 
   const fetchStaff = () => {
-    api.get('/users?role=admin&per_page=100').then(({ data }) => {
-      const admins = data.items || data;
-      api.get('/users?role=broker&per_page=100').then(({ data: brokerData }) => {
-        const combined = [...admins, ...(brokerData.items || brokerData)];
-        setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
-      });
+    Promise.all([
+      api.get('/users?role=admin&per_page=100'),
+      api.get('/users?role=broker&per_page=100'),
+      api.get('/users?role=referrer&per_page=100'),
+    ]).then(([{ data: adminData }, { data: brokerData }, { data: referrerData }]) => {
+      const combined = [
+        ...(adminData.items || adminData),
+        ...(brokerData.items || brokerData),
+        ...(referrerData.items || referrerData),
+      ];
+      setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
     }).catch(() => {});
   };
 

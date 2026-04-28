@@ -96,58 +96,243 @@ function ResultDivider() {
   return <div className="h-px bg-[var(--led-line)]" />;
 }
 
-// ── BAS Calculator ────────────────────────────────────────────────────────────
-
-type BASCalcTab = 'surplus' | 'sales' | 'servicing';
-
-function basCalcSurplus(totalSales: number, gstOnSales: number, nonCapPurchases: number, gstOnPurchases: number, totalPayments: number, fbt: number, oncostsRate: number): number {
-  const salesNet = totalSales - gstOnSales;
-  const purchasesNet = nonCapPurchases < gstOnPurchases * 11 ? gstOnPurchases * 10 : nonCapPurchases - gstOnPurchases;
-  const oncosts = totalPayments * oncostsRate;
-  return salesNet - (totalPayments + oncosts + fbt + purchasesNet);
-}
-
-function basCalcSalesAnalysis(gstOnSales: number, capex: number, gstOnExpenses: number, totalPayments: number, oncostsRate: number): { profit: number; expRatio: number; profitRatio: number } {
-  const revenue = gstOnSales * 10;
-  const expensesNet = gstOnExpenses * 10 - capex;
-  const wages = totalPayments * (1 + oncostsRate);
-  const totalExpenditure = expensesNet + wages;
-  const profit = revenue - totalExpenditure;
-  const expRatio = revenue > 0 ? totalExpenditure / revenue : 0;
-  return { profit, expRatio, profitRatio: 1 - expRatio };
-}
-
-function basCalcServicing(surplus: number, capexAnnual: number, existingMonthly: number, proposedAnnual: number): number {
-  return surplus + capexAnnual - existingMonthly * 12 - proposedAnnual;
-}
-
-function CalcResultItem({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function CalcResultItem({ label, value, sub, signal }: {
+  label: string; value: string; sub?: string; signal?: 'positive' | 'negative' | 'neutral';
+}) {
+  const valueColor = signal === 'positive' ? 'text-[var(--led-success)]'
+    : signal === 'negative' ? 'text-[var(--led-danger,#ef4444)]'
+    : 'text-[var(--led-ink)]';
   return (
     <div className="rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">{label}</p>
-      <p className="mt-2 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">{value}</p>
+      <p className={`mt-2 text-[22px] font-semibold tracking-[-0.03em] led-tnum ${valueColor}`}>{value}</p>
       {sub && <p className="mt-1 text-[12px] text-[var(--led-muted)]">{sub}</p>}
     </div>
   );
 }
 
+// ── BAS Types ─────────────────────────────────────────────────────────────────
+
+type BASMode = 'quarterly' | 'monthly';
+type BASTab = 'collator' | 'servicing' | 'sales';
+
+interface PeriodInput {
+  date: string;
+  totalSales: string;
+  gstOnSales: string;
+  nonCapPurchases: string;
+  gstOnPurchases: string;
+  wages: string;
+  fbt: string;
+}
+
+interface PeriodCalc {
+  salesNetGST: number | null;
+  purchasesNetGST: number | null;
+  staffOncosts: number | null;
+  totalExpenses: number | null;
+  basSurplus: number | null;
+}
+
+interface CapexEntry { description: string; amount: string; }
+interface LoanEntry { description: string; monthly: string; }
+
+// ── BAS Calculation Functions ─────────────────────────────────────────────────
+
+function calcPeriod(p: PeriodInput, rate: number): PeriodCalc {
+  const totalSales = parseNum(p.totalSales);
+  const gstOnSales = parseNum(p.gstOnSales);
+  const nonCapPurchases = parseNum(p.nonCapPurchases) ?? 0;
+  const gstOnPurchases = parseNum(p.gstOnPurchases);
+  const wages = parseNum(p.wages);
+  const fbt = parseNum(p.fbt) ?? 0;
+
+  if (totalSales === null || gstOnSales === null || gstOnPurchases === null || wages === null) {
+    return { salesNetGST: null, purchasesNetGST: null, staffOncosts: null, totalExpenses: null, basSurplus: null };
+  }
+
+  const salesNetGST = totalSales - gstOnSales;
+  // If G11 < 1B × 11, purchases net = 1B × 10 (i.e. ignore G11 entry)
+  const purchasesNetGST = nonCapPurchases < gstOnPurchases * 11
+    ? gstOnPurchases * 10
+    : nonCapPurchases - gstOnPurchases;
+  const staffOncosts = wages * rate;
+  const totalExpenses = purchasesNetGST + wages + staffOncosts + fbt;
+  const basSurplus = salesNetGST - totalExpenses;
+
+  return { salesNetGST, purchasesNetGST, staffOncosts, totalExpenses, basSurplus };
+}
+
+function sumOrNull(vals: (number | null)[]): number | null {
+  const nums = vals.filter((v): v is number => v !== null);
+  return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) : null;
+}
+
+function aggregateMonthsToQuarters(periods: PeriodInput[]): PeriodInput[] {
+  return Array.from({ length: 4 }, (_, qi) => {
+    const months = periods.slice(qi * 3, qi * 3 + 3);
+    const sumField = (field: keyof PeriodInput): string => {
+      const hasData = months.some(m => m[field] !== '');
+      if (!hasData) return '';
+      const total = months.reduce((acc, m) => {
+        const v = parseNum(m[field] as string);
+        return v !== null ? acc + v : acc;
+      }, 0);
+      return String(total);
+    };
+    return {
+      date: months[2]?.date ?? '',
+      totalSales: sumField('totalSales'),
+      gstOnSales: sumField('gstOnSales'),
+      nonCapPurchases: sumField('nonCapPurchases'),
+      gstOnPurchases: sumField('gstOnPurchases'),
+      wages: sumField('wages'),
+      fbt: sumField('fbt'),
+    };
+  });
+}
+
+// ── Collator Table Cells ──────────────────────────────────────────────────────
+
+function TLabelCell({ children, semibold }: { children: ReactNode; semibold?: boolean }) {
+  return (
+    <td className={`sticky left-0 z-10 border-b border-r border-[var(--led-line)] bg-[var(--led-bg)] px-3 py-2 text-[12px] whitespace-nowrap min-w-[220px] ${semibold ? 'font-semibold text-[var(--led-ink)]' : 'font-medium text-[var(--led-ink)]'}`}>
+      {children}
+    </td>
+  );
+}
+
+function TItemCell({ children }: { children: ReactNode }) {
+  return (
+    <td className="border-b border-r border-[var(--led-line)] bg-[var(--led-bg)] px-3 py-2 text-[11px] font-mono text-[var(--led-muted)] whitespace-nowrap w-10 text-center">
+      {children}
+    </td>
+  );
+}
+
+function TInputCell({ value, onChange, isOptional, isDate }: {
+  value: string; onChange: (v: string) => void; isOptional?: boolean; isDate?: boolean;
+}) {
+  return (
+    <td className="border-b border-r border-[var(--led-line)] px-1.5 py-1.5">
+      <input
+        type={isDate ? 'text' : 'number'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={isDate ? 'dd/mm/yy' : isOptional ? '—' : '0'}
+        className="w-full min-w-[100px] rounded-[6px] border border-[var(--led-line)] bg-[var(--led-bg)] px-2 py-1 text-[12px] font-medium led-tnum text-[var(--led-ink)] placeholder:text-[var(--led-muted)] transition-colors focus:border-[var(--led-accent)] focus:outline-none"
+      />
+    </td>
+  );
+}
+
+function TCalcCell({ value, prominent, right }: { value: number | null; prominent?: boolean; right?: boolean }) {
+  const color = prominent && value !== null
+    ? value >= 0 ? 'text-[var(--led-success)]' : 'text-[var(--led-danger,#ef4444)]'
+    : value !== null ? 'text-[var(--led-ink)]' : 'text-[var(--led-muted)]';
+  return (
+    <td className={`border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-[12px] font-medium led-tnum whitespace-nowrap min-w-[110px] ${right !== false ? 'text-right' : ''} ${color} ${prominent ? 'font-semibold' : ''}`}>
+      {value !== null ? fmtCurrency(value) : '--'}
+    </td>
+  );
+}
+
+function THeader({ children, sticky }: { children: ReactNode; sticky?: boolean }) {
+  return (
+    <th className={`border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--led-muted)] text-center whitespace-nowrap ${sticky ? 'sticky left-0 z-20' : ''}`}>
+      {children}
+    </th>
+  );
+}
+
+function TSectionRow({ label, colSpan }: { label: string; colSpan: number }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="border-b border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">
+        {label}
+      </td>
+    </tr>
+  );
+}
+
+// ── BAS Calculator ────────────────────────────────────────────────────────────
+
+const EMPTY_PERIOD: PeriodInput = {
+  date: '', totalSales: '', gstOnSales: '', nonCapPurchases: '',
+  gstOnPurchases: '', wages: '', fbt: '',
+};
+
 function BASCalculator() {
-  const [tab, setTab] = useState<BASCalcTab>('surplus');
-  const [surplusF, setSurplusF] = useState({ totalSales: '', gstOnSales: '', nonCapPurchases: '', gstOnPurchases: '', totalPayments: '', fbt: '', oncostsRate: '15' });
-  const [salesF, setSalesF] = useState({ gstOnSales: '', capex: '', gstOnExpenses: '', totalPayments: '', oncostsRate: '15' });
-  const [servicingF, setServicingF] = useState({ surplus: '', capexAnnual: '', existingMonthly: '', proposedAnnual: '' });
+  const [mode, setMode] = useState<BASMode>('quarterly');
+  const [tab, setTab] = useState<BASTab>('collator');
+  const [oncostsRate, setOncostsRate] = useState('15');
 
-  const sParsed = { totalSales: parseNum(surplusF.totalSales), gstOnSales: parseNum(surplusF.gstOnSales), nonCapPurchases: parseNum(surplusF.nonCapPurchases), gstOnPurchases: parseNum(surplusF.gstOnPurchases), totalPayments: parseNum(surplusF.totalPayments), fbt: parseNum(surplusF.fbt) ?? 0, oncostsRate: (parseNum(surplusF.oncostsRate) ?? 15) / 100 };
-  const surplusResult: number | null = sParsed.totalSales !== null && sParsed.gstOnSales !== null && sParsed.nonCapPurchases !== null && sParsed.gstOnPurchases !== null && sParsed.totalPayments !== null ? basCalcSurplus(sParsed.totalSales, sParsed.gstOnSales, sParsed.nonCapPurchases, sParsed.gstOnPurchases, sParsed.totalPayments, sParsed.fbt, sParsed.oncostsRate) : null;
+  const [periods, setPeriods] = useState<PeriodInput[]>(
+    Array.from({ length: 12 }, () => ({ ...EMPTY_PERIOD }))
+  );
 
-  const aParsed = { gstOnSales: parseNum(salesF.gstOnSales), capex: parseNum(salesF.capex), gstOnExpenses: parseNum(salesF.gstOnExpenses), totalPayments: parseNum(salesF.totalPayments), oncostsRate: (parseNum(salesF.oncostsRate) ?? 15) / 100 };
-  const salesResult = aParsed.gstOnSales !== null && aParsed.capex !== null && aParsed.gstOnExpenses !== null && aParsed.totalPayments !== null ? basCalcSalesAnalysis(aParsed.gstOnSales, aParsed.capex, aParsed.gstOnExpenses, aParsed.totalPayments, aParsed.oncostsRate) : null;
+  const [capexEntries, setCapexEntries] = useState<CapexEntry[]>([
+    { description: '', amount: '' },
+    { description: '', amount: '' },
+    { description: '', amount: '' },
+  ]);
 
-  const vParsed = { surplus: parseNum(servicingF.surplus), capexAnnual: parseNum(servicingF.capexAnnual), existingMonthly: parseNum(servicingF.existingMonthly), proposedAnnual: parseNum(servicingF.proposedAnnual) };
-  const servicingResult: number | null = vParsed.surplus !== null && vParsed.capexAnnual !== null && vParsed.existingMonthly !== null && vParsed.proposedAnnual !== null ? basCalcServicing(vParsed.surplus, vParsed.capexAnnual, vParsed.existingMonthly, vParsed.proposedAnnual) : null;
+  const [loanEntries, setLoanEntries] = useState<LoanEntry[]>(
+    Array.from({ length: 7 }, () => ({ description: '', monthly: '' }))
+  );
+
+  const [proposedLoan, setProposedLoan] = useState<LoanEntry>({ description: '', monthly: '' });
+
+  // ── Derived values ────────────────────────────────────────────────────────
+
+  const rate = (parseNum(oncostsRate) ?? 15) / 100;
+  const periodCount = mode === 'quarterly' ? 4 : 12;
+  const activePeriods = periods.slice(0, periodCount);
+  const calcs = activePeriods.map(p => calcPeriod(p, rate));
+
+  const annualSurplus = sumOrNull(calcs.map(c => c.basSurplus));
+  const monthlySurplus = annualSurplus !== null ? annualSurplus / 12 : null;
+
+  const totalSalesNetGST = sumOrNull(calcs.map(c => c.salesNetGST));
+  const totalPurchasesNetGST = sumOrNull(calcs.map(c => c.purchasesNetGST));
+  const totalStaffOncosts = sumOrNull(calcs.map(c => c.staffOncosts));
+  const totalAllExpenses = sumOrNull(calcs.map(c => c.totalExpenses));
+
+  const sumInput = (field: keyof PeriodInput): number | null =>
+    sumOrNull(activePeriods.map(p => parseNum(p[field] as string)));
+
+  // Servicing
+  const capexAmounts = capexEntries.map(e => parseNum(e.amount));
+  const totalCapex = sumOrNull(capexAmounts);
+  const loanAnnuals = loanEntries.map(l => {
+    const m = parseNum(l.monthly);
+    return m !== null ? m * 12 : null;
+  });
+  const proposedAnnual = (() => {
+    const m = parseNum(proposedLoan.monthly);
+    return m !== null ? m * 12 : null;
+  })();
+  const totalAnnualLoans = sumOrNull([...loanAnnuals, proposedAnnual]);
+  const servSurplus = annualSurplus !== null && totalAnnualLoans !== null
+    ? annualSurplus + (totalCapex ?? 0) - totalAnnualLoans
+    : null;
+
+  // Sales analysis quarterly data
+  const quarterlyPeriods = mode === 'quarterly' ? activePeriods : aggregateMonthsToQuarters(periods);
+  const capexPerQuarter = totalCapex !== null ? totalCapex / 4 : 0;
+
+  const updatePeriod = (idx: number, field: keyof PeriodInput, val: string) =>
+    setPeriods(prev => prev.map((p, i) => i === idx ? { ...p, [field]: val } : p));
+
+  const periodLabels = mode === 'quarterly'
+    ? ['Q1', 'Q2', 'Q3', 'Q4']
+    : Array.from({ length: 12 }, (_, i) => `M${i + 1}`);
+
+  const tableColCount = 2 + periodCount + 1;
 
   return (
     <GlassCard padding="none" className="flex flex-col">
+      {/* Card header */}
       <div className="border-b border-[var(--led-line)] px-6 py-5">
         <div className="flex flex-wrap items-center gap-4">
           <div>
@@ -155,9 +340,13 @@ function BASCalculator() {
             <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">BAS Calculator</h2>
           </div>
           <div className="flex gap-1 rounded-[12px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-1">
-            {(['surplus', 'sales', 'servicing'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`rounded-[8px] px-3 py-1.5 text-[12px] font-semibold transition-colors ${tab === t ? 'bg-[var(--led-accent)] text-white' : 'text-[var(--led-muted)] hover:text-[var(--led-ink)]'}`}>
-                {t === 'surplus' ? 'BAS Surplus' : t === 'sales' ? 'Sales Analysis' : 'Servicing'}
+            {(['collator', 'servicing', 'sales'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-[8px] px-3 py-1.5 text-[12px] font-semibold transition-colors ${tab === t ? 'bg-[var(--led-accent)] text-white' : 'text-[var(--led-muted)] hover:text-[var(--led-ink)]'}`}
+              >
+                {t === 'collator' ? 'BAS Collator' : t === 'servicing' ? 'Servicing' : 'Sales Analysis'}
               </button>
             ))}
           </div>
@@ -165,59 +354,450 @@ function BASCalculator() {
       </div>
 
       <div className="p-6">
-        {tab === 'surplus' && (
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Inputs</p>
-              <CalcInput label="Total Sales (incl. GST)" value={surplusF.totalSales} onChange={(v) => setSurplusF((f) => ({ ...f, totalSales: v }))} prefix="$" />
-              <CalcInput label="GST on Sales" value={surplusF.gstOnSales} onChange={(v) => setSurplusF((f) => ({ ...f, gstOnSales: v }))} prefix="$" />
-              <CalcInput label="Non-Capital Purchases (incl. GST)" value={surplusF.nonCapPurchases} onChange={(v) => setSurplusF((f) => ({ ...f, nonCapPurchases: v }))} prefix="$" />
-              <CalcInput label="GST on Purchases" value={surplusF.gstOnPurchases} onChange={(v) => setSurplusF((f) => ({ ...f, gstOnPurchases: v }))} prefix="$" />
-              <CalcInput label="Total Payments (Wages & Expenses)" value={surplusF.totalPayments} onChange={(v) => setSurplusF((f) => ({ ...f, totalPayments: v }))} prefix="$" />
-              <div className="grid grid-cols-2 gap-4">
-                <CalcInput label="FBT" value={surplusF.fbt} onChange={(v) => setSurplusF((f) => ({ ...f, fbt: v }))} prefix="$" hint="Optional, default $0" />
-                <CalcInput label="Staff Oncosts (%)" value={surplusF.oncostsRate} onChange={(v) => setSurplusF((f) => ({ ...f, oncostsRate: v }))} hint="Default 15%" />
+
+        {/* ── BAS Collator Tab ─────────────────────────────────────────────── */}
+        {tab === 'collator' && (
+          <div className="space-y-6">
+            {/* Controls row */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex gap-1 rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-1">
+                {(['quarterly', 'monthly'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    className={`rounded-[7px] px-3 py-1 text-[12px] font-semibold capitalize transition-colors ${mode === m ? 'bg-[var(--led-accent)] text-white' : 'text-[var(--led-muted)] hover:text-[var(--led-ink)]'}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--led-muted)]">Staff Oncosts</label>
+                <input
+                  type="number"
+                  value={oncostsRate}
+                  onChange={(e) => setOncostsRate(e.target.value)}
+                  className="w-16 rounded-[8px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-2 py-1 text-[13px] font-medium led-tnum text-[var(--led-ink)] focus:border-[var(--led-accent)] focus:outline-none"
+                />
+                <span className="text-[13px] text-[var(--led-muted)]">%</span>
               </div>
             </div>
-            <div className="flex flex-col gap-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Result</p>
-              <CalcResultItem label="BAS Surplus" value={surplusResult !== null ? fmtCurrency(surplusResult) : '--'} sub={surplusResult !== null ? (surplusResult >= 0 ? 'Profit for the period' : 'Loss for the period') : 'Enter all required fields to calculate'} />
+
+            {/* Collator table */}
+            <div className="overflow-x-auto rounded-[12px] border border-[var(--led-line)]">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <THeader sticky>Field</THeader>
+                    <THeader>Item</THeader>
+                    {periodLabels.map(l => <THeader key={l}>{l}</THeader>)}
+                    <THeader>Annual</THeader>
+                  </tr>
+                  {/* Date row */}
+                  <tr>
+                    <TLabelCell><span className="text-[var(--led-muted)]">Period End Date</span></TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.date} onChange={(v) => updatePeriod(i, 'date', v)} isDate />
+                    ))}
+                    <TCalcCell value={null} />
+                  </tr>
+                </thead>
+
+                <tbody>
+                  <TSectionRow label="Income" colSpan={tableColCount} />
+
+                  <tr>
+                    <TLabelCell>Total Sales <span className="text-[var(--led-muted)] font-normal">(incl. GST)</span></TLabelCell>
+                    <TItemCell>G1</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.totalSales} onChange={(v) => updatePeriod(i, 'totalSales', v)} />
+                    ))}
+                    <TCalcCell value={sumInput('totalSales')} />
+                  </tr>
+
+                  <tr>
+                    <TLabelCell>GST on Sales</TLabelCell>
+                    <TItemCell>1A</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.gstOnSales} onChange={(v) => updatePeriod(i, 'gstOnSales', v)} />
+                    ))}
+                    <TCalcCell value={sumInput('gstOnSales')} />
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Sales Net of GST</em></TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {calcs.map((c, i) => <TCalcCell key={i} value={c.salesNetGST} />)}
+                    <TCalcCell value={totalSalesNetGST} />
+                  </tr>
+
+                  <TSectionRow label="Deductions" colSpan={tableColCount} />
+
+                  <tr>
+                    <TLabelCell>Non-Capital Purchases <span className="text-[var(--led-muted)] font-normal">(optional)</span></TLabelCell>
+                    <TItemCell>G11</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.nonCapPurchases} onChange={(v) => updatePeriod(i, 'nonCapPurchases', v)} isOptional />
+                    ))}
+                    <TCalcCell value={sumInput('nonCapPurchases')} />
+                  </tr>
+
+                  <tr>
+                    <TLabelCell>GST on Purchases</TLabelCell>
+                    <TItemCell>1B</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.gstOnPurchases} onChange={(v) => updatePeriod(i, 'gstOnPurchases', v)} />
+                    ))}
+                    <TCalcCell value={sumInput('gstOnPurchases')} />
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Purchases Net of GST</em></TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {calcs.map((c, i) => <TCalcCell key={i} value={c.purchasesNetGST} />)}
+                    <TCalcCell value={totalPurchasesNetGST} />
+                  </tr>
+
+                  <tr>
+                    <TLabelCell>Total Salary, Wages &amp; Other Payments</TLabelCell>
+                    <TItemCell>W1</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.wages} onChange={(v) => updatePeriod(i, 'wages', v)} />
+                    ))}
+                    <TCalcCell value={sumInput('wages')} />
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Staff Oncosts ({oncostsRate}%)</em></TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {calcs.map((c, i) => <TCalcCell key={i} value={c.staffOncosts} />)}
+                    <TCalcCell value={totalStaffOncosts} />
+                  </tr>
+
+                  <tr>
+                    <TLabelCell>FBT <span className="text-[var(--led-muted)] font-normal">(optional)</span></TLabelCell>
+                    <TItemCell>6A</TItemCell>
+                    {activePeriods.map((p, i) => (
+                      <TInputCell key={i} value={p.fbt} onChange={(v) => updatePeriod(i, 'fbt', v)} isOptional />
+                    ))}
+                    <TCalcCell value={sumInput('fbt')} />
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Total Expenses Net of GST</em></TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {calcs.map((c, i) => <TCalcCell key={i} value={c.totalExpenses} />)}
+                    <TCalcCell value={totalAllExpenses} />
+                  </tr>
+
+                  <TSectionRow label="BAS Surplus" colSpan={tableColCount} />
+
+                  <tr>
+                    <TLabelCell semibold>BAS Surplus</TLabelCell>
+                    <TItemCell>—</TItemCell>
+                    {calcs.map((c, i) => <TCalcCell key={i} value={c.basSurplus} prominent />)}
+                    <TCalcCell value={annualSurplus} prominent />
+                  </tr>
+                </tbody>
+              </table>
             </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <CalcResultItem
+                label="Annual BAS Surplus"
+                value={annualSurplus !== null ? fmtCurrency(annualSurplus) : '--'}
+                sub={annualSurplus !== null ? (annualSurplus >= 0 ? 'Profit for the year' : 'Loss for the year') : 'Enter period data to calculate'}
+                signal={annualSurplus !== null ? (annualSurplus >= 0 ? 'positive' : 'negative') : 'neutral'}
+              />
+              <CalcResultItem
+                label="Monthly BAS Surplus"
+                value={monthlySurplus !== null ? fmtCurrency(monthlySurplus) : '--'}
+                sub="Annual ÷ 12"
+                signal={monthlySurplus !== null ? (monthlySurplus >= 0 ? 'positive' : 'negative') : 'neutral'}
+              />
+            </div>
+
+            <p className="text-[11px] text-[var(--led-muted)]">
+              G11 is optional — if not declared on BAS, leave blank and enter 1B only.
+              When G11 &lt; (1B × 11), Purchases Net of GST = 1B × 10.
+            </p>
           </div>
         )}
 
-        {tab === 'sales' && (
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Inputs</p>
-              <CalcInput label="GST on Sales" value={salesF.gstOnSales} onChange={(v) => setSalesF((f) => ({ ...f, gstOnSales: v }))} prefix="$" />
-              <CalcInput label="Capital Expenses (excl. GST)" value={salesF.capex} onChange={(v) => setSalesF((f) => ({ ...f, capex: v }))} prefix="$" />
-              <CalcInput label="GST on Expenses" value={salesF.gstOnExpenses} onChange={(v) => setSalesF((f) => ({ ...f, gstOnExpenses: v }))} prefix="$" />
-              <CalcInput label="Total Payments (Wages & Expenses)" value={salesF.totalPayments} onChange={(v) => setSalesF((f) => ({ ...f, totalPayments: v }))} prefix="$" />
-              <CalcInput label="Staff Oncosts (%)" value={salesF.oncostsRate} onChange={(v) => setSalesF((f) => ({ ...f, oncostsRate: v }))} hint="Default 15%" />
-            </div>
-            <div className="space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Results</p>
-              <CalcResultItem label="Total Profit" value={salesResult !== null ? fmtCurrency(salesResult.profit) : '--'} />
-              <CalcResultItem label="Expenses to Sales Ratio" value={salesResult !== null ? fmtRatio(salesResult.expRatio) : '--'} />
-              <CalcResultItem label="Profit Ratio" value={salesResult !== null ? fmtRatio(salesResult.profitRatio) : '--'} sub={salesResult === null ? 'Enter all fields to calculate' : undefined} />
-            </div>
-          </div>
-        )}
-
+        {/* ── Servicing Tab ─────────────────────────────────────────────────── */}
         {tab === 'servicing' && (
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div className="space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Inputs</p>
-              <CalcInput label="Annual BAS Surplus" value={servicingF.surplus} onChange={(v) => setServicingF((f) => ({ ...f, surplus: v }))} prefix="$" hint="Annual profit/surplus — may be negative" />
-              <CalcInput label="Capital Expenses (Annual Total)" value={servicingF.capexAnnual} onChange={(v) => setServicingF((f) => ({ ...f, capexAnnual: v }))} prefix="$" hint="Sum of 4 quarterly capital expenses" />
-              <CalcInput label="Existing Loan Monthly Repayment" value={servicingF.existingMonthly} onChange={(v) => setServicingF((f) => ({ ...f, existingMonthly: v }))} prefix="$" hint="Will be annualised (× 12)" />
-              <CalcInput label="Proposed New Loan (Annual Repayment)" value={servicingF.proposedAnnual} onChange={(v) => setServicingF((f) => ({ ...f, proposedAnnual: v }))} prefix="$" />
+          <div className="space-y-8">
+            {/* BAS Surplus from collator */}
+            <div className="rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Annual BAS Surplus — from Collator</p>
+              <p className={`mt-2 text-[22px] font-semibold tracking-[-0.03em] led-tnum ${annualSurplus !== null ? (annualSurplus >= 0 ? 'text-[var(--led-success)]' : 'text-[var(--led-danger,#ef4444)]') : 'text-[var(--led-muted)]'}`}>
+                {annualSurplus !== null ? fmtCurrency(annualSurplus) : '--'}
+              </p>
+              {annualSurplus === null && (
+                <p className="mt-1 text-[12px] text-[var(--led-muted)]">Complete the BAS Collator tab to auto-populate</p>
+              )}
             </div>
-            <div className="flex flex-col gap-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Result</p>
-              <CalcResultItem label="BAS Servicing Capacity" value={servicingResult !== null ? fmtCurrency(servicingResult) : '--'} sub={servicingResult !== null ? (servicingResult >= 0 ? 'Positive servicing capacity' : 'Negative — loan may not be serviceable') : 'Enter all fields to calculate'} />
+
+            <div className="grid gap-8 lg:grid-cols-2">
+              {/* Left: inputs */}
+              <div className="space-y-6">
+
+                {/* Capital Expenses */}
+                <div className="space-y-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Asset Purchase Add Back (Ex GST)</p>
+                  {capexEntries.map((e, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={e.description}
+                        onChange={(ev) => setCapexEntries(prev => prev.map((x, j) => j === i ? { ...x, description: ev.target.value } : x))}
+                        placeholder={`Capital Expense ${i + 1}`}
+                        className="min-w-0 flex-1 rounded-[8px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-[13px] text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                      />
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-[13px] text-[var(--led-muted)]">$</span>
+                        <input
+                          type="number"
+                          value={e.amount}
+                          onChange={(ev) => setCapexEntries(prev => prev.map((x, j) => j === i ? { ...x, amount: ev.target.value } : x))}
+                          placeholder="0"
+                          className="w-[110px] rounded-[8px] border border-[var(--led-line)] bg-[var(--led-surface-2)] py-2 pl-7 pr-3 text-[13px] font-medium led-tnum text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between border-t border-[var(--led-line)] pt-2">
+                    <span className="text-[12px] font-semibold text-[var(--led-muted)] uppercase tracking-[0.1em]">Total Capital Purchases</span>
+                    <span className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">
+                      {totalCapex !== null ? fmtCurrency(totalCapex) : '--'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Loan Commitments */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Loan Commitments</p>
+                  <div className="grid grid-cols-[20px_1fr_100px_90px] gap-x-2 items-center text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--led-muted)] px-1">
+                    <span>#</span><span>Description</span><span className="text-right">Monthly</span><span className="text-right">Annual</span>
+                  </div>
+                  {loanEntries.map((l, i) => (
+                    <div key={i} className="grid grid-cols-[20px_1fr_100px_90px] gap-x-2 items-center">
+                      <span className="text-[11px] text-[var(--led-muted)] text-center">{i + 1}</span>
+                      <input
+                        type="text"
+                        value={l.description}
+                        onChange={(ev) => setLoanEntries(prev => prev.map((x, j) => j === i ? { ...x, description: ev.target.value } : x))}
+                        placeholder="Description"
+                        className="rounded-[7px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-2 py-1.5 text-[12px] text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                      />
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-[11px] text-[var(--led-muted)]">$</span>
+                        <input
+                          type="number"
+                          value={l.monthly}
+                          onChange={(ev) => setLoanEntries(prev => prev.map((x, j) => j === i ? { ...x, monthly: ev.target.value } : x))}
+                          placeholder="0"
+                          className="w-full rounded-[7px] border border-[var(--led-line)] bg-[var(--led-surface-2)] py-1.5 pl-6 pr-2 text-[12px] font-medium led-tnum text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                        />
+                      </div>
+                      <span className="text-right text-[12px] font-medium led-tnum text-[var(--led-ink)]">
+                        {loanAnnuals[i] !== null ? fmtCurrency(loanAnnuals[i]!) : '--'}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Proposed loan */}
+                  <div className="grid grid-cols-[20px_1fr_100px_90px] gap-x-2 items-center border-t border-[var(--led-line)] pt-2">
+                    <span className="text-[11px] font-semibold text-[var(--led-accent)] text-center">P</span>
+                    <input
+                      type="text"
+                      value={proposedLoan.description}
+                      onChange={(e) => setProposedLoan(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Proposed loan"
+                      className="rounded-[7px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-2 py-1.5 text-[12px] text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-[11px] text-[var(--led-muted)]">$</span>
+                      <input
+                        type="number"
+                        value={proposedLoan.monthly}
+                        onChange={(e) => setProposedLoan(prev => ({ ...prev, monthly: e.target.value }))}
+                        placeholder="0"
+                        className="w-full rounded-[7px] border border-[var(--led-line)] bg-[var(--led-surface-2)] py-1.5 pl-6 pr-2 text-[12px] font-medium led-tnum text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:border-[var(--led-accent)] focus:outline-none"
+                      />
+                    </div>
+                    <span className="text-right text-[12px] font-medium led-tnum text-[var(--led-ink)]">
+                      {proposedAnnual !== null ? fmtCurrency(proposedAnnual) : '--'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-[var(--led-line)] pt-2">
+                    <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[var(--led-muted)]">Total Annual Expenses</span>
+                    <span className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">
+                      {totalAnnualLoans !== null ? fmtCurrency(totalAnnualLoans) : '--'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: results */}
+              <div className="space-y-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Servicing Result</p>
+
+                <div className="space-y-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-5">
+                  <ResultRow label="Annual BAS Surplus" value={annualSurplus !== null ? fmtCurrency(annualSurplus) : '--'} />
+                  {totalCapex !== null && totalCapex > 0 && (
+                    <ResultRow label="+ Capital Purchases Add Back" value={fmtCurrency(totalCapex)} muted indent />
+                  )}
+                  {totalAnnualLoans !== null && (
+                    <ResultRow label="− Total Annual Loan Expenses" value={fmtCurrency(totalAnnualLoans)} muted indent />
+                  )}
+                  <ResultDivider />
+                  <ResultRow
+                    label="BAS Servicing Capacity"
+                    value={servSurplus !== null ? fmtCurrency(servSurplus) : '--'}
+                    sub={servSurplus !== null
+                      ? (servSurplus >= 0 ? 'Positive servicing capacity' : 'Negative — loan may not be serviceable')
+                      : 'Complete collator and enter commitments'}
+                  />
+                </div>
+
+                <CalcResultItem
+                  label="BAS Servicing Capacity"
+                  value={servSurplus !== null ? fmtCurrency(servSurplus) : '--'}
+                  sub={servSurplus !== null ? (servSurplus >= 0 ? 'Positive servicing capacity' : 'Negative — loan may not be serviceable') : undefined}
+                  signal={servSurplus !== null ? (servSurplus >= 0 ? 'positive' : 'negative') : 'neutral'}
+                />
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Sales Analysis Tab ───────────────────────────────────────────── */}
+        {tab === 'sales' && (
+          <div className="space-y-6">
+            <p className="text-[12px] text-[var(--led-muted)]">
+              {mode === 'monthly'
+                ? 'Monthly data aggregated into quarters (M1–M3 = Q1, etc.).'
+                : 'Per-quarter revenue and expenditure breakdown.'}
+              {totalCapex !== null && totalCapex > 0
+                ? ` Capex (${fmtCurrency(totalCapex)}) distributed evenly across 4 quarters.`
+                : ' Enter capital expenses in the Servicing tab to apply capex distribution.'}
+            </p>
+
+            <div className="overflow-x-auto rounded-[12px] border border-[var(--led-line)]">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <THeader sticky>Metric</THeader>
+                    <THeader>Q1</THeader>
+                    <THeader>Q2</THeader>
+                    <THeader>Q3</THeader>
+                    <THeader>Q4</THeader>
+                  </tr>
+                </thead>
+                <tbody>
+                  <TSectionRow label="Revenue" colSpan={5} />
+
+                  <tr>
+                    <TLabelCell>GST on Sales (1A)</TLabelCell>
+                    {quarterlyPeriods.map((p, i) => <TCalcCell key={i} value={parseNum(p.gstOnSales)} />)}
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Total Revenue (1A × 10)</em></TLabelCell>
+                    {quarterlyPeriods.map((p, i) => {
+                      const v = parseNum(p.gstOnSales);
+                      return <TCalcCell key={i} value={v !== null ? v * 10 : null} />;
+                    })}
+                  </tr>
+
+                  <TSectionRow label="Expenditure" colSpan={5} />
+
+                  <tr>
+                    <TLabelCell>GST on Expenses (1B)</TLabelCell>
+                    {quarterlyPeriods.map((p, i) => <TCalcCell key={i} value={parseNum(p.gstOnPurchases)} />)}
+                  </tr>
+
+                  <tr>
+                    <TLabelCell><span className="text-[var(--led-muted)]">Capex (total ÷ 4)</span></TLabelCell>
+                    {[0, 1, 2, 3].map(i => (
+                      <TCalcCell key={i} value={totalCapex !== null && totalCapex > 0 ? capexPerQuarter : null} />
+                    ))}
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell><em>Effective Expenses (1B − Capex)</em></TLabelCell>
+                    {quarterlyPeriods.map((p, i) => {
+                      const v = parseNum(p.gstOnPurchases);
+                      return <TCalcCell key={i} value={v !== null ? v - capexPerQuarter : null} />;
+                    })}
+                  </tr>
+
+                  <tr>
+                    <TLabelCell>Wages (W1)</TLabelCell>
+                    {quarterlyPeriods.map((p, i) => <TCalcCell key={i} value={parseNum(p.wages)} />)}
+                  </tr>
+
+                  <tr className="bg-[var(--led-surface-2)]">
+                    <TLabelCell semibold><em>Total Expenditure (Eff. Exp × 10 + Wages)</em></TLabelCell>
+                    {quarterlyPeriods.map((p, i) => {
+                      const gstExp = parseNum(p.gstOnPurchases);
+                      const wages = parseNum(p.wages);
+                      if (gstExp === null || wages === null) return <TCalcCell key={i} value={null} />;
+                      return <TCalcCell key={i} value={(gstExp - capexPerQuarter) * 10 + wages} />;
+                    })}
+                  </tr>
+
+                  <TSectionRow label="Ratios" colSpan={5} />
+
+                  <tr>
+                    <TLabelCell>Expenses to Sales Ratio</TLabelCell>
+                    {quarterlyPeriods.map((p, i) => {
+                      const gstSales = parseNum(p.gstOnSales);
+                      const gstExp = parseNum(p.gstOnPurchases);
+                      const wages = parseNum(p.wages);
+                      if (!gstSales || gstExp === null || wages === null) {
+                        return <td key={i} className="border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-right text-[12px] text-[var(--led-muted)] min-w-[110px]">--</td>;
+                      }
+                      const ratio = ((gstExp - capexPerQuarter) * 10 + wages) / (gstSales * 10);
+                      return (
+                        <td key={i} className="border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-right text-[12px] font-medium led-tnum text-[var(--led-ink)] min-w-[110px]">
+                          {fmtRatio(ratio)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+
+                  <tr>
+                    <TLabelCell semibold>Profit Ratio</TLabelCell>
+                    {quarterlyPeriods.map((p, i) => {
+                      const gstSales = parseNum(p.gstOnSales);
+                      const gstExp = parseNum(p.gstOnPurchases);
+                      const wages = parseNum(p.wages);
+                      if (!gstSales || gstExp === null || wages === null) {
+                        return <td key={i} className="border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-right text-[12px] text-[var(--led-muted)] min-w-[110px]">--</td>;
+                      }
+                      const profitRatio = 1 - ((gstExp - capexPerQuarter) * 10 + wages) / (gstSales * 10);
+                      const color = profitRatio >= 0.3 ? 'text-[var(--led-success)]'
+                        : profitRatio >= 0.1 ? 'text-[var(--led-warning)]'
+                        : 'text-[var(--led-danger,#ef4444)]';
+                      return (
+                        <td key={i} className={`border-b border-r border-[var(--led-line)] bg-[var(--led-surface-2)] px-3 py-2 text-right text-[12px] font-semibold led-tnum min-w-[110px] ${color}`}>
+                          {fmtRatio(profitRatio)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-[11px] text-[var(--led-muted)]">
+              Any significant quarter-to-quarter changes should be noted in credit notes.
+            </p>
           </div>
         )}
       </div>
@@ -388,7 +968,6 @@ function PayCalculator() {
       </div>
 
       <div className="grid gap-8 p-6 lg:grid-cols-2">
-        {/* Inputs */}
         <div className="space-y-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Income</p>
 
@@ -398,7 +977,6 @@ function PayCalculator() {
           </div>
 
           <CalcToggle label="Salary includes super" checked={includesSuper} onChange={setIncludesSuper} hint="Gross package includes SGC" />
-
           <CalcInput label="Super Rate (%)" value={superRate} onChange={setSuperRate} hint="Default 12% (SGC rate)" />
 
           <div className="space-y-3">
@@ -410,14 +988,13 @@ function PayCalculator() {
           </div>
 
           <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Deductions & Offsets</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Deductions &amp; Offsets</p>
             <CalcInput label="Annual Deductions" value={deductions} onChange={setDeductions} prefix="$" hint="Tax deductions, work expenses, etc." />
             <CalcSelect label="Medicare Levy" value={medicareExemption} onChange={(v) => setMedicareExemption(v as MedicareExemption)} options={medicareOptions} />
             <CalcToggle label="HELP / HECS student loan" checked={studentLoan} onChange={setStudentLoan} />
           </div>
         </div>
 
-        {/* Results */}
         <div className="space-y-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Breakdown</p>
 
@@ -476,14 +1053,14 @@ interface RatioCard {
   hint: string;
 }
 
-function signal(value: number | null, goodAbove?: number, warnAbove?: number): RatioSignal {
+function ratioSignal(value: number | null, goodAbove?: number, warnAbove?: number): RatioSignal {
   if (value === null) return 'neutral';
   if (goodAbove !== undefined && value >= goodAbove) return 'good';
   if (warnAbove !== undefined && value >= warnAbove) return 'warn';
   return 'bad';
 }
 
-function signalBelow(value: number | null, goodBelow?: number, warnBelow?: number): RatioSignal {
+function ratioSignalBelow(value: number | null, goodBelow?: number, warnBelow?: number): RatioSignal {
   if (value === null) return 'neutral';
   if (goodBelow !== undefined && value <= goodBelow) return 'good';
   if (warnBelow !== undefined && value <= warnBelow) return 'warn';
@@ -550,17 +1127,17 @@ function RatiosCalculator() {
   const lvr = n('loanAmount') !== null && n('assetValue') !== null ? safe(n('loanAmount')!, n('assetValue'), 100) : null;
 
   const cards: RatioCard[] = [
-    { label: 'Current Ratio', value: currentRatio, format: 'x', signal: signal(currentRatio, 2, 1), hint: '>2 strong · 1–2 adequate · <1 concern' },
-    { label: 'Quick Ratio', value: quickRatio, format: 'x', signal: signal(quickRatio, 1, 0.5), hint: '>1 good · <0.5 liquidity concern' },
-    { label: 'Debt to Income', value: debtToIncome, format: 'x', signal: signalBelow(debtToIncome, 2, 4), hint: '<2 low · 2–4 moderate · >4 high' },
-    { label: 'Debt to Equity', value: debtToEquity, format: 'x', signal: signalBelow(debtToEquity, 1, 2), hint: '<1 low · 1–2 moderate · >2 high leverage' },
-    { label: 'DSCR', value: dscr, format: 'x', signal: signal(dscr, 1.25, 1), hint: '>1.25 healthy · <1 cannot service debt' },
-    { label: 'Interest Coverage', value: interestCoverage, format: 'x', signal: signal(interestCoverage, 3, 1.5), hint: '>3 comfortable · <1.5 concern' },
-    { label: 'Gross Debt / EBITDA', value: grossDebtToEbitda, format: 'x', signal: signalBelow(grossDebtToEbitda, 3, 5), hint: '<3 low · 3–5 moderate · >5 high' },
+    { label: 'Current Ratio', value: currentRatio, format: 'x', signal: ratioSignal(currentRatio, 2, 1), hint: '>2 strong · 1–2 adequate · <1 concern' },
+    { label: 'Quick Ratio', value: quickRatio, format: 'x', signal: ratioSignal(quickRatio, 1, 0.5), hint: '>1 good · <0.5 liquidity concern' },
+    { label: 'Debt to Income', value: debtToIncome, format: 'x', signal: ratioSignalBelow(debtToIncome, 2, 4), hint: '<2 low · 2–4 moderate · >4 high' },
+    { label: 'Debt to Equity', value: debtToEquity, format: 'x', signal: ratioSignalBelow(debtToEquity, 1, 2), hint: '<1 low · 1–2 moderate · >2 high leverage' },
+    { label: 'DSCR', value: dscr, format: 'x', signal: ratioSignal(dscr, 1.25, 1), hint: '>1.25 healthy · <1 cannot service debt' },
+    { label: 'Interest Coverage', value: interestCoverage, format: 'x', signal: ratioSignal(interestCoverage, 3, 1.5), hint: '>3 comfortable · <1.5 concern' },
+    { label: 'Gross Debt / EBITDA', value: grossDebtToEbitda, format: 'x', signal: ratioSignalBelow(grossDebtToEbitda, 3, 5), hint: '<3 low · 3–5 moderate · >5 high' },
     { label: 'Days Sales Outstanding', value: dso, format: 'days', signal: 'neutral', hint: 'Lower is better (industry dependent)' },
     { label: 'Inventory Turnover', value: inventoryTurnover, format: 'x', signal: 'neutral', hint: 'Higher is better (industry dependent)' },
     { label: 'Aged Receivables', value: agedReceivables, format: 'days', signal: 'neutral', hint: 'Lower indicates faster collection' },
-    { label: 'Loan to Value Ratio', value: lvr, format: 'pct', signal: signalBelow(lvr, 80, 90), hint: '<80% standard · >80% LMI may apply' },
+    { label: 'Loan to Value Ratio', value: lvr, format: 'pct', signal: ratioSignalBelow(lvr, 80, 90), hint: '<80% standard · >80% LMI may apply' },
   ];
 
   const inputGroup = (title: string, children: ReactNode) => (
@@ -573,7 +1150,7 @@ function RatiosCalculator() {
   return (
     <GlassCard padding="none" className="flex flex-col">
       <div className="border-b border-[var(--led-line)] px-6 py-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Credit & Financial Analysis</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Credit &amp; Financial Analysis</p>
         <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Financial Ratios</h2>
       </div>
 

@@ -42,6 +42,7 @@ export default function Tasks() {
   const [newTitle, setNewTitle] = useState('');
   const [newUrgent, setNewUrgent] = useState(false);
   const [newDueDate, setNewDueDate] = useState('');
+  const [newAssignee, setNewAssignee] = useState('');
   const [adding, setAdding] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [completedCollapsed, setCompletedCollapsed] = useState(true);
@@ -67,12 +68,17 @@ export default function Tasks() {
   };
 
   const fetchStaff = () => {
-    api.get('/users?role=admin&per_page=100').then(({ data }) => {
-      const admins = data.items || data;
-      api.get('/users?role=broker&per_page=100').then(({ data: brokerData }) => {
-        const combined = [...admins, ...(brokerData.items || brokerData)];
-        setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
-      });
+    Promise.all([
+      api.get('/users?role=admin&per_page=100'),
+      api.get('/users?role=broker&per_page=100'),
+      api.get('/users?role=referrer&per_page=100'),
+    ]).then(([{ data: adminData }, { data: brokerData }, { data: referrerData }]) => {
+      const combined = [
+        ...(adminData.items || adminData),
+        ...(brokerData.items || brokerData),
+        ...(referrerData.items || referrerData),
+      ];
+      setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
     }).catch(() => {});
   };
 
@@ -132,10 +138,12 @@ export default function Tasks() {
         priority: newUrgent ? 'urgent' : 'low',
       };
       if (newDueDate) payload.due_date = new Date(newDueDate).toISOString();
+      if (newAssignee) payload.assigned_to_id = newAssignee;
       await api.post('/tasks', payload);
       setNewTitle('');
       setNewUrgent(false);
       setNewDueDate('');
+      setNewAssignee('');
       setPage(1);
       fetchData();
     } catch (err: unknown) {
@@ -375,6 +383,17 @@ export default function Tasks() {
               title="Due date"
               className="text-[12px] rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            <select
+              value={newAssignee}
+              onChange={(e) => setNewAssignee(e.target.value)}
+              title="Assign to"
+              className="text-[12px] rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">Assign to...</option>
+              {staff.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => setNewUrgent((u) => !u)}

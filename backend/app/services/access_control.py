@@ -22,6 +22,9 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to this application")
         return
     if current_user.role == UserRole.referrer:
+        # Allow access to leads submitted directly by this referrer
+        if app.user_id == current_user.id:
+            return
         if db is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         from app.models.external_referral import ExternalReferral

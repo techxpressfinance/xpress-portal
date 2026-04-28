@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { formatDate, getInitials } from '../../lib/utils';
@@ -52,7 +52,15 @@ export default function ReferrerApplications() {
 
   return (
     <div>
-      <PageHeader title="Referred Applications" subtitle="View applications from clients you've referred" />
+      <PageHeader
+        title="Referred Applications"
+        subtitle="View applications from clients you've referred"
+        action={
+          <Link to="/referrer/add-lead">
+            <Button size="sm">+ Add Lead</Button>
+          </Link>
+        }
+      />
 
       {/* Filters */}
       <GlassCard className="mb-6">

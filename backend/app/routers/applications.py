@@ -93,7 +93,7 @@ def list_applications(
             )
         )
     elif current_user.role == UserRole.referrer:
-        # Referrers only see applications from clients they referred
+        # Referrers see: applications from clients they referred + leads they submitted directly
         referred_client_ids = (
             db.query(ExternalReferral.referred_client_id)
             .filter(
@@ -101,7 +101,13 @@ def list_applications(
                 ExternalReferral.referred_client_id.isnot(None),
             )
         )
-        query = query.filter(LoanApplication.user_id.in_(referred_client_ids))
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                LoanApplication.user_id.in_(referred_client_ids),
+                LoanApplication.user_id == current_user.id,
+            )
+        )
 
     if status_filter:
         query = query.filter(LoanApplication.status == status_filter)
@@ -142,7 +148,13 @@ def get_application_analytics(
             ExternalReferral.referrer_id == current_user.id,
             ExternalReferral.referred_client_id.isnot(None),
         )
-        query = query.filter(LoanApplication.user_id.in_(referred_client_ids))
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                LoanApplication.user_id.in_(referred_client_ids),
+                LoanApplication.user_id == current_user.id,
+            )
+        )
 
     apps = query.all()
 
