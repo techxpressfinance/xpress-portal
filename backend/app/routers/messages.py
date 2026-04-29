@@ -290,8 +290,8 @@ def send_message(
                 f"You have a new message from {current_user.full_name}.\n\n"
                 f"Subject: {data.subject}\n\n"
                 f"{data.content}\n\n"
-                f"Log in to your Xpress Tech Portal account to view the full message.\n\n"
-                f"Best regards,\nXpress Tech Team"
+                f"Log in to your Xpress Finance Portal account to view the full message.\n\n"
+                f"Best regards,\nXpress Finance Team"
             )
         else:
             body = (
@@ -299,12 +299,12 @@ def send_message(
                 f"You have a new client message from {current_user.full_name}.\n\n"
                 f"Subject: {data.subject}\n\n"
                 f"{data.content}\n\n"
-                f"Log in to your Xpress Tech Portal account to reply.\n\n"
-                f"Best regards,\nXpress Tech Team"
+                f"Log in to your Xpress Finance Portal account to reply.\n\n"
+                f"Best regards,\nXpress Finance Team"
             )
         thread = threading.Thread(
             target=_send_email,
-            args=(recipient.email, f"New Message: {data.subject} - Xpress Tech Portal", body),
+            args=(recipient.email, f"New Message: {data.subject} - Xpress Finance Portal", body),
             daemon=True,
         )
         thread.start()

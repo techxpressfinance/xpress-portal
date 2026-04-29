@@ -99,7 +99,7 @@ def list_service_requests(
         .options(joinedload(ServiceRequest.client))
         .filter(ServiceRequest.tenant_id == tenant_id)
     )
-    if current_user.role == UserRole.client.value:
+    if current_user.role in (UserRole.client.value, UserRole.referrer.value):
         q = q.filter(ServiceRequest.client_id == current_user.id)
     if status:
         q = q.filter(ServiceRequest.status == status)

@@ -206,11 +206,14 @@ function parseInputParams(quoteSheet: QuoteSheet) {
     const params = JSON.parse(quoteSheet.input_parameters);
     return {
       assetDescription: (params.asset_description || params.asset_type || 'Asset') as string,
+      facilityType: (params.facility_type || 'chattel') as string,
+      paymentType: (params.payment_type || 'advance') as string,
       establishmentFee: params.establishment_fee ?? null,
       ppsrFee: params.ppsr_fee ?? null,
       originationFee: params.origination_fee ?? null,
       brokeragePercent: params.brokerage_percent ?? null,
       interestRate: params.interest_rate ?? null,
+      monthlyAccountFee: params.monthly_account_fee ?? 0,
       feesFinanced: params.fees_financed ?? true,
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,

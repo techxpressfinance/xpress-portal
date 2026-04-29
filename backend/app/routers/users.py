@@ -107,10 +107,23 @@ def create_broker(
 def get_user_referrer(
     user_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    _current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
     """Get the referrer of a user, if any."""
+    ext_ref = db.query(ExternalReferral).filter(
+        ExternalReferral.referred_client_id == user_id,
+    ).first()
+    if ext_ref and ext_ref.referrer:
+        return {
+            "referrer": {
+                "id": ext_ref.referrer.id,
+                "full_name": ext_ref.referrer.full_name,
+                "email": ext_ref.referrer.email,
+                "phone": ext_ref.referrer.phone,
+                "organization_name": getattr(ext_ref.referrer, "organization_name", None),
+            }
+        }
     referral = db.query(Referral).filter(
         Referral.referred_user_id == user_id,
     ).first()
@@ -125,6 +138,7 @@ def get_user_referrer(
             "full_name": referrer.full_name,
             "email": referrer.email,
             "phone": referrer.phone,
+            "organization_name": getattr(referrer, "organization_name", None),
         }
     }
 

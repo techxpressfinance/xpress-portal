@@ -86,10 +86,15 @@ def list_applications(
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
     elif current_user.role == UserRole.broker:
-        # Brokers only see applications they are assigned to
+        # Brokers see applications assigned to them + all referrer-submitted leads
+        from sqlalchemy import or_
+        referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
-            LoanApplication.id.in_(
-                db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
+            or_(
+                LoanApplication.id.in_(
+                    db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
+                ),
+                LoanApplication.user_id.in_(referrer_ids),
             )
         )
     elif current_user.role == UserRole.referrer:
@@ -138,9 +143,14 @@ def get_application_analytics(
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
     elif current_user.role == UserRole.broker:
+        from sqlalchemy import or_
+        referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
-            LoanApplication.id.in_(
-                db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
+            or_(
+                LoanApplication.id.in_(
+                    db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
+                ),
+                LoanApplication.user_id.in_(referrer_ids),
             )
         )
     elif current_user.role == UserRole.referrer:
@@ -287,7 +297,7 @@ def change_status(
     app_id: str,
     new_status: ApplicationStatus = Query(..., alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker", "referrer")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()

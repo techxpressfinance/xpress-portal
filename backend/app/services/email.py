@@ -19,27 +19,27 @@ logger = logging.getLogger(__name__)
 
 STATUS_MESSAGES = {
     "application_received": {
-        "subject": "Application Received - Xpress Tech Portal",
+        "subject": "Application Received - Xpress Finance Portal",
         "body": "Your loan application has been received and is now pending assessment. Our team will review your application shortly.",
     },
     "application_assessed": {
-        "subject": "Application Assessed - Xpress Tech Portal",
+        "subject": "Application Assessed - Xpress Finance Portal",
         "body": "Your loan application has been assessed by our team. We will be in touch with the next steps.",
     },
     "submitted": {
-        "subject": "Application Submitted to Lender - Xpress Tech Portal",
+        "subject": "Application Submitted to Lender - Xpress Finance Portal",
         "body": "Your loan application has been submitted to a lender for consideration.",
     },
     "approval": {
-        "subject": "Application Approved - Xpress Tech Portal",
+        "subject": "Application Approved - Xpress Finance Portal",
         "body": "Congratulations! Your loan application has been approved. Our team will reach out with the settlement steps.",
     },
     "settled": {
-        "subject": "Loan Settled - Xpress Tech Portal",
-        "body": "Your loan has settled. Thank you for choosing Xpress Tech.",
+        "subject": "Loan Settled - Xpress Finance Portal",
+        "body": "Your loan has settled. Thank you for choosing Xpress Finance.",
     },
     "rejected": {
-        "subject": "Application Update - Xpress Tech Portal",
+        "subject": "Application Update - Xpress Finance Portal",
         "body": "We regret to inform you that your loan application has not been approved at this time. Please contact us for more details.",
     },
 }
@@ -67,7 +67,7 @@ def _get_base_html(content: str) -> str:
                         <!-- Header -->
                         <tr>
                             <td style="padding: 32px 40px; background-color: #09090b; text-align: center;">
-                                <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Xpress Tech</h1>
+                                <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Xpress Finance</h1>
                             </td>
                         </tr>
                         <!-- Content -->
@@ -80,7 +80,7 @@ def _get_base_html(content: str) -> str:
                         <tr>
                             <td style="padding: 24px 40px 32px; background-color: #fafafa; border-top: 1px solid #e4e4e7; text-align: center;">
                                 <p style="margin: 0; font-size: 13px; color: #71717a; line-height: 1.5;">
-                                    This is an automated message from Xpress Tech.<br>
+                                    This is an automated message from Xpress Finance.<br>
                                     Please do not reply to this email.
                                 </p>
                             </td>
@@ -133,7 +133,7 @@ def send_status_notification(to_email: str, client_name: str, loan_type: str, ne
     if not template:
         return
 
-    body = f"Dear {client_name},\n\n{template['body']}\n\nLoan Type: {loan_type.capitalize()}\nNew Status: {new_status.capitalize()}\n\nBest regards,\nXpress Tech Team"
+    body = f"Dear {client_name},\n\n{template['body']}\n\nLoan Type: {loan_type.capitalize()}\nNew Status: {new_status.capitalize()}\n\nBest regards,\nXpress Finance Team"
 
     _send_async(to_email, template["subject"], body)
 
@@ -145,13 +145,13 @@ def send_verification_email(to_email: str, name: str, token: str) -> None:
         return
 
     verification_url = f"{FRONTEND_URL}/verify-email?token={token}"
-    subject = "Verify Your Email - Xpress Tech Portal"
+    subject = "Verify Your Email - Xpress Finance Portal"
     body = (
         f"Dear {name},\n\n"
         f"Please verify your email address by clicking the link below:\n\n"
         f"{verification_url}\n\n"
         f"This link will expire in 24 hours.\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
@@ -189,18 +189,18 @@ def send_invitation_email(to_email: str, name: str, code: str, inviter_name: str
         logger.debug("Email not configured, skipping invitation email for %s", to_email)
         return
 
-    subject = "You've been invited to Xpress Tech Portal"
+    subject = "You've been invited to Xpress Finance Portal"
     body = (
         f"Dear {name},\n\n"
-        f"{inviter_name} has invited you to Xpress Tech Portal.\n\n"
+        f"{inviter_name} has invited you to Xpress Finance Portal.\n\n"
         f"Your one-time login code is: {code}\n\n"
         f"This code expires in 10 minutes.\n\n"
         f"Go to {FRONTEND_URL}/enter-code?email={to_email} to sign in.\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     html_body = _code_html(code, [
         f"Dear {name},",
-        f"<strong>{inviter_name}</strong> has invited you to Xpress Tech Portal. "
+        f"<strong>{inviter_name}</strong> has invited you to Xpress Finance Portal. "
         f"Use the code below to access your account:",
     ])
 
@@ -222,7 +222,7 @@ def send_complete_application_email(
         return
 
     app_url = f"{FRONTEND_URL}/applications/{application_id}"
-    subject = "Complete Your Loan Application - Xpress Tech Portal"
+    subject = "Complete Your Loan Application - Xpress Finance Portal"
     code_line = f"\n\nYour one-time login code is: {login_code}\nThis code expires in 10 minutes." if login_code else ""
     body = (
         f"Dear {client_name},\n\n"
@@ -231,7 +231,7 @@ def send_complete_application_email(
         f"Amount: ${amount}\n\n"
         f"Click here to view your application: {app_url}"
         f"{code_line}\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
 
     code_section = ""
@@ -278,20 +278,20 @@ def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> N
         return
 
     login_url = f"{FRONTEND_URL}/login"
-    subject = "Welcome to Xpress Tech Portal - Broker Account"
+    subject = "Welcome to Xpress Finance Portal - Broker Account"
     body = (
         f"Dear {name},\n\n"
-        f"An admin has created a broker account for you on Xpress Tech Portal.\n\n"
+        f"An admin has created a broker account for you on Xpress Finance Portal.\n\n"
         f"Your login credentials:\n"
         f"Email: {to_email}\n"
         f"Temporary Password: {temp_password}\n\n"
         f"Please log in at {login_url} and change your password immediately.\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            An admin has created a <strong>broker account</strong> for you on Xpress Tech Portal.
+            An admin has created a <strong>broker account</strong> for you on Xpress Finance Portal.
         </p>
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
             <tr>
@@ -321,20 +321,20 @@ def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) ->
         return
 
     login_url = f"{FRONTEND_URL}/login"
-    subject = "Welcome to Xpress Tech Portal - Referrer Account"
+    subject = "Welcome to Xpress Finance Portal - Referrer Account"
     body = (
         f"Dear {name},\n\n"
-        f"An admin has created a referrer account for you on Xpress Tech Portal.\n\n"
+        f"An admin has created a referrer account for you on Xpress Finance Portal.\n\n"
         f"Your login credentials:\n"
         f"Email: {to_email}\n"
         f"Temporary Password: {temp_password}\n\n"
         f"Please log in at {login_url} and change your password immediately.\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            An admin has created a <strong>referrer account</strong> for you on Xpress Tech Portal. You can now refer clients and track their application progress.
+            An admin has created a <strong>referrer account</strong> for you on Xpress Finance Portal. You can now refer clients and track their application progress.
         </p>
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 24px;">
             <tr>
@@ -365,17 +365,17 @@ def send_referral_notification_email(to_email: str, client_name: str, referrer_n
 
     org_text = f" ({organization_name})" if organization_name else ""
     login_url = f"{FRONTEND_URL}/login"
-    subject = "You've been referred on Xpress Tech Portal"
+    subject = "You've been referred on Xpress Finance Portal"
     body = (
         f"Dear {client_name},\n\n"
-        f"{referrer_name}{org_text} has referred you on Xpress Tech Portal.\n\n"
+        f"{referrer_name}{org_text} has referred you on Xpress Finance Portal.\n\n"
         f"Log in to start a new application: {login_url}\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            <strong>{_esc(referrer_name)}{_esc(org_text)}</strong> has referred you on Xpress Tech Portal. Log in to start a new loan application.
+            <strong>{_esc(referrer_name)}{_esc(org_text)}</strong> has referred you on Xpress Finance Portal. Log in to start a new loan application.
         </p>
         <div style="text-align: center; margin: 32px 0;">
             <a href="{_esc(login_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In &amp; Apply</a>
@@ -399,10 +399,10 @@ def send_quote_sheet_email(
         logger.debug("Email not configured, skipping quote sheet email for %s", to_email)
         return
 
-    subject = f"Your Quote — {sheet_title} - Xpress Tech"
+    subject = f"Your Quote — {sheet_title} - Xpress Finance"
 
     # Build plain-text summary
-    lines = [f"Dear {to_name or 'Client'},", "", f"{sender_name} from Xpress Tech has prepared a finance quote for you.", ""]
+    lines = [f"Dear {to_name or 'Client'},", "", f"{sender_name} from Xpress Finance has prepared a finance quote for you.", ""]
     if asset_description and asset_description != "Asset":
         lines.append(f"Asset: {asset_description}")
     lines.append(f"Quote: {sheet_title}")
@@ -415,7 +415,7 @@ def send_quote_sheet_email(
     lines.append("Please contact us to discuss these options further.")
     lines.append("")
     lines.append("Best regards,")
-    lines.append("Xpress Tech Team")
+    lines.append("Xpress Finance Team")
     body = "\n".join(lines)
 
     # Build HTML rows
@@ -440,7 +440,7 @@ def send_quote_sheet_email(
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(to_name or 'Client')},</p>
         <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
-            <strong>{_esc(sender_name)}</strong> from Xpress Tech has prepared a finance quote for you.
+            <strong>{_esc(sender_name)}</strong> from Xpress Finance has prepared a finance quote for you.
         </p>
 
         <div style="margin-bottom: 24px; padding: 16px 20px; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px;">
@@ -477,12 +477,12 @@ def send_login_code_email(to_email: str, name: str, code: str) -> None:
         logger.debug("Email not configured, skipping login code email for %s", to_email)
         return
 
-    subject = "Your login code - Xpress Tech Portal"
+    subject = "Your login code - Xpress Finance Portal"
     body = (
         f"Dear {name},\n\n"
         f"Your one-time login code is: {code}\n\n"
         f"This code expires in 10 minutes.\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     html_body = _code_html(code, [
         f"Dear {name},",
@@ -506,14 +506,14 @@ def send_document_request_email(
         return
 
     application_url = f"{FRONTEND_URL}/applications/{application_id}"
-    subject = "Action Required: Documents Requested - Xpress Tech Portal"
+    subject = "Action Required: Documents Requested - Xpress Finance Portal"
     body = (
         f"Dear {client_name},\n\n"
         f"Your broker {broker_name} has requested additional documents for your "
         f"{loan_type.replace('_', ' ').capitalize()} loan application.\n\n"
         f"Documents required:\n{description}\n\n"
         f"Please log in to the portal and upload the requested documents:\n{application_url}\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
@@ -551,7 +551,7 @@ def send_service_request_notification(
         return
 
     display_request = custom_request or request_type
-    subject = f"New Service Request: {display_request} - Xpress Tech Portal"
+    subject = f"New Service Request: {display_request} - Xpress Finance Portal"
 
     body_lines = [
         f"Dear {broker_name},",
@@ -565,7 +565,7 @@ def send_service_request_notification(
         body_lines.append(f"Custom Request: {custom_request}")
     if description:
         body_lines.append(f"Details: {description}")
-    body_lines += ["", "Please log in to the portal to review this request.", "", "Best regards,", "Xpress Tech Team"]
+    body_lines += ["", "Please log in to the portal to review this request.", "", "Best regards,", "Xpress Finance Team"]
     body = "\n".join(body_lines)
 
     details_rows = f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Client:</strong> {_esc(client_name)}</p>'

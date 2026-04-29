@@ -147,7 +147,12 @@ function KanbanCard({
   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
   const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
   const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
-  const subtitle = app.business_name || app.user_email || '';
+  const isDirectLead = app.user_role === 'referrer';
+  const clientName = isDirectLead
+    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
+    : app.user_name || 'Unknown';
+  const referrerName = isDirectLead ? app.user_name || null : null;
+  const subtitle = app.business_name || (!isDirectLead ? app.user_email : null) || '';
   const brokers = app.assigned_brokers || [];
   const days = daysSince(app.updated_at);
   const isStale = days >= 7;
@@ -169,7 +174,7 @@ function KanbanCard({
         </span>
       </div>
 
-      <div className="led-kanban-card-title">{app.user_name || 'Unknown'}</div>
+      <div className="led-kanban-card-title">{clientName}</div>
       {subtitle ? <div className="led-kanban-card-sub">{subtitle}</div> : <div style={{ height: 8 }} />}
 
       <div className="led-kanban-card-row">
@@ -182,6 +187,12 @@ function KanbanCard({
         )}
       </div>
 
+      {referrerName && (
+        <div style={{ fontSize: 11, color: 'var(--led-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Icon name="users" size={10} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referrerName}</span>
+        </div>
+      )}
       <div className="led-kanban-card-foot">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {brokers.length > 0 ? (
@@ -1219,7 +1230,9 @@ export default function KanbanBoardPage() {
                 </span>
               </div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {draggedApp.user_name || 'Unknown'}
+                {draggedApp.user_role === 'referrer'
+                  ? [draggedApp.applicant_first_name, draggedApp.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
+                  : draggedApp.user_name || 'Unknown'}
               </div>
               <div className="led-mono led-tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--led-ink)' }}>
                 {fmtMoneyK(Number(draggedApp.amount) || 0)}
@@ -1235,7 +1248,11 @@ export default function KanbanBoardPage() {
         title="Move card"
         message={pendingMove ? (
           <>
-            Move <span className="font-semibold text-foreground">{pendingMove.app.user_name || 'this application'}</span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
+            Move <span className="font-semibold text-foreground">
+              {pendingMove.app.user_role === 'referrer'
+                ? [pendingMove.app.applicant_first_name, pendingMove.app.applicant_last_name].filter(Boolean).join(' ') || 'this application'
+                : pendingMove.app.user_name || 'this application'}
+            </span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
           </>
         ) : null}
         confirmText="Move"

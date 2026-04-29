@@ -154,6 +154,9 @@ class LoanApplication(Base):
     # Lend sync tracking
     lend_ref: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # Referrer-filled
+    client_engagement_model: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

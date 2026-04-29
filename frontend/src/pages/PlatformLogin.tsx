@@ -48,7 +48,7 @@ export default function PlatformLogin() {
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
               <span className="text-[18px] font-semibold text-background">X</span>
             </div>
-            <span className="text-[22px] font-semibold text-foreground tracking-tight">Xpress Tech</span>
+            <span className="text-[22px] font-semibold text-foreground tracking-tight">Xpress Finance</span>
           </div>
 
           <h2 className="text-[34px] font-semibold text-foreground leading-[1.15] mb-4">
@@ -71,7 +71,7 @@ export default function PlatformLogin() {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
               <span className="text-[16px] font-semibold text-background">X</span>
             </div>
-            <span className="text-[20px] font-semibold text-foreground tracking-tight">Xpress Tech</span>
+            <span className="text-[20px] font-semibold text-foreground tracking-tight">Xpress Finance</span>
           </div>
 
           <h1 className="text-[28px] font-semibold text-foreground mb-2 tracking-tight">

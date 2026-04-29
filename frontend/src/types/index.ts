@@ -44,6 +44,7 @@ export interface LoanApplication {
   user_id: string;
   user_name?: string;
   user_email?: string;
+  user_role?: string;
   loan_type: LoanType;
   amount: number;
   status: ApplicationStatus;
@@ -122,6 +123,10 @@ export interface LoanApplication {
   lend_sync_status: LendSyncStatus | null;
   lend_sync_error: string | null;
   lend_synced_at: string | null;
+  // Referrer-filled
+  client_engagement_model: ClientEngagementModel | null;
+  // Referrer info (populated from referral data)
+  referrer: ReferrerInfo | null;
 }
 
 export interface AnalysisResult {
@@ -201,6 +206,14 @@ export interface PaginatedResponse<T> {
 export type ReferralStatus = 'pending' | 'signed_up' | 'applied';
 export type ExternalReferralStatus = 'pending' | 'signed_up' | 'applied';
 export type ClientEngagementModel = 'self_managed' | 'direct_engagement';
+
+export interface ReferrerInfo {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  organization_name: string | null;
+}
 
 export interface ExternalReferral {
   id: string;
@@ -553,22 +566,33 @@ export interface QuoteOption {
   created_at: string;
 }
 
+export type FacilityType = 'chattel' | 'hp' | 'lease';
+export type PaymentType = 'advance' | 'arrears';
+
 export interface QuoteInputParameters {
+  facility_type: FacilityType;         // Chattel Mortgage / Hire Purchase / Lease
+  payment_type: PaymentType;           // Advance (beginning) / Arrears (end of period)
   asset_price: number;
-  asset_description: string; // e.g. "Motor Vehicle", "Industrial Equipment", "Land"
+  asset_description: string;           // e.g. "Motor Vehicle", "Industrial Equipment", "Land"
   deposit_percent: number;
+  deposit_amount: number | null;       // Dollar override — if set, takes priority over %
   establishment_fee: number;
   ppsr_fee: number;
   origination_fee: number;
   brokerage_percent: number;
+  brokerage_amount: number | null;     // Dollar override — if set, takes priority over %
   gst_on_brokerage: boolean;
   balloon_on_total_price: boolean;
   interest_rate: number;
   gst_percent: number;
   balloon_percentages: Record<string, number>; // e.g. { "2": 62, "3": 55, "4": 42, "5": 35, "7": 0 }
-  fees_financed: boolean; // true = fees added to loan amount, false = fees charged separately
-  selected_terms?: number[]; // e.g. [5, 4, 3] — which terms to show client. undefined = all
-  show_interest_rate?: boolean; // show interest rate to client (default: hidden)
+  balloon_amounts: Record<string, number | null>; // Dollar overrides per term
+  monthly_account_fee: number;         // Ongoing monthly fee added to repayment
+  non_taxable_charges: number;         // Lease only — non-taxable on-road charges
+  luxury_car_tax: number;              // Lease only — luxury car tax
+  fees_financed: boolean;              // true = fees added to loan amount, false = charged separately
+  selected_terms?: number[];           // e.g. [5, 4, 3] — which terms to show client
+  show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
 }
 
 export interface QuoteSheet {

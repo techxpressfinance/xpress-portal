@@ -136,7 +136,7 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
 
     # Check account lockout before verifying password
-    if user and user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user and user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Account temporarily locked. Try again later.",

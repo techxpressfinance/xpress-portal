@@ -162,6 +162,7 @@ _MIGRATIONS = [
     ("loan_applications", "emergency_contact_name", "VARCHAR(200)"),
     ("loan_applications", "emergency_contact_relationship", "VARCHAR(100)"),
     ("loan_applications", "emergency_contact_phone", "VARCHAR(20)"),
+    ("loan_applications", "client_engagement_model", "VARCHAR(20)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -359,7 +360,7 @@ try:
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
-app = FastAPI(title="Xpress Tech Portal", version="0.1.0")
+app = FastAPI(title="Xpress Finance Portal", version="0.1.0")
 
 
 # --- Global exception handler: hide stack traces in production ---

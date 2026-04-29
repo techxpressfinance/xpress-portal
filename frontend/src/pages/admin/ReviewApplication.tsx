@@ -164,13 +164,19 @@ export default function ReviewApplication() {
         });
 
         const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
-        setClient(clientUser || null);
         setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
-        // Fetch referrer info
-        if (appRes.data.user_id) {
-          api.get(`/users/${appRes.data.user_id}/referrer`)
-            .then(({ data }) => setReferrer(data.referrer || null))
-            .catch(() => { });
+
+        if (clientUser?.role === 'referrer') {
+          // Direct referrer lead — user_id IS the referrer, client has no account
+          setClient(null);
+          setReferrer({ id: clientUser.id, full_name: clientUser.full_name, email: clientUser.email, phone: clientUser.phone });
+        } else {
+          setClient(clientUser || null);
+          if (appRes.data.user_id) {
+            api.get(`/users/${appRes.data.user_id}/referrer`)
+              .then(({ data }) => setReferrer(data.referrer || null))
+              .catch(() => { });
+          }
         }
       })
       .catch(() => toast('Failed to load application', 'error'))
@@ -424,14 +430,14 @@ export default function ReviewApplication() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
+          <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden border-b border-border/60 mb-6 scrollbar-none">
             {(['overview', 'documents', 'submissions', 'quotes', 'messages', 'activity'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${activeTab === tab
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
+                className={`whitespace-nowrap px-4 py-4 text-[14px] font-semibold transition-all duration-300 relative capitalize ${activeTab === tab
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                   }`}
               >
                 {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'messages' ? 'Messages' : 'Activity'}
@@ -658,42 +664,63 @@ export default function ReviewApplication() {
 
 
                 {/* Client Info */}
-                {client && (
-                  <GlassCard>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
-                    <div className="flex items-center gap-4 mb-5">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-                        <span className="text-[15px] font-semibold text-primary-foreground">{client.full_name.charAt(0).toUpperCase()}</span>
-                      </div>
-                      <div>
-                        <p className="text-[14px] font-semibold text-foreground">{client.full_name}</p>
-                        <p className="text-[13px] text-muted-foreground">{client.email}</p>
-                      </div>
-                    </div>
-                    <dl className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
-                        <dd className="mt-1 text-[14px] font-medium text-foreground">{client.phone || 'Not provided'}</dd>
-                      </div>
-                    </dl>
-
-                    {/* Referrer Info */}
-                    {referrer && (
-                      <div className="mt-5 pt-5 border-t border-border">
-                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
-                            <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
-                            <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
-                          </div>
+                {(() => {
+                  const isDirectLead = !client && !!application.applicant_first_name;
+                  const displayName = isDirectLead
+                    ? [application.applicant_first_name, application.applicant_last_name].filter(Boolean).join(' ')
+                    : client?.full_name;
+                  const displayEmail = isDirectLead
+                    ? (() => { try { return JSON.parse(application.lend_extra_data || '{}').applicant_email ?? null; } catch { return null; } })()
+                    : client?.email;
+                  const displayPhone = isDirectLead ? application.applicant_mobile : client?.phone;
+                  if (!displayName) return null;
+                  return (
+                    <GlassCard>
+                      <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
+                      <div className="flex items-center gap-4 mb-5">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+                          <span className="text-[15px] font-semibold text-primary-foreground">{displayName.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-semibold text-foreground">{displayName}</p>
+                          {displayEmail && <p className="text-[13px] text-muted-foreground">{displayEmail}</p>}
                         </div>
                       </div>
-                    )}
-                  </GlassCard>
-                )}
+                      <dl className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
+                          <dd className="mt-1 text-[14px] font-medium text-foreground">{displayPhone || 'Not provided'}</dd>
+                        </div>
+                      </dl>
+
+                      {/* Referrer Info */}
+                      {referrer && (
+                        <div className="mt-5 pt-5 border-t border-border">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
+                              <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
+                              <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
+                            </div>
+                          </div>
+                          {application.client_engagement_model && (
+                            <div className="mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
+                              <p className="text-[11px] font-medium text-muted-foreground mb-0.5">Client Engagement</p>
+                              <p className="text-[13px] font-medium text-foreground">
+                                {application.client_engagement_model === 'self_managed'
+                                  ? 'Referrer will manage the client relationship'
+                                  : 'Broker may engage the client directly'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </GlassCard>
+                  );
+                })()}
 
               </>
             )}
@@ -1789,7 +1816,7 @@ export default function ReviewApplication() {
                   <div className="divide-y divide-border">
                     {activityLogs.map(log => {
                       let details: Record<string, string> = {};
-                      try { if (log.details) details = JSON.parse(log.details); } catch {}
+                      try { if (log.details) details = JSON.parse(log.details); } catch { }
                       let description = '';
                       if (log.action === 'status_changed' && details.from && details.to) {
                         description = `${details.from} → ${details.to}`;

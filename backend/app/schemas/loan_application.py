@@ -64,6 +64,7 @@ class LoanApplicationCreate(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    client_engagement_model: Optional[str] = None
 
 
 class LoanApplicationUpdate(BaseModel):
@@ -136,11 +137,22 @@ class AssignedBroker(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReferrerInfoOut(BaseModel):
+    id: str
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    organization_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class LoanApplicationOut(BaseModel):
     id: str
     user_id: str
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    user_role: Optional[str] = None
     loan_type: LoanType
     amount: Decimal = Field(..., ge=0)
     status: ApplicationStatus
@@ -218,6 +230,8 @@ class LoanApplicationOut(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    client_engagement_model: Optional[str] = None
+    referrer: Optional[ReferrerInfoOut] = None
 
     model_config = {"from_attributes": True}
 

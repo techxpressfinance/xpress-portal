@@ -314,6 +314,41 @@ export default function ApplicationDetail() {
             )}
           </GlassCard>
 
+          {/* Referrer Info */}
+          {application.referrer && (
+            <GlassCard>
+              <h2 className="text-[15px] font-semibold text-foreground mb-5">Referred By</h2>
+              <div className="flex items-center gap-4 rounded-xl bg-secondary/50 p-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold text-foreground">{application.referrer.full_name || '—'}</p>
+                  {application.referrer.organization_name && (
+                    <p className="text-[12px] text-muted-foreground">{application.referrer.organization_name}</p>
+                  )}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                    {application.referrer.email && (
+                      <a href={`mailto:${application.referrer.email}`} className="text-[13px] text-primary hover:underline">{application.referrer.email}</a>
+                    )}
+                    {application.referrer.phone && (
+                      <span className="text-[13px] text-muted-foreground">{application.referrer.phone}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {application.client_engagement_model && (
+                <div className="mt-3 rounded-xl bg-secondary/30 p-3">
+                  <p className="text-[12px] text-muted-foreground">
+                    {application.client_engagement_model === 'self_managed'
+                      ? 'Your referrer will manage the client relationship.'
+                      : 'The broker may engage you directly.'}
+                  </p>
+                </div>
+              )}
+            </GlassCard>
+          )}
+
           {/* Pending Document Requests */}
           {docRequests.some((r) => r.status === 'pending') && (
             <GlassCard className="border-warning/30 bg-warning/5">

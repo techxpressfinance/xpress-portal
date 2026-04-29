@@ -17,100 +17,193 @@ const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = {
 const TERMS = [5, 4, 3, 2, 7]; // Display order matching Excel
 
 const DEFAULT_INPUTS: QuoteInputParameters = {
+  facility_type: 'chattel',
+  payment_type: 'advance',
   asset_price: 0,
   asset_description: 'Motor Vehicle',
   deposit_percent: 10,
+  deposit_amount: null,
   establishment_fee: 500,
   ppsr_fee: 10,
   origination_fee: 100,
   brokerage_percent: 4,
+  brokerage_amount: null,
   gst_on_brokerage: false,
   balloon_on_total_price: true,
   interest_rate: 5.99,
   gst_percent: 10,
   balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
+  balloon_amounts: {},
+  monthly_account_fee: 0,
+  non_taxable_charges: 0,
+  luxury_car_tax: 0,
   fees_financed: true,
   show_interest_rate: false,
 };
 
-// ── PMT — Excel-compatible (type=0, arrears) ─────────────────────────
-function pmt(rate: number, nper: number, pv: number, fv = 0): number {
+// ── PMT — Excel-compatible (supports type=0 arrears & type=1 advance) ─
+function pmt(rate: number, nper: number, pv: number, fv = 0, type: 0 | 1 = 0): number {
   if (rate === 0) return -(pv + fv) / nper;
   const pvif = Math.pow(1 + rate, nper);
-  return -(rate * (pv * pvif + fv)) / (pvif - 1);
+  let payment = -(rate * (pv * pvif + fv)) / (pvif - 1);
+  if (type === 1) payment /= (1 + rate);
+  return payment;
 }
 
 const fmt2 = (n: number) => Math.round(n * 100) / 100;
 
+// ── ITC Benefit (lease only, from Excel formula page B1-B3) ──────────
+function calcItcBenefit(inputs: QuoteInputParameters): number {
+  if (inputs.facility_type !== 'lease') return 0;
+  const purchasePrice = inputs.asset_price;
+  const desc = inputs.asset_description.toLowerCase();
+  const nonTax = inputs.non_taxable_charges;
+  const lct = inputs.luxury_car_tax;
+  const LCT_CAP = 5182.64; // ATO luxury car limit
+
+  if (desc.includes('car')) {
+    const raw = (purchasePrice - nonTax - lct) / 11;
+    return raw > LCT_CAP ? LCT_CAP : raw;
+  } else if (desc.includes('vehicle')) {
+    return (purchasePrice - nonTax - lct) / 11;
+  }
+  // Equipment / other
+  return purchasePrice / 11;
+}
+
+// ── Stamp duty rate (from Excel formula page B22) ────────────────────
+function stampDutyRate(inputs: QuoteInputParameters): number {
+  if (inputs.facility_type === 'chattel') return 0;
+  if (inputs.facility_type === 'hp') return 0.0075 * 1.1; // 0.75% × GST
+  return 0.0075; // lease: 0.75% (no GST multiplier)
+}
+
 // ── Derive all calculated values from inputs ─────────────────────────
 function computeFromInputs(inputs: QuoteInputParameters) {
-  const deposit = inputs.asset_price * (inputs.deposit_percent / 100);
+  const deposit = inputs.deposit_amount != null ? inputs.deposit_amount : inputs.asset_price * (inputs.deposit_percent / 100);
   const amountBorrowed = inputs.asset_price - deposit;
   const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
   const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
 
-  // Brokerage calculation
-  const brokerageBase = netAmount * (inputs.brokerage_percent / 100);
+  // Brokerage: dollar override or calculate from %
+  const brokerageBase = inputs.brokerage_amount != null ? inputs.brokerage_amount : amountBorrowed * (inputs.brokerage_percent / 100);
   const brokerageWithGst = brokerageBase * (1 + inputs.gst_percent / 100);
   const brokerage = inputs.gst_on_brokerage ? brokerageWithGst : brokerageBase;
 
-  const amountFinanced = netAmount + brokerage;
+  // ITC benefit (lease only) — deducted from purchase price
+  const itcBenefit = calcItcBenefit(inputs);
+
+  // Amount financed: Excel C28 = C24 + C25 + C27
+  // C24 = purchasePrice(with fees) - ITC - deposit, C25 = brokerage, C27 = admin fee (0 when fees already in C11)
+  const subTotal = netAmount - itcBenefit;
+  const amountFinanced = subTotal + brokerage;
 
   // Balloon base: total price or amount financed
   const balloonBase = inputs.balloon_on_total_price ? inputs.asset_price : amountFinanced;
 
-  return { deposit, amountBorrowed, netAmount, brokerage, amountFinanced, balloonBase, totalFees };
+  return { deposit, amountBorrowed, netAmount, brokerage, brokerageBase, amountFinanced, balloonBase, totalFees, itcBenefit, subTotal };
 }
 
 type Scenario = {
   termYears: number;
   hasBalloon: boolean;
-  balloon: number;
+  balloon: number;          // net balloon
+  balloonGst: number;       // GST on balloon (lease only)
+  balloonTotal: number;     // net + GST
   balloonPercent: number;
-  monthlyRepayment: number;
+  netRental: number;        // base PMT payment
+  stampDuty: number;        // HP/Lease
+  gst: number;              // GST on rental (Lease only)
+  monthlyRepayment: number; // net + stamp + GST + account fee
   weeklyRepayment: number;
+  fortnightlyRepayment: number;
   totalInterest: number;
+  totalAnnual: number;
+  totalOverTerm: number;
 };
 
 function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
-  const { amountFinanced, balloonBase } = computeFromInputs(inputs);
+  const { amountFinanced, amountBorrowed, balloonBase } = computeFromInputs(inputs);
   const rate = inputs.interest_rate / 100;
   const monthlyRate = rate / 12;
+  const isAdvance = inputs.payment_type === 'advance';
+  const sdRate = stampDutyRate(inputs);
+  const isLease = inputs.facility_type === 'lease';
 
   const scenarios: Scenario[] = [];
 
   for (const termYears of TERMS) {
     const months = termYears * 12;
     const balloonPct = inputs.balloon_percentages[String(termYears)] ?? 0;
-    const balloonAmount = fmt2(balloonBase * (balloonPct / 100));
+    // Balloon: dollar override or calculate from %
+    const balloonOverride = inputs.balloon_amounts?.[String(termYears)];
+    const balloonNet = balloonOverride != null ? balloonOverride : fmt2(balloonBase * (balloonPct / 100));
+    const balloonGst = isLease ? fmt2(balloonNet * (inputs.gst_percent / 100)) : 0;
+    const balloonTotal = fmt2(balloonNet + balloonGst);
+
+    const buildScenario = (useBalloon: boolean): Scenario | null => {
+      const balloon = useBalloon ? balloonNet : 0;
+      const bGst = useBalloon ? balloonGst : 0;
+      const bTotal = useBalloon ? balloonTotal : 0;
+      const pct = useBalloon ? balloonPct : 0;
+
+      if (useBalloon && balloonNet <= 0) return null;
+
+      // PMT calculation — matches Excel formula page B36/B37
+      let netRental: number;
+      if (isAdvance) {
+        // Excel B36: PMT(rate/12, months, -amountFinanced, balloon, 1)
+        netRental = -pmt(monthlyRate, months, amountFinanced, -balloon, 1);
+      } else {
+        // Excel B37: PMT(POWER(1+rate/12, 1)-1, months-1, -amountFinanced*(1+rate/12), balloon, 1)
+        const periodRate = Math.pow(1 + monthlyRate, 1) - 1; // same as monthlyRate for monthly
+        netRental = -pmt(periodRate, months - 1, amountFinanced * (1 + monthlyRate), -balloon, 1);
+      }
+      netRental = fmt2(netRental);
+
+      // Stamp duty (HP/Lease — Excel B41)
+      const sd = inputs.facility_type === 'chattel' ? 0 : fmt2(Math.round(netRental * sdRate * 100) / 100);
+
+      // GST on rental (Lease only — Excel B43)
+      const subTotal = netRental + sd;
+      const rentalGst = isLease ? fmt2(Math.round(subTotal * (inputs.gst_percent / 100) * 100) / 100) : 0;
+
+      // Total rental = net + stamp + GST + monthly account fee
+      const totalRental = fmt2(subTotal + rentalGst);
+      const monthlyRepayment = fmt2(totalRental + inputs.monthly_account_fee);
+
+      const weeklyRepayment = fmt2(monthlyRepayment * 12 / 52);
+      const fortnightlyRepayment = fmt2(monthlyRepayment * 12 / 26);
+      const totalAnnual = fmt2(monthlyRepayment * 12);
+      const totalOverTerm = fmt2(monthlyRepayment * months + balloon);
+      const totalInterest = fmt2(totalOverTerm - amountBorrowed);
+
+      return {
+        termYears,
+        hasBalloon: useBalloon,
+        balloon,
+        balloonGst: bGst,
+        balloonTotal: bTotal,
+        balloonPercent: pct,
+        netRental,
+        stampDuty: sd,
+        gst: rentalGst,
+        monthlyRepayment,
+        weeklyRepayment,
+        fortnightlyRepayment,
+        totalInterest,
+        totalAnnual,
+        totalOverTerm,
+      };
+    };
 
     // No balloon variant
-    const monthlyNoBalloon = -pmt(monthlyRate, months, amountFinanced);
-    scenarios.push({
-      termYears,
-      hasBalloon: false,
-      balloon: 0,
-      balloonPercent: 0,
-      monthlyRepayment: fmt2(monthlyNoBalloon),
-      weeklyRepayment: fmt2(monthlyNoBalloon * 12 / 52),
-      totalInterest: fmt2(monthlyNoBalloon * months - amountFinanced),
-    });
+    const noBalloon = buildScenario(false);
+    if (noBalloon) scenarios.push(noBalloon);
 
-    // With balloon variant (only if balloon % > 0)
-    if (balloonPct > 0) {
-      // Excel formula: PMT(rate/12, months, -(amountFinanced - balloon)) + balloon * rate/12
-      const monthlyWithBalloon =
-        pmt(monthlyRate, months, -(amountFinanced - balloonAmount)) + balloonAmount * monthlyRate;
-      scenarios.push({
-        termYears,
-        hasBalloon: true,
-        balloon: balloonAmount,
-        balloonPercent: balloonPct,
-        monthlyRepayment: fmt2(monthlyWithBalloon),
-        weeklyRepayment: fmt2(monthlyWithBalloon * 12 / 52),
-        totalInterest: fmt2((monthlyWithBalloon * months) - (amountFinanced - balloonAmount)),
-      });
-    }
+    // With balloon variant (only if balloon % > 0 or override set)
+    const withBalloon = buildScenario(true);
+    if (withBalloon) scenarios.push(withBalloon);
   }
 
   return scenarios;
@@ -122,30 +215,31 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
 
   return scenarios.map((s, i) => ({
     lender_name: `${s.termYears} Year${s.hasBalloon ? ` (${s.balloonPercent}% Balloon)` : ''}`,
-    lender_product: null,
+    lender_product: inputs.facility_type.toUpperCase(),
     sort_order: i,
     is_recommended: false,
     purchase_price: inputs.asset_price,
     deposit: fmt2(deposit),
     loan_amount: fmt2(amountFinanced),
     loan_term_months: s.termYears * 12,
-    balloon_residual: s.balloon,
+    balloon_residual: s.balloonTotal,
     interest_rate: inputs.interest_rate,
     comparison_rate: null,
     establishment_fee: inputs.establishment_fee,
-    monthly_account_fee: null,
+    monthly_account_fee: inputs.monthly_account_fee || null,
     application_fee: inputs.ppsr_fee + inputs.origination_fee,
     brokerage: fmt2(brokerage),
     repayment_monthly: s.monthlyRepayment,
-    repayment_fortnightly: fmt2(s.monthlyRepayment * 12 / 26),
+    repayment_fortnightly: s.fortnightlyRepayment,
     repayment_weekly: s.weeklyRepayment,
-    total_repayments: fmt2(s.monthlyRepayment * s.termYears * 12 + s.balloon),
+    total_repayments: s.totalOverTerm,
     total_interest: s.totalInterest,
     total_fees: fmt2(inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + brokerage),
     features: null,
     notes: null,
   }));
 }
+
 
 interface QuoteSheetEditorProps {
   applicationId?: string;
@@ -271,14 +365,41 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
         <div className="border border-border rounded-xl p-5 space-y-5">
           <h3 className="text-sm font-semibold text-foreground">Loan Parameters</h3>
 
-          {/* Row 0: Asset description */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Asset / Loan Type"
-              placeholder="e.g. Motor Vehicle, Industrial Equipment, Land, Boat"
-              value={inputs.asset_description}
-              onChange={e => updateInput('asset_description', e.target.value)}
-            />
+          {/* Row 0: Facility type, Payment type, Asset description */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Facility Type</label>
+              <select
+                value={inputs.facility_type}
+                onChange={e => updateInput('facility_type', e.target.value as 'chattel' | 'hp' | 'lease')}
+                className="w-full h-[44px] px-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+              >
+                <option value="chattel">Chattel Mortgage</option>
+                <option value="hp">Hire Purchase</option>
+                <option value="lease">Lease</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Payment Type</label>
+              <button
+                type="button"
+                onClick={() => updateInput('payment_type', inputs.payment_type === 'advance' ? 'arrears' : 'advance')}
+                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.payment_type === 'advance'
+                  ? 'bg-primary/10 text-primary border border-primary/30'
+                  : 'bg-muted text-muted-foreground border border-transparent'
+                }`}
+              >
+                {inputs.payment_type === 'advance' ? 'Advance (Start)' : 'Arrears (End)'}
+              </button>
+            </div>
+            <div className="md:col-span-2">
+              <Input
+                label="Asset / Loan Type"
+                placeholder="e.g. Motor Vehicle, Industrial Equipment, Land, Boat"
+                value={inputs.asset_description}
+                onChange={e => updateInput('asset_description', e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Row 1: Core loan details */}
@@ -297,17 +418,25 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               </div>
             </div>
             <Input
-              label="Deposit"
+              label="Deposit %"
               type="number"
               step="any"
               value={inputs.deposit_percent || ''}
-              onChange={e => updateInput('deposit_percent', parseFloat(e.target.value) || 0)}
+              onChange={e => { updateInput('deposit_percent', parseFloat(e.target.value) || 0); updateInput('deposit_amount', null); }}
               suffix="%"
             />
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Deposit</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.deposit)}
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Deposit $ <span className="text-[10px] text-muted-foreground">(override)</span></label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder={fmtCurrency(inputs.asset_price * (inputs.deposit_percent / 100)).replace('$', '')}
+                  value={inputs.deposit_amount ?? ''}
+                  onChange={e => updateInput('deposit_amount', e.target.value ? parseFloat(e.target.value) : null)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
               </div>
             </div>
             <div>
@@ -381,13 +510,66 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 {!inputs.fees_financed && <span className="ml-1.5 text-[10px] text-warning font-semibold uppercase">(separate)</span>}
               </div>
             </div>
+            {derived.itcBenefit > 0 && (
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">ITC Benefit</label>
+                <div className="h-[44px] flex items-center px-4 rounded-xl bg-green-500/10 text-sm text-green-700 font-medium">
+                  -{fmtCurrency(derived.itcBenefit)}
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Amount to be Financed</label>
               <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
                 {fmtCurrency(derived.amountFinanced)}
               </div>
             </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Monthly Account Fee</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.monthly_account_fee || ''}
+                  onChange={e => updateInput('monthly_account_fee', parseFloat(e.target.value) || 0)}
+                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Lease-specific fields */}
+          {inputs.facility_type === 'lease' && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start border-t border-border/50 pt-4">
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Non-Taxable On-Road Charges</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={inputs.non_taxable_charges || ''}
+                    onChange={e => updateInput('non_taxable_charges', parseFloat(e.target.value) || 0)}
+                    className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Luxury Car Tax</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={inputs.luxury_car_tax || ''}
+                    onChange={e => updateInput('luxury_car_tax', parseFloat(e.target.value) || 0)}
+                    className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Row 3: Brokerage & Rate */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
@@ -509,14 +691,23 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
         {/* ── Live Preview ─────────────────────────────────────────── */}
         {scenarios.length > 0 && (
           <div className="border border-border rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-foreground">Preview — Generated Scenarios</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Preview — Generated Scenarios</h3>
+              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
+                {inputs.facility_type === 'chattel' ? 'Chattel' : inputs.facility_type === 'hp' ? 'HP' : 'Lease'}
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-2 px-3 text-muted-foreground font-medium">Term</th>
                     <th className="text-left py-2 px-3 text-muted-foreground font-medium">Balloon</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Net Rental</th>
+                    {inputs.facility_type !== 'chattel' && <th className="text-right py-2 px-3 text-muted-foreground font-medium">Stamp Duty</th>}
+                    {inputs.facility_type === 'lease' && <th className="text-right py-2 px-3 text-muted-foreground font-medium">GST</th>}
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Monthly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Fortnightly</th>
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Weekly</th>
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Total Interest</th>
                   </tr>
@@ -524,11 +715,15 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <tbody>
                   {scenarios.map((s, i) => (
                     <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
-                      <td className="py-2 px-3 font-medium">{s.termYears} Year{!s.hasBalloon ? '' : ''}</td>
+                      <td className="py-2 px-3 font-medium">{s.termYears} Year</td>
                       <td className="py-2 px-3 text-muted-foreground">
                         {s.hasBalloon ? `${s.balloonPercent}% (${fmtCurrency(s.balloon)})` : 'None'}
                       </td>
+                      <td className="py-2 px-3 text-right">{fmtCurrency(s.netRental)}</td>
+                      {inputs.facility_type !== 'chattel' && <td className="py-2 px-3 text-right">{fmtCurrency(s.stampDuty)}</td>}
+                      {inputs.facility_type === 'lease' && <td className="py-2 px-3 text-right">{fmtCurrency(s.gst)}</td>}
                       <td className="py-2 px-3 text-right font-semibold">{fmtCurrency(s.monthlyRepayment)}</td>
+                      <td className="py-2 px-3 text-right">{fmtCurrency(s.fortnightlyRepayment)}</td>
                       <td className="py-2 px-3 text-right">{fmtCurrency(s.weeklyRepayment)}</td>
                       <td className="py-2 px-3 text-right">{fmtCurrency(s.totalInterest)}</td>
                     </tr>

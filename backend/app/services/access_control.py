@@ -18,9 +18,14 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         return
     if current_user.role == UserRole.broker:
-        if not any(b.id == current_user.id for b in app.brokers):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to this application")
-        return
+        if any(b.id == current_user.id for b in app.brokers):
+            return
+        # Referrer-submitted leads are visible to all brokers
+        if db is not None:
+            owner = db.query(User).filter(User.id == app.user_id).first()
+            if owner and owner.role == UserRole.referrer:
+                return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to this application")
     if current_user.role == UserRole.referrer:
         # Allow access to leads submitted directly by this referrer
         if app.user_id == current_user.id:

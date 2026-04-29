@@ -343,6 +343,7 @@ export default function AllApplications() {
                   <SortHead k="amount" align="right">Amount</SortHead>
                   <SortHead k="status">Status</SortHead>
                   <th>Broker</th>
+                  <th>Referrer</th>
                   <SortHead k="updated_at" align="right">Updated</SortHead>
                   <th style={{ width: 36 }}></th>
                 </tr>
@@ -351,14 +352,14 @@ export default function AllApplications() {
                 {loading ? (
                   [1, 2, 3, 4, 5].map((i) => (
                     <tr key={i}>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <div style={{ height: 22 }} className="shimmer" />
                       </td>
                     </tr>
                   ))
                 ) : sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="led-empty">
                         <div className="led-empty-icon"><Icon name="search" size={18} /></div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 4 }}>No applications found</div>
@@ -372,16 +373,21 @@ export default function AllApplications() {
                   const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
                   const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
                   const firstBroker = app.assigned_brokers?.[0];
-                  const subtitle = app.business_name || app.user_email || '';
+                  const isDirectLead = app.user_role === 'referrer';
+                  const clientName = isDirectLead
+                    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
+                    : app.user_name || 'Unknown';
+                  const referrerName = isDirectLead ? app.user_name || null : null;
+                  const subtitle = app.business_name || (isDirectLead ? null : app.user_email) || '';
 
                   return (
                     <tr key={app.id} onClick={() => navigate(`/admin/applications/${app.id}`)}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                          <Avatar name={app.user_name || app.user_email || 'Unknown'} size="sm" />
+                          <Avatar name={clientName} size="sm" />
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 500, color: 'var(--led-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
-                              {app.user_name || 'Unknown'}
+                              {clientName}
                             </div>
                             {subtitle && (
                               <div style={{ fontSize: 12, color: 'var(--led-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
@@ -427,6 +433,13 @@ export default function AllApplications() {
                           <span className="led-chip" style={{ color: 'var(--led-muted)' }}>
                             <Icon name="plus" size={10} /> Unassigned
                           </span>
+                        )}
+                      </td>
+                      <td>
+                        {referrerName ? (
+                          <span style={{ fontSize: 12.5, color: 'var(--led-ink-2)' }}>{referrerName}</span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--led-muted)' }}>None</span>
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }}>

@@ -8,7 +8,7 @@ import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
+import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS } from '../../lib/constants';
 import type { ApplicationNote, ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
 export default function ReferrerApplicationDetail() {
@@ -32,10 +32,6 @@ export default function ReferrerApplicationDetail() {
   const [uploading, setUploading] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
-
-  // Status change
-  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
-  const [changingStatus, setChangingStatus] = useState(false);
 
   // Submit on behalf
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
@@ -95,9 +91,9 @@ export default function ReferrerApplicationDetail() {
           applicant_state: d.applicant_state || '', applicant_postcode: d.applicant_postcode || '',
           business_name: d.business_name || '', business_abn: d.business_abn || '',
         });
-        if (d.user_id) {
-          api.get(`/users/${d.user_id}`).then(({ data }) => setClient(data)).catch(() => {});
-          api.get(`/clients/${d.user_id}/messages`).then(({ data }) => setClientMessages(data)).catch(() => {});
+        if (d.user_id && d.user_id !== currentUser?.id) {
+          api.get(`/users/${d.user_id}`).then(({ data }) => setClient(data)).catch(() => { });
+          api.get(`/clients/${d.user_id}/messages`).then(({ data }) => setClientMessages(data)).catch(() => { });
         }
       })
       .catch(() => toast('Failed to load application', 'error'))
@@ -166,23 +162,6 @@ export default function ReferrerApplicationDetail() {
       toast(getErrorMessage(err, 'Failed to submit'), 'error');
     } finally {
       setSubmittingOnBehalf(false);
-    }
-  };
-
-  const handleStatusChange = (newStatus: string) => setPendingStatus(newStatus);
-
-  const confirmStatusChange = async () => {
-    if (!id || !pendingStatus) return;
-    setChangingStatus(true);
-    try {
-      const { data } = await api.patch(`/applications/${id}/status?status=${pendingStatus}`);
-      setApplication(data);
-      toast(`Status changed to ${pendingStatus}`, 'success');
-      setPendingStatus(null);
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to change status'), 'error');
-    } finally {
-      setChangingStatus(false);
     }
   };
 
@@ -264,9 +243,6 @@ export default function ReferrerApplicationDetail() {
   const isDraft = application.status === 'draft';
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
   const allDocsUploaded = RECOMMENDED_DOC_TYPES.every((t) => uploadedDocTypes.has(t));
-  const allowedTransitions = VALID_TRANSITIONS[application.status] ?? [];
-  const pendingStatusLabel = pendingStatus ? (STATUS_LABEL[pendingStatus as keyof typeof STATUS_LABEL] || pendingStatus.replace(/_/g, ' ')) : '';
-
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
@@ -342,10 +318,9 @@ export default function ReferrerApplicationDetail() {
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
                           <select value={editLoanType} onChange={(e) => setEditLoanType(e.target.value as LoanType)} className="led-input">
-                            <option value="personal">Personal</option>
-                            <option value="home">Home</option>
-                            <option value="business">Business</option>
-                            <option value="vehicle">Vehicle</option>
+                            {Object.entries(LOAN_TYPE_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
                           </select>
                         </div>
                         <div>
@@ -454,7 +429,7 @@ export default function ReferrerApplicationDetail() {
                       </div>
                       <div className="rounded-xl bg-secondary p-4">
                         <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
-                        <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
+                        <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">{LOAN_TYPE_LABELS[application.loan_type] || application.loan_type}</dd>
                       </div>
                       <div className="rounded-xl bg-secondary p-4">
                         <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
@@ -469,26 +444,37 @@ export default function ReferrerApplicationDetail() {
                 </GlassCard>
 
                 {/* Client Info */}
-                {client && (
-                  <GlassCard>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
-                    <div className="flex items-center gap-4 mb-5">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-                        <span className="text-[15px] font-semibold text-primary-foreground">{client.full_name.charAt(0).toUpperCase()}</span>
+                {(() => {
+                  const isDirectLead = application.user_id === currentUser?.id;
+                  const displayName = isDirectLead
+                    ? [application.applicant_first_name, application.applicant_last_name].filter(Boolean).join(' ')
+                    : client?.full_name;
+                  const displayEmail = isDirectLead
+                    ? (() => { try { return JSON.parse(application.lend_extra_data || '{}').applicant_email; } catch { return null; } })()
+                    : client?.email;
+                  const displayPhone = isDirectLead ? application.applicant_mobile : client?.phone;
+                  if (!displayName) return null;
+                  return (
+                    <GlassCard>
+                      <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
+                      <div className="flex items-center gap-4 mb-5">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+                          <span className="text-[15px] font-semibold text-primary-foreground">{displayName.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-semibold text-foreground">{displayName}</p>
+                          {displayEmail && <p className="text-[13px] text-muted-foreground">{displayEmail}</p>}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[14px] font-semibold text-foreground">{client.full_name}</p>
-                        <p className="text-[13px] text-muted-foreground">{client.email}</p>
-                      </div>
-                    </div>
-                    <dl className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
-                        <dd className="mt-1 text-[14px] font-medium text-foreground">{client.phone || 'Not provided'}</dd>
-                      </div>
-                    </dl>
-                  </GlassCard>
-                )}
+                      <dl className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
+                          <dd className="mt-1 text-[14px] font-medium text-foreground">{displayPhone || 'Not provided'}</dd>
+                        </div>
+                      </dl>
+                    </GlassCard>
+                  );
+                })()}
 
                 {/* Applicant Summary */}
                 {application.applicant_first_name && (
@@ -751,11 +737,10 @@ export default function ReferrerApplicationDetail() {
                     <button
                       key={key}
                       onClick={() => setMsgTab(key)}
-                      className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${
-                        msgTab === key
-                          ? 'bg-foreground text-background'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${msgTab === key
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:text-foreground'
+                        }`}
                     >
                       {label}
                     </button>
@@ -782,11 +767,10 @@ export default function ReferrerApplicationDetail() {
                                   {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </div>
-                              <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
-                                isOwn
-                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                  : 'bg-secondary text-foreground rounded-tl-sm'
-                              }`}>
+                              <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn
+                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                : 'bg-secondary text-foreground rounded-tl-sm'
+                                }`}>
                                 <p className="whitespace-pre-wrap">{msg.content}</p>
                               </div>
                             </div>
@@ -916,31 +900,6 @@ export default function ReferrerApplicationDetail() {
         {/* Sidebar */}
         <div className="space-y-6 sticky top-6">
           {/* Actions */}
-          <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-4">Actions</h2>
-            {allowedTransitions.length === 0 ? (
-              <div className="rounded-xl bg-secondary p-4 text-center">
-                <p className="text-[13px] text-muted-foreground">No transitions available</p>
-                <p className="text-[12px] text-muted-foreground mt-1">Status: {application.status}</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                <p className="text-[13px] font-medium text-muted-foreground mb-3">Change status to</p>
-                {allowedTransitions.map((s) => (
-                  <Button
-                    key={s}
-                    variant={s === 'settled' || s === 'approval' ? 'success' : s === 'rejected' ? 'danger' : 'primary'}
-                    size="lg"
-                    className="w-full capitalize"
-                    onClick={() => handleStatusChange(s)}
-                  >
-                    {s.replace(/_/g, ' ')}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </GlassCard>
-
           {/* Assigned Brokers */}
           {application.assigned_brokers.length > 0 && (
             <GlassCard>
@@ -970,17 +929,6 @@ export default function ReferrerApplicationDetail() {
           ocrStatus={previewDoc.ocrStatus}
         />
       )}
-
-      <ConfirmDialog
-        open={!!pendingStatus}
-        title="Change application status?"
-        message={pendingStatus ? (<>This will update the application to <span className="font-semibold text-foreground capitalize">{pendingStatusLabel}</span>.</>) : null}
-        confirmText="Change Status"
-        variant={pendingStatus === 'rejected' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
-        loading={changingStatus}
-        onConfirm={confirmStatusChange}
-        onCancel={() => { if (!changingStatus) setPendingStatus(null); }}
-      />
 
       <ConfirmDialog
         open={confirmBrokerSubmit}

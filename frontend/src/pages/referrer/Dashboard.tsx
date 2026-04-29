@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Input } from '../../components/ui';
-import { getErrorMessage, formatDate } from '../../lib/utils';
-import type { ClientEngagementModel, ExternalReferral, ExternalReferrerStats } from '../../types';
+import { GlassCard, PageHeader } from '../../components/ui';
+import { formatDate } from '../../lib/utils';
+import type { ExternalReferral, ExternalReferrerStats } from '../../types';
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'bg-secondary text-muted-foreground' },
@@ -46,12 +46,6 @@ export default function ReferrerDashboard() {
   const [analytics, setAnalytics] = useState<AppAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Refer form
-  const [email, setEmail] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [engagementModel, setEngagementModel] = useState<ClientEngagementModel | ''>('');
-  const [submitting, setSubmitting] = useState(false);
-
   const fetchData = () => {
     setLoading(true);
     Promise.all([
@@ -69,33 +63,6 @@ export default function ReferrerDashboard() {
   };
 
   useEffect(() => { fetchData(); }, []);
-
-  const handleRefer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) { toast('Email is required', 'error'); return; }
-    setSubmitting(true);
-    try {
-      const { data } = await api.post('/external-referrers/refer', {
-        email: email.trim().toLowerCase(),
-        full_name: fullName.trim() || null,
-        client_engagement_model: engagementModel || null,
-      });
-      setReferrals((prev) => [data, ...prev]);
-      setStats((prev) => ({
-        ...prev,
-        total_referred: prev.total_referred + 1,
-        signed_up: prev.signed_up + (data.status !== 'pending' ? 1 : 0),
-      }));
-      setEmail('');
-      setFullName('');
-      setEngagementModel('');
-      toast('Referral sent successfully', 'success');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to send referral'), 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const fmt = (n: number) =>
     n >= 1_000_000
@@ -246,119 +213,6 @@ export default function ReferrerDashboard() {
         </>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Refer Form */}
-        <GlassCard>
-          <h3 className="text-[15px] font-semibold text-foreground mb-1">Refer Someone</h3>
-          <p className="text-[13px] text-muted-foreground mb-4">
-            Enter the client's email to send them an invitation to start a loan application.
-          </p>
-          <form onSubmit={handleRefer} className="space-y-4">
-            <Input
-              label="Email *"
-              type="email"
-              placeholder="client@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <Input
-              label="Full Name"
-              placeholder="Optional — for new clients"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-            <div>
-              <p className="text-[13px] font-medium text-foreground mb-2">Preferred Client Engagement Model *</p>
-              <p className="text-[12px] text-muted-foreground mb-3">How would you like us to manage this client relationship?</p>
-              <div className="space-y-2">
-                <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'self_managed' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
-                  <input
-                    type="radio"
-                    name="engagement_model"
-                    value="self_managed"
-                    checked={engagementModel === 'self_managed'}
-                    onChange={() => setEngagementModel('self_managed')}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <div>
-                    <p className="text-[13px] font-medium text-foreground">I'll manage the client relationship</p>
-                    <p className="text-[12px] text-muted-foreground">I will provide all required information — no direct client contact from your side.</p>
-                  </div>
-                </label>
-                <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
-                  <input
-                    type="radio"
-                    name="engagement_model"
-                    value="direct_engagement"
-                    checked={engagementModel === 'direct_engagement'}
-                    onChange={() => setEngagementModel('direct_engagement')}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <div>
-                    <p className="text-[13px] font-medium text-foreground">You may engage the client directly</p>
-                    <p className="text-[12px] text-muted-foreground">I'm comfortable with you contacting and working with the client directly.</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-            <Button type="submit" disabled={submitting || !engagementModel}>
-              {submitting ? 'Sending...' : 'Send Referral'}
-            </Button>
-          </form>
-        </GlassCard>
-
-        {/* Referrals List */}
-        <GlassCard padding="none">
-          <div className="px-5 pt-5 pb-3">
-            <h3 className="text-[15px] font-semibold text-foreground">Your Referrals</h3>
-          </div>
-          {loading ? (
-            <div className="px-5 pb-5">
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg shimmer" />
-                    <div className="space-y-1.5 flex-1">
-                      <div className="h-3.5 w-32 rounded-lg shimmer" />
-                      <div className="h-3 w-24 rounded-lg shimmer" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : referrals.length === 0 ? (
-            <div className="px-5 pb-8 pt-4 text-center">
-              <p className="text-[13px] text-muted-foreground">No referrals yet. Send your first referral above.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {referrals.map((ref) => {
-                const badge = STATUS_STYLES[ref.status] || STATUS_STYLES.pending;
-                return (
-                  <div key={ref.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                      <span className="text-[11px] font-semibold text-muted-foreground">
-                        {(ref.referred_client_name || ref.referred_email).charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-foreground truncate">
-                        {ref.referred_client_name || ref.referred_email}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {ref.referred_email} &middot; {formatDate(ref.created_at)}
-                      </p>
-                    </div>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </GlassCard>
-      </div>
     </div>
   );
 }

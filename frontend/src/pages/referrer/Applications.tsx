@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, Badge, PageHeader, Button, Select, Input } from '../../components/ui';
+import { LOAN_TYPE_LABELS } from '../../lib/constants';
 
 import type { LoanApplication } from '../../types';
 
 export default function ReferrerApplications() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -85,10 +88,9 @@ export default function ReferrerApplications() {
             onChange={(e) => { setLoanTypeFilter(e.target.value); setPage(1); }}
           >
             <option value="">All Types</option>
-            <option value="personal">Personal</option>
-            <option value="home">Home</option>
-            <option value="business">Business</option>
-            <option value="vehicle">Vehicle</option>
+            {Object.entries(LOAN_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </Select>
           <div className="flex-1 min-w-[140px] sm:min-w-[200px]">
             <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Search Client</label>
@@ -153,22 +155,31 @@ export default function ReferrerApplications() {
                       onClick={() => navigate(`/referrer/applications/${app.id}`)}
                     >
                       <td className="px-3 sm:px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                            <span className="text-[11px] font-semibold text-muted-foreground">
-                              {app.user_name
-                                ? getInitials(app.user_name)
-                                : app.user_id.slice(0, 2).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[14px] font-medium text-foreground truncate">{app.user_name || app.user_id.slice(0, 8) + '...'}</p>
-                            {app.user_email && <p className="text-[12px] text-muted-foreground truncate">{app.user_email}</p>}
-                            <p className="sm:hidden text-[12px] text-muted-foreground capitalize">{app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
-                          </div>
-                        </div>
+                        {(() => {
+                          const isDirectLead = app.user_id === currentUser?.id;
+                          const displayName = isDirectLead
+                            ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || null
+                            : app.user_name;
+                          const displayEmail = isDirectLead
+                            ? (() => { try { return JSON.parse(app.lend_extra_data || '{}').applicant_email ?? null; } catch { return null; } })()
+                            : app.user_email;
+                          return (
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                                <span className="text-[11px] font-semibold text-muted-foreground">
+                                  {displayName ? getInitials(displayName) : app.user_id.slice(0, 2).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[14px] font-medium text-foreground truncate">{displayName || app.user_id.slice(0, 8) + '...'}</p>
+                                {displayEmail && <p className="text-[12px] text-muted-foreground truncate">{displayEmail}</p>}
+                                <p className="sm:hidden text-[12px] text-muted-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
-                      <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium capitalize text-foreground">{app.loan_type}</td>
+                      <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>
                       <td className="px-3 sm:px-6 py-4">
                         <Badge value={app.status} />
