@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader } from '../../components/ui';
-import type { ExternalReferral, ExternalReferrerStats } from '../../types';
-
-
+import type { ExternalReferrerStats } from '../../types';
 
 const STATUS_PIPELINE = [
   { key: 'draft', label: 'Draft', color: 'bg-muted-foreground/30' },
@@ -36,25 +34,19 @@ interface AppAnalytics {
 
 export default function ReferrerDashboard() {
   const { toast } = useToast();
-  const [referrals, setReferrals] = useState<ExternalReferral[]>([]);
   const [stats, setStats] = useState<ExternalReferrerStats>({ total_referred: 0, signed_up: 0, applied: 0 });
   const [analytics, setAnalytics] = useState<AppAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const fetchData = () => {
-    setLoading(true);
     Promise.all([
-      api.get('/external-referrers/my-referrals'),
       api.get('/external-referrers/stats'),
       api.get('/applications/analytics'),
     ])
-      .then(([refRes, statsRes, analyticsRes]) => {
-        setReferrals(refRes.data);
+      .then(([statsRes, analyticsRes]) => {
         setStats(statsRes.data);
         setAnalytics(analyticsRes.data);
       })
-      .catch(() => toast('Failed to load dashboard', 'error'))
-      .finally(() => setLoading(false));
+      .catch(() => toast('Failed to load dashboard', 'error'));
   };
 
   useEffect(() => { fetchData(); }, []);
