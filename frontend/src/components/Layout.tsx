@@ -9,10 +9,9 @@ import PageTransition from './PageTransition';
 import GlobalSearch from './GlobalSearch';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
-  `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border ${
-    isActive
-      ? 'bg-[var(--led-surface-2)] text-[var(--led-ink)] border-[var(--led-line)] shadow-sm'
-      : 'text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)] border-transparent'
+  `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border ${isActive
+    ? 'bg-[var(--led-surface-2)] text-[var(--led-ink)] border-[var(--led-line)] shadow-sm'
+    : 'text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)] border-transparent'
   }`;
 
 export default function Layout() {
@@ -20,7 +19,7 @@ export default function Layout() {
   const { tenant } = useTenant();
   const navigate = useNavigate();
   const { theme, toggle: toggleTheme } = useTheme();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
@@ -30,7 +29,7 @@ export default function Layout() {
     if (user?.role === 'client') {
       api.get('/messages/unread-count')
         .then(({ data }) => setUnreadCount(data.count))
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [user]);
 
@@ -68,24 +67,18 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:static lg:translate-x-0 ${
-          collapsed ? 'w-[72px]' : 'w-64'
-        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:static lg:translate-x-0 ${collapsed ? 'w-[72px]' : 'w-64'
+          } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={sidebarOpen ? { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)', animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)' }}
       >
         {/* Logo */}
-        <div className={`flex h-14 items-center ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
-          <Link to="/" className="flex items-center gap-2.5" onClick={() => setSidebarOpen(false)}>
-            {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={brandName} className="h-8 w-8 shrink-0 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-[13px] font-bold text-background">{brandName.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
-            {!collapsed && (
-              <span className="text-[15px] font-semibold text-foreground tracking-tight">{brandName}</span>
-            )}
+        <div className="flex h-20 items-center px-2">
+          <Link to="/" className="flex h-full w-full items-center" onClick={() => setSidebarOpen(false)}>
+            <img
+              src={tenant?.logo_url || '/xpress.svg'}
+              alt={brandName}
+              className="h-full w-full object-contain"
+            />
           </Link>
         </div>
 
@@ -348,7 +341,7 @@ export default function Layout() {
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
           </button>
-          <span className="ml-2.5 text-[15px] font-semibold text-foreground">{brandName}</span>
+          <img src={tenant?.logo_url || '/xpress.svg'} alt={brandName} className="ml-2.5 h-7 w-auto object-contain" />
         </header>
 
         {/* Page content */}

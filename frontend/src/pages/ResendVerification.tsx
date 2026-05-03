@@ -13,7 +13,7 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
 export default function ResendVerification() {
   const { tenant } = useTenant();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const {

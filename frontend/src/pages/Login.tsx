@@ -22,7 +22,7 @@ export default function Login() {
   const { login, loginWithCode, requestCode, user } = useAuth();
   const { tenant } = useTenant();
   const navigate = useNavigate();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
   const [showResend, setShowResend] = useState(false);

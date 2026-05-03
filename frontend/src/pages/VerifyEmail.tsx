@@ -10,7 +10,7 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const { tenant } = useTenant();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');

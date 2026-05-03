@@ -21,7 +21,7 @@ export default function Register() {
   const { register: registerUser, user } = useAuth();
   const { tenant } = useTenant();
   const navigate = useNavigate();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const [searchParams] = useSearchParams();
   const refCode = searchParams.get('ref') || '';
   const [error, setError] = useState('');

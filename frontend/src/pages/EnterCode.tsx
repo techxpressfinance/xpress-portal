@@ -15,7 +15,7 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export default function EnterCode() {
   const { loginWithCode, requestCode, user } = useAuth();
   const { tenant } = useTenant();
-  const brandName = tenant?.name || 'Xpress';
+  const brandName = tenant?.name || 'Xpress Finance';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const paramEmail = searchParams.get('email') || '';

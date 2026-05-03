@@ -141,15 +141,15 @@ def send_invite(
     recipient_name = data.name or "there"
     body = (
         f"Hi {recipient_name},\n\n"
-        f"{current_user.full_name} has invited you to join Xpress Tech Portal!\n\n"
+        f"{current_user.full_name} has invited you to join Xpress Finance Portal!\n\n"
         f"Click the link below to get started:\n{link}\n\n"
-        f"Best regards,\nXpress Tech Team"
+        f"Best regards,\nXpress Finance Team"
     )
 
     if EMAIL_ENABLED:
         thread = threading.Thread(
             target=_send_email,
-            args=(data.email, f"{current_user.full_name} invited you to Xpress Tech Portal", body),
+            args=(data.email, f"{current_user.full_name} invited you to Xpress Finance Portal", body),
             daemon=True,
         )
         thread.start()
