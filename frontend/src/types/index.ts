@@ -275,6 +275,7 @@ export interface ClientMessage {
   author_id: string;
   author_name: string | null;
   author_role: string | null;
+  recipient_id: string | null;
   content: string;
   created_at: string;
 }
@@ -282,6 +283,8 @@ export interface ClientMessage {
 export interface ClientConversation {
   client_id: string;
   client_name: string | null;
+  peer_id: string;
+  peer_name: string | null;
   last_message: string | null;
   last_message_at: string | null;
   last_message_author_name: string | null;

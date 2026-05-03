@@ -147,34 +147,55 @@ def list_message_recipients(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    from app.models.external_referral import ClientEngagementModel
     if current_user.role.value in {"client", "referrer"}:
         recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
     else:
-        recipients = db.query(User).filter(User.role.in_([UserRole.client, UserRole.referrer]), User.tenant_id == tenant_id).all()
+        all_recipients = db.query(User).filter(User.role.in_([UserRole.client, UserRole.referrer]), User.tenant_id == tenant_id).all()
+        if current_user.role.value == "broker":
+            blocked = {
+                r.referred_client_id
+                for r in db.query(ExternalReferral).filter(
+                    ExternalReferral.client_engagement_model == ClientEngagementModel.direct_engagement,
+                    ExternalReferral.referred_client_id.isnot(None),
+                ).all()
+            }
+            recipients = [u for u in all_recipients if not (u.role == UserRole.client and u.id in blocked)]
+        else:
+            recipients = all_recipients
     return recipients
 
 
-def _build_conversations(client_ids: list, db: Session, tenant_id: str) -> list:
+def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
+    """Build per-peer conversation summaries. Each pair is (client_id, peer_id, client_name, peer_name)."""
     from datetime import datetime
+    from sqlalchemy import or_
     conversations = []
-    for client_id in client_ids:
-        client = db.query(User).filter(User.id == client_id).first()
-        if not client:
-            continue
+    for client_id, peer_id, client_name, peer_name in pairs:
         last_msg = (
             db.query(ClientMessage)
-            .filter(ClientMessage.client_id == client_id, ClientMessage.tenant_id == tenant_id)
+            .filter(
+                ClientMessage.client_id == client_id,
+                ClientMessage.tenant_id == tenant_id,
+                or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id),
+            )
             .order_by(ClientMessage.created_at.desc())
             .first()
         )
         msg_count = (
             db.query(ClientMessage)
-            .filter(ClientMessage.client_id == client_id, ClientMessage.tenant_id == tenant_id)
+            .filter(
+                ClientMessage.client_id == client_id,
+                ClientMessage.tenant_id == tenant_id,
+                or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id),
+            )
             .count()
         )
         conversations.append({
             "client_id": client_id,
-            "client_name": client.full_name,
+            "client_name": client_name,
+            "peer_id": peer_id,
+            "peer_name": peer_name,
             "last_message": last_msg.content if last_msg else None,
             "last_message_at": last_msg.created_at if last_msg else None,
             "last_message_author_name": last_msg.author.full_name if last_msg and last_msg.author else None,
@@ -190,40 +211,124 @@ def list_client_inbox(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Return one conversation summary per client, scoped by role."""
+    """Return one conversation summary per (client, peer) pair, scoped by role."""
+    from app.models.external_referral import ClientEngagementModel
     role = current_user.role.value
+    pairs: list = []
 
     if role == "referrer":
-        ext_ids = [
-            r.referred_client_id
-            for r in db.query(ExternalReferral.referred_client_id).filter(
-                ExternalReferral.referrer_id == current_user.id
-            ).all()
-        ]
-        ref_ids = [
-            r.referred_user_id
-            for r in db.query(Referral.referred_user_id).filter(
-                Referral.referrer_id == current_user.id,
-                Referral.tenant_id == tenant_id,
-            ).all()
-        ]
-        client_ids = list(set(ext_ids + ref_ids))
+        seen: set = set()
+        for r in db.query(ExternalReferral).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id.isnot(None),
+        ).all():
+            if r.referred_client_id not in seen:
+                client = db.query(User).filter(User.id == r.referred_client_id).first()
+                if client:
+                    pairs.append((r.referred_client_id, current_user.id, client.full_name, current_user.full_name))
+                    seen.add(r.referred_client_id)
+        for r in db.query(Referral).filter(
+            Referral.referrer_id == current_user.id,
+            Referral.tenant_id == tenant_id,
+            Referral.referred_user_id.isnot(None),
+        ).all():
+            if r.referred_user_id not in seen:
+                client = db.query(User).filter(User.id == r.referred_user_id).first()
+                if client:
+                    pairs.append((r.referred_user_id, current_user.id, client.full_name, current_user.full_name))
+                    seen.add(r.referred_user_id)
+        # Surface direct staff (admin/broker) conversations: client_id = referrer.id
+        staff_rows = (
+            db.query(ClientMessage.author_id, ClientMessage.recipient_id)
+            .filter(
+                ClientMessage.client_id == current_user.id,
+                ClientMessage.tenant_id == tenant_id,
+            )
+            .all()
+        )
+        staff_peers: set = set()
+        for row in staff_rows:
+            if row.author_id and row.author_id != current_user.id:
+                staff_peers.add(row.author_id)
+            if row.recipient_id and row.recipient_id != current_user.id:
+                staff_peers.add(row.recipient_id)
+        for pid in staff_peers:
+            peer = db.query(User).filter(User.id == pid).first()
+            if peer and peer.role in (UserRole.broker, UserRole.admin):
+                pairs.append((current_user.id, pid, current_user.full_name, peer.full_name))
 
     elif role in ("admin", "broker"):
+        blocked: set = set()
+        if role == "broker":
+            blocked = {
+                r.referred_client_id
+                for r in db.query(ExternalReferral).filter(
+                    ExternalReferral.client_engagement_model == ClientEngagementModel.direct_engagement,
+                    ExternalReferral.referred_client_id.isnot(None),
+                ).all()
+            }
         client_ids = list({
             r.client_id
             for r in db.query(ClientMessage.client_id)
-            .filter(ClientMessage.tenant_id == tenant_id)
+            .filter(
+                ClientMessage.tenant_id == tenant_id,
+                or_(ClientMessage.author_id == current_user.id, ClientMessage.recipient_id == current_user.id),
+            )
             .all()
+            if r.client_id not in blocked
         })
+        for cid in client_ids:
+            client = db.query(User).filter(User.id == cid).first()
+            if client:
+                pairs.append((cid, current_user.id, client.full_name, current_user.full_name))
+
+    elif role == "client":
+        rows = (
+            db.query(ClientMessage.author_id, ClientMessage.recipient_id)
+            .filter(
+                ClientMessage.client_id == current_user.id,
+                ClientMessage.tenant_id == tenant_id,
+            )
+            .all()
+        )
+        peer_ids: set = set()
+        for row in rows:
+            if row.author_id and row.author_id != current_user.id:
+                peer_ids.add(row.author_id)
+            if row.recipient_id and row.recipient_id != current_user.id:
+                peer_ids.add(row.recipient_id)
+        # Pre-populate referrer so client can initiate even without prior messages
+        from app.models.external_referral import ClientEngagementModel
+        ext_ref = db.query(ExternalReferral).filter(
+            ExternalReferral.referred_client_id == current_user.id,
+        ).first()
+        if ext_ref and ext_ref.referrer_id:
+            peer_ids.add(ext_ref.referrer_id)
+        # If direct_engagement, only the referrer is allowed — don't add brokers
+        is_direct = (
+            ext_ref is not None
+            and ext_ref.client_engagement_model == ClientEngagementModel.direct_engagement
+        )
+        if not is_direct:
+            # Also pre-populate internal Referral referrer if present
+            int_ref = db.query(Referral).filter(
+                Referral.referred_user_id == current_user.id,
+                Referral.tenant_id == tenant_id,
+            ).first()
+            if int_ref and int_ref.referrer_id:
+                peer_ids.add(int_ref.referrer_id)
+        for pid in peer_ids:
+            peer = db.query(User).filter(User.id == pid).first()
+            if peer:
+                pairs.append((current_user.id, pid, current_user.full_name, peer.full_name))
 
     else:
         return []
 
-    if not client_ids:
+    if not pairs:
         return []
 
-    return _build_conversations(client_ids, db, tenant_id)
+    return _build_conversations(pairs, db, tenant_id)
 
 
 @router.get("/{message_id}", response_model=MessageOut)

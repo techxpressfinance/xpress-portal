@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, PageHeader, Button } from '../../components/ui';
-import type { ClientConversation, ClientMessage } from '../../types';
+import type { ClientConversation, ClientMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function ReferrerMessages() {
@@ -12,6 +12,7 @@ export default function ReferrerMessages() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [conversations, setConversations] = useState<ClientConversation[]>([]);
+  const [allStaff, setAllStaff] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConv, setSelectedConv] = useState<ClientConversation | null>(null);
   const [chatMessages, setChatMessages] = useState<ClientMessage[]>([]);
@@ -19,10 +20,19 @@ export default function ReferrerMessages() {
   const [newChatMsg, setNewChatMsg] = useState('');
   const [sendingChatMsg, setSendingChatMsg] = useState(false);
 
+  const [showSearch, setShowSearch] = useState(false);
+  const [staffSearch, setStaffSearch] = useState('');
+
   useEffect(() => {
-    api.get('/messages/client-inbox')
-      .then(({ data }) => setConversations(data))
-      .catch(() => toast('Failed to load conversations', 'error'))
+    Promise.all([
+      api.get('/messages/client-inbox'),
+      api.get('/messages/recipients'),
+    ])
+      .then(([convRes, recipientsRes]) => {
+        setConversations(convRes.data);
+        setAllStaff(recipientsRes.data.filter((u: User) => u.role === 'admin' || u.role === 'broker'));
+      })
+      .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -30,11 +40,17 @@ export default function ReferrerMessages() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Returns the display name for a conversation from the referrer's perspective
+  const convDisplayName = (conv: ClientConversation) =>
+    conv.peer_id === user?.id ? conv.client_name : conv.peer_name;
+
   const openConversation = async (conv: ClientConversation) => {
     setSelectedConv(conv);
+    setShowSearch(false);
+    setStaffSearch('');
     setChatLoading(true);
     try {
-      const { data } = await api.get(`/clients/${conv.client_id}/messages`);
+      const { data } = await api.get(`/clients/${conv.client_id}/messages`, { params: { peer_id: conv.peer_id } });
       setChatMessages(data);
     } catch {
       toast('Failed to load chat', 'error');
@@ -43,22 +59,50 @@ export default function ReferrerMessages() {
     }
   };
 
+  const openStaffConversation = (staff: User) => {
+    const conv: ClientConversation = conversations.find(
+      (c) => c.client_id === user!.id && c.peer_id === staff.id
+    ) ?? {
+      client_id: user!.id,
+      client_name: user?.full_name ?? null,
+      peer_id: staff.id,
+      peer_name: staff.full_name,
+      last_message: null,
+      last_message_at: null,
+      last_message_author_name: null,
+      message_count: 0,
+    };
+    openConversation(conv);
+  };
+
   const handleSendChat = async () => {
-    if (!selectedConv || !newChatMsg.trim()) return;
+    if (!selectedConv || !newChatMsg.trim() || !user) return;
     setSendingChatMsg(true);
+    // If referrer is the subject (staff chat): recipient = peer; otherwise recipient = client
+    const recipient_id = selectedConv.client_id === user.id ? selectedConv.peer_id : selectedConv.client_id;
     try {
       const { data } = await api.post(`/clients/${selectedConv.client_id}/messages`, {
         content: newChatMsg.trim(),
+        recipient_id,
       });
       setChatMessages((prev) => [...prev, data]);
       setNewChatMsg('');
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.client_id === selectedConv.client_id
-            ? { ...c, last_message: data.content, last_message_at: data.created_at, last_message_author_name: 'You', message_count: c.message_count + 1 }
-            : c
-        )
-      );
+      const key = `${selectedConv.client_id}_${selectedConv.peer_id}`;
+      setConversations((prev) => {
+        const exists = prev.find((c) => `${c.client_id}_${c.peer_id}` === key);
+        const updated = {
+          ...selectedConv,
+          last_message: data.content,
+          last_message_at: data.created_at,
+          last_message_author_name: 'You',
+          message_count: (selectedConv.message_count ?? 0) + 1,
+        };
+        if (exists) {
+          return prev.map((c) => `${c.client_id}_${c.peer_id}` === key ? updated : c);
+        }
+        return [updated, ...prev];
+      });
+      setSelectedConv((prev) => prev ? { ...prev, last_message: data.content, last_message_at: data.created_at } : prev);
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send'), 'error');
     } finally {
@@ -66,10 +110,16 @@ export default function ReferrerMessages() {
     }
   };
 
+  const filteredStaff = allStaff.filter(
+    (s) =>
+      s.full_name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+      s.email.toLowerCase().includes(staffSearch.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div>
-        <PageHeader title="Messages" subtitle="Chat with your referred clients" />
+        <PageHeader title="Messages" subtitle="Chat with clients and your broker team" />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-2xl shimmer" />)}
         </div>
@@ -79,9 +129,53 @@ export default function ReferrerMessages() {
 
   return (
     <div>
-      <PageHeader title="Messages" subtitle="Chat with your referred clients" />
+      <PageHeader
+        title="Messages"
+        subtitle="Chat with clients and your broker team"
+        action={
+          <Button onClick={() => { setShowSearch((v) => !v); setStaffSearch(''); }}>
+            {showSearch ? 'Cancel' : '+ Message Staff'}
+          </Button>
+        }
+      />
 
-      {conversations.length === 0 ? (
+      {/* New staff chat search */}
+      {showSearch && (
+        <GlassCard className="mb-6">
+          <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a broker or admin</h3>
+          <input
+            type="text"
+            autoFocus
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground mb-2"
+          />
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border">
+            {filteredStaff.length === 0 ? (
+              <p className="px-4 py-3 text-[13px] text-muted-foreground">No results</p>
+            ) : (
+              filteredStaff.slice(0, 20).map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => openStaffConversation(s)}
+                  className="w-full text-left px-4 py-3 hover:bg-secondary/50 transition-colors flex items-center gap-3"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <span className="text-[12px] font-semibold text-primary">{s.full_name.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-foreground truncate">{s.full_name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate capitalize">{s.role} &middot; {s.email}</p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </GlassCard>
+      )}
+
+      {conversations.length === 0 && !showSearch ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
@@ -89,11 +183,11 @@ export default function ReferrerMessages() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
               </svg>
             </div>
-            <p className="text-[15px] font-medium text-muted-foreground">No client conversations yet</p>
-            <p className="text-[13px] text-muted-foreground mt-1">Chats with your referred clients will appear here</p>
+            <p className="text-[15px] font-medium text-muted-foreground">No conversations yet</p>
+            <p className="text-[13px] text-muted-foreground mt-1">Chat with your referred clients or use "+ Message Staff" to contact your broker team</p>
           </div>
         </GlassCard>
-      ) : (
+      ) : conversations.length > 0 && (
         <GlassCard className="p-0 overflow-hidden">
           <div className="flex h-[560px]">
             {/* Conversation list */}
@@ -102,34 +196,45 @@ export default function ReferrerMessages() {
                 <p className="text-[13px] font-semibold text-foreground">Conversations</p>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {conversations.map((conv) => (
-                  <button
-                    key={conv.client_id}
-                    onClick={() => openConversation(conv)}
-                    className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${selectedConv?.client_id === conv.client_id ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                        <span className="text-[13px] font-semibold text-primary">
-                          {conv.client_name?.charAt(0).toUpperCase() ?? '?'}
-                        </span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-semibold text-foreground truncate">{conv.client_name ?? 'Unknown'}</p>
-                        {conv.last_message ? (
-                          <p className="text-[12px] text-muted-foreground truncate">
-                            {conv.last_message_author_name}: {conv.last_message}
-                          </p>
-                        ) : (
-                          <p className="text-[12px] text-muted-foreground italic">No messages yet</p>
+                {conversations.map((conv) => {
+                  const displayName = convDisplayName(conv);
+                  const isStaffChat = conv.client_id === user?.id;
+                  const convKey = `${conv.client_id}_${conv.peer_id}`;
+                  const isSelected = selectedConv?.client_id === conv.client_id && selectedConv?.peer_id === conv.peer_id;
+                  return (
+                    <button
+                      key={convKey}
+                      onClick={() => openConversation(conv)}
+                      className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${isSelected ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isStaffChat ? 'bg-amber-500/15' : 'bg-primary/15'}`}>
+                          <span className={`text-[13px] font-semibold ${isStaffChat ? 'text-amber-600' : 'text-primary'}`}>
+                            {displayName?.charAt(0).toUpperCase() ?? '?'}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[13px] font-semibold text-foreground truncate">{displayName ?? 'Unknown'}</p>
+                            {isStaffChat && (
+                              <span className="shrink-0 text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">Staff</span>
+                            )}
+                          </div>
+                          {conv.last_message ? (
+                            <p className="text-[12px] text-muted-foreground truncate">
+                              {conv.last_message_author_name}: {conv.last_message}
+                            </p>
+                          ) : (
+                            <p className="text-[12px] text-muted-foreground italic">No messages yet</p>
+                          )}
+                        </div>
+                        {conv.last_message_at && (
+                          <span className="text-[11px] text-muted-foreground shrink-0">{formatDate(conv.last_message_at)}</span>
                         )}
                       </div>
-                      {conv.last_message_at && (
-                        <span className="text-[11px] text-muted-foreground shrink-0">{formatDate(conv.last_message_at)}</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -154,10 +259,10 @@ export default function ReferrerMessages() {
                     </button>
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15">
                       <span className="text-[12px] font-semibold text-primary">
-                        {selectedConv.client_name?.charAt(0).toUpperCase() ?? '?'}
+                        {convDisplayName(selectedConv)?.charAt(0).toUpperCase() ?? '?'}
                       </span>
                     </div>
-                    <p className="text-[14px] font-semibold text-foreground">{selectedConv.client_name}</p>
+                    <p className="text-[14px] font-semibold text-foreground">{convDisplayName(selectedConv)}</p>
                   </div>
 
                   {/* Messages */}
@@ -205,7 +310,7 @@ export default function ReferrerMessages() {
                         }}
                         rows={2}
                         className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
-                        placeholder={`Message ${selectedConv.client_name ?? 'client'}…`}
+                        placeholder={`Message ${convDisplayName(selectedConv) ?? ''}…`}
                       />
                       <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                         <span className="text-[11px] text-muted-foreground">⌘↵ to send</span>

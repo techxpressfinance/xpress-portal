@@ -111,6 +111,8 @@ _MIGRATIONS = [
     # Standalone quote sheets: recipient info and nullable application_id
     ("quote_sheets", "recipient_name", "VARCHAR(200)"),
     ("quote_sheets", "recipient_email", "VARCHAR(255)"),
+    # 1:1 messaging: recipient for client_messages
+    ("client_messages", "recipient_id", "VARCHAR(36) REFERENCES users(id)"),
     # Multi-tenancy: add tenant_id to all tenant-scoped tables
     ("users", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("loan_applications", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),

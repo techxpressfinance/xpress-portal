@@ -45,6 +45,8 @@ export default function AdminMessages() {
     const conv: ClientConversation = conversations.find((c) => c.client_id === clientId) ?? {
       client_id: clientId,
       client_name: clientName,
+      peer_id: user!.id,
+      peer_name: user?.full_name ?? null,
       last_message: null,
       last_message_at: null,
       last_message_author_name: null,
@@ -55,7 +57,7 @@ export default function AdminMessages() {
     setClientSearch('');
     setChatLoading(true);
     try {
-      const { data } = await api.get(`/clients/${clientId}/messages`);
+      const { data } = await api.get(`/clients/${clientId}/messages`, { params: { peer_id: user!.id } });
       setChatMessages(data);
     } catch {
       toast('Failed to load chat', 'error');
@@ -70,6 +72,7 @@ export default function AdminMessages() {
     try {
       const { data } = await api.post(`/clients/${selectedConv.client_id}/messages`, {
         content: newChatMsg.trim(),
+        recipient_id: selectedConv.client_id,
       });
       setChatMessages((prev) => [...prev, data]);
       setNewChatMsg('');
@@ -97,8 +100,9 @@ export default function AdminMessages() {
 
   const filteredClients = allClients.filter(
     (c) =>
-      c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(clientSearch.toLowerCase())
+      c.role === 'client' &&
+      (c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+       c.email.toLowerCase().includes(clientSearch.toLowerCase()))
   );
 
   if (loading) {
@@ -183,9 +187,9 @@ export default function AdminMessages() {
               <div className="flex-1 overflow-y-auto">
                 {conversations.map((conv) => (
                   <button
-                    key={conv.client_id}
+                    key={`${conv.client_id}_${conv.peer_id}`}
                     onClick={() => openConversation(conv.client_id, conv.client_name ?? '')}
-                    className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${selectedConv?.client_id === conv.client_id ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                    className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${selectedConv?.client_id === conv.client_id && selectedConv?.peer_id === conv.peer_id ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15">
