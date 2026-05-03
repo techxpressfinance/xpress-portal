@@ -138,14 +138,13 @@ export default function Login() {
         <GlassCard padding="none" className="p-8 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
 
           <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center gap-3 mb-6">
-              {tenant?.logo_url ? (
-                <img src={tenant.logo_url} alt={brandName} className="h-12 w-12 rounded-xl object-contain drop-shadow-sm" />
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-sm">
-                  <span className="text-[18px] font-bold text-white">{brandName.charAt(0).toUpperCase()}</span>
-                </div>
-              )}
+            <div className="flex items-center mb-6">
+              <img
+                src={tenant?.logo_url || '/xpress.svg'}
+                alt={brandName}
+                className="h-24 w-auto max-w-[300px] object-contain drop-shadow-sm"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/xpress.svg'; }}
+              />
             </div>
             <h1 className="text-[28px] font-semibold text-foreground tracking-tight text-center">
               {codeMode ? 'Enter Code' : 'Welcome back'}
