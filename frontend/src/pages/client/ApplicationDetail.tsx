@@ -514,6 +514,12 @@ export default function ApplicationDetail() {
                   })
                 )}
               </div>
+              {(() => {
+                const brokerRecipientId =
+                  [...clientMessages].reverse().find((m) => m.author_id !== user?.id)?.author_id
+                  ?? application?.assigned_brokers?.[0]?.id
+                  ?? null;
+                return (
               <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 transition-all duration-300 flex flex-col pt-1">
                 <textarea
                   value={newClientMsgContent}
@@ -527,12 +533,12 @@ export default function ApplicationDetail() {
                     size="sm"
                     className="rounded-xl px-4 h-9"
                     loading={sendingClientMsg}
-                    disabled={!newClientMsgContent.trim() || !user?.id}
+                    disabled={!newClientMsgContent.trim() || !user?.id || !brokerRecipientId}
                     onClick={async () => {
-                      if (!user?.id || !newClientMsgContent.trim()) return;
+                      if (!user?.id || !newClientMsgContent.trim() || !brokerRecipientId) return;
                       setSendingClientMsg(true);
                       try {
-                        const { data } = await api.post(`/clients/${user.id}/messages`, { content: newClientMsgContent.trim() });
+                        const { data } = await api.post(`/clients/${user.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: brokerRecipientId });
                         setClientMessages((prev) => [...prev, data]);
                         setNewClientMsgContent('');
                         toast('Message sent', 'success');
@@ -548,6 +554,8 @@ export default function ApplicationDetail() {
                   </Button>
                 </div>
               </div>
+                );
+              })()}
             </div>
           </GlassCard>
 

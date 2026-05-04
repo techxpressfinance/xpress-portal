@@ -789,7 +789,7 @@ export default function ReferrerApplicationDetail() {
                             e.preventDefault();
                             if (client?.id && newClientMsgContent.trim()) {
                               setSendingClientMsg(true);
-                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() })
+                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id })
                                 .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
                                 .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
                                 .finally(() => setSendingClientMsg(false));
@@ -811,7 +811,7 @@ export default function ReferrerApplicationDetail() {
                             if (!client?.id || !newClientMsgContent.trim()) return;
                             setSendingClientMsg(true);
                             try {
-                              const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() });
+                              const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id });
                               setClientMessages((prev) => [...prev, data]);
                               setNewClientMsgContent('');
                               toast('Message sent', 'success');

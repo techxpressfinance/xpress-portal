@@ -2,13 +2,15 @@
  * Extract a user-friendly error message from an API error.
  */
 export function getErrorMessage(err: unknown, fallback: string): string {
-  if (
-    err &&
-    typeof err === 'object' &&
-    'response' in err &&
-    (err as any).response?.data?.detail
-  ) {
-    return (err as any).response.data.detail;
+  if (err && typeof err === 'object' && 'response' in err) {
+    const detail = (err as any).response?.data?.detail;
+    if (!detail) return fallback;
+    // Pydantic v2 validation errors: array of {msg, loc, type, input}
+    if (Array.isArray(detail)) {
+      const msg = detail[0]?.msg;
+      return typeof msg === 'string' ? msg : fallback;
+    }
+    if (typeof detail === 'string') return detail;
   }
   return fallback;
 }

@@ -1305,7 +1305,7 @@ export default function ReviewApplication() {
                               if (!client?.id || !newClientMsgContent.trim()) return;
                               setSendingClientMsg(true);
                               try {
-                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim() });
+                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id });
                                 setClientMessages((prev) => [...prev, data]);
                                 setNewClientMsgContent('');
                                 toast('Message sent', 'success');
