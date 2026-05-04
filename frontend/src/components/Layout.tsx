@@ -20,6 +20,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { theme, toggle: toggleTheme } = useTheme();
   const brandName = tenant?.name || 'Xpress Finance';
+  const defaultLogo = theme === 'dark' ? '/xpress-dark.png' : '/xpress.png';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
@@ -75,7 +76,7 @@ export default function Layout() {
         <div className="flex h-20 items-center px-2">
           <Link to="/" className="flex h-full w-full items-center" onClick={() => setSidebarOpen(false)}>
             <img
-              src={tenant?.logo_url || '/xpress.svg'}
+              src={tenant?.logo_url || defaultLogo}
               alt={brandName}
               className="h-full w-full object-contain"
             />
@@ -341,7 +342,7 @@ export default function Layout() {
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
           </button>
-          <img src={tenant?.logo_url || '/xpress.svg'} alt={brandName} className="ml-2.5 h-7 w-auto object-contain" />
+          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-7 w-auto object-contain" />
         </header>
 
         {/* Page content */}

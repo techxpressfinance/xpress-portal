@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
+import { useTheme } from '../hooks/useTheme';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input, GlassCard } from '../components/ui';
 
@@ -21,8 +22,10 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export default function Login() {
   const { login, loginWithCode, requestCode, user } = useAuth();
   const { tenant } = useTenant();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const brandName = tenant?.name || 'Xpress Finance';
+  const defaultLogo = theme === 'dark' ? '/xpress-dark.png' : '/xpress.png';
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
   const [showResend, setShowResend] = useState(false);
@@ -140,10 +143,10 @@ export default function Login() {
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center mb-6">
               <img
-                src={tenant?.logo_url || '/xpress.svg'}
+                src={tenant?.logo_url || defaultLogo}
                 alt={brandName}
                 className="h-24 w-auto max-w-[300px] object-contain drop-shadow-sm"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/xpress.svg'; }}
+                onError={(e) => { (e.target as HTMLImageElement).src = defaultLogo; }}
               />
             </div>
             <h1 className="text-[28px] font-semibold text-foreground tracking-tight text-center">

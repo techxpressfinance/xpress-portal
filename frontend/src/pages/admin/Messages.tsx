@@ -164,7 +164,7 @@ export default function AdminMessages() {
         </GlassCard>
       )}
 
-      {conversations.length === 0 && !showSearch ? (
+      {conversations.length === 0 && !showSearch && !selectedConv ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
@@ -176,7 +176,7 @@ export default function AdminMessages() {
             <p className="text-[13px] text-muted-foreground mt-1">Use "+ New Chat" to start a conversation</p>
           </div>
         </GlassCard>
-      ) : conversations.length > 0 && (
+      ) : (conversations.length > 0 || selectedConv) && (
         <GlassCard className="p-0 overflow-hidden">
           <div className="flex h-[560px]">
             {/* Conversation list */}
