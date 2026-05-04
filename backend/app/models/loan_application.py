@@ -158,6 +158,11 @@ class LoanApplication(Base):
     # Referrer-filled
     client_engagement_model: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Client invite (magic-link token for unauthenticated form completion)
+    client_invite_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    client_invite_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    client_invite_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])

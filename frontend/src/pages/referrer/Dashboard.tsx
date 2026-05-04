@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader } from '../../components/ui';
+import { GlassCard, PageHeader, Button } from '../../components/ui';
 import type { ExternalReferrerStats } from '../../types';
 
 const STATUS_PIPELINE = [
@@ -67,7 +68,20 @@ export default function ReferrerDashboard() {
 
   return (
     <div>
-      <PageHeader title="Referrer Dashboard" subtitle="Track your referred clients and deal analytics" />
+      <PageHeader
+        title="Referrer Dashboard"
+        subtitle="Track your referred clients and deal analytics"
+        action={
+          <div className="flex gap-2">
+            <Link to="/referrer/messages">
+              <Button variant="secondary">Message Staff</Button>
+            </Link>
+            <Link to="/referrer/add-lead">
+              <Button>+ Add Lead</Button>
+            </Link>
+          </div>
+        }
+      />
 
       {/* Referral funnel stats */}
       <div className="grid gap-4 sm:grid-cols-3 mb-6">

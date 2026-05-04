@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { DOC_TYPE_LABELS, AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS } from '../../lib/constants';
 import { GlassCard, PageHeader, Button, Input } from '../../components/ui';
-import type { DocType, ClientEngagementModel } from '../../types';
+import type { DocType } from '../../types';
 
 // ── Style constants ───────────────────────────────────────────────────────────
 
@@ -41,30 +41,19 @@ const INDUSTRIES: Industry[] = [
 ];
 
 const CONSUMER_PURPOSES = [
-  { id: 42, label: 'Purchase' },
-  { id: 41, label: 'Refinance' },
-  { id: 20, label: 'Car' },
-  { id: 21, label: 'Motorcycle' },
-  { id: 22, label: 'Caravan' },
-  { id: 23, label: 'Other Vehicle' },
+  { id: 42, label: 'Purchase' }, { id: 41, label: 'Refinance' }, { id: 20, label: 'Car' },
+  { id: 21, label: 'Motorcycle' }, { id: 22, label: 'Caravan' }, { id: 23, label: 'Other Vehicle' },
   { id: 24, label: 'Personal Loan' },
 ];
 
 const COMMERCIAL_PURPOSES = [
-  { id: 1, label: 'Day-to-day Capital' },
-  { id: 3, label: 'Vehicles or Transport' },
-  { id: 14, label: 'Machinery or Equipment' },
-  { id: 13, label: 'New Fit-out' },
-  { id: 19, label: 'Staff Recruitment Costs' },
-  { id: 11, label: 'Expansion' },
-  { id: 4, label: 'Renovation' },
-  { id: 15, label: 'Pay Domestic or International Suppliers' },
-  { id: 18, label: 'Waiting for Invoices to be Paid' },
-  { id: 16, label: 'Property' },
-  { id: 17, label: 'Development & Construction' },
-  { id: 9, label: 'Start a New Business' },
-  { id: 10, label: 'Purchase Existing Business' },
-  { id: 8, label: 'Other' },
+  { id: 1, label: 'Day-to-day Capital' }, { id: 3, label: 'Vehicles or Transport' },
+  { id: 14, label: 'Machinery or Equipment' }, { id: 13, label: 'New Fit-out' },
+  { id: 19, label: 'Staff Recruitment Costs' }, { id: 11, label: 'Expansion' },
+  { id: 4, label: 'Renovation' }, { id: 15, label: 'Pay Domestic or International Suppliers' },
+  { id: 18, label: 'Waiting for Invoices to be Paid' }, { id: 16, label: 'Property' },
+  { id: 17, label: 'Development & Construction' }, { id: 9, label: 'Start a New Business' },
+  { id: 10, label: 'Purchase Existing Business' }, { id: 8, label: 'Other' },
 ];
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -133,16 +122,20 @@ interface AdditionalIncome { income_type: string; amount: string; frequency: str
 interface RealEstateAsset { property_type: string; address: string; estimated_value: string; ownership_type: string; is_financed: string; lender: string; amount_owing: string; monthly_repayment: string; rental_income: string; }
 interface OtherAsset { asset_type: string; value: string; }
 interface Liability { liability_type: string; lender: string; balance: string; limit: string; monthly_repayment: string; }
+interface UploadedDoc { id: string; filename: string; doc_type: string; label?: string; }
 
 const blankIncome = (): AdditionalIncome => ({ income_type: 'Rental Income', amount: '', frequency: 'Monthly' });
 const blankRealEstate = (): RealEstateAsset => ({ property_type: 'Home', address: '', estimated_value: '', ownership_type: 'Sole', is_financed: 'no', lender: '', amount_owing: '', monthly_repayment: '', rental_income: '' });
 const blankOtherAsset = (): OtherAsset => ({ asset_type: 'Vehicles', value: '' });
 const blankLiability = (): Liability => ({ liability_type: 'Home Loans', lender: '', balance: '', limit: '', monthly_repayment: '' });
 
-const CONSUMER_STEPS = 7;
-const COMMERCIAL_STEPS = 5;
-const CONSUMER_LABELS = ['Client Details', 'Loan Details', 'Living & Employment', 'Financial Position', 'Declarations', 'Documents', 'Review'];
-const COMMERCIAL_LABELS = ['Client Details', 'Loan & Business Details', 'Declarations', 'Documents', 'Review'];
+// New step layout: pre-screen (engagement) → steps 1-6 (consumer) / 1-4 displayed (commercial)
+// Internal steps: consumer=1-6, commercial=1,2,5,6
+const CONSUMER_STEPS = 6;
+const COMMERCIAL_STEPS = 4;
+const maxInternalStep = 6;
+const CONSUMER_LABELS = ['Client & Loan Details', 'Identification', 'Living & Employment', 'Financial Position', 'Declarations', 'Review'];
+const COMMERCIAL_LABELS = ['Client & Loan Details', 'Identification', 'Declarations', 'Review'];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -151,12 +144,26 @@ export default function AddLead() {
   const navigate = useNavigate();
   const pendingFileInput = useRef<HTMLInputElement>(null);
 
+  // Pre-screen engagement state
+  const [showEngagementScreen, setShowEngagementScreen] = useState(true);
+  const [engagementModel, setEngagementModel] = useState<'self_managed' | 'direct_engagement' | ''>('');
+  const [engagementError, setEngagementError] = useState('');
+  const [draftCreating, setDraftCreating] = useState(false);
+
+  // Draft tracking
+  const [draftAppId, setDraftAppId] = useState<string | null>(null);
+  const [createdAppId, setCreatedAppId] = useState<string | null>(null);
+
+  // Send-to-client modal
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [clientEmail, setClientEmail] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
+
+  // Form steps
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
-  const [createdAppId, setCreatedAppId] = useState<string | null>(null);
-  const [engagementModel, setEngagementModel] = useState<ClientEngagementModel | ''>('');
-  const [engagementError, setEngagementError] = useState('');
 
+  // Loan type tab
   const [tab, setTab] = useState<'consumer' | 'commercial'>('consumer');
   const [purposeId, setPurposeId] = useState<number | ''>('');
   const [commercialPurposeId, setCommercialPurposeId] = useState<number | ''>('');
@@ -196,11 +203,12 @@ export default function AddLead() {
   const [otherAssets, setOtherAssets] = useState<OtherAsset[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
 
-  // Pre-submit document queue
-  const [pendingDocs, setPendingDocs] = useState<{ file: File; docType: DocType; label: string }[]>([]);
+  // Document state — uploads immediately to the draft
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedDocType, setStagedDocType] = useState<DocType>('other');
   const [stagedLabel, setStagedLabel] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
   const { register, handleSubmit, watch, trigger, formState: { errors } } = useForm<FormData>({
@@ -237,35 +245,50 @@ export default function AddLead() {
   const totalSteps = tab === 'commercial' ? COMMERCIAL_STEPS : CONSUMER_STEPS;
   const stepLabels = tab === 'commercial' ? COMMERCIAL_LABELS : CONSUMER_LABELS;
 
-  const maxInternalStep = 7;
   const toUiStep = (internal: number) => {
-    if (tab === 'commercial' && internal > 2) return internal - 2;
+    if (tab === 'commercial' && internal >= 5) return internal - 2;
     return internal;
+  };
+
+  // ── Engagement pre-screen ──
+
+  const handleEngagementContinue = async () => {
+    if (!engagementModel) { setEngagementError('Please select an option to continue'); return; }
+    setDraftCreating(true);
+    try {
+      const { data: appData } = await api.post('/applications', {
+        loan_type: 'personal',
+        amount: 0,
+        client_engagement_model: engagementModel,
+      });
+      setDraftAppId(appData.id);
+      setShowEngagementScreen(false);
+      setStep(1);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to create lead'), 'error');
+    } finally {
+      setDraftCreating(false);
+    }
   };
 
   // ── Step navigation ──
 
   const goNext = async () => {
     if (step === 1) {
-      const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile']);
+      const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile', 'amount']);
       if (!ok) return;
-    }
-    if (step === 2) {
-      const ok = await trigger(['amount']);
-      if (!ok) return;
-      if (!engagementModel) { setEngagementError('Please select a client engagement model'); return; }
-      setEngagementError('');
     }
     const next = step + (tab === 'commercial' && step === 2 ? 3 : 1);
     setStep(Math.min(next, maxInternalStep));
   };
 
   const goBack = () => {
+    if (step === 1) return;
     const prev = step - (tab === 'commercial' && step === 5 ? 3 : 1);
     setStep(Math.max(prev, 1));
   };
 
-  // ── Document staging ──
+  // ── Document handling (immediate upload) ──
 
   const stageFile = (file: File) => {
     if (file.size > 10 * 1024 * 1024) { toast('File size exceeds 10MB limit', 'error'); return; }
@@ -287,17 +310,50 @@ export default function AddLead() {
     if (file) stageFile(file);
   };
 
-  const handleConfirmStaged = () => {
-    if (!stagedFile) return;
-    setPendingDocs(prev => [...prev, { file: stagedFile, docType: stagedDocType, label: stagedLabel.trim() }]);
-    setStagedFile(null);
+  const handleConfirmStaged = async () => {
+    if (!stagedFile || !draftAppId) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', stagedFile);
+      const params = new URLSearchParams({ doc_type: stagedDocType });
+      if (stagedLabel.trim()) params.set('label', stagedLabel.trim());
+      const { data: docData } = await api.post(`/documents/upload/${draftAppId}?${params}`, fd);
+      setUploadedDocs(prev => [...prev, { id: docData.id, filename: docData.original_filename || docData.filename || stagedFile.name, doc_type: stagedDocType, label: stagedLabel.trim() || undefined }]);
+      setStagedFile(null);
+      setStagedLabel('');
+      toast('Document uploaded', 'success');
+    } catch {
+      toast('Failed to upload document', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Send-to-client invite ──
+
+  const handleConfirmSendToClient = async () => {
+    if (!draftAppId || !clientEmail.trim()) return;
+    setSendingInvite(true);
+    try {
+      await api.post(`/applications/${draftAppId}/client-invite`, {
+        email: clientEmail.trim(),
+        portal_url: window.location.origin,
+      });
+      toast('Invite sent to client successfully', 'success');
+      setShowSendModal(false);
+      navigate('/referrer/applications');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to send invite'), 'error');
+    } finally {
+      setSendingInvite(false);
+    }
   };
 
   // ── Submit ──
 
   const onSubmit = async (data: FormData) => {
-    if (!engagementModel) { setEngagementError('Please select a client engagement model'); setStep(2); return; }
-
+    if (!draftAppId) return;
     setSubmitting(true);
     try {
       const extraData: Record<string, unknown> = {};
@@ -321,7 +377,7 @@ export default function AddLead() {
       }];
 
       const primaryIncome = { income_type: data.primary_income_type, amount: parseFloat(data.primary_income_amount) || 0, frequency: data.primary_income_frequency };
-      extraData.incomes = [primaryIncome, ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency }))].filter(i => i.amount > 0);
+      extraData.incomes = [primaryIncome, ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency }))].filter((i: { amount: number }) => i.amount > 0);
       extraData.additional_incomes = additionalIncomes;
 
       extraData.assets = { real_estate: realEstateAssets, other: otherAssets };
@@ -344,13 +400,7 @@ export default function AddLead() {
         const loanTypeDetails: Record<string, unknown> = {};
         const purposeObj = CONSUMER_PURPOSES.find(p => p.id === purposeId);
         if (purposeObj) {
-          if (['Car', 'Motorcycle', 'Caravan', 'Other Vehicle'].includes(purposeObj.label)) {
-            loanTypeDetails.vehicle = { purpose_id: purposeId, purpose_label: purposeObj.label };
-          } else if (purposeObj.label === 'Purchase' || purposeObj.label === 'Refinance') {
-            loanTypeDetails.personal = { purpose_id: purposeId, purpose_label: purposeObj.label };
-          } else {
-            loanTypeDetails.personal = { purpose_id: purposeId, purpose_label: purposeObj.label };
-          }
+          loanTypeDetails.personal = { purpose_id: purposeId, purpose_label: purposeObj.label };
         }
         extraData.loan_type_details = loanTypeDetails;
       } else {
@@ -366,7 +416,7 @@ export default function AddLead() {
         loan_type: tab === 'consumer' ? 'personal' : 'business_loan',
         amount: parseFloat(data.amount) || 0,
         notes: data.notes || null,
-        client_engagement_model: engagementModel,
+        status: 'application_received',
         applicant_title: data.applicant_title,
         applicant_first_name: data.applicant_first_name,
         applicant_middle_name: data.applicant_middle_name || null,
@@ -428,21 +478,8 @@ export default function AddLead() {
         payload.gross_income = parseFloat(data.primary_income_amount) || null;
       }
 
-      const { data: appData } = await api.post('/applications', payload);
-      const appId: string = appData.id;
-
-      for (const doc of pendingDocs) {
-        try {
-          const fd = new FormData();
-          fd.append('file', doc.file);
-          const params = new URLSearchParams({ doc_type: doc.docType });
-          if (doc.label) params.set('label', doc.label);
-          await api.post(`/documents/upload/${appId}?${params}`, fd);
-        } catch {
-          toast(`Failed to upload ${doc.file.name}`, 'error');
-        }
-      }
-      setCreatedAppId(appId);
+      await api.patch(`/applications/${draftAppId}`, payload);
+      setCreatedAppId(draftAppId);
       toast('Lead submitted successfully', 'success');
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to submit lead'), 'error');
@@ -477,10 +514,50 @@ export default function AddLead() {
     );
   }
 
-  // ── Form ──────────────────────────────────────────────────────────────────
+  // ── Engagement pre-screen ─────────────────────────────────────────────────
+
+  if (showEngagementScreen) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <PageHeader title="Add Lead" subtitle="First, tell us how this client will be managed" />
+        <GlassCard className="space-y-4">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground mb-1">Who will engage with the client?</p>
+            <p className="text-[13px] text-muted-foreground">This determines how we handle the client relationship for this application.</p>
+          </div>
+
+          <label className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${engagementModel === 'self_managed' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
+            <input type="radio" name="engagement" value="self_managed" checked={engagementModel === 'self_managed'} onChange={() => { setEngagementModel('self_managed'); setEngagementError(''); }} className="mt-0.5 accent-primary shrink-0" />
+            <div>
+              <p className="text-[14px] font-semibold text-foreground">I will engage with the client</p>
+              <p className="text-[13px] text-muted-foreground mt-0.5">You'll fill in the application on the client's behalf, or send them a link to complete it themselves.</p>
+            </div>
+          </label>
+
+          <label className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
+            <input type="radio" name="engagement" value="direct_engagement" checked={engagementModel === 'direct_engagement'} onChange={() => { setEngagementModel('direct_engagement'); setEngagementError(''); }} className="mt-0.5 accent-primary shrink-0" />
+            <div>
+              <p className="text-[14px] font-semibold text-foreground">Xpress Finance will engage with the client</p>
+              <p className="text-[13px] text-muted-foreground mt-0.5">Our team will contact and work with the client directly. You can still send them a form link.</p>
+            </div>
+          </label>
+
+          {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
+        </GlassCard>
+
+        <div className="mt-6 flex gap-3">
+          <Button size="lg" onClick={handleEngagementContinue} disabled={draftCreating}>
+            {draftCreating ? 'Creating lead...' : 'Continue'}
+          </Button>
+          <Button variant="secondary" size="lg" onClick={() => navigate('/referrer/applications')}>Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Multi-step form ───────────────────────────────────────────────────────
 
   const progress = (toUiStep(step) / totalSteps) * 100;
-
   const currentPurposeLabel = tab === 'consumer'
     ? CONSUMER_PURPOSES.find(p => p.id === purposeId)?.label
     : COMMERCIAL_PURPOSES.find(p => p.id === commercialPurposeId)?.label;
@@ -502,21 +579,174 @@ export default function AddLead() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
-        <div className="flex gap-1 p-1 rounded-xl bg-secondary w-fit">
-          {(['consumer', 'commercial'] as const).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => handleTabChange(t)}
-              className={`px-5 py-2 rounded-lg text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t === 'consumer' ? 'Consumer Loan' : 'Commercial Loan'}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Step 1: Client Details ── */}
+        {/* ── Step 1: Client & Loan Details ── */}
         {step === 1 && (
+          <>
+            {/* Info banner */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-start gap-3">
+              <svg className="h-4 w-4 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+              <p className="text-[13px] text-foreground">You only need to fill in the important fields. The application can be submitted even if non-critical information is missing.</p>
+            </div>
+
+            {/* Loan type tab */}
+            <div className="flex gap-1 p-1 rounded-xl bg-secondary w-fit">
+              {(['consumer', 'commercial'] as const).map(t => (
+                <button key={t} type="button" onClick={() => handleTabChange(t)}
+                  className={`px-5 py-2 rounded-lg text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                  {t === 'consumer' ? 'Consumer Loan' : 'Commercial Loan'}
+                </button>
+              ))}
+            </div>
+
+            <GlassCard className="space-y-4">
+              <h3 className="text-[14px] font-semibold text-foreground">Client Details</h3>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className={LABEL_CLS}>First Name *</label>
+                  <Input placeholder="John" error={errors.applicant_first_name?.message} {...register('applicant_first_name', { required: 'Required' })} />
+                </div>
+                <div>
+                  <label className={LABEL_CLS}>Middle Name <span className="font-normal">(optional)</span></label>
+                  <Input placeholder="William" {...register('applicant_middle_name')} />
+                </div>
+                <div>
+                  <label className={LABEL_CLS}>Last Name *</label>
+                  <Input placeholder="Smith" error={errors.applicant_last_name?.message} {...register('applicant_last_name', { required: 'Required' })} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={LABEL_CLS}>Email *</label>
+                  <Input type="email" placeholder="john@example.com" error={errors.applicant_email?.message} {...register('applicant_email', { required: 'Required' })} />
+                </div>
+                <div>
+                  <label className={LABEL_CLS}>Mobile *</label>
+                  <Input type="tel" placeholder="04XX XXX XXX" error={errors.applicant_mobile?.message} {...register('applicant_mobile', { required: 'Required' })} />
+                </div>
+              </div>
+            </GlassCard>
+
+            <GlassCard className="space-y-4">
+              <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
+              {tab === 'consumer' && (
+                <div>
+                  <label className={LABEL_CLS}>Purpose</label>
+                  <select value={purposeId} onChange={e => setPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
+                    <option value="">Select purpose...</option>
+                    {CONSUMER_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </div>
+              )}
+              {tab === 'commercial' && (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className={LABEL_CLS}>Business / Entity Name</label>
+                      <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>ACN / ABN</label>
+                      <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={LABEL_CLS}>Purpose</label>
+                    <select value={commercialPurposeId} onChange={e => setCommercialPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
+                      <option value="">Select purpose...</option>
+                      {COMMERCIAL_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+              <div>
+                <label className={LABEL_CLS}>Loan Amount *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                  <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
+                </div>
+              </div>
+              <div>
+                <label className={LABEL_CLS}>Notes to broker <span className="font-normal">(optional)</span></label>
+                <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any context about this lead for the broker..." />
+              </div>
+            </GlassCard>
+
+            {/* Document upload */}
+            <GlassCard className="space-y-4">
+              <div>
+                <h3 className="text-[14px] font-semibold text-foreground">Supporting Documents</h3>
+                <p className="text-[12px] text-muted-foreground mt-0.5">Optional — files upload immediately.</p>
+              </div>
+
+              {uploadedDocs.length > 0 && (
+                <ul className="space-y-2">
+                  {uploadedDocs.map((d, i) => (
+                    <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium text-foreground truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{d.filename}</p>
+                      </div>
+                      <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {stagedFile ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-4 w-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                    <span className="text-[13px] font-medium text-foreground truncate">{stagedFile.name}</span>
+                    <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{(stagedFile.size / 1024).toFixed(0)} KB</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className={LABEL_CLS}>Document Type</label>
+                      <select value={stagedDocType} onChange={e => setStagedDocType(e.target.value as DocType)} className={SELECT_CLS}>
+                        {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Label <span className="font-normal">(optional)</span></label>
+                      <Input placeholder={DOC_TYPE_LABELS[stagedDocType] || 'e.g. June payslip'} value={stagedLabel} onChange={e => setStagedLabel(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={handleConfirmStaged} disabled={uploading}>
+                      {uploading ? 'Uploading...' : 'Upload now'}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setStagedFile(null)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/40'}`}
+                  onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={handleDrop}
+                >
+                  <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
+                    <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
+                    <p className="text-[12px] text-muted-foreground mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
+                  </div>
+                </div>
+              )}
+            </GlassCard>
+          </>
+        )}
+
+        {/* ── Step 2: Identification & Residency ── */}
+        {step === 2 && (
           <>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-foreground">Personal Details</h3>
@@ -540,21 +770,7 @@ export default function AddLead() {
                   </select>
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label className={LABEL_CLS}>First Name *</label>
-                  <Input placeholder="John" error={errors.applicant_first_name?.message} {...register('applicant_first_name', { required: 'Required' })} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Middle Name <span className="font-normal">(optional)</span></label>
-                  <Input placeholder="William" {...register('applicant_middle_name')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Last Name *</label>
-                  <Input placeholder="Smith" error={errors.applicant_last_name?.message} {...register('applicant_last_name', { required: 'Required' })} />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={LABEL_CLS}>Date of Birth</label>
                   <Input type="date" {...register('applicant_dob')} />
@@ -562,20 +778,6 @@ export default function AddLead() {
                 <div>
                   <label className={LABEL_CLS}>No. of Dependants</label>
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
-                </div>
-              </div>
-            </GlassCard>
-
-            <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Contact Details</h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={LABEL_CLS}>Email *</label>
-                  <Input type="email" placeholder="john@example.com" error={errors.applicant_email?.message} {...register('applicant_email', { required: 'Required' })} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Mobile *</label>
-                  <Input type="tel" placeholder="04XX XXX XXX" error={errors.applicant_mobile?.message} {...register('applicant_mobile', { required: 'Required' })} />
                 </div>
               </div>
               <div>
@@ -632,136 +834,41 @@ export default function AddLead() {
                 ))}
               </div>
             </GlassCard>
-          </>
-        )}
 
-        {/* ── Step 2: Loan Details ── */}
-        {step === 2 && (
-          <>
-            {/* Consumer-specific */}
-            {tab === 'consumer' && (
+            {tab === 'commercial' && (
               <GlassCard className="space-y-4">
-                <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
+                <h3 className="text-[14px] font-semibold text-foreground">Business Details</h3>
                 <div>
-                  <label className={LABEL_CLS}>Purpose</label>
-                  <select value={purposeId} onChange={e => setPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                    <option value="">Select purpose...</option>
-                    {CONSUMER_PURPOSES.map(p => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
+                  <label className={LABEL_CLS}>Industry</label>
+                  <select value={parentIndustryId} onChange={e => { setParentIndustryId(e.target.value ? Number(e.target.value) : ''); setSubIndustryId(''); }} className={SELECT_CLS}>
+                    <option value="">Select industry...</option>
+                    {INDUSTRIES.map(ind => <option key={ind.id} value={ind.id}>{ind.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className={LABEL_CLS}>Loan Amount *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
-                    <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
+                {parentIndustryId !== '' && subChildren.length > 0 && (
+                  <div>
+                    <label className={LABEL_CLS}>Sub-industry</label>
+                    <select value={subIndustryId} onChange={e => setSubIndustryId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
+                      <option value="">Select sub-industry...</option>
+                      {subChildren.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
                   </div>
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
-                  <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional context about this loan..." />
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={LABEL_CLS}>Postcode</label>
+                    <Input placeholder="2000" maxLength={4} value={comPostcode} onChange={e => setComPostcode(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLS}>Monthly Sales ($)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                      <Input type="number" step="1" min="0" placeholder="30,000" style={{ paddingLeft: '2rem' }} value={comMonthlySales} onChange={e => setComMonthlySales(e.target.value)} />
+                    </div>
+                  </div>
                 </div>
               </GlassCard>
             )}
-
-            {/* Commercial-specific */}
-            {tab === 'commercial' && (
-              <>
-                <GlassCard className="space-y-4">
-                  <h3 className="text-[14px] font-semibold text-foreground">Business Details</h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>Business / Entity Name</label>
-                      <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLS}>ACN / ABN</label>
-                      <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS}>Industry</label>
-                    <select value={parentIndustryId} onChange={e => { setParentIndustryId(e.target.value ? Number(e.target.value) : ''); setSubIndustryId(''); }} className={SELECT_CLS}>
-                      <option value="">Select industry...</option>
-                      {INDUSTRIES.map(ind => (
-                        <option key={ind.id} value={ind.id}>{ind.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {parentIndustryId !== '' && subChildren.length > 0 && (
-                    <div>
-                      <label className={LABEL_CLS}>Sub-industry</label>
-                      <select value={subIndustryId} onChange={e => setSubIndustryId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                        <option value="">Select sub-industry...</option>
-                        {subChildren.map(c => (
-                          <option key={c.id} value={c.id}>{c.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>Postcode</label>
-                      <Input placeholder="2000" maxLength={4} value={comPostcode} onChange={e => setComPostcode(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLS}>Monthly Sales ($)</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
-                        <Input type="number" step="1" min="0" placeholder="30,000" style={{ paddingLeft: '2rem' }} value={comMonthlySales} onChange={e => setComMonthlySales(e.target.value)} />
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-                <GlassCard className="space-y-4">
-                  <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
-                  <div>
-                    <label className={LABEL_CLS}>Purpose</label>
-                    <select value={commercialPurposeId} onChange={e => setCommercialPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                      <option value="">Select purpose...</option>
-                      {COMMERCIAL_PURPOSES.map(p => (
-                        <option key={p.id} value={p.id}>{p.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-<label className={LABEL_CLS}>Loan Amount *</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
-                        <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
-                      </div>
-                    </div>
-                  <div>
-                    <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
-                    <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional context about this loan..." />
-                  </div>
-                </GlassCard>
-              </>
-            )}
-
-            {/* Engagement model */}
-            <GlassCard className="space-y-3">
-              <div>
-                <p className="text-[14px] font-semibold text-foreground mb-0.5">Client Engagement Model *</p>
-                <p className="text-[12px] text-muted-foreground">How would you like us to manage this client relationship?</p>
-              </div>
-              <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'self_managed' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
-                <input type="radio" name="engagement_model" value="self_managed" checked={engagementModel === 'self_managed'} onChange={() => { setEngagementModel('self_managed'); setEngagementError(''); }} className="mt-0.5 accent-primary" />
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">I'll manage the client relationship</p>
-                  <p className="text-[12px] text-muted-foreground">I will provide all required information — no direct client contact from your side.</p>
-                </div>
-              </label>
-              <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}>
-                <input type="radio" name="engagement_model" value="direct_engagement" checked={engagementModel === 'direct_engagement'} onChange={() => { setEngagementModel('direct_engagement'); setEngagementError(''); }} className="mt-0.5 accent-primary" />
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">You may engage the client directly</p>
-                  <p className="text-[12px] text-muted-foreground">I'm comfortable with you contacting and working with the client directly.</p>
-                </div>
-              </label>
-              {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
-            </GlassCard>
           </>
         )}
 
@@ -887,20 +994,11 @@ export default function AddLead() {
               {employmentCategory === 'self_employed' && (
                 <>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>ABN</label>
-                      <Input placeholder="12 345 678 901" {...register('business_abn')} />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLS}>Business Name</label>
-                      <Input placeholder="Your Business Pty Ltd" {...register('business_name')} />
-                    </div>
+                    <div><label className={LABEL_CLS}>ABN</label><Input placeholder="12 345 678 901" {...register('business_abn')} /></div>
+                    <div><label className={LABEL_CLS}>Business Name</label><Input placeholder="Your Business Pty Ltd" {...register('business_name')} /></div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>Trading Name <span className="font-normal">(if different)</span></label>
-                      <Input placeholder="Trading As..." {...register('trading_name')} />
-                    </div>
+                    <div><label className={LABEL_CLS}>Trading Name <span className="font-normal">(if different)</span></label><Input placeholder="Trading As..." {...register('trading_name')} /></div>
                     <div>
                       <label className={LABEL_CLS}>Business Structure</label>
                       <select {...register('business_structure')} className={SELECT_CLS}>
@@ -909,14 +1007,8 @@ export default function AddLead() {
                     </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-3">
-                    <div>
-                      <label className={LABEL_CLS}>Industry</label>
-                      <Input placeholder="e.g. Retail" {...register('business_industry')} />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLS}>Time Trading</label>
-                      <Input placeholder="e.g. 5 years" {...register('time_trading')} />
-                    </div>
+                    <div><label className={LABEL_CLS}>Industry</label><Input placeholder="e.g. Retail" {...register('business_industry')} /></div>
+                    <div><label className={LABEL_CLS}>Time Trading</label><Input placeholder="e.g. 5 years" {...register('time_trading')} /></div>
                     <div>
                       <label className={LABEL_CLS}>GST Registered?</label>
                       <select {...register('gst_registered')} className={SELECT_CLS}>
@@ -926,10 +1018,7 @@ export default function AddLead() {
                     </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>No. of Directors / Partners</label>
-                      <Input type="number" min="1" {...register('num_directors')} />
-                    </div>
+                    <div><label className={LABEL_CLS}>No. of Directors / Partners</label><Input type="number" min="1" {...register('num_directors')} /></div>
                   </div>
                   <div>
                     <label className={LABEL_CLS}>Other Directors / Partners <span className="font-normal">(optional)</span></label>
@@ -1126,22 +1215,10 @@ export default function AddLead() {
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-foreground">Monthly Expenses</h3>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={LABEL_CLS}>Estimated Living Expenses ($)</label>
-                  <Input type="number" step="0.01" min="0" placeholder="3,000" {...register('monthly_living_expenses')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Rent / Mortgage Payments ($)</label>
-                  <Input type="number" step="0.01" min="0" placeholder="2,000" {...register('rent_mortgage_payments')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Child Support ($) <span className="font-normal">(if applicable)</span></label>
-                  <Input type="number" step="0.01" min="0" placeholder="0" {...register('child_support')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Other Regular Commitments ($)</label>
-                  <Input type="number" step="0.01" min="0" placeholder="500" {...register('other_commitments')} />
-                </div>
+                <div><label className={LABEL_CLS}>Estimated Living Expenses ($)</label><Input type="number" step="0.01" min="0" placeholder="3,000" {...register('monthly_living_expenses')} /></div>
+                <div><label className={LABEL_CLS}>Rent / Mortgage Payments ($)</label><Input type="number" step="0.01" min="0" placeholder="2,000" {...register('rent_mortgage_payments')} /></div>
+                <div><label className={LABEL_CLS}>Child Support ($) <span className="font-normal">(if applicable)</span></label><Input type="number" step="0.01" min="0" placeholder="0" {...register('child_support')} /></div>
+                <div><label className={LABEL_CLS}>Other Regular Commitments ($)</label><Input type="number" step="0.01" min="0" placeholder="500" {...register('other_commitments')} /></div>
               </div>
             </GlassCard>
           </>
@@ -1173,18 +1250,9 @@ export default function AddLead() {
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-foreground">Emergency Contact</h3>
               <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label className={LABEL_CLS}>Name</label>
-                  <Input placeholder="Jane Smith" {...register('emergency_contact_name')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Relationship</label>
-                  <Input placeholder="Spouse, Parent, etc." {...register('emergency_contact_relationship')} />
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Phone Number</label>
-                  <Input type="tel" placeholder="04XX XXX XXX" {...register('emergency_contact_phone')} />
-                </div>
+                <div><label className={LABEL_CLS}>Name</label><Input placeholder="Jane Smith" {...register('emergency_contact_name')} /></div>
+                <div><label className={LABEL_CLS}>Relationship</label><Input placeholder="Spouse, Parent, etc." {...register('emergency_contact_relationship')} /></div>
+                <div><label className={LABEL_CLS}>Phone Number</label><Input type="tel" placeholder="04XX XXX XXX" {...register('emergency_contact_phone')} /></div>
               </div>
             </GlassCard>
 
@@ -1199,89 +1267,8 @@ export default function AddLead() {
           </>
         )}
 
-        {/* ── Step 6: Documents ── */}
+        {/* ── Step 6: Review ── */}
         {step === 6 && (
-          <GlassCard className="space-y-4">
-            <div>
-              <h3 className="text-[14px] font-semibold text-foreground">Supporting Documents</h3>
-              <p className="text-[12px] text-muted-foreground mt-0.5">Optional — uploaded when you submit the lead.</p>
-            </div>
-
-            {pendingDocs.length > 0 && (
-              <ul className="space-y-2">
-                {pendingDocs.map((d, i) => (
-                  <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                      </svg>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-foreground truncate">{d.label || DOC_TYPE_LABELS[d.docType] || d.docType}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{d.file.name} · {(d.file.size / 1024).toFixed(0)} KB</p>
-                    </div>
-                    <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">{DOC_TYPE_LABELS[d.docType] || d.docType}</span>
-                    <button type="button" onClick={() => setPendingDocs(prev => prev.filter((_, j) => j !== i))} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" title="Remove">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {stagedFile ? (
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <svg className="h-4 w-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                  </svg>
-                  <span className="text-[13px] font-medium text-foreground truncate">{stagedFile.name}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{(stagedFile.size / 1024).toFixed(0)} KB</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className={LABEL_CLS}>Document Type</label>
-                    <select value={stagedDocType} onChange={e => setStagedDocType(e.target.value as DocType)} className={SELECT_CLS}>
-                      {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS}>Label <span className="font-normal">(optional)</span></label>
-                    <Input placeholder={DOC_TYPE_LABELS[stagedDocType] || 'e.g. June payslip'} value={stagedLabel} onChange={e => setStagedLabel(e.target.value)} />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" onClick={handleConfirmStaged}>Add to list</Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setStagedFile(null)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/40'}`}
-                onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDrop}
-              >
-                <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
-                  <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">{isDragOver ? 'Drop to add' : 'Drop a file or click to browse'}</p>
-                  <p className="text-[12px] text-muted-foreground mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
-                </div>
-              </div>
-            )}
-          </GlassCard>
-        )}
-
-        {/* ── Step 7: Review ── */}
-        {step === 7 && (
           <GlassCard className="space-y-4">
             <h3 className="text-[15px] font-semibold text-foreground">Review Lead</h3>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1301,28 +1288,14 @@ export default function AddLead() {
                 <p className="text-[12px] font-medium text-muted-foreground">Amount</p>
                 <p className="text-[14px] font-semibold text-foreground">${Number(watch('amount') || 0).toLocaleString()}</p>
               </div>
-              {tab === 'commercial' && comBusinessName && (
-                <div className="rounded-xl bg-secondary/50 p-3">
-                  <p className="text-[12px] font-medium text-muted-foreground">Business</p>
-                  <p className="text-[14px] font-semibold text-foreground">{comBusinessName}{comAbn ? ` · ${comAbn}` : ''}</p>
-                </div>
-              )}
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Employment</p>
-                <p className="text-[14px] font-semibold text-foreground capitalize">{watch('employment_category') === 'self_employed' ? 'Self-Employed' : 'Employed'}</p>
-              </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Address</p>
-                <p className="text-[14px] font-semibold text-foreground">{[watch('applicant_suburb'), watch('applicant_state'), watch('applicant_postcode')].filter(Boolean).join(', ') || '—'}</p>
-              </div>
               <div className="rounded-xl bg-secondary/50 p-3">
                 <p className="text-[12px] font-medium text-muted-foreground">Engagement</p>
-                <p className="text-[14px] font-semibold text-foreground">{engagementModel === 'self_managed' ? 'Referrer manages' : engagementModel === 'direct_engagement' ? 'Direct client contact' : '—'}</p>
+                <p className="text-[14px] font-semibold text-foreground">{engagementModel === 'self_managed' ? 'Referrer manages' : 'Direct client contact'}</p>
               </div>
-              {pendingDocs.length > 0 && (
+              {uploadedDocs.length > 0 && (
                 <div className="rounded-xl bg-secondary/50 p-3">
                   <p className="text-[12px] font-medium text-muted-foreground">Documents</p>
-                  <p className="text-[14px] font-semibold text-foreground">{pendingDocs.length} queued</p>
+                  <p className="text-[14px] font-semibold text-foreground">{uploadedDocs.length} uploaded</p>
                 </div>
               )}
               {realEstateAssets.length > 0 && (
@@ -1350,7 +1323,12 @@ export default function AddLead() {
             <Button type="button" size="lg" onClick={goNext}>Continue</Button>
           ) : (
             <Button type="submit" size="lg" disabled={submitting}>
-              {submitting ? (pendingDocs.length > 0 ? 'Uploading...' : 'Submitting...') : 'Submit Lead'}
+              {submitting ? 'Submitting...' : 'Submit Lead'}
+            </Button>
+          )}
+          {step === 1 && (
+            <Button type="button" variant="secondary" size="lg" onClick={() => { setClientEmail(watch('applicant_email') || ''); setShowSendModal(true); }}>
+              Send to Client Instead
             </Button>
           )}
           {step > 1 && step < maxInternalStep && (
@@ -1359,6 +1337,46 @@ export default function AddLead() {
           <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/referrer/applications')}>Cancel</Button>
         </div>
       </form>
+
+      {/* ── Send-to-client disclaimer modal ── */}
+      {showSendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4">
+            <h3 className="text-[16px] font-semibold text-foreground">Send Form to Client</h3>
+
+            <div className="rounded-xl bg-warning/10 border border-warning/30 p-4">
+              <p className="text-[13px] font-semibold text-foreground mb-1">Important Notice</p>
+              <p className="text-[13px] text-muted-foreground">
+                The form will be branded as <strong>Xpress Finance</strong>. The client will receive an email from Xpress Finance asking them to complete their application details.
+              </p>
+            </div>
+
+            <div>
+              <label className={LABEL_CLS}>Client's Email Address *</label>
+              <Input
+                type="email"
+                placeholder="client@example.com"
+                value={clientEmail}
+                onChange={e => setClientEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <Button
+                type="button"
+                size="lg"
+                onClick={handleConfirmSendToClient}
+                disabled={!clientEmail.trim() || sendingInvite}
+              >
+                {sendingInvite ? 'Sending...' : 'Send to Client'}
+              </Button>
+              <Button type="button" variant="secondary" size="lg" onClick={() => setShowSendModal(false)}>
+                Cancel — I'll fill it myself
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

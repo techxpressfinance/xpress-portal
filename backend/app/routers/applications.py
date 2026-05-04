@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import secrets
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.config import LEND_ENABLED, LLM_ANALYSIS_ENABLED
+from app.config import EMAIL_ENABLED, LEND_ENABLED, LLM_ANALYSIS_ENABLED
 from app.database import SessionLocal, get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
@@ -518,3 +521,55 @@ def delete_application(
     log_activity(db, current_user.id, "deleted", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
     db.delete(application)
     db.commit()
+
+
+class ClientInviteRequest(BaseModel):
+    email: str
+    portal_url: str
+
+
+@router.post("/{app_id}/client-invite")
+def send_client_invite(
+    app_id: str,
+    data: ClientInviteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+    if application.status.value != "draft":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only invite for draft applications")
+
+    token = secrets.token_urlsafe(32)
+    application.client_invite_token = token
+    application.client_invite_email = data.email.strip()
+    application.client_invite_sent_at = datetime.now(timezone.utc)
+    db.commit()
+
+    invite_url = f"{data.portal_url.rstrip('/')}/apply/{token}"
+    applicant_name = " ".join(
+        filter(None, [application.applicant_first_name, application.applicant_last_name])
+    ) or "there"
+
+    from app.services.email import _send_email
+    if EMAIL_ENABLED:
+        body = (
+            f"Hi {applicant_name},\n\n"
+            f"You have been invited to complete a loan application through Xpress Finance.\n\n"
+            f"Please click the link below to fill in your details:\n\n"
+            f"{invite_url}\n\n"
+            f"This link is unique to you — please do not share it.\n\n"
+            f"Best regards,\nXpress Finance Team"
+        )
+        threading.Thread(
+            target=_send_email,
+            args=(data.email.strip(), "Complete Your Loan Application — Xpress Finance", body),
+            daemon=True,
+        ).start()
+
+    return {"success": True, "invite_url": invite_url}

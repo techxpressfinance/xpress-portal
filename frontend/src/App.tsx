@@ -48,6 +48,7 @@ import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
 const PlatformLogin = lazy(() => import('./pages/PlatformLogin'));
+const PublicApply = lazy(() => import('./pages/PublicApply'));
 const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'));
 const TenantManagement = lazy(() => import('./pages/platform/TenantManagement'));
 const CreateTenant = lazy(() => import('./pages/platform/CreateTenant'));
@@ -72,6 +73,7 @@ export default function App() {
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
             <Route path="/platform-login" element={<PlatformLogin />} />
+            <Route path="/apply/:token" element={<PublicApply />} />
             <Route path="/login" element={<Login />} />
             <Route path="/enter-code" element={<EnterCode />} />
             <Route path="/register" element={<Register />} />

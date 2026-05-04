@@ -128,6 +128,7 @@ class LoanApplicationUpdate(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    client_engagement_model: Optional[str] = None
 
 
 class AssignedBroker(BaseModel):

@@ -29,7 +29,7 @@ from app.models.service_request import ServiceRequest  # noqa: F401 — ensure t
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -165,6 +165,10 @@ _MIGRATIONS = [
     ("loan_applications", "emergency_contact_relationship", "VARCHAR(100)"),
     ("loan_applications", "emergency_contact_phone", "VARCHAR(20)"),
     ("loan_applications", "client_engagement_model", "VARCHAR(20)"),
+    # Client invite magic-link
+    ("loan_applications", "client_invite_token", "VARCHAR(64)"),
+    ("loan_applications", "client_invite_email", "VARCHAR(200)"),
+    ("loan_applications", "client_invite_sent_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -415,6 +419,7 @@ app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
 app.include_router(contacts.router)
 app.include_router(service_requests.router)
+app.include_router(public_apply.router)
 
 
 @app.get("/api/health")

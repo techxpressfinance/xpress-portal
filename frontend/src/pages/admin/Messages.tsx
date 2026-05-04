@@ -100,7 +100,6 @@ export default function AdminMessages() {
 
   const filteredClients = allClients.filter(
     (c) =>
-      c.role === 'client' &&
       (c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
        c.email.toLowerCase().includes(clientSearch.toLowerCase()))
   );

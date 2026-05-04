@@ -151,7 +151,11 @@ def list_message_recipients(
     if current_user.role.value in {"client", "referrer"}:
         recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
     else:
-        all_recipients = db.query(User).filter(User.role.in_([UserRole.client, UserRole.referrer]), User.tenant_id == tenant_id).all()
+        all_recipients = db.query(User).filter(
+            User.role.in_([UserRole.client, UserRole.referrer, UserRole.broker]),
+            User.tenant_id == tenant_id,
+            User.id != current_user.id,
+        ).all()
         if current_user.role.value == "broker":
             blocked = {
                 r.referred_client_id
