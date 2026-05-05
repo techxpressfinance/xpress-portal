@@ -169,6 +169,8 @@ _MIGRATIONS = [
     ("loan_applications", "client_invite_token", "VARCHAR(64)"),
     ("loan_applications", "client_invite_email", "VARCHAR(200)"),
     ("loan_applications", "client_invite_sent_at", "TIMESTAMP"),
+    # Unread tracking for client messages
+    ("client_messages", "is_read", "BOOLEAN DEFAULT 0 NOT NULL"),
 ]
 
 _logger = logging.getLogger(__name__)

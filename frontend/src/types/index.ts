@@ -277,6 +277,7 @@ export interface ClientMessage {
   author_role: string | null;
   recipient_id: string | null;
   content: string;
+  is_read: boolean;
   created_at: string;
 }
 

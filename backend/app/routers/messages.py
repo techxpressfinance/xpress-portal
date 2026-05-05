@@ -47,12 +47,17 @@ def unread_count(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    count = (
+    direct_count = (
         db.query(DirectMessage)
         .filter(DirectMessage.recipient_id == current_user.id, DirectMessage.is_read == False)  # noqa: E712
         .count()
     )
-    return {"count": count}
+    client_count = (
+        db.query(ClientMessage)
+        .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False)  # noqa: E712
+        .count()
+    )
+    return {"count": direct_count + client_count}
 
 
 @router.get("", response_model=PaginatedMessages)

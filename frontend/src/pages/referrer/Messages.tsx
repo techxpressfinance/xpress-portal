@@ -175,7 +175,7 @@ export default function ReferrerMessages() {
         </GlassCard>
       )}
 
-      {conversations.length === 0 && !showSearch ? (
+      {conversations.length === 0 && !showSearch && !selectedConv ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
@@ -187,7 +187,7 @@ export default function ReferrerMessages() {
             <p className="text-[13px] text-muted-foreground mt-1">Chat with your referred clients or use "+ Message Staff" to contact your broker team</p>
           </div>
         </GlassCard>
-      ) : conversations.length > 0 && (
+      ) : (conversations.length > 0 || !!selectedConv) && (
         <GlassCard className="p-0 overflow-hidden">
           <div className="flex h-[560px]">
             {/* Conversation list */}

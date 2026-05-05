@@ -67,6 +67,7 @@ def _msg_out(msg: ClientMessage) -> dict:
         "author_role": msg.author.role.value if msg.author else None,
         "recipient_id": msg.recipient_id,
         "content": msg.content,
+        "is_read": msg.is_read,
         "created_at": msg.created_at,
     }
 
@@ -89,6 +90,12 @@ def list_client_messages(
             or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id)
         )
     msgs = q.order_by(ClientMessage.created_at.asc()).all()
+    # Mark received messages as read
+    unread = [m for m in msgs if m.recipient_id == current_user.id and not m.is_read]
+    if unread:
+        for m in unread:
+            m.is_read = True
+        db.commit()
     return [_msg_out(m) for m in msgs]
 
 

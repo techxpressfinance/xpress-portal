@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
@@ -54,6 +54,13 @@ const COMMERCIAL_PURPOSES = [
   { id: 18, label: 'Waiting for Invoices to be Paid' }, { id: 16, label: 'Property' },
   { id: 17, label: 'Development & Construction' }, { id: 9, label: 'Start a New Business' },
   { id: 10, label: 'Purchase Existing Business' }, { id: 8, label: 'Other' },
+];
+
+const LEND_LOAN_TYPES = [
+  { value: 'equipment_finance', label: 'Equipment Finance', description: 'Finance equipment, machinery and vehicles', icon: '🏗️' },
+  { value: 'business_loan', label: 'Business Loan', description: 'Working capital, growth or refinancing', icon: '💼' },
+  { value: 'commercial_property', label: 'Commercial Property', description: 'Purchase or refinance commercial real estate', icon: '🏢' },
+  { value: 'home_loan', label: 'Home Loan', description: 'Purchase or refinance residential property', icon: '🏠' },
 ];
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -116,6 +123,30 @@ interface FormData {
   emergency_contact_relationship: string;
   emergency_contact_phone: string;
   signature_name: string;
+  // Loan type — Equipment Finance
+  eq_asset_type: string;
+  eq_new_or_used: string;
+  eq_asset_price: string;
+  eq_deposit_amount: string;
+  eq_vendor_type: string;
+  eq_estimated_repayment: string;
+  eq_loan_term: string;
+  eq_business_use_pct: string;
+  // Loan type — Business Loan
+  bl_loan_purpose: string;
+  bl_loan_amount: string;
+  bl_loan_term: string;
+  bl_purpose_type: string;
+  // Loan type — Commercial Property
+  cp_purchase_or_refinance: string;
+  cp_security_address: string;
+  cp_estimated_value: string;
+  cp_existing_debt: string;
+  // Loan type — Home Loan
+  hl_purchase_or_refinance: string;
+  hl_owner_or_investment: string;
+  hl_property_value: string;
+  hl_existing_lender: string;
 }
 
 interface AdditionalIncome { income_type: string; amount: string; frequency: string; }
@@ -149,6 +180,10 @@ export default function AddLead() {
   const [engagementModel, setEngagementModel] = useState<'self_managed' | 'direct_engagement' | ''>('');
   const [engagementError, setEngagementError] = useState('');
   const [draftCreating, setDraftCreating] = useState(false);
+  const [preFirstName, setPreFirstName] = useState('');
+  const [preLastName, setPreLastName] = useState('');
+  const [preEmail, setPreEmail] = useState('');
+  const [preMobile, setPreMobile] = useState('');
 
   // Draft tracking
   const [draftAppId, setDraftAppId] = useState<string | null>(null);
@@ -173,6 +208,11 @@ export default function AddLead() {
   const [subIndustryId, setSubIndustryId] = useState<number | ''>('');
   const [comPostcode, setComPostcode] = useState('');
   const [comMonthlySales, setComMonthlySales] = useState('');
+
+  // LEND
+  const [lendEnabled, setLendEnabled] = useState(false);
+  const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
+  const [loanTypeError, setLoanTypeError] = useState('');
 
   const selectedParent = INDUSTRIES.find(i => i.id === parentIndustryId);
   const subChildren = selectedParent?.children ?? [];
@@ -211,7 +251,7 @@ export default function AddLead() {
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const { register, handleSubmit, watch, trigger, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, trigger, setValue, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       applicant_title: 'Mr',
       applicant_gender: 'Male',
@@ -234,6 +274,13 @@ export default function AddLead() {
       previously_declined: 'no',
       change_of_circumstances: 'no',
       preferred_contact_method: 'Mobile',
+      eq_asset_type: 'Truck',
+      eq_new_or_used: 'New',
+      eq_vendor_type: 'Dealer',
+      cp_purchase_or_refinance: 'Purchase',
+      hl_purchase_or_refinance: 'Purchase',
+      hl_owner_or_investment: 'Owner Occupied',
+      bl_purpose_type: 'Working Capital',
     },
   });
 
@@ -241,27 +288,50 @@ export default function AddLead() {
   const residencyStatus = watch('residency_status');
   const employmentCategory = watch('employment_category');
   const hasPartner = watch('has_partner');
+  const cpPurchaseOrRefinance = watch('cp_purchase_or_refinance');
+  const hlPurchaseOrRefinance = watch('hl_purchase_or_refinance');
 
-  const totalSteps = tab === 'commercial' ? COMMERCIAL_STEPS : CONSUMER_STEPS;
-  const stepLabels = tab === 'commercial' ? COMMERCIAL_LABELS : CONSUMER_LABELS;
+  useEffect(() => {
+    api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
+  }, []);
+
+  const totalSteps = lendEnabled ? CONSUMER_STEPS : (tab === 'commercial' ? COMMERCIAL_STEPS : CONSUMER_STEPS);
+  const stepLabels = lendEnabled ? CONSUMER_LABELS : (tab === 'commercial' ? COMMERCIAL_LABELS : CONSUMER_LABELS);
 
   const toUiStep = (internal: number) => {
-    if (tab === 'commercial' && internal >= 5) return internal - 2;
+    if (!lendEnabled && tab === 'commercial' && internal >= 5) return internal - 2;
     return internal;
+  };
+
+  const toggleLoanType = (type: string) => {
+    setSelectedLoanTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+    setLoanTypeError('');
   };
 
   // ── Engagement pre-screen ──
 
   const handleEngagementContinue = async () => {
     if (!engagementModel) { setEngagementError('Please select an option to continue'); return; }
+    if (!preFirstName.trim() || !preLastName.trim()) { toast('Please enter the client\'s first and last name', 'error'); return; }
+    if (!preEmail.trim()) { toast('Please enter the client\'s email address', 'error'); return; }
     setDraftCreating(true);
     try {
       const { data: appData } = await api.post('/applications', {
         loan_type: 'personal',
         amount: 0,
         client_engagement_model: engagementModel,
+        applicant_first_name: preFirstName.trim(),
+        applicant_last_name: preLastName.trim(),
+        applicant_email: preEmail.trim(),
+        applicant_mobile: preMobile.trim() || null,
       });
       setDraftAppId(appData.id);
+      setValue('applicant_first_name', preFirstName.trim());
+      setValue('applicant_last_name', preLastName.trim());
+      setValue('applicant_email', preEmail.trim());
+      if (preMobile.trim()) setValue('applicant_mobile', preMobile.trim());
       setShowEngagementScreen(false);
       setStep(1);
     } catch (err: unknown) {
@@ -275,16 +345,23 @@ export default function AddLead() {
 
   const goNext = async () => {
     if (step === 1) {
-      const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile', 'amount']);
-      if (!ok) return;
+      if (lendEnabled) {
+        const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile']);
+        if (!ok) return;
+        if (selectedLoanTypes.length === 0) { setLoanTypeError('Please select at least one loan type'); return; }
+        setLoanTypeError('');
+      } else {
+        const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile', 'amount']);
+        if (!ok) return;
+      }
     }
-    const next = step + (tab === 'commercial' && step === 2 ? 3 : 1);
+    const next = lendEnabled ? step + 1 : step + (tab === 'commercial' && step === 2 ? 3 : 1);
     setStep(Math.min(next, maxInternalStep));
   };
 
   const goBack = () => {
     if (step === 1) return;
-    const prev = step - (tab === 'commercial' && step === 5 ? 3 : 1);
+    const prev = lendEnabled ? step - 1 : step - (tab === 'commercial' && step === 5 ? 3 : 1);
     setStep(Math.max(prev, 1));
   };
 
@@ -396,7 +473,37 @@ export default function AddLead() {
       if (data.other_directors) extraData.other_directors = data.other_directors;
       extraData.applicant_email = data.applicant_email;
 
-      if (tab === 'consumer') {
+      if (lendEnabled) {
+        extraData.selected_loan_types = selectedLoanTypes;
+        const loanTypeDetails: Record<string, unknown> = {};
+        if (selectedLoanTypes.includes('equipment_finance')) {
+          loanTypeDetails.equipment_finance = {
+            asset_type: data.eq_asset_type, new_or_used: data.eq_new_or_used,
+            asset_price: parseFloat(data.eq_asset_price) || 0, deposit_amount: parseFloat(data.eq_deposit_amount) || 0,
+            vendor_type: data.eq_vendor_type, estimated_repayment: parseFloat(data.eq_estimated_repayment) || 0,
+            loan_term: data.eq_loan_term, business_use_pct: parseFloat(data.eq_business_use_pct) || 0,
+          };
+        }
+        if (selectedLoanTypes.includes('business_loan')) {
+          loanTypeDetails.business_loan = {
+            loan_purpose: data.bl_loan_purpose, loan_amount: parseFloat(data.bl_loan_amount) || 0,
+            loan_term: data.bl_loan_term, purpose_type: data.bl_purpose_type,
+          };
+        }
+        if (selectedLoanTypes.includes('commercial_property')) {
+          loanTypeDetails.commercial_property = {
+            purchase_or_refinance: data.cp_purchase_or_refinance, security_address: data.cp_security_address,
+            estimated_value: parseFloat(data.cp_estimated_value) || 0, existing_debt: parseFloat(data.cp_existing_debt) || 0,
+          };
+        }
+        if (selectedLoanTypes.includes('home_loan')) {
+          loanTypeDetails.home_loan = {
+            purchase_or_refinance: data.hl_purchase_or_refinance, owner_or_investment: data.hl_owner_or_investment,
+            property_value: parseFloat(data.hl_property_value) || 0, existing_lender: data.hl_existing_lender || null,
+          };
+        }
+        extraData.loan_type_details = loanTypeDetails;
+      } else if (tab === 'consumer') {
         const loanTypeDetails: Record<string, unknown> = {};
         const purposeObj = CONSUMER_PURPOSES.find(p => p.id === purposeId);
         if (purposeObj) {
@@ -412,9 +519,20 @@ export default function AddLead() {
         extraData.loan_type_details = loanTypeDetails;
       }
 
+      let mainAmount = 0;
+      if (lendEnabled) {
+        const primary = selectedLoanTypes[0];
+        if (primary === 'equipment_finance') mainAmount = parseFloat(data.eq_asset_price) || 0;
+        else if (primary === 'business_loan') mainAmount = parseFloat(data.bl_loan_amount) || 0;
+        else if (primary === 'commercial_property') mainAmount = parseFloat(data.cp_estimated_value) || 0;
+        else if (primary === 'home_loan') mainAmount = parseFloat(data.hl_property_value) || 0;
+      } else {
+        mainAmount = parseFloat(data.amount) || 0;
+      }
+
       const payload: Record<string, unknown> = {
-        loan_type: tab === 'consumer' ? 'personal' : 'business_loan',
-        amount: parseFloat(data.amount) || 0,
+        loan_type: lendEnabled ? (selectedLoanTypes[0] || 'equipment_finance') : (tab === 'consumer' ? 'personal' : 'business_loan'),
+        amount: mainAmount,
         notes: data.notes || null,
         status: 'application_received',
         applicant_title: data.applicant_title,
@@ -519,7 +637,33 @@ export default function AddLead() {
   if (showEngagementScreen) {
     return (
       <div className="mx-auto max-w-xl">
-        <PageHeader title="Add Lead" subtitle="First, tell us how this client will be managed" />
+        <PageHeader title="Add Lead" subtitle="First, tell us who the client is and how they'll be managed" />
+        <GlassCard className="space-y-4">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground mb-1">Client Information</p>
+            <p className="text-[13px] text-muted-foreground">Enter the basic details of the client you're referring.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={LABEL_CLS}>First Name *</label>
+              <Input placeholder="John" value={preFirstName} onChange={e => setPreFirstName(e.target.value)} />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Last Name *</label>
+              <Input placeholder="Smith" value={preLastName} onChange={e => setPreLastName(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={LABEL_CLS}>Email *</label>
+              <Input type="email" placeholder="john@example.com" value={preEmail} onChange={e => setPreEmail(e.target.value)} />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Mobile <span className="font-normal">(optional)</span></label>
+              <Input type="tel" placeholder="04XX XXX XXX" value={preMobile} onChange={e => setPreMobile(e.target.value)} />
+            </div>
+          </div>
+        </GlassCard>
         <GlassCard className="space-y-4">
           <div>
             <p className="text-[15px] font-semibold text-foreground mb-1">Who will engage with the client?</p>
@@ -626,50 +770,232 @@ export default function AddLead() {
               </div>
             </GlassCard>
 
-            <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
-              {tab === 'consumer' && (
-                <div>
-                  <label className={LABEL_CLS}>Purpose</label>
-                  <select value={purposeId} onChange={e => setPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                    <option value="">Select purpose...</option>
-                    {CONSUMER_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  </select>
-                </div>
-              )}
-              {tab === 'commercial' && (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={LABEL_CLS}>Business / Entity Name</label>
-                      <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL_CLS}>ACN / ABN</label>
-                      <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
-                    </div>
-                  </div>
+            {!lendEnabled ? (
+              <GlassCard className="space-y-4">
+                <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
+                {tab === 'consumer' && (
                   <div>
                     <label className={LABEL_CLS}>Purpose</label>
-                    <select value={commercialPurposeId} onChange={e => setCommercialPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
+                    <select value={purposeId} onChange={e => setPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
                       <option value="">Select purpose...</option>
-                      {COMMERCIAL_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      {CONSUMER_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                   </div>
-                </>
-              )}
-              <div>
-                <label className={LABEL_CLS}>Loan Amount *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
-                  <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
+                )}
+                {tab === 'commercial' && (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Business / Entity Name</label>
+                        <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>ACN / ABN</label>
+                        <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Purpose</label>
+                      <select value={commercialPurposeId} onChange={e => setCommercialPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
+                        <option value="">Select purpose...</option>
+                        {COMMERCIAL_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </div>
+                  </>
+                )}
+                <div>
+                  <label className={LABEL_CLS}>Loan Amount *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                    <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Notes to broker <span className="font-normal">(optional)</span></label>
-                <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any context about this lead for the broker..." />
-              </div>
-            </GlassCard>
+                <div>
+                  <label className={LABEL_CLS}>Notes to broker <span className="font-normal">(optional)</span></label>
+                  <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any context about this lead for the broker..." />
+                </div>
+              </GlassCard>
+            ) : (
+              <>
+                <GlassCard>
+                  <label className={LABEL_CLS}>Select Loan Type(s)</label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {LEND_LOAN_TYPES.map(type => {
+                      const active = selectedLoanTypes.includes(type.value);
+                      return (
+                        <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-primary/5 ring-2 ring-primary/30 shadow-[0_0_0_1px_var(--primary)]' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => toggleLoanType(type.value)}>
+                          <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                            {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
+                          </div>
+                          <span className="text-2xl">{type.icon}</span>
+                          <div>
+                            <p className={`text-[14px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.label}</p>
+                            <p className="text-[13px] text-muted-foreground mt-0.5">{type.description}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {loanTypeError && <p className="mt-2 text-[12px] text-destructive">{loanTypeError}</p>}
+                </GlassCard>
+
+                {selectedLoanTypes.includes('equipment_finance') && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">🏗️ Equipment Finance Details</h3>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Asset Type</label>
+                        <select {...register('eq_asset_type')} className={SELECT_CLS}>
+                          {['Truck', 'Car', 'Machinery', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>New or Used</label>
+                        <select {...register('eq_new_or_used')} className={SELECT_CLS}>
+                          <option value="New">New</option>
+                          <option value="Used">Used</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Asset Price ($)</label>
+                        <Input type="number" step="0.01" min="0" placeholder="150,000" {...register('eq_asset_price')} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>Deposit Amount ($) <span className="font-normal">(optional)</span></label>
+                        <Input type="number" step="0.01" min="0" placeholder="20,000" {...register('eq_deposit_amount')} />
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Vendor Type</label>
+                        <select {...register('eq_vendor_type')} className={SELECT_CLS}>
+                          <option value="Dealer">Dealer</option>
+                          <option value="Private">Private</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>Loan Term (Years)</label>
+                        <Input type="number" min="1" max="10" placeholder="5" {...register('eq_loan_term')} />
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Estimated Repayment Budget ($/month)</label>
+                        <Input type="number" step="0.01" min="0" placeholder="3,000" {...register('eq_estimated_repayment')} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>Business Use % <span className="font-normal">(optional)</span></label>
+                        <Input type="number" min="0" max="100" placeholder="80" {...register('eq_business_use_pct')} />
+                      </div>
+                    </div>
+                  </GlassCard>
+                )}
+
+                {selectedLoanTypes.includes('business_loan') && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">💼 Business Loan Details</h3>
+                    <div>
+                      <label className={LABEL_CLS}>Loan Purpose</label>
+                      <textarea {...register('bl_loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Requested Loan Amount ($)</label>
+                        <Input type="number" step="0.01" min="0" placeholder="50,000" {...register('bl_loan_amount')} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>Preferred Loan Term</label>
+                        <Input placeholder="e.g. 3 years" {...register('bl_loan_term')} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Purpose Type</label>
+                      <select {...register('bl_purpose_type')} className={SELECT_CLS}>
+                        {['Working Capital', 'Growth', 'Refinance', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </GlassCard>
+                )}
+
+                {selectedLoanTypes.includes('commercial_property') && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">🏢 Commercial Property Details</h3>
+                    <div>
+                      <label className={LABEL_CLS}>Purchase or Refinance?</label>
+                      <div className="flex gap-3">
+                        {['Purchase', 'Refinance'].map(v => (
+                          <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${cpPurchaseOrRefinance === v ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                            <input type="radio" value={v} {...register('cp_purchase_or_refinance')} className="sr-only" />
+                            {v}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Security Address</label>
+                      <Input placeholder="123 Main St, Sydney NSW 2000" {...register('cp_security_address')} />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Estimated Value / Purchase Price ($)</label>
+                        <Input type="number" step="0.01" min="0" placeholder="1,000,000" {...register('cp_estimated_value')} />
+                      </div>
+                      {cpPurchaseOrRefinance === 'Refinance' && (
+                        <div>
+                          <label className={LABEL_CLS}>Existing Debt ($)</label>
+                          <Input type="number" step="0.01" min="0" placeholder="500,000" {...register('cp_existing_debt')} />
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                )}
+
+                {selectedLoanTypes.includes('home_loan') && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">🏠 Home Loan Details</h3>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Purchase or Refinance?</label>
+                        <div className="flex gap-3">
+                          {['Purchase', 'Refinance'].map(v => (
+                            <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${hlPurchaseOrRefinance === v ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                              <input type="radio" value={v} {...register('hl_purchase_or_refinance')} className="sr-only" />
+                              {v}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS}>Owner Occupied or Investment?</label>
+                        <select {...register('hl_owner_or_investment')} className={SELECT_CLS}>
+                          <option value="Owner Occupied">Owner Occupied</option>
+                          <option value="Investment">Investment</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Property Value / Purchase Price ($)</label>
+                        <Input type="number" step="0.01" min="0" placeholder="800,000" {...register('hl_property_value')} />
+                      </div>
+                      {hlPurchaseOrRefinance === 'Refinance' && (
+                        <div>
+                          <label className={LABEL_CLS}>Existing Lender</label>
+                          <Input placeholder="e.g. ANZ" {...register('hl_existing_lender')} />
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                )}
+
+                <div>
+                  <label className={LABEL_CLS}>Notes to broker <span className="font-normal">(optional)</span></label>
+                  <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any context about this lead for the broker..." />
+                </div>
+              </>
+            )}
 
             {/* Document upload */}
             <GlassCard className="space-y-4">
@@ -872,8 +1198,8 @@ export default function AddLead() {
           </>
         )}
 
-        {/* ── Step 3: Living & Employment (consumer only) ── */}
-        {step === 3 && tab === 'consumer' && (
+        {/* ── Step 3: Living & Employment (consumer / LEND only) ── */}
+        {step === 3 && (tab === 'consumer' || lendEnabled) && (
           <>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-foreground">Living Situation</h3>
@@ -1083,8 +1409,8 @@ export default function AddLead() {
           </>
         )}
 
-        {/* ── Step 4: Financial Position (consumer only) ── */}
-        {step === 4 && tab === 'consumer' && (
+        {/* ── Step 4: Financial Position (consumer / LEND only) ── */}
+        {step === 4 && (tab === 'consumer' || lendEnabled) && (
           <>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-foreground">Real Estate Assets</h3>
@@ -1282,12 +1608,18 @@ export default function AddLead() {
               </div>
               <div className="rounded-xl bg-secondary/50 p-3">
                 <p className="text-[12px] font-medium text-muted-foreground">Loan Type</p>
-                <p className="text-[14px] font-semibold text-foreground">{tab === 'consumer' ? 'Consumer' : 'Commercial'} · {currentPurposeLabel || 'No purpose selected'}</p>
+                <p className="text-[14px] font-semibold text-foreground capitalize">
+                  {lendEnabled
+                    ? (selectedLoanTypes.map(t => t.replace(/_/g, ' ')).join(', ') || '—')
+                    : `${tab === 'consumer' ? 'Consumer' : 'Commercial'} · ${currentPurposeLabel || 'No purpose selected'}`}
+                </p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Amount</p>
-                <p className="text-[14px] font-semibold text-foreground">${Number(watch('amount') || 0).toLocaleString()}</p>
-              </div>
+              {!lendEnabled && (
+                <div className="rounded-xl bg-secondary/50 p-3">
+                  <p className="text-[12px] font-medium text-muted-foreground">Amount</p>
+                  <p className="text-[14px] font-semibold text-foreground">${Number(watch('amount') || 0).toLocaleString()}</p>
+                </div>
+              )}
               <div className="rounded-xl bg-secondary/50 p-3">
                 <p className="text-[12px] font-medium text-muted-foreground">Engagement</p>
                 <p className="text-[14px] font-semibold text-foreground">{engagementModel === 'self_managed' ? 'Referrer manages' : 'Direct client contact'}</p>
