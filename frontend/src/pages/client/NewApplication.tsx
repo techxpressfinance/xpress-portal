@@ -6,7 +6,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { GlassCard, Button, Input, PageHeader } from '../../components/ui';
-import { AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS } from '../../lib/constants';
+import {
+  AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
+  CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES, VEHICLE_MAKES, PROPERTY_TYPES,
+  EQUIPMENT_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS
+} from '../../lib/constants';
 import type { DocType } from '../../types';
 
 const SELECT_CLS = 'w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none';
@@ -63,6 +67,49 @@ interface FormData {
   hl_owner_or_investment: string;
   hl_property_value: string;
   hl_existing_lender: string;
+  // Comprehensive Consumer Loan Fields
+  // Vehicle fields
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
+  vehicle_vin: string;
+  vehicle_price: string;
+  vehicle_type: string;
+  vehicle_condition: string;
+  deposit_amount: string;
+  loan_term: string;
+  // Property fields
+  property_address: string;
+  property_type: string;
+  property_value: string;
+  first_home_buyer: string;
+  current_lender: string;
+  current_balance: string;
+  refinance_reason: string;
+  // Personal loan fields
+  loan_purpose: string;
+  // Comprehensive Commercial Loan Fields
+  business_purpose: string;
+  equipment_type: string;
+  equipment_description: string;
+  vendor_type: string;
+  fit_out_description: string;
+  estimated_cost: string;
+  recruitment_details: string;
+  expansion_description: string;
+  renovation_description: string;
+  supplier_details: string;
+  invoice_amount: string;
+  outstanding_invoices: string;
+  project_description: string;
+  development_experience: string;
+  business_plan: string;
+  startup_costs: string;
+  business_details: string;
+  purchase_price: string;
+  business_type: string;
+  purpose_description: string;
+  property_use: string;
   // Living situation
   residential_status: string;
   applicant_address: string;
@@ -236,6 +283,10 @@ export default function NewApplication() {
   const [comPostcode, setComPostcode] = useState('');
   const [comMonthlySales, setComMonthlySales] = useState('');
 
+  // Selected loan sub-types for comprehensive fields
+  const [selectedConsumerLoanType, setSelectedConsumerLoanType] = useState<string>('');
+  const [selectedCommercialLoanType, setSelectedCommercialLoanType] = useState<string>('');
+
   const pendingFileInput = useRef<HTMLInputElement>(null);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
@@ -288,6 +339,13 @@ export default function NewApplication() {
       hl_owner_or_investment: 'Owner Occupied',
       bl_purpose_type: 'Working Capital',
       preferred_contact_method: 'Mobile',
+      // Comprehensive loan defaults
+      vehicle_condition: 'New',
+      loan_term: '5 years',
+      first_home_buyer: 'no',
+      vendor_type: 'Dealer',
+      vehicle_type: 'Car',
+      equipment_type: 'Truck',
     },
   });
 
@@ -319,21 +377,6 @@ export default function NewApplication() {
   const toUiStep = (internal: number) => {
     if (!lendEnabled && tab === 'commercial' && internal >= 5) return internal - 2;
     return internal;
-  };
-
-  const handleTabChange = (newTab: 'consumer' | 'commercial') => {
-    setTab(newTab);
-    setPurposeId('');
-    setCommercialPurposeId('');
-    setComBusinessName('');
-    setComAbn('');
-    setParentIndustryId('');
-    setSubIndustryId('');
-    setComPostcode('');
-    setComMonthlySales('');
-    if (newTab === 'commercial' && (step === 3 || step === 4)) {
-      setStep(2);
-    }
   };
 
   const toggleLoanType = (type: string) => {
@@ -488,6 +531,123 @@ export default function NewApplication() {
       };
 
       if (data.other_directors) extraData.other_directors = data.other_directors;
+    } else {
+      // Add comprehensive loan type data for non-LEND mode
+      const loanTypeDetails: Record<string, unknown> = {};
+
+      if (tab === 'consumer' && selectedConsumerLoanType) {
+        const consumerType = CONSUMER_LOAN_TYPES.find(t => t.value === selectedConsumerLoanType);
+        loanTypeDetails.consumer_loan_type = {
+          type: selectedConsumerLoanType,
+          label: consumerType?.label,
+        };
+
+        // Vehicle loan fields
+        if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType)) {
+          loanTypeDetails.vehicle_details = {
+            type: data.vehicle_type,
+            make: data.vehicle_make,
+            model: data.vehicle_model,
+            year: data.vehicle_year,
+            vin: data.vehicle_vin,
+            condition: data.vehicle_condition,
+            price: parseFloat(data.vehicle_price) || 0,
+            deposit: parseFloat(data.deposit_amount) || 0,
+          };
+        }
+
+        // Personal loan fields
+        if (selectedConsumerLoanType === 'personal') {
+          loanTypeDetails.personal_loan = {
+            purpose: data.loan_purpose,
+            amount: parseFloat(data.amount) || 0,
+            term: data.loan_term,
+          };
+        }
+
+        // Property loan fields (purchase/refinance)
+        if (['purchase', 'refinance'].includes(selectedConsumerLoanType)) {
+          loanTypeDetails.property_details = {
+            address: data.property_address,
+            property_type: data.property_type,
+            value: parseFloat(data.property_value) || 0,
+            deposit: selectedConsumerLoanType === 'purchase' ? parseFloat(data.deposit_amount) || 0 : undefined,
+            first_home_buyer: data.first_home_buyer === 'yes',
+            current_lender: selectedConsumerLoanType === 'refinance' ? data.current_lender : undefined,
+            current_balance: selectedConsumerLoanType === 'refinance' ? parseFloat(data.current_balance) || 0 : undefined,
+            refinance_reason: selectedConsumerLoanType === 'refinance' ? data.refinance_reason : undefined,
+            term: data.loan_term,
+          };
+        }
+      }
+
+      if (tab === 'commercial' && selectedCommercialLoanType) {
+        const commercialType = COMMERCIAL_LOAN_TYPES.find(t => t.value === selectedCommercialLoanType);
+        loanTypeDetails.commercial_loan_type = {
+          type: selectedCommercialLoanType,
+          label: commercialType?.label,
+        };
+
+        // Vehicle/Equipment fields
+        if (['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType)) {
+          loanTypeDetails.asset_details = {
+            equipment_type: data.equipment_type,
+            description: data.equipment_description,
+            condition: data.vehicle_condition,
+            price: parseFloat(data.vehicle_price) || 0,
+            deposit: parseFloat(data.deposit_amount) || 0,
+            vendor_type: data.vendor_type,
+            business_use_pct: parseFloat(data.eq_business_use_pct) || 0,
+            term: data.loan_term,
+          };
+        }
+
+        // Property/Development fields
+        if (['property', 'development_construction', 'new_fit_out', 'renovation'].includes(selectedCommercialLoanType)) {
+          loanTypeDetails.property_details = {
+            address: data.property_address,
+            property_type: data.property_type,
+            property_use: data.property_use,
+            value: parseFloat(data.property_value) || 0,
+            loan_amount: parseFloat(data.amount) || 0,
+            term: data.loan_term,
+            project_description: selectedCommercialLoanType === 'development_construction' ? data.project_description : undefined,
+            fit_out_description: selectedCommercialLoanType === 'new_fit_out' ? data.fit_out_description : undefined,
+            renovation_description: selectedCommercialLoanType === 'renovation' ? data.renovation_description : undefined,
+          };
+        }
+
+        // Business acquisition/startup fields
+        if (['new_business', 'purchase_business'].includes(selectedCommercialLoanType)) {
+          loanTypeDetails.business_details = {
+            type: selectedCommercialLoanType,
+            business_plan: selectedCommercialLoanType === 'new_business' ? data.business_plan : undefined,
+            startup_costs: selectedCommercialLoanType === 'new_business' ? parseFloat(data.startup_costs) || 0 : undefined,
+            industry: selectedCommercialLoanType === 'new_business' ? data.business_purpose : undefined,
+            business_details: selectedCommercialLoanType === 'purchase_business' ? data.business_details : undefined,
+            purchase_price: selectedCommercialLoanType === 'purchase_business' ? parseFloat(data.purchase_price) || 0 : undefined,
+            business_type: selectedCommercialLoanType === 'purchase_business' ? data.business_type : undefined,
+            loan_amount: parseFloat(data.amount) || 0,
+            term: data.loan_term,
+          };
+        }
+
+        // Working capital/expansion fields
+        if (['day_to_day_capital', 'expansion', 'staff_recruitment', 'pay_suppliers', 'waiting_for_invoices', 'other'].includes(selectedCommercialLoanType)) {
+          loanTypeDetails.working_capital = {
+            type: selectedCommercialLoanType,
+            recruitment_details: selectedCommercialLoanType === 'staff_recruitment' ? data.recruitment_details : undefined,
+            expansion_description: selectedCommercialLoanType === 'expansion' ? data.expansion_description : undefined,
+            supplier_details: selectedCommercialLoanType === 'pay_suppliers' ? data.supplier_details : undefined,
+            outstanding_invoices: selectedCommercialLoanType === 'waiting_for_invoices' ? data.outstanding_invoices : undefined,
+            purpose_description: selectedCommercialLoanType === 'other' ? data.purpose_description : undefined,
+            loan_amount: parseFloat(data.amount) || 0,
+            term: data.loan_term,
+          };
+        }
+      }
+
+      extraData.loan_type_details = loanTypeDetails;
     }
 
     let mainAmount = 0;
@@ -498,7 +658,27 @@ export default function NewApplication() {
       else if (primary === 'commercial_property') mainAmount = parseFloat(data.cp_estimated_value) || 0;
       else if (primary === 'home_loan') mainAmount = parseFloat(data.hl_property_value) || 0;
     } else {
-      mainAmount = parseFloat(data.amount) || 0;
+      // Calculate amount based on selected loan type
+      if (tab === 'consumer') {
+        if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType)) {
+          mainAmount = parseFloat(data.vehicle_price) || 0;
+        } else if (['purchase', 'refinance'].includes(selectedConsumerLoanType)) {
+          mainAmount = parseFloat(data.property_value) || 0;
+        } else {
+          mainAmount = parseFloat(data.amount) || 0;
+        }
+      } else {
+        // Commercial loans
+        if (['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType)) {
+          mainAmount = parseFloat(data.vehicle_price) || 0;
+        } else if (['property', 'development_construction', 'new_fit_out', 'renovation'].includes(selectedCommercialLoanType)) {
+          mainAmount = parseFloat(data.property_value) || 0;
+        } else if (['new_business', 'purchase_business'].includes(selectedCommercialLoanType)) {
+          mainAmount = parseFloat(data.amount) || parseFloat(data.startup_costs) || parseFloat(data.purchase_price) || 0;
+        } else {
+          mainAmount = parseFloat(data.amount) || 0;
+        }
+      }
     }
 
     try {
@@ -883,58 +1063,472 @@ export default function NewApplication() {
               </>
             ) : (
               <>
+                {/* Consumer/Commercial Tabs */}
                 <div className="flex gap-1 p-1 rounded-xl bg-secondary w-fit">
                   {(['consumer', 'commercial'] as const).map(t => (
-                    <button key={t} type="button" onClick={() => handleTabChange(t)}
-                      className={`px-5 py-2 rounded-lg text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setTab(t);
+                        setPurposeId('');
+                        setCommercialPurposeId('');
+                        setSelectedConsumerLoanType('');
+                        setSelectedCommercialLoanType('');
+                      }}
+                      className={`px-5 py-2 rounded-lg text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
                       {t === 'consumer' ? 'Consumer Loan' : 'Commercial Loan'}
                     </button>
                   ))}
                 </div>
-                <GlassCard className="space-y-4">
-                  <h3 className="text-[14px] font-semibold text-foreground">Loan Details</h3>
-                  {tab === 'consumer' && (
-                    <div>
-                      <label className={LABEL_CLS}>Purpose</label>
-                      <select value={purposeId} onChange={e => setPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                        <option value="">Select purpose...</option>
-                        {CONSUMER_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                      </select>
+
+                {/* Consumer Loan Types with Comprehensive Fields */}
+                {tab === 'consumer' && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">Select Loan Type</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {CONSUMER_LOAN_TYPES.map(type => {
+                        const active = selectedConsumerLoanType === type.value;
+                        return (
+                          <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-primary/5 ring-2 ring-primary/30 shadow-[0_0_0_1px_var(--primary)]' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => setSelectedConsumerLoanType(type.value)}>
+                            <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                              {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
+                            </div>
+                            <span className="text-2xl">{type.icon}</span>
+                            <div>
+                              <p className={`text-[14px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.label}</p>
+                              <p className="text-[13px] text-muted-foreground mt-0.5">{type.description}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
-                  )}
-                  {tab === 'commercial' && (
-                    <>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className={LABEL_CLS}>Business / Entity Name</label>
-                          <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+
+                    {/* Vehicle Loan Fields */}
+                    {['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Vehicle Details</h4>
+                        {selectedConsumerLoanType === 'other_vehicle' && (
+                          <div>
+                            <label className={LABEL_CLS}>Vehicle Type</label>
+                            <select {...register('vehicle_type')} className={SELECT_CLS}>
+                              {['Boat', 'Jet Ski', 'Trailer', 'Camper', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Make</label>
+                            <select {...register('vehicle_make')} className={SELECT_CLS}>
+                              <option value="">Select make...</option>
+                              {VEHICLE_MAKES.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Model</label>
+                            <Input placeholder="e.g. Corolla" {...register('vehicle_model')} />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <label className={LABEL_CLS}>Year</label>
+                            <Input type="number" min="1900" max={new Date().getFullYear() + 1} placeholder="2024" {...register('vehicle_year')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Condition</label>
+                            <select {...register('vehicle_condition')} className={SELECT_CLS}>
+                              {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>VIN <span className="font-normal">(optional)</span></label>
+                            <Input placeholder="1HGCM82633A123456" {...register('vehicle_vin')} />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Vehicle Price ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="35,000" {...register('vehicle_price')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Deposit ($) <span className="font-normal">(optional)</span></label>
+                            <Input type="number" step="0.01" min="0" placeholder="5,000" {...register('deposit_amount')} />
+                          </div>
                         </div>
                         <div>
-                          <label className={LABEL_CLS}>ACN / ABN</label>
-                          <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
+                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <select {...register('loan_term')} className={SELECT_CLS}>
+                            {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Personal Loan Fields */}
+                    {selectedConsumerLoanType === 'personal' && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Personal Loan Details</h4>
+                        <div>
+                          <label className={LABEL_CLS}>Loan Purpose</label>
+                          <textarea {...register('loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe what the loan is for..." />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Loan Amount ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="25,000" {...register('amount')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Preferred Term</label>
+                            <select {...register('loan_term')} className={SELECT_CLS}>
+                              {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Purchase/Refinance Fields */}
+                    {['purchase', 'refinance'].includes(selectedConsumerLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Property Details</h4>
+                        <div>
+                          <label className={LABEL_CLS}>Property Address</label>
+                          <Input placeholder="123 Main St, Sydney NSW 2000" {...register('property_address')} />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Property Type</label>
+                            <select {...register('property_type')} className={SELECT_CLS}>
+                              {PROPERTY_TYPES.slice(0, 6).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Property Value ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="800,000" {...register('property_value')} />
+                          </div>
+                        </div>
+                        {selectedConsumerLoanType === 'purchase' && (
+                          <>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className={LABEL_CLS}>Deposit ($)</label>
+                                <Input type="number" step="0.01" min="0" placeholder="80,000" {...register('deposit_amount')} />
+                              </div>
+                              <div>
+                                <label className={LABEL_CLS}>First Home Buyer?</label>
+                                <select {...register('first_home_buyer')} className={SELECT_CLS}>
+                                  <option value="yes">Yes</option>
+                                  <option value="no">No</option>
+                                </select>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {selectedConsumerLoanType === 'refinance' && (
+                          <>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className={LABEL_CLS}>Current Lender</label>
+                                <Input placeholder="e.g. ANZ" {...register('current_lender')} />
+                              </div>
+                              <div>
+                                <label className={LABEL_CLS}>Current Balance ($)</label>
+                                <Input type="number" step="0.01" min="0" placeholder="500,000" {...register('current_balance')} />
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS}>Refinance Reason</label>
+                              <textarea {...register('refinance_reason')} rows={2} className={TEXTAREA_CLS} placeholder="Why do you want to refinance?" />
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <select {...register('loan_term')} className={SELECT_CLS}>
+                            {LOAN_TERM_OPTIONS.slice(4).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
+                      <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
+                    </div>
+                  </GlassCard>
+                )}
+
+                {/* Commercial Loan Types with Comprehensive Fields */}
+                {tab === 'commercial' && (
+                  <GlassCard className="space-y-4">
+                    <h3 className="text-[14px] font-semibold text-foreground">Business & Loan Details</h3>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL_CLS}>Business / Entity Name</label>
+                        <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>Purpose</label>
-                        <select value={commercialPurposeId} onChange={e => setCommercialPurposeId(e.target.value ? Number(e.target.value) : '')} className={SELECT_CLS}>
-                          <option value="">Select purpose...</option>
-                          {COMMERCIAL_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        </select>
+                        <label className={LABEL_CLS}>ACN / ABN</label>
+                        <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
                       </div>
-                    </>
-                  )}
-                  <div>
-                    <label className={LABEL_CLS}>Loan Amount *</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
-                      <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} error={errors.amount?.message} {...register('amount', { required: 'Required', min: { value: 1, message: 'Must be positive' } })} />
                     </div>
-                  </div>
-                  <div>
-                    <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
-                    <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
-                  </div>
-                </GlassCard>
+
+                    <div>
+                      <label className={LABEL_CLS}>Loan Purpose</label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {COMMERCIAL_LOAN_TYPES.map(type => {
+                          const active = selectedCommercialLoanType === type.value;
+                          return (
+                            <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-all duration-200 ${active ? 'bg-primary/5 ring-1 ring-primary/30' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => setSelectedCommercialLoanType(type.value)}>
+                              <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                                {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
+                              </div>
+                              <div>
+                                <p className={`text-[13px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.icon} {type.label}</p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Commercial Vehicle/Equipment Fields */}
+                    {['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Asset Details</h4>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Asset Type</label>
+                            <select {...register('equipment_type')} className={SELECT_CLS}>
+                              {EQUIPMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Condition</label>
+                            <select {...register('vehicle_condition')} className={SELECT_CLS}>
+                              {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className={LABEL_CLS}>Description</label>
+                          <Input placeholder="e.g. 2023 Isuzu NPR 65-190 Tray Truck" {...register('equipment_description')} />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Asset Price ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="80,000" {...register('vehicle_price')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Deposit / Trade-in ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="10,000" {...register('deposit_amount')} />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Vendor Type</label>
+                            <select {...register('vendor_type')} className={SELECT_CLS}>
+                              <option value="Dealer">Dealer</option>
+                              <option value="Private">Private</option>
+                              <option value="Auction">Auction</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Business Use %</label>
+                            <Input type="number" min="0" max="100" placeholder="80" {...register('eq_business_use_pct')} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <select {...register('loan_term')} className={SELECT_CLS}>
+                            {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Property/Development Fields */}
+                    {['property', 'development_construction', 'new_fit_out', 'renovation'].includes(selectedCommercialLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Property Details</h4>
+                        <div>
+                          <label className={LABEL_CLS}>Property Address</label>
+                          <Input placeholder="123 Main St, Sydney NSW 2000" {...register('property_address')} />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Property Type</label>
+                            <select {...register('property_type')} className={SELECT_CLS}>
+                              {PROPERTY_TYPES.slice(6).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Property Use</label>
+                            <select {...register('property_use')} className={SELECT_CLS}>
+                              <option value="Owner Occupied">Owner Occupied</option>
+                              <option value="Investment">Investment</option>
+                              <option value="Mixed Use">Mixed Use</option>
+                            </select>
+                          </div>
+                        </div>
+                        {selectedCommercialLoanType === 'development_construction' && (
+                          <div>
+                            <label className={LABEL_CLS}>Project Description</label>
+                            <textarea {...register('project_description')} rows={3} className={TEXTAREA_CLS} placeholder="Describe the development project..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'new_fit_out' && (
+                          <div>
+                            <label className={LABEL_CLS}>Fit-out Description</label>
+                            <textarea {...register('fit_out_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the fit-out requirements..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'renovation' && (
+                          <div>
+                            <label className={LABEL_CLS}>Renovation Details</label>
+                            <textarea {...register('renovation_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the renovation works..." />
+                          </div>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>{selectedCommercialLoanType === 'development_construction' ? 'Project Value' : selectedCommercialLoanType === 'renovation' ? 'Estimated Cost' : 'Property Value'} ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="1,000,000" {...register('property_value')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Loan Amount Required ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="800,000" {...register('amount')} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <select {...register('loan_term')} className={SELECT_CLS}>
+                            {LOAN_TERM_OPTIONS.slice(4).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Business Acquisition/Startup Fields */}
+                    {['new_business', 'purchase_business'].includes(selectedCommercialLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Business Details</h4>
+                        {selectedCommercialLoanType === 'new_business' ? (
+                          <>
+                            <div>
+                              <label className={LABEL_CLS}>Business Plan Summary</label>
+                              <textarea {...register('business_plan')} rows={3} className={TEXTAREA_CLS} placeholder="Briefly describe your business plan..." />
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className={LABEL_CLS}>Startup Costs ($)</label>
+                                <Input type="number" step="0.01" min="0" placeholder="150,000" {...register('startup_costs')} />
+                              </div>
+                              <div>
+                                <label className={LABEL_CLS}>Industry</label>
+                                <Input placeholder="e.g. Retail, Hospitality" {...register('business_purpose')} />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className={LABEL_CLS}>Business Details</label>
+                              <textarea {...register('business_details')} rows={2} className={TEXTAREA_CLS} placeholder="Business name, type, and brief description..." />
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className={LABEL_CLS}>Purchase Price ($)</label>
+                                <Input type="number" step="0.01" min="0" placeholder="500,000" {...register('purchase_price')} />
+                              </div>
+                              <div>
+                                <label className={LABEL_CLS}>Business Type</label>
+                                <Input placeholder="e.g. Cafe, Franchise" {...register('business_type')} />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Loan Amount ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="400,000" {...register('amount')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Preferred Term</label>
+                            <select {...register('loan_term')} className={SELECT_CLS}>
+                              {LOAN_TERM_OPTIONS.slice(2, 8).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Working Capital/Expansion Fields */}
+                    {['day_to_day_capital', 'expansion', 'staff_recruitment', 'pay_suppliers', 'waiting_for_invoices', 'other'].includes(selectedCommercialLoanType) && (
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <h4 className="text-[13px] font-semibold text-foreground">Loan Details</h4>
+                        {selectedCommercialLoanType === 'staff_recruitment' && (
+                          <div>
+                            <label className={LABEL_CLS}>Recruitment Details</label>
+                            <textarea {...register('recruitment_details')} rows={2} className={TEXTAREA_CLS} placeholder="Number of staff, roles, training costs..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'expansion' && (
+                          <div>
+                            <label className={LABEL_CLS}>Expansion Description</label>
+                            <textarea {...register('expansion_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe your expansion plans..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'pay_suppliers' && (
+                          <div>
+                            <label className={LABEL_CLS}>Supplier Details</label>
+                            <textarea {...register('supplier_details')} rows={2} className={TEXTAREA_CLS} placeholder="Supplier names, invoice details..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'waiting_for_invoices' && (
+                          <div>
+                            <label className={LABEL_CLS}>Outstanding Invoices</label>
+                            <textarea {...register('outstanding_invoices')} rows={2} className={TEXTAREA_CLS} placeholder="Debtor details, amounts, due dates..." />
+                          </div>
+                        )}
+                        {selectedCommercialLoanType === 'other' && (
+                          <div>
+                            <label className={LABEL_CLS}>Purpose Description</label>
+                            <textarea {...register('purpose_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
+                          </div>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className={LABEL_CLS}>Loan Amount ($)</label>
+                            <Input type="number" step="0.01" min="0" placeholder="100,000" {...register('amount')} />
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS}>Preferred Term</label>
+                            <select {...register('loan_term')} className={SELECT_CLS}>
+                              {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fallback for unselected or simple loan types */}
+                    {!selectedCommercialLoanType && (
+                      <div>
+                        <label className={LABEL_CLS}>Loan Amount *</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                          <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} {...register('amount')} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
+                      <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
+                    </div>
+                  </GlassCard>
+                )}
               </>
             )}
           </>

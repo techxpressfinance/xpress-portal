@@ -661,7 +661,299 @@ export default function ReviewApplication() {
                   )}
                 </GlassCard>
 
+                {/* Comprehensive Loan Type Details */}
+                {application.lend_extra_data && (() => {
+                  try {
+                    const extraData = JSON.parse(application.lend_extra_data);
+                    const loanDetails = extraData.loan_type_details;
+                    if (!loanDetails) return null;
 
+                    return (
+                      <GlassCard>
+                        <h2 className="text-[15px] font-semibold text-foreground mb-5">Loan Type Details</h2>
+                        <div className="space-y-4">
+                          {/* Consumer Loan Type */}
+                          {loanDetails.consumer_loan_type && (
+                            <div className="rounded-xl bg-secondary p-4">
+                              <p className="text-[13px] font-medium text-muted-foreground">Consumer Loan Type</p>
+                              <p className="mt-1 text-[16px] font-semibold text-foreground">{loanDetails.consumer_loan_type.label}</p>
+                            </div>
+                          )}
+
+                          {/* Commercial Loan Type */}
+                          {loanDetails.commercial_loan_type && (
+                            <div className="rounded-xl bg-secondary p-4">
+                              <p className="text-[13px] font-medium text-muted-foreground">Commercial Loan Type</p>
+                              <p className="mt-1 text-[16px] font-semibold text-foreground">{loanDetails.commercial_loan_type.label}</p>
+                            </div>
+                          )}
+
+                          {/* Vehicle Details */}
+                          {loanDetails.vehicle_details && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Vehicle Information</p>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {loanDetails.vehicle_details.make && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Make</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.make}</p>
+                                  </div>
+                                )}
+                                {loanDetails.vehicle_details.model && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Model</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.model}</p>
+                                  </div>
+                                )}
+                                {loanDetails.vehicle_details.year && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Year</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.year}</p>
+                                  </div>
+                                )}
+                                {loanDetails.vehicle_details.condition && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Condition</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.condition}</p>
+                                  </div>
+                                )}
+                                {loanDetails.vehicle_details.price > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Price</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.vehicle_details.deposit > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Deposit</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString()}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Property Details */}
+                          {loanDetails.property_details && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Property Information</p>
+                              {loanDetails.property_details.address && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Address</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.address}</p>
+                                </div>
+                              )}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {loanDetails.property_details.property_type && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Property Type</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_type}</p>
+                                  </div>
+                                )}
+                                {loanDetails.property_details.property_use && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Property Use</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_use}</p>
+                                  </div>
+                                )}
+                                {loanDetails.property_details.value > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Property Value</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.property_details.deposit > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Deposit</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.property_details.first_home_buyer !== undefined && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">First Home Buyer</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.first_home_buyer ? 'Yes' : 'No'}</p>
+                                  </div>
+                                )}
+                                {loanDetails.property_details.current_lender && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Current Lender</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.current_lender}</p>
+                                  </div>
+                                )}
+                              </div>
+                              {loanDetails.property_details.refinance_reason && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Refinance Reason</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.refinance_reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Asset/Equipment Details */}
+                          {loanDetails.asset_details && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Asset Information</p>
+                              {loanDetails.asset_details.equipment_type && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Asset Type</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.equipment_type}</p>
+                                </div>
+                              )}
+                              {loanDetails.asset_details.description && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Description</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.description}</p>
+                                </div>
+                              )}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {loanDetails.asset_details.price > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Price</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.asset_details.deposit > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Deposit</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.asset_details.vendor_type && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Vendor Type</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.vendor_type}</p>
+                                  </div>
+                                )}
+                                {loanDetails.asset_details.business_use_pct > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Business Use %</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.business_use_pct}%</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Business Details */}
+                          {loanDetails.business_details && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Business Information</p>
+                              {loanDetails.business_details.business_plan && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Business Plan</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_plan}</p>
+                                </div>
+                              )}
+                              {loanDetails.business_details.business_details && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Business Details</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_details}</p>
+                                </div>
+                              )}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {loanDetails.business_details.startup_costs > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Startup Costs</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.business_details.purchase_price > 0 && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Purchase Price</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {loanDetails.business_details.industry && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Industry</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.industry}</p>
+                                  </div>
+                                )}
+                                {loanDetails.business_details.business_type && (
+                                  <div>
+                                    <p className="text-[12px] text-muted-foreground">Business Type</p>
+                                    <p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_type}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Working Capital Details */}
+                          {loanDetails.working_capital && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Working Capital Details</p>
+                              {loanDetails.working_capital.expansion_description && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Expansion Plans</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.expansion_description}</p>
+                                </div>
+                              )}
+                              {loanDetails.working_capital.recruitment_details && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Recruitment Details</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.recruitment_details}</p>
+                                </div>
+                              )}
+                              {loanDetails.working_capital.supplier_details && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Supplier Details</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.supplier_details}</p>
+                                </div>
+                              )}
+                              {loanDetails.working_capital.outstanding_invoices && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Outstanding Invoices</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.outstanding_invoices}</p>
+                                </div>
+                              )}
+                              {loanDetails.working_capital.purpose_description && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Purpose</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.purpose_description}</p>
+                                </div>
+                              )}
+                              {loanDetails.working_capital.loan_amount > 0 && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Loan Amount</p>
+                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString()}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Personal Loan Details */}
+                          {loanDetails.personal_loan && (
+                            <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
+                              <p className="text-[13px] font-semibold text-foreground">Personal Loan Details</p>
+                              {loanDetails.personal_loan.purpose && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Purpose</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.purpose}</p>
+                                </div>
+                              )}
+                              {loanDetails.personal_loan.amount > 0 && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Amount</p>
+                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString()}</p>
+                                </div>
+                              )}
+                              {loanDetails.personal_loan.term && (
+                                <div>
+                                  <p className="text-[12px] text-muted-foreground">Term</p>
+                                  <p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.term}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </GlassCard>
+                    );
+                  } catch {
+                    return null;
+                  }
+                })()}
 
                 {/* Client Info */}
                 {(() => {

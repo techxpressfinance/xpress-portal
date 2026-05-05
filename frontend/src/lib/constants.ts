@@ -236,3 +236,57 @@ export const COLUMN_COLOR_BORDER_L: Record<string, string> = {
   'chart-2': 'border-l-chart-2',
   'chart-5': 'border-l-chart-5',
 };
+
+// Comprehensive Loan Type Configurations
+export const CONSUMER_LOAN_TYPES = [
+  { value: 'car', label: 'Car Loan', icon: '🚗', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'motorcycle', label: 'Motorcycle Loan', icon: '🏍️', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'caravan', label: 'Caravan / RV Loan', icon: '🚐', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'other_vehicle', label: 'Other Vehicle', icon: '🚙', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'personal', label: 'Personal Loan', icon: '💳', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
+  { value: 'purchase', label: 'Purchase', icon: '🏠', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
+  { value: 'refinance', label: 'Refinance', icon: '🔄', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
+] as const;
+
+export const COMMERCIAL_LOAN_TYPES = [
+  { value: 'day_to_day_capital', label: 'Day-to-day Capital', icon: '💵', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
+  { value: 'vehicles_or_transport', label: 'Vehicles or Transport', icon: '🚛', description: 'Commercial vehicle finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
+  { value: 'machinery_or_equipment', label: 'Machinery or Equipment', icon: '⚙️', description: 'Finance business equipment', fields: ['equipment_type', 'equipment_description', 'equipment_price', 'deposit_amount', 'loan_term', 'vendor_type'] },
+  { value: 'new_fit_out', label: 'New Fit-out', icon: '🏗️', description: 'Shop or office fit-out', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
+  { value: 'staff_recruitment', label: 'Staff Recruitment Costs', icon: '👥', description: 'Hiring and training costs', fields: ['loan_amount', 'loan_term', 'recruitment_details'] },
+  { value: 'expansion', label: 'Expansion', icon: '📈', description: 'Business expansion funding', fields: ['expansion_description', 'loan_amount', 'loan_term'] },
+  { value: 'renovation', label: 'Renovation', icon: '🔨', description: 'Property renovation', fields: ['property_address', 'renovation_description', 'estimated_cost', 'loan_term'] },
+  { value: 'pay_suppliers', label: 'Pay Domestic or International Suppliers', icon: '📦', description: 'Supplier payment financing', fields: ['supplier_details', 'invoice_amount', 'loan_term'] },
+  { value: 'waiting_for_invoices', label: 'Waiting for Invoices to be Paid', icon: '⏳', description: 'Invoice factoring or cash flow', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
+  { value: 'property', label: 'Property', icon: '🏢', description: 'Commercial property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
+  { value: 'development_construction', label: 'Development & Construction', icon: '🏗️', description: 'Construction and development', fields: ['project_description', 'property_address', 'project_value', 'loan_term', 'development_experience'] },
+  { value: 'new_business', label: 'Start a New Business', icon: '🚀', description: 'Startup funding', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
+  { value: 'purchase_business', label: 'Purchase Existing Business', icon: '🤝', description: 'Business acquisition', fields: ['business_details', 'purchase_price', 'loan_amount', 'loan_term', 'business_type'] },
+  { value: 'other', label: 'Other', icon: '📋', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
+] as const;
+
+export const VEHICLE_MAKES = [
+  'Toyota', 'Honda', 'Mazda', 'Ford', 'Holden', 'Hyundai', 'Kia', 'Mitsubishi', 'Nissan', 'Subaru',
+  'Volkswagen', 'BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Volvo', 'Jeep', 'Land Rover', 'Porsche',
+  'Tesla', 'Suzuki', 'Yamaha', 'Harley-Davidson', 'Kawasaki', 'Ducati', 'Triumph', 'Indian',
+  'Jayco', 'Winnebago', 'Airstream', 'Caravans Australia', 'Other'
+] as const;
+
+export const PROPERTY_TYPES = [
+  'House', 'Apartment / Unit', 'Townhouse', 'Villa', 'Land', 'Commercial Office', 'Retail Shop',
+  'Warehouse / Industrial', 'Mixed Use', 'Development Site', 'Rural Property', 'Other'
+] as const;
+
+export const EQUIPMENT_TYPES = [
+  'Truck', 'Car / Ute', 'Van', 'Forklift', 'Excavator', 'Bulldozer', 'Crane', 'Tractor',
+  'Manufacturing Equipment', 'Printing Equipment', 'Medical Equipment', 'IT Equipment',
+  'Catering Equipment', 'Gym Equipment', 'Agricultural Equipment', 'Other'
+] as const;
+
+export const LOAN_TERM_OPTIONS = ['1 year', '2 years', '3 years', '4 years', '5 years', '7 years', '10 years', '15 years', '20 years', '30 years'] as const;
+
+export const VEHICLE_CONDITION_OPTIONS = ['New', 'Used - Excellent', 'Used - Good', 'Used - Fair', 'Demo'] as const;
+
+export const BUSINESS_STRUCTURE_OPTIONS = ['Sole Trader', 'Partnership', 'Company (Pty Ltd)', 'Trust', 'Incorporated Association'] as const;
+
+export const EMPLOYMENT_TYPE_OPTIONS = ['Full Time', 'Part Time', 'Casual', 'Contract', 'Self Employed', 'Retired', 'Student', 'Unemployed'] as const;
