@@ -200,22 +200,22 @@ export default function ClientMessages() {
 
                 {/* Compose */}
                 <div className="shrink-0 px-4 pb-4 pt-2 border-t border-border/60">
-                  <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
+                  <div className="rounded-2xl bg-secondary/40 border border-border/30 focus-within:border-border/40 transition-colors flex flex-col">
                     <textarea
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleSend();
                         }
                       }}
                       rows={2}
-                      className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                      className="msg-compose-textarea w-full appearance-none bg-transparent border-none shadow-none px-4 py-3 text-[14px] text-foreground focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none focus-visible:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none placeholder-muted-foreground resize-none"
                       placeholder={`Message ${selectedConv.peer_name ?? 'your broker'}…`}
                     />
                     <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                      <span className="text-[11px] text-muted-foreground">⌘↵ to send</span>
+                      <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
                       <Button
                         size="sm"
                         className="rounded-xl h-8 px-3.5"

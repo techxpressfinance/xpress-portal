@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
+import DocumentUploader from '../../components/DocumentUploader';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
@@ -20,8 +21,6 @@ export default function ApplicationDetail() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { downloadFile } = useFileDownload();
-  const fileInput = useRef<HTMLInputElement>(null);
-
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
@@ -89,33 +88,19 @@ export default function ApplicationDetail() {
       .catch(() => { });
   }, [user?.id]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !id) return;
-
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-    if (file.size > MAX_FILE_SIZE) {
-      toast('File size exceeds 10MB limit', 'error');
-      if (fileInput.current) fileInput.current.value = '';
-      return;
-    }
-
+  const handleUploadFile = async (file: File) => {
+    if (!id) return;
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-
     try {
-      const { data } = await api.post(
-        `/documents/upload/${id}?doc_type=${docType}`,
-        formData,
-      );
+      const { data } = await api.post(`/documents/upload/${id}?doc_type=${docType}`, formData);
       setDocuments((prev) => [...prev, data]);
       toast('Document uploaded successfully', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setUploading(false);
-      if (fileInput.current) fileInput.current.value = '';
     }
   };
 
@@ -617,43 +602,13 @@ export default function ApplicationDetail() {
         <div>
           <GlassCard>
             <h2 className="text-[15px] font-semibold text-foreground mb-4">Upload Document</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[13px] font-medium text-muted-foreground mb-2">
-                  Document Type
-                </label>
-                <select
-                  value={docType}
-                  onChange={(e) => setDocType(e.target.value)}
-                  className="led-input"
-                >
-                  {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <div className="relative">
-                  <input
-                    ref={fileInput}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                    className="w-full text-[13px] text-muted-foreground file:mr-4 file:rounded-xl file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-[13px] file:font-medium file:text-primary hover:file:bg-primary/20 file:transition-colors file:cursor-pointer"
-                  />
-                </div>
-                <p className="mt-2 text-[12px] text-muted-foreground">PDF, JPG, PNG (max 10MB)</p>
-              </div>
-              {uploading && (
-                <div className="flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-3">
-                  <svg className="h-4 w-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <span className="text-[13px] font-medium text-primary">Uploading...</span>
-                </div>
-              )}
-            </div>
+            <DocumentUploader
+              docType={docType as import('../../types').DocType}
+              onDocTypeChange={(t) => setDocType(t)}
+              uploading={uploading}
+              onFile={handleUploadFile}
+              onError={(msg) => toast(msg, 'error')}
+            />
           </GlassCard>
 
           {/* Activity */}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
@@ -34,6 +35,7 @@ export default function ReviewApplication() {
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [msgTab, setMsgTab] = useState<'client_messages' | 'deal_notes' | 'alerts'>('client_messages');
   const [newNoteContent, setNewNoteContent] = useState('');
+  const [noteVisibility, setNoteVisibility] = useState<'broker' | 'personal'>('broker');
   const [sendingNote, setSendingNote] = useState(false);
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
   const [newClientMsgContent, setNewClientMsgContent] = useState('');
@@ -89,10 +91,6 @@ export default function ReviewApplication() {
   const [savingSub, setSavingSub] = useState(false);
 
   // Broker edit state
-  const [editLoanType, setEditLoanType] = useState<LoanType>('personal');
-
-  const [editNotes, setEditNotes] = useState('');
-
   const [editing, setEditing] = useState(false);
   const [savingEditFields, setSavingEditFields] = useState(false);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
@@ -104,14 +102,15 @@ export default function ReviewApplication() {
   const [fileLabel, setFileLabel] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const [leadFields, setLeadFields] = useState({
+  const EDIT_DEFAULTS = {
+    loan_type: 'personal' as LoanType, notes: '',
     applicant_title: '', applicant_first_name: '', applicant_last_name: '', applicant_middle_name: '',
     applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
     business_name: '', business_abn: '', business_registration_date: '', business_industry_id: '',
     business_monthly_sales: '', loan_term_years: '', loan_term_months: '', loan_purpose_id: '', amount: '',
-  });
-  const updateLeadField = (field: string, value: string) => setLeadFields((prev) => ({ ...prev, [field]: value }));
+  };
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   useEffect(() => {
     if (!id || activeTab !== 'activity') return;
@@ -142,11 +141,9 @@ export default function ReviewApplication() {
         setApplication(appRes.data);
         setDocuments(docRes.data);
         setAppNotes(notesRes.data);
-        // Init broker edit fields
-        setEditLoanType(appRes.data.loan_type);
-        setEditNotes(appRes.data.notes || '');
         const d = appRes.data;
-        setLeadFields({
+        resetEdit({
+          loan_type: d.loan_type || 'personal', notes: d.notes || '',
           applicant_title: d.applicant_title || '', applicant_first_name: d.applicant_first_name || '',
           applicant_last_name: d.applicant_last_name || '', applicant_middle_name: d.applicant_middle_name || '',
           applicant_dob: d.applicant_dob || '', applicant_gender: d.applicant_gender || '',
@@ -274,34 +271,34 @@ export default function ReviewApplication() {
   };
 
 
-  const handleSaveEditFields = async () => {
+  const handleSaveEditFields = async (fields: typeof EDIT_DEFAULTS) => {
     if (!id) return;
     setSavingEditFields(true);
     try {
       const payload: Record<string, unknown> = {
-        loan_type: editLoanType,
-        amount: leadFields.amount ? parseFloat(leadFields.amount) : undefined,
-        notes: editNotes || null,
-        applicant_title: leadFields.applicant_title || null,
-        applicant_first_name: leadFields.applicant_first_name || null,
-        applicant_last_name: leadFields.applicant_last_name || null,
-        applicant_middle_name: leadFields.applicant_middle_name || null,
-        applicant_dob: leadFields.applicant_dob || null,
-        applicant_gender: leadFields.applicant_gender || null,
-        applicant_marital_status: leadFields.applicant_marital_status || null,
-        applicant_address: leadFields.applicant_address || null,
-        applicant_suburb: leadFields.applicant_suburb || null,
-        applicant_state: leadFields.applicant_state || null,
-        applicant_postcode: leadFields.applicant_postcode || null,
-        business_name: leadFields.business_name || null,
-        business_abn: leadFields.business_abn || null,
-        business_registration_date: leadFields.business_registration_date || null,
-        business_industry_id: leadFields.business_industry_id ? parseInt(leadFields.business_industry_id) : null,
-        business_monthly_sales: leadFields.business_monthly_sales ? parseFloat(leadFields.business_monthly_sales) : null,
-        loan_term_requested: (leadFields.loan_term_years || leadFields.loan_term_months)
-          ? (parseInt(leadFields.loan_term_years || '0') * 12) + parseInt(leadFields.loan_term_months || '0')
+        loan_type: fields.loan_type,
+        amount: fields.amount ? parseFloat(fields.amount) : undefined,
+        notes: fields.notes || null,
+        applicant_title: fields.applicant_title || null,
+        applicant_first_name: fields.applicant_first_name || null,
+        applicant_last_name: fields.applicant_last_name || null,
+        applicant_middle_name: fields.applicant_middle_name || null,
+        applicant_dob: fields.applicant_dob || null,
+        applicant_gender: fields.applicant_gender || null,
+        applicant_marital_status: fields.applicant_marital_status || null,
+        applicant_address: fields.applicant_address || null,
+        applicant_suburb: fields.applicant_suburb || null,
+        applicant_state: fields.applicant_state || null,
+        applicant_postcode: fields.applicant_postcode || null,
+        business_name: fields.business_name || null,
+        business_abn: fields.business_abn || null,
+        business_registration_date: fields.business_registration_date || null,
+        business_industry_id: fields.business_industry_id ? parseInt(fields.business_industry_id) : null,
+        business_monthly_sales: fields.business_monthly_sales ? parseFloat(fields.business_monthly_sales) : null,
+        loan_term_requested: (fields.loan_term_years || fields.loan_term_months)
+          ? (parseInt(fields.loan_term_years || '0') * 12) + parseInt(fields.loan_term_months || '0')
           : null,
-        loan_purpose_id: leadFields.loan_purpose_id ? parseInt(leadFields.loan_purpose_id) : null,
+        loan_purpose_id: fields.loan_purpose_id ? parseInt(fields.loan_purpose_id) : null,
       };
       const { data } = await api.patch(`/applications/${id}`, payload);
       setApplication(data);
@@ -334,18 +331,12 @@ export default function ReviewApplication() {
     }
   };
 
-  const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const target = e.target;
-    if (!file || !id) return;
-
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-    if (file.size > MAX_FILE_SIZE) {
+  const handleUploadFile = async (file: File) => {
+    if (!id) return;
+    if (file.size > 10 * 1024 * 1024) {
       toast('File size exceeds 10MB limit', 'error');
-      target.value = '';
       return;
     }
-
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -360,8 +351,11 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setUploading(false);
-      target.value = '';
     }
+  };
+  const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { await handleUploadFile(file); e.target.value = ''; }
   };
 
   const handleRetryOcr = async (docId: string) => {
@@ -489,11 +483,7 @@ export default function ReviewApplication() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
-                          <select
-                            value={editLoanType}
-                            onChange={(e) => setEditLoanType(e.target.value as LoanType)}
-                            className="led-input"
-                          >
+                          <select {...regEdit('loan_type')} className="led-input">
                             <option value="personal">Personal</option>
                             <option value="home">Home</option>
                             <option value="business">Business</option>
@@ -502,7 +492,9 @@ export default function ReviewApplication() {
                         </div>
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
-                          <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateLeadField('amount', e.target.value)} className="led-input" placeholder="Enter amount" />
+                          <input type="number" step="0.01" placeholder="Enter amount" className="led-input"
+                            {...regEdit('amount', { validate: v => !v || parseFloat(v) > 0 || 'Must be greater than 0' })} />
+                          {editErrors.amount && <p className="text-[12px] text-destructive mt-1">{editErrors.amount.message}</p>}
                         </div>
                       </div>
 
@@ -511,39 +503,43 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-4">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                          <select value={leadFields.applicant_title} onChange={(e) => updateLeadField('applicant_title', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_title')} className="led-input">
                             <option value="">Select...</option>
                             {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                          <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateLeadField('applicant_first_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_first_name', { required: 'Required' })} />
+                          {editErrors.applicant_first_name && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_first_name.message}</p>}
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                          <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateLeadField('applicant_middle_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input" {...regEdit('applicant_middle_name')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                          <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateLeadField('applicant_last_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_last_name', { required: 'Required' })} />
+                          {editErrors.applicant_last_name && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_last_name.message}</p>}
                         </div>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                          <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateLeadField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
+                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('applicant_dob')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                          <select value={leadFields.applicant_gender} onChange={(e) => updateLeadField('applicant_gender', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_gender')} className="led-input">
                             <option value="">Select...</option>
                             {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                          <select value={leadFields.applicant_marital_status} onChange={(e) => updateLeadField('applicant_marital_status', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_marital_status')} className="led-input">
                             <option value="">Select...</option>
                             {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -554,52 +550,54 @@ export default function ReviewApplication() {
                       <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
                       <div>
                         <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                        <input type="text" value={leadFields.applicant_address} onChange={(e) => updateLeadField('applicant_address', e.target.value)} className="led-input" />
+                        <input type="text" className="led-input" {...regEdit('applicant_address')} />
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                          <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateLeadField('applicant_suburb', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input" {...regEdit('applicant_suburb')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                          <select value={leadFields.applicant_state} onChange={(e) => updateLeadField('applicant_state', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_state')} className="led-input">
                             <option value="">Select...</option>
                             {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                          <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateLeadField('applicant_postcode', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_postcode', { pattern: { value: /^\d{4}$/, message: 'Invalid postcode' } })} />
+                          {editErrors.applicant_postcode && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_postcode.message}</p>}
                         </div>
                       </div>
 
                       {/* Business (only for business loans) */}
-                      {editLoanType === 'business' && (
+                      {watchEdit('loan_type') === 'business' && (
                         <>
                           <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                              <input type="text" value={leadFields.business_name} onChange={(e) => updateLeadField('business_name', e.target.value)} className="led-input" />
+                              <input type="text" className="led-input" {...regEdit('business_name')} />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                              <input type="text" value={leadFields.business_abn} onChange={(e) => updateLeadField('business_abn', e.target.value)} className="led-input" />
+                              <input type="text" className="led-input" {...regEdit('business_abn')} />
                             </div>
                           </div>
                           <div className="grid gap-3 sm:grid-cols-3">
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                              <input type="text" value={leadFields.business_registration_date} onChange={(e) => updateLeadField('business_registration_date', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
+                              <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('business_registration_date')} />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                              <input type="number" value={leadFields.business_industry_id} onChange={(e) => updateLeadField('business_industry_id', e.target.value)} className="led-input" />
+                              <input type="number" className="led-input" {...regEdit('business_industry_id')} />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                              <input type="number" value={leadFields.business_monthly_sales} onChange={(e) => updateLeadField('business_monthly_sales', e.target.value)} className="led-input" />
+                              <input type="number" className="led-input" {...regEdit('business_monthly_sales')} />
                             </div>
                           </div>
                         </>
@@ -610,15 +608,15 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Term (years)</label>
-                          <input type="number" min="0" max="30" value={leadFields.loan_term_years} onChange={(e) => updateLeadField('loan_term_years', e.target.value)} className="led-input" />
+                          <input type="number" min="0" max="30" className="led-input" {...regEdit('loan_term_years')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Term (months)</label>
-                          <input type="number" min="0" max="11" value={leadFields.loan_term_months} onChange={(e) => updateLeadField('loan_term_months', e.target.value)} className="led-input" />
+                          <input type="number" min="0" max="11" className="led-input" {...regEdit('loan_term_months')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
-                          <input type="number" value={leadFields.loan_purpose_id} onChange={(e) => updateLeadField('loan_purpose_id', e.target.value)} className="led-input" />
+                          <input type="number" className="led-input" {...regEdit('loan_purpose_id')} />
                         </div>
                       </div>
 
@@ -626,16 +624,15 @@ export default function ReviewApplication() {
                       <div>
                         <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
                         <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
                           rows={3}
                           className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
                           placeholder="Application notes..."
+                          {...regEdit('notes')}
                         />
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <Button onClick={handleSaveEditFields} loading={savingEditFields}>Save Changes</Button>
+                        <Button onClick={handleEditSubmit(handleSaveEditFields)} loading={savingEditFields}>Save Changes</Button>
                         <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
                       </div>
                     </div>
@@ -1620,7 +1617,7 @@ export default function ReviewApplication() {
                   {msgTab === 'deal_notes' && (
                     <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
                       <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                        {appNotes.filter((n) => n.visibility.length === 1 && n.visibility[0] === 'broker').length === 0 ? (
+                        {appNotes.filter((n) => n.visibility.length === 1 && (n.visibility[0] === 'broker' || n.visibility[0] === 'personal')).length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
                             <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
                               <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
@@ -1629,8 +1626,10 @@ export default function ReviewApplication() {
                           </div>
                         ) : (
                           appNotes
-                            .filter((n) => n.visibility.length === 1 && n.visibility[0] === 'broker')
-                            .map((note) => (
+                            .filter((n) => n.visibility.length === 1 && (n.visibility[0] === 'broker' || n.visibility[0] === 'personal'))
+                            .map((note) => {
+                              const isPersonal = note.visibility[0] === 'personal';
+                              return (
                               <div key={note.id} className="flex flex-col gap-1.5 group/note">
                                 <div className="flex items-baseline justify-between px-1">
                                   <div className="flex items-center gap-2">
@@ -1659,15 +1658,16 @@ export default function ReviewApplication() {
                                     <span className="text-[11px] font-medium text-muted-foreground">{formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                   </div>
                                 </div>
-                                <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-secondary/40 text-foreground border border-transparent">
+                                <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed text-foreground border ${isPersonal ? 'bg-amber-500/8 border-amber-500/20' : 'bg-secondary/40 border-transparent'}`}>
                                   <p className="whitespace-pre-wrap">{note.content}</p>
                                   <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
                                     <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
-                                    <span className="text-[11px] font-medium opacity-60">Internal (Brokers only)</span>
+                                    <span className="text-[11px] font-medium opacity-60">{isPersonal ? 'Only you' : 'Internal (Brokers only)'}</span>
                                   </div>
                                 </div>
                               </div>
-                            ))
+                              );
+                            })
                         )}
                       </div>
                       <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
@@ -1678,7 +1678,25 @@ export default function ReviewApplication() {
                           className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
                           placeholder="Write an internal note..."
                         />
-                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => setNoteVisibility((v) => v === 'broker' ? 'personal' : 'broker')}
+                            className={`flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-lg transition-colors ${noteVisibility === 'personal' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+                            title={noteVisibility === 'personal' ? 'Only visible to you — click to share with team' : 'Visible to all brokers — click to make private'}
+                          >
+                            {noteVisibility === 'personal' ? (
+                              <>
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                                Only me
+                              </>
+                            ) : (
+                              <>
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                                Team
+                              </>
+                            )}
+                          </button>
                           <Button
                             size="sm"
                             className="rounded-xl px-4 h-9"
@@ -1688,7 +1706,7 @@ export default function ReviewApplication() {
                               if (!id || !newNoteContent.trim()) return;
                               setSendingNote(true);
                               try {
-                                const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: ['broker'] });
+                                const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: [noteVisibility] });
                                 setAppNotes((prev) => [...prev, data]);
                                 setNewNoteContent('');
                                 toast('Deal note added', 'success');

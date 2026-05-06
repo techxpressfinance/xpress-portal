@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -43,12 +44,27 @@ def list_notes(
 
     query = db.query(ApplicationNote).filter(ApplicationNote.application_id == app_id)
 
-    # Non-admin/broker users only see notes where their role is in the visibility list
     if current_user.role == UserRole.client:
         query = query.filter(ApplicationNote.visibility.contains("client"))
     elif current_user.role == UserRole.referrer:
-        query = query.filter(ApplicationNote.visibility.contains("referrer"))
-    # Brokers and admins see all notes (broker-visible + everything else)
+        # Referrers see referrer-visible notes + their own personal notes
+        query = query.filter(
+            or_(
+                ApplicationNote.visibility.contains("referrer"),
+                and_(
+                    ApplicationNote.visibility == "personal",
+                    ApplicationNote.author_id == current_user.id,
+                ),
+            )
+        )
+    else:
+        # Brokers and admins see all notes except personal ones from other authors
+        query = query.filter(
+            or_(
+                ApplicationNote.visibility != "personal",
+                ApplicationNote.author_id == current_user.id,
+            )
+        )
 
     notes = query.order_by(ApplicationNote.created_at.asc()).all()
     return [_note_to_out(n) for n in notes]
@@ -68,10 +84,10 @@ def create_note(
 
     check_application_access(application, current_user, db=db)
 
+    from app.models.application_note import VALID_VISIBILITY
     if current_user.role == UserRole.referrer:
-        visibility_set = {"referrer"}
+        visibility_set = {"personal"} if "personal" in data.visibility else {"referrer"}
     else:
-        from app.models.application_note import VALID_VISIBILITY
         visibility_set = {v for v in data.visibility if v in VALID_VISIBILITY}
         if not visibility_set:
             visibility_set = {"broker"}

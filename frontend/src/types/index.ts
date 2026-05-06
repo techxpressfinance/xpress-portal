@@ -234,7 +234,7 @@ export interface ExternalReferrerStats {
   applied: number;
 }
 
-export type NoteVisibility = 'broker' | 'client' | 'referrer';
+export type NoteVisibility = 'broker' | 'client' | 'referrer' | 'personal';
 
 export interface ApplicationNote {
   id: string;

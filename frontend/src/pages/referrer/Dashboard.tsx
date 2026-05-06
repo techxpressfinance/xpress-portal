@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import api from '../../api/client';
+import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button } from '../../components/ui';
-import type { ExternalReferrerStats } from '../../types';
+import { GlassCard, Badge, Button } from '../../components/ui';
+import { LOAN_TYPE_ICONS } from '../../lib/constants';
+import type { ExternalReferrerStats, LoanApplication } from '../../types';
 
-const STATUS_PIPELINE = [
-  { key: 'draft', label: 'Draft', color: 'bg-muted-foreground/30' },
-  { key: 'application_received', label: 'Received', color: 'bg-chart-4/60' },
-  { key: 'application_assessed', label: 'Assessed', color: 'bg-chart-2/60' },
-  { key: 'submitted', label: 'Submitted', color: 'bg-primary/60' },
-  { key: 'approval', label: 'Approval', color: 'bg-chart-3/60' },
-  { key: 'settled', label: 'Settled', color: 'bg-success/70' },
-  { key: 'rejected', label: 'Rejected', color: 'bg-destructive/50' },
-];
+type MetricTone = 'accent' | 'success' | 'warning' | 'neutral';
 
-const LOAN_TYPE_COLORS: Record<string, string> = {
-  personal: 'bg-primary',
-  home: 'bg-chart-2',
-  business: 'bg-chart-4',
-  vehicle: 'bg-chart-3',
-};
+interface DeskMetricCardProps {
+  label: string;
+  value: string | number;
+  detail: string;
+  loading?: boolean;
+  tone?: MetricTone;
+}
 
 interface AppAnalytics {
   total_applications: number;
@@ -31,195 +35,588 @@ interface AppAnalytics {
   active_count: number;
   by_status: Record<string, number>;
   by_loan_type: Record<string, number>;
+  monthly_trend?: Array<{ month: string; count: number }>;
+}
+
+function formatVolume(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toLocaleString()}`;
+}
+
+const STATUS_ORDER = [
+  'application_received',
+  'application_assessed',
+  'submitted',
+  'approval',
+  'settled',
+  'rejected',
+  'draft',
+] as const;
+
+interface TrendTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: { count: number; fullLabel: string } }>;
+}
+
+function TrendTooltip({ active, payload }: TrendTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  return (
+    <div
+      className="rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface)] px-3 py-2 shadow-[var(--led-shadow-md)]"
+      style={{ color: 'var(--led-ink)' }}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--led-muted)]">Applications</div>
+      <div className="mt-1 text-[15px] font-semibold led-tnum">{point.count}</div>
+      <div className="mt-1 text-[12px] text-[var(--led-muted)]">{point.fullLabel}</div>
+    </div>
+  );
+}
+
+function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral' }: DeskMetricCardProps) {
+  const toneStyles: Record<MetricTone, { line: string; }> = {
+    accent: { line: 'bg-[var(--led-accent)]' },
+    success: { line: 'bg-[var(--led-success)]' },
+    warning: { line: 'bg-[var(--led-warning)]' },
+    neutral: { line: 'bg-[var(--led-line-strong)]' },
+  };
+
+  return (
+    <GlassCard padding="none" className="h-full">
+      <div className={`h-1 ${toneStyles[tone].line}`} />
+      <div className="p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
+        <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
+          {loading ? '--' : value}
+        </p>
+        <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{detail}</p>
+      </div>
+    </GlassCard>
+  );
 }
 
 export default function ReferrerDashboard() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [stats, setStats] = useState<ExternalReferrerStats>({ total_referred: 0, signed_up: 0, applied: 0 });
   const [analytics, setAnalytics] = useState<AppAnalytics | null>(null);
+  const [applications, setApplications] = useState<LoanApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
-  const fetchData = () => {
-    Promise.all([
+  useEffect(() => {
+    Promise.allSettled([
       api.get('/external-referrers/stats'),
       api.get('/applications/analytics'),
+      api.get('/applications?per_page=50'),
     ])
-      .then(([statsRes, analyticsRes]) => {
-        setStats(statsRes.data);
-        setAnalytics(analyticsRes.data);
+      .then(([statsRes, analyticsRes, appsRes]) => {
+        if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
+        if (analyticsRes.status === 'fulfilled') setAnalytics(analyticsRes.value.data);
+        if (appsRes.status === 'fulfilled') setApplications(appsRes.value.data.items ?? []);
+        if (statsRes.status === 'rejected' || analyticsRes.status === 'rejected') {
+          toast('Failed to load some dashboard data', 'error');
+        }
       })
-      .catch(() => toast('Failed to load dashboard', 'error'));
-  };
+      .finally(() => setLoading(false));
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  const activeApplications = applications.filter(
+    (app) => !['draft', 'settled', 'rejected'].includes(app.status),
+  );
+  const settlementRate = analytics && analytics.total_applications > 0
+    ? (analytics.settled_count / analytics.total_applications) * 100
+    : 0;
 
-  const fmt = (n: number) =>
-    n >= 1_000_000
-      ? `$${(n / 1_000_000).toFixed(1)}M`
-      : n >= 1_000
-        ? `$${(n / 1_000).toFixed(0)}K`
-        : `$${n.toLocaleString()}`;
-
-  const maxStatusCount = analytics
-    ? Math.max(1, ...Object.values(analytics.by_status))
+  const maxStatusCount = analytics ? Math.max(1, ...Object.values(analytics.by_status)) : 1;
+  const loanTypes = ['personal', 'home', 'business', 'vehicle'] as const;
+  const maxLoanTypeCount = analytics
+    ? Math.max(1, ...loanTypes.map((t) => analytics.by_loan_type[t] ?? 0))
     : 1;
-  const totalLoanTypeCount = analytics
-    ? Math.max(1, Object.values(analytics.by_loan_type).reduce((a, b) => a + b, 0))
-    : 1;
+
+  const monthlyTrendData = (analytics?.monthly_trend ?? []).map((entry) => ({
+    label: entry.month,
+    fullLabel: entry.month,
+    count: entry.count,
+  }));
+  const monthlyAverage = monthlyTrendData.length
+    ? monthlyTrendData.reduce((s, e) => s + e.count, 0) / monthlyTrendData.length
+    : 0;
+  const monthlyPeak = monthlyTrendData.reduce<{ count: number; fullLabel: string } | null>(
+    (peak, e) => (!peak || e.count > peak.count ? { count: e.count, fullLabel: e.fullLabel } : peak),
+    null,
+  );
+
+  const selectedApp = applications.find((a) => a.id === selectedAppId);
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good Morning';
+    if (h < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  })();
+
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
   return (
-    <div>
-      <PageHeader
-        title="Referrer Dashboard"
-        subtitle="Track your referred clients and deal analytics"
-        action={
-          <div className="flex gap-2">
-            <Link to="/referrer/messages">
-              <Button variant="secondary">Message Staff</Button>
-            </Link>
-            <Link to="/referrer/add-lead">
-              <Button>+ Add Lead</Button>
-            </Link>
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
+      {/* Header */}
+      <div className="mb-8 mt-2 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="led-chip led-chip-accent">Referrer</span>
+            <span className="text-[12px] text-[var(--led-muted)]">{todayLabel}</span>
           </div>
-        }
-      />
+          <div>
+            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+              {greeting}, {user?.full_name?.split(' ')[0] || 'Partner'}
+            </h1>
+            <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[var(--led-muted)]">
+              {analytics
+                ? `${activeApplications.length} active file${activeApplications.length !== 1 ? 's' : ''} in the pipeline. ${analytics.settled_count} settled so far.`
+                : 'Loading your pipeline data…'}
+            </p>
+          </div>
+        </div>
 
-      {/* Referral funnel stats */}
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
-        {[
-          {
-            label: 'Total Referred', value: stats.total_referred, icon: (
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
-            ), color: 'text-primary bg-primary/10'
-          },
-          {
-            label: 'Signed Up', value: stats.signed_up, icon: (
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
-            ), color: 'text-chart-2 bg-chart-2/10'
-          },
-          {
-            label: 'Applied', value: stats.applied, icon: (
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-            ), color: 'text-success bg-success/10'
-          },
-        ].map((stat) => (
-          <GlassCard key={stat.label}>
-            <div className="flex items-center gap-4">
-              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.color}`}>
-                {stat.icon}
-              </div>
-              <div>
-                <p className="text-[13px] text-muted-foreground">{stat.label}</p>
-                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              </div>
-            </div>
-          </GlassCard>
-        ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="led-card px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Referred</p>
+            <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
+              {loading ? '--' : stats.total_referred}
+            </p>
+          </div>
+          <div className="led-card px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Applied</p>
+            <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
+              {loading ? '--' : stats.applied}
+            </p>
+          </div>
+          <Link to="/referrer/add-lead">
+            <Button size="lg" className="h-11 px-5">+ Add Lead</Button>
+          </Link>
+        </div>
       </div>
 
-      {/* Deal analytics */}
-      {analytics && analytics.total_applications > 0 && (
-        <>
-          {/* Deal KPIs */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-            {[
-              {
-                label: 'Total Deals',
-                value: analytics.total_applications,
-                sub: `${analytics.active_count} active`,
-                color: 'text-primary bg-primary/10',
-                icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>,
-              },
-              {
-                label: 'Total Value',
-                value: fmt(analytics.total_value),
-                sub: 'across all deals',
-                color: 'text-chart-2 bg-chart-2/10',
-                icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>,
-              },
-              {
-                label: 'Approvals',
-                value: analytics.approval_count,
-                sub: 'pending settlement',
-                color: 'text-chart-3 bg-chart-3/10',
-                icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" /></svg>,
-              },
-              {
-                label: 'Settled',
-                value: analytics.settled_count,
-                sub: fmt(analytics.settled_value),
-                color: 'text-success bg-success/10',
-                icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>,
-              },
-            ].map((kpi) => (
-              <GlassCard key={kpi.label}>
-                <div className="flex items-start gap-3">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${kpi.color}`}>
-                    {kpi.icon}
-                  </div>
-                  <div>
-                    <p className="text-[12px] text-muted-foreground">{kpi.label}</p>
-                    <p className="text-[22px] font-bold text-foreground leading-tight">{kpi.value}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{kpi.sub}</p>
-                  </div>
-                </div>
-              </GlassCard>
-            ))}
+      <div className="grid flex-1 grid-cols-1 items-start gap-5 lg:grid-cols-12">
+        {/* Main column */}
+        <div className="flex flex-col gap-5 lg:col-span-8">
+          {/* Metric cards */}
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <DeskMetricCard
+              label="Total Deals"
+              value={analytics?.total_applications ?? 0}
+              detail={`${activeApplications.length} currently active`}
+              loading={loading}
+              tone="accent"
+            />
+            <DeskMetricCard
+              label="Pipeline Value"
+              value={formatVolume(analytics?.total_value ?? 0)}
+              detail="Total across all applications"
+              loading={loading}
+              tone="neutral"
+            />
+            <DeskMetricCard
+              label="Approvals"
+              value={analytics?.approval_count ?? 0}
+              detail="Pending final settlement"
+              loading={loading}
+              tone="success"
+            />
+            <DeskMetricCard
+              label="Settlements"
+              value={analytics?.settled_count ?? 0}
+              detail={`${Math.round(settlementRate)}% of total book settled`}
+              loading={loading}
+              tone="success"
+            />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2 mb-6">
+          {/* Referral funnel */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Referral Pipeline</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Funnel Overview</h2>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-[var(--led-line)]">
+              {[
+                { label: 'Total Referred', value: stats.total_referred, detail: 'Clients you have introduced' },
+                { label: 'Signed Up', value: stats.signed_up, detail: 'Completed registration' },
+                { label: 'Applied', value: stats.applied, detail: 'Submitted a loan application' },
+              ].map((item) => (
+                <div key={item.label} className="p-6">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{item.label}</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] led-tnum text-[var(--led-ink)]">
+                    {loading ? '--' : item.value}
+                  </p>
+                  <p className="mt-2 text-[12px] text-[var(--led-muted)]">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
+          {/* Charts row */}
+          <div className="grid gap-5 xl:grid-cols-2">
             {/* Pipeline by status */}
-            <GlassCard>
-              <h3 className="text-[14px] font-semibold text-foreground mb-4">Deal Pipeline</h3>
-              <div className="space-y-2.5">
-                {STATUS_PIPELINE.map(({ key, label, color }) => {
-                  const count = analytics.by_status[key] ?? 0;
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="border-b border-[var(--led-line)] px-6 py-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Pipeline Staging</p>
+                <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Stage Allocation</h2>
+              </div>
+              <div className="space-y-4 p-6">
+                {analytics && STATUS_ORDER.map((status) => {
+                  const count = analytics.by_status[status] ?? 0;
                   if (count === 0) return null;
-                  const pct = Math.round((count / maxStatusCount) * 100);
+                  const pct = maxStatusCount > 0 ? (count / maxStatusCount) * 100 : 0;
                   return (
-                    <div key={key} className="flex items-center gap-3">
-                      <span className="w-24 shrink-0 text-[12px] text-muted-foreground text-right">{label}</span>
-                      <div className="flex-1 h-6 rounded-lg bg-secondary overflow-hidden">
+                    <div key={status} className="grid grid-cols-[minmax(120px,160px)_1fr_auto] items-center gap-4">
+                      <div className="min-w-0">
+                        <Badge value={status} className="truncate" />
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                        <div className="h-full rounded-full bg-[var(--led-accent)]" style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{count}</p>
+                    </div>
+                  );
+                })}
+                {!loading && (!analytics || Object.values(analytics.by_status).every((v) => v === 0)) && (
+                  <div className="rounded-[14px] border border-dashed border-[var(--led-line)] px-4 py-8 text-center text-[13px] text-[var(--led-muted)]">
+                    No pipeline data yet.
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+
+            {/* Volume by loan type */}
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="border-b border-[var(--led-line)] px-6 py-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Portfolio Mix</p>
+                <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Volume by Product</h2>
+              </div>
+              <div className="space-y-4 p-6">
+                {loanTypes.map((type) => {
+                  const count = analytics?.by_loan_type[type] ?? 0;
+                  const pct = maxLoanTypeCount > 0 ? (count / maxLoanTypeCount) * 100 : 0;
+                  return (
+                    <div key={type}>
+                      <div className="mb-2 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)]">
+                            {LOAN_TYPE_ICONS[type]}
+                          </div>
+                          <div>
+                            <p className="text-[14px] font-medium capitalize text-[var(--led-ink)]">{type}</p>
+                            <p className="text-[12px] text-[var(--led-muted)]">{count} files</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
                         <div
-                          className={`h-full rounded-lg ${color} transition-all duration-500`}
-                          style={{ width: `${pct}%` }}
+                          className="h-full rounded-full bg-[var(--led-accent)]"
+                          style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
                         />
                       </div>
-                      <span className="w-6 shrink-0 text-[13px] font-semibold text-foreground">{count}</span>
                     </div>
                   );
                 })}
               </div>
             </GlassCard>
+          </div>
 
-            {/* Loan type breakdown */}
-            <GlassCard>
-              <h3 className="text-[14px] font-semibold text-foreground mb-4">By Loan Type</h3>
-              <div className="space-y-3">
-                {Object.entries(analytics.by_loan_type)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([type, count]) => {
-                    const pct = Math.round((count / totalLoanTypeCount) * 100);
-                    return (
-                      <div key={type}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[13px] font-medium text-foreground capitalize">{type}</span>
-                          <span className="text-[12px] text-muted-foreground">{count} deal{count !== 1 ? 's' : ''} &middot; {pct}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${LOAN_TYPE_COLORS[type] ?? 'bg-primary'} transition-all duration-500`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* Monthly trend chart */}
+          {monthlyTrendData.length > 0 && (
+            <GlassCard padding="none" className="flex flex-col">
+              <div className="border-b border-[var(--led-line)] px-6 py-5">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Origination</p>
+                    <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Monthly Booking Trend</h2>
+                  </div>
+                  <div className="flex gap-6">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Peak Month</p>
+                      <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
+                        {loading ? '--' : monthlyPeak?.count ?? 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Avg / Month</p>
+                      <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
+                        {loading ? '--' : monthlyAverage.toFixed(1)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="h-[260px] px-4 py-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyTrendData} margin={{ top: 12, right: 12, left: -18, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="var(--led-line)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 12, fill: 'var(--led-muted)' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 12, fill: 'var(--led-muted)' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={32}
+                    />
+                    <Tooltip content={<TrendTooltip />} cursor={{ stroke: 'var(--led-line-strong)', strokeWidth: 1 }} />
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="var(--led-accent)"
+                      strokeWidth={2}
+                      fill="var(--led-accent)"
+                      fillOpacity={0.12}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </GlassCard>
+          )}
+
+          {/* Applications table */}
+          <GlassCard padding="none" className="flex min-h-[400px] flex-col overflow-hidden">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Active Files</p>
+                  <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Live Application Book</h2>
+                </div>
+                <p className="text-[13px] text-[var(--led-muted)]">{activeApplications.length} live files</p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-left text-[14px]">
+                <thead className="sticky top-0 z-10 bg-[var(--led-surface-2)]">
+                  <tr className="border-b border-[var(--led-line)]">
+                    <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">File</th>
+                    <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Client</th>
+                    <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Product</th>
+                    <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Exposure</th>
+                    <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Stage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--led-line)]">
+                  {activeApplications.map((app) => (
+                    <tr
+                      key={app.id}
+                      className={`cursor-pointer transition-colors hover:bg-[var(--led-surface-2)] ${selectedAppId === app.id ? 'bg-[var(--led-accent-tint)]' : ''}`}
+                      onClick={() => setSelectedAppId(app.id)}
+                    >
+                      <td className="px-6 py-4 align-top">
+                        <div className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">{app.id.substring(0, 8)}</div>
+                        <div className="mt-1 text-[12px] text-[var(--led-muted)]">
+                          {new Date(app.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="font-medium text-[var(--led-ink)]">{app.user_name || 'Unknown client'}</div>
+                        <div className="mt-1 text-[12px] text-[var(--led-muted)]">{app.user_email || 'No email on file'}</div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[11px] text-[var(--led-muted)]">
+                            {LOAN_TYPE_ICONS[app.loan_type]}
+                          </div>
+                          <span className="capitalize text-[var(--led-ink)]">{app.loan_type}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <div className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <Badge value={app.status} className="py-1 px-3" />
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && activeApplications.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-14 text-center text-[13px] text-[var(--led-muted)]">
+                        No active applications in the pipeline.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Sidebar */}
+        <div className="flex flex-col gap-5 lg:col-span-4">
+          {/* Conversion summary */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Conversion</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Referral Funnel</h2>
+            </div>
+            <div className="space-y-3 p-4">
+              {[
+                {
+                  label: 'Refer → Sign Up',
+                  value: stats.total_referred > 0
+                    ? `${Math.round((stats.signed_up / stats.total_referred) * 100)}%`
+                    : '—',
+                  detail: `${stats.signed_up} of ${stats.total_referred} referred`,
+                },
+                {
+                  label: 'Sign Up → Apply',
+                  value: stats.signed_up > 0
+                    ? `${Math.round((stats.applied / stats.signed_up) * 100)}%`
+                    : '—',
+                  detail: `${stats.applied} of ${stats.signed_up} signed up`,
+                },
+                {
+                  label: 'Apply → Settle',
+                  value: analytics && analytics.total_applications > 0
+                    ? `${Math.round(settlementRate)}%`
+                    : '—',
+                  detail: `${analytics?.settled_count ?? 0} settled from applications`,
+                },
+              ].map((row) => (
+                <div key={row.label} className="rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">{row.label}</p>
+                  <p className="mt-3 text-[26px] font-semibold tracking-[-0.04em] led-tnum text-[var(--led-ink)]">{loading ? '--' : row.value}</p>
+                  <p className="mt-3 text-[13px] leading-6 text-[var(--led-muted)]">{row.detail}</p>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
+          {/* Settled value */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Settled</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Settlement Summary</h2>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Total Settled Value</p>
+                <p className="mt-2 text-[30px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
+                  {loading ? '--' : formatVolume(analytics?.settled_value ?? 0)}
+                </p>
+              </div>
+              <div className="h-px bg-[var(--led-line)]" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Files Settled</p>
+                  <p className="mt-2 text-[22px] font-semibold led-tnum text-[var(--led-ink)]">
+                    {loading ? '--' : analytics?.settled_count ?? 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Settle Rate</p>
+                  <p className="mt-2 text-[22px] font-semibold led-tnum text-[var(--led-ink)]">
+                    {loading ? '--' : `${Math.round(settlementRate)}%`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Quick links */}
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Quick Access</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Navigation</h2>
+            </div>
+            <div className="p-4 space-y-2">
+              {[
+                { label: 'All Applications', to: '/referrer/applications', icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg> },
+                { label: 'Add New Lead', to: '/referrer/add-lead', icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg> },
+                { label: 'Messages', to: '/referrer/messages', icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg> },
+              ].map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="flex items-center gap-3 rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3.5 text-[14px] font-medium text-[var(--led-ink)] transition-colors hover:bg-[var(--led-bg-2)]"
+                >
+                  <span className="text-[var(--led-muted)]">{link.icon}</span>
+                  {link.label}
+                  <svg className="ml-auto h-4 w-4 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                </Link>
+              ))}
+            </div>
+          </GlassCard>
+        </div>
+      </div>
+
+      {/* Slide-over detail panel */}
+      {selectedAppId && selectedApp && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/28 transition-opacity" onClick={() => setSelectedAppId(null)} />
+          <div className="fixed inset-y-6 right-6 z-50 flex w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-[var(--led-line-strong)] bg-[var(--led-surface)] shadow-[var(--led-shadow-lg)]">
+            <div className="flex items-center justify-between border-b border-[var(--led-line)] p-6">
+              <div className="flex items-center gap-3">
+                <Badge value={selectedApp.status} className="py-1 px-3" />
+                <span className="text-[12px] font-medium led-tnum text-[var(--led-muted)]">{selectedApp.id.substring(0, 8)}</span>
+              </div>
+              <button
+                onClick={() => setSelectedAppId(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)] transition-colors hover:text-[var(--led-ink)]"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-6 overflow-auto p-6">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Application Detail</p>
+                <h2 className="mt-3 text-[30px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+                  {selectedApp.user_name || 'Unknown Client'}
+                </h2>
+                <div className="mt-3 flex items-center gap-2 text-[14px] text-[var(--led-muted)]">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[11px]">
+                    {LOAN_TYPE_ICONS[selectedApp.loan_type]}
+                  </div>
+                  <span className="capitalize">{selectedApp.loan_type} loan</span>
+                  <span>&middot;</span>
+                  <span className="font-semibold led-tnum text-[var(--led-ink)]">${Number(selectedApp.amount).toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="space-y-5 rounded-[18px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-5">
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Created</label>
+                  <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
+                    {new Date(selectedApp.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                  </div>
+                </div>
+                <div className="h-px bg-[var(--led-line)]" />
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Last Updated</label>
+                  <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
+                    {new Date(selectedApp.updated_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--led-line)] p-6">
+              <Link to={`/referrer/applications/${selectedApp.id}`} className="block">
+                <Button className="h-11 w-full rounded-[12px] text-[14px] font-semibold">
+                  Open Full File
+                </Button>
+              </Link>
+            </div>
           </div>
         </>
       )}
-
     </div>
   );
 }

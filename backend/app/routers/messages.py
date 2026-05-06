@@ -153,8 +153,33 @@ def list_message_recipients(
     tenant_id: str = Depends(get_tenant_id),
 ):
     from app.models.external_referral import ClientEngagementModel
-    if current_user.role.value in {"client", "referrer"}:
+    role = current_user.role.value
+    if role == "client":
         recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
+    elif role == "referrer":
+        # Referrers can message brokers, admins, and clients they referred
+        staff = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
+        # Get clients they referred via ExternalReferral
+        ext_referral_clients = db.query(User).join(
+            ExternalReferral, User.id == ExternalReferral.referred_client_id
+        ).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id.isnot(None),
+        ).all()
+        # Get clients they referred via Referral (internal)
+        internal_referral_clients = db.query(User).join(
+            Referral, User.id == Referral.referred_user_id
+        ).filter(
+            Referral.referrer_id == current_user.id,
+            Referral.referred_user_id.isnot(None),
+        ).all()
+        # Combine and deduplicate
+        seen_ids = {u.id for u in staff}
+        recipients = list(staff)
+        for client in ext_referral_clients + internal_referral_clients:
+            if client.id not in seen_ids:
+                recipients.append(client)
+                seen_ids.add(client.id)
     else:
         all_recipients = db.query(User).filter(
             User.role.in_([UserRole.client, UserRole.referrer, UserRole.broker]),
@@ -380,8 +405,26 @@ def send_message(
     recipient_role = recipient.role.value
     if sender_role == "client" and recipient_role not in {"broker", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Clients can only message brokers or admins")
-    if sender_role == "referrer" and recipient_role not in {"broker", "admin"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers can only message brokers or admins")
+    if sender_role == "referrer":
+        # Referrers can message brokers, admins, or clients they referred
+        if recipient_role in {"broker", "admin"}:
+            pass  # Allowed
+        elif recipient_role == "client":
+            # Check if this referrer referred this client
+            referred = db.query(ExternalReferral).filter(
+                ExternalReferral.referrer_id == current_user.id,
+                ExternalReferral.referred_client_id == recipient.id,
+            ).first() or db.query(Referral).filter(
+                Referral.referrer_id == current_user.id,
+                Referral.referred_user_id == recipient.id,
+            ).first()
+            if not referred:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only message clients you referred",
+                )
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers can only message brokers, admins, or clients they referred")
     if sender_role in {"broker", "admin"} and recipient_role not in {"client", "referrer"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers and admins can only message clients or referrers")
 

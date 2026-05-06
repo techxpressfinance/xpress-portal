@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 # Valid visibility targets
-VALID_VISIBILITY = {"broker", "client", "referrer"}
+VALID_VISIBILITY = {"broker", "client", "referrer", "personal"}
 
 
 class ApplicationNote(Base):

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/client';
@@ -39,6 +40,7 @@ export default function ReferrerApplicationDetail() {
 
   // Notes
   const [newNoteContent, setNewNoteContent] = useState('');
+  const [noteVisibility, setNoteVisibility] = useState<'referrer' | 'personal'>('referrer');
   const [sendingNote, setSendingNote] = useState(false);
 
   // Client messages
@@ -55,15 +57,14 @@ export default function ReferrerApplicationDetail() {
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [editLoanType, setEditLoanType] = useState<LoanType>('personal');
-  const [editNotes, setEditNotes] = useState('');
-  const [leadFields, setLeadFields] = useState({
+  const EDIT_DEFAULTS = {
+    loan_type: 'personal' as LoanType, notes: '',
     amount: '', applicant_title: '', applicant_first_name: '', applicant_last_name: '',
     applicant_middle_name: '', applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
     business_name: '', business_abn: '',
-  });
-  const updateField = (k: string, v: string) => setLeadFields((p) => ({ ...p, [k]: v }));
+  };
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   useEffect(() => {
     if (!id) return;
@@ -79,9 +80,8 @@ export default function ReferrerApplicationDetail() {
         setDocuments(docRes.data);
         setAppNotes(notesRes.data);
         setDocRequests(reqRes.data);
-        setEditLoanType(d.loan_type);
-        setEditNotes(d.notes || '');
-        setLeadFields({
+        resetEdit({
+          loan_type: d.loan_type || 'personal', notes: d.notes || '',
           amount: d.amount ? String(d.amount) : '',
           applicant_title: d.applicant_title || '', applicant_first_name: d.applicant_first_name || '',
           applicant_last_name: d.applicant_last_name || '', applicant_middle_name: d.applicant_middle_name || '',
@@ -100,15 +100,8 @@ export default function ReferrerApplicationDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const target = e.target;
-    if (!file || !id) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast('File size exceeds 10MB limit', 'error');
-      target.value = '';
-      return;
-    }
+  const handleUploadFile = async (file: File) => {
+    if (!id) return;
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -123,8 +116,12 @@ export default function ReferrerApplicationDetail() {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
       setUploading(false);
-      target.value = '';
     }
+  };
+
+  const handleUploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { await handleUploadFile(file); e.target.value = ''; }
   };
 
   const handleRetryOcr = async (docId: string) => {
@@ -165,27 +162,27 @@ export default function ReferrerApplicationDetail() {
     }
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = async (fields: typeof EDIT_DEFAULTS) => {
     if (!id) return;
     setSavingEdit(true);
     try {
       const { data } = await api.patch(`/applications/${id}`, {
-        loan_type: editLoanType,
-        amount: leadFields.amount ? parseFloat(leadFields.amount) : undefined,
-        notes: editNotes || null,
-        applicant_title: leadFields.applicant_title || null,
-        applicant_first_name: leadFields.applicant_first_name || null,
-        applicant_last_name: leadFields.applicant_last_name || null,
-        applicant_middle_name: leadFields.applicant_middle_name || null,
-        applicant_dob: leadFields.applicant_dob || null,
-        applicant_gender: leadFields.applicant_gender || null,
-        applicant_marital_status: leadFields.applicant_marital_status || null,
-        applicant_address: leadFields.applicant_address || null,
-        applicant_suburb: leadFields.applicant_suburb || null,
-        applicant_state: leadFields.applicant_state || null,
-        applicant_postcode: leadFields.applicant_postcode || null,
-        business_name: leadFields.business_name || null,
-        business_abn: leadFields.business_abn || null,
+        loan_type: fields.loan_type,
+        amount: fields.amount ? parseFloat(fields.amount) : undefined,
+        notes: fields.notes || null,
+        applicant_title: fields.applicant_title || null,
+        applicant_first_name: fields.applicant_first_name || null,
+        applicant_last_name: fields.applicant_last_name || null,
+        applicant_middle_name: fields.applicant_middle_name || null,
+        applicant_dob: fields.applicant_dob || null,
+        applicant_gender: fields.applicant_gender || null,
+        applicant_marital_status: fields.applicant_marital_status || null,
+        applicant_address: fields.applicant_address || null,
+        applicant_suburb: fields.applicant_suburb || null,
+        applicant_state: fields.applicant_state || null,
+        applicant_postcode: fields.applicant_postcode || null,
+        business_name: fields.business_name || null,
+        business_abn: fields.business_abn || null,
       });
       setApplication(data);
       setEditing(false);
@@ -317,7 +314,7 @@ export default function ReferrerApplicationDetail() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
-                          <select value={editLoanType} onChange={(e) => setEditLoanType(e.target.value as LoanType)} className="led-input">
+                          <select {...regEdit('loan_type')} className="led-input">
                             {Object.entries(LOAN_TYPE_LABELS).map(([value, label]) => (
                               <option key={value} value={value}>{label}</option>
                             ))}
@@ -325,7 +322,9 @@ export default function ReferrerApplicationDetail() {
                         </div>
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Amount ($)</label>
-                          <input type="number" step="0.01" value={leadFields.amount} onChange={(e) => updateField('amount', e.target.value)} className="led-input" placeholder="Enter amount" />
+                          <input type="number" step="0.01" placeholder="Enter amount" className="led-input"
+                            {...regEdit('amount', { validate: v => !v || parseFloat(v) > 0 || 'Must be greater than 0' })} />
+                          {editErrors.amount && <p className="text-[12px] text-destructive mt-1">{editErrors.amount.message}</p>}
                         </div>
                       </div>
 
@@ -333,39 +332,43 @@ export default function ReferrerApplicationDetail() {
                       <div className="grid gap-3 sm:grid-cols-4">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
-                          <select value={leadFields.applicant_title} onChange={(e) => updateField('applicant_title', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_title')} className="led-input">
                             <option value="">Select...</option>
                             {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
-                          <input type="text" value={leadFields.applicant_first_name} onChange={(e) => updateField('applicant_first_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_first_name', { required: 'Required' })} />
+                          {editErrors.applicant_first_name && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_first_name.message}</p>}
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Middle Name</label>
-                          <input type="text" value={leadFields.applicant_middle_name} onChange={(e) => updateField('applicant_middle_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input" {...regEdit('applicant_middle_name')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Last Name</label>
-                          <input type="text" value={leadFields.applicant_last_name} onChange={(e) => updateField('applicant_last_name', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_last_name', { required: 'Required' })} />
+                          {editErrors.applicant_last_name && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_last_name.message}</p>}
                         </div>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                          <input type="text" value={leadFields.applicant_dob} onChange={(e) => updateField('applicant_dob', e.target.value)} placeholder="YYYY-MM-DD" className="led-input" />
+                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('applicant_dob')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
-                          <select value={leadFields.applicant_gender} onChange={(e) => updateField('applicant_gender', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_gender')} className="led-input">
                             <option value="">Select...</option>
                             {['Male', 'Female', 'Other'].map((g) => <option key={g} value={g}>{g}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Marital Status</label>
-                          <select value={leadFields.applicant_marital_status} onChange={(e) => updateField('applicant_marital_status', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_marital_status')} className="led-input">
                             <option value="">Select...</option>
                             {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -375,37 +378,39 @@ export default function ReferrerApplicationDetail() {
                       <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
                       <div>
                         <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
-                        <input type="text" value={leadFields.applicant_address} onChange={(e) => updateField('applicant_address', e.target.value)} className="led-input" />
+                        <input type="text" className="led-input" {...regEdit('applicant_address')} />
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Suburb</label>
-                          <input type="text" value={leadFields.applicant_suburb} onChange={(e) => updateField('applicant_suburb', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input" {...regEdit('applicant_suburb')} />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">State</label>
-                          <select value={leadFields.applicant_state} onChange={(e) => updateField('applicant_state', e.target.value)} className="led-input">
+                          <select {...regEdit('applicant_state')} className="led-input">
                             <option value="">Select...</option>
                             {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Postcode</label>
-                          <input type="text" value={leadFields.applicant_postcode} onChange={(e) => updateField('applicant_postcode', e.target.value)} className="led-input" />
+                          <input type="text" className="led-input"
+                            {...regEdit('applicant_postcode', { pattern: { value: /^\d{4}$/, message: 'Invalid postcode' } })} />
+                          {editErrors.applicant_postcode && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_postcode.message}</p>}
                         </div>
                       </div>
 
-                      {(editLoanType === 'business' || leadFields.business_name || leadFields.business_abn) && (
+                      {(watchEdit('loan_type') === 'business' || watchEdit('business_name') || watchEdit('business_abn')) && (
                         <>
                           <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                              <input type="text" value={leadFields.business_name} onChange={(e) => updateField('business_name', e.target.value)} className="led-input" />
+                              <input type="text" className="led-input" {...regEdit('business_name')} />
                             </div>
                             <div>
                               <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                              <input type="text" value={leadFields.business_abn} onChange={(e) => updateField('business_abn', e.target.value)} className="led-input" />
+                              <input type="text" className="led-input" {...regEdit('business_abn')} />
                             </div>
                           </div>
                         </>
@@ -413,11 +418,11 @@ export default function ReferrerApplicationDetail() {
 
                       <div>
                         <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>
-                        <textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground" placeholder="Application notes..." />
+                        <textarea rows={3} className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground" placeholder="Application notes..." {...regEdit('notes')} />
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <Button onClick={handleSaveEdit} loading={savingEdit}>Save Changes</Button>
+                        <Button onClick={handleEditSubmit(handleSaveEdit)} loading={savingEdit}>Save Changes</Button>
                         <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
                       </div>
                     </div>
@@ -840,7 +845,9 @@ export default function ReferrerApplicationDetail() {
                           <p className="text-[13px] text-muted-foreground">No notes yet</p>
                         </div>
                       ) : (
-                        appNotes.map((note) => (
+                        appNotes.map((note) => {
+                          const isPersonal = note.visibility.includes('personal');
+                          return (
                           <div key={note.id} className="flex flex-col gap-1">
                             <div className="flex items-center justify-between px-1">
                               <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
@@ -848,11 +855,18 @@ export default function ReferrerApplicationDetail() {
                                 {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
-                            <div className="rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed bg-secondary/60 text-foreground">
+                            <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed text-foreground ${isPersonal ? 'bg-amber-500/8 border border-amber-500/20' : 'bg-secondary/60'}`}>
                               <p className="whitespace-pre-wrap">{note.content}</p>
+                              {isPersonal && (
+                                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/30">
+                                  <svg className="h-3 w-3 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                                  <span className="text-[11px] font-medium opacity-60">Only you</span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
@@ -865,7 +879,25 @@ export default function ReferrerApplicationDetail() {
                         className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
                         placeholder="Add a note…"
                       />
-                      <div className="flex items-center justify-end px-3 pb-2.5 pt-1">
+                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setNoteVisibility((v) => v === 'referrer' ? 'personal' : 'referrer')}
+                          className={`flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-lg transition-colors ${noteVisibility === 'personal' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+                          title={noteVisibility === 'personal' ? 'Only visible to you — click to share' : 'Visible to team — click to make private'}
+                        >
+                          {noteVisibility === 'personal' ? (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                              Only me
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                              Team
+                            </>
+                          )}
+                        </button>
                         <Button
                           size="sm"
                           className="rounded-xl h-8 px-3.5"
@@ -875,7 +907,7 @@ export default function ReferrerApplicationDetail() {
                             if (!id || !newNoteContent.trim()) return;
                             setSendingNote(true);
                             try {
-                              const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: ['broker'] });
+                              const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: [noteVisibility] });
                               setAppNotes((prev) => [...prev, data]);
                               setNewNoteContent('');
                               toast('Note saved', 'success');
