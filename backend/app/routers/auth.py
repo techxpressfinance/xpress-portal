@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.config import EMAIL_ENABLED, EMAIL_VERIFICATION_EXPIRE_HOURS, ENVIRONMENT, REFRESH_TOKEN_EXPIRE_DAYS
@@ -133,7 +134,13 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     _MAX_FAILED = 5
     _LOCKOUT_MINUTES = 15
 
-    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
+    user = db.query(User).filter(
+        User.email == data.email,
+        or_(
+            User.tenant_id == tenant_id,
+            and_(User.role == "super_admin", User.tenant_id.is_(None)),
+        ),
+    ).first()
 
     # Check account lockout before verifying password
     if user and user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
