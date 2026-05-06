@@ -433,44 +433,476 @@ export default function ApplicationDetail() {
           {application.applicant_first_name && (
             <GlassCard>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-secondary/50 p-3">
-                  <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                  <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                    {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
-                  </dd>
-                </div>
-                {application.applicant_dob && (
+              
+              {/* Personal Information */}
+              <div className="mb-5">
+                <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Personal Information</h3>
+                <dl className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl bg-secondary/50 p-3">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
-                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
+                    <dt className="text-[12px] font-medium text-muted-foreground">Full Name</dt>
+                    <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                      {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
+                    </dd>
                   </div>
-                )}
-                {application.applicant_address && (
-                  <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
-                    <dt className="text-[12px] font-medium text-muted-foreground">Address</dt>
+                  {application.applicant_dob && (
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
+                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
+                    </div>
+                  )}
+                  {application.applicant_gender && (
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <dt className="text-[12px] font-medium text-muted-foreground">Gender</dt>
+                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender}</dd>
+                    </div>
+                  )}
+                  {application.applicant_marital_status && (
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <dt className="text-[12px] font-medium text-muted-foreground">Marital Status</dt>
+                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+
+              {/* Contact Information */}
+              {(application.applicant_mobile || application.preferred_contact_method) && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Contact Information</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.applicant_mobile && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Mobile Phone</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_mobile}</dd>
+                      </div>
+                    )}
+                    {application.preferred_contact_method && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Preferred Contact Method</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.preferred_contact_method}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Address */}
+              {application.applicant_address && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Address</h3>
+                  <div className="rounded-xl bg-secondary/50 p-3 mb-3">
+                    <dt className="text-[12px] font-medium text-muted-foreground">Street Address</dt>
                     <dd className="mt-0.5 text-[14px] font-medium text-foreground">
                       {application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}
                     </dd>
                   </div>
-                )}
-                {application.business_name && (
-                  <>
-                    <div className="rounded-xl bg-secondary/50 p-3">
-                      <dt className="text-[12px] font-medium text-muted-foreground">Business</dt>
-                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name}</dd>
-                    </div>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.residential_status && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Residential Status</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.residential_status}</dd>
+                      </div>
+                    )}
+                    {application.time_at_address && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Time at Address</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.time_at_address}</dd>
+                      </div>
+                    )}
+                    {application.applicant_num_dependants !== null && application.applicant_num_dependants !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Number of Dependants</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_num_dependants}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Living Situation */}
+              {(application.has_partner !== null || application.partner_working !== null || application.applicant_residency_status || application.id_expiry_date) && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Living Situation</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.has_partner !== null && application.has_partner !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Has Partner</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.has_partner ? 'Yes' : 'No'}</dd>
+                      </div>
+                    )}
+                    {application.partner_working !== null && application.partner_working !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Partner Working</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.partner_working ? 'Yes' : 'No'}</dd>
+                      </div>
+                    )}
+                    {application.applicant_residency_status && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Residency Status</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status}</dd>
+                      </div>
+                    )}
+                    {application.id_expiry_date && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">ID Expiry Date</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.id_expiry_date}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Employment Information */}
+              {(application.employment_category || application.employer_name || application.job_title || application.gross_income) && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Employment Information</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.employment_category && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Employment Category</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employment_category}</dd>
+                      </div>
+                    )}
+                    {application.employer_name && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Employer Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employer_name}</dd>
+                      </div>
+                    )}
+                    {application.employer_industry && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Employer Industry</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employer_industry}</dd>
+                      </div>
+                    )}
+                    {application.job_title && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Job Title</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.job_title}</dd>
+                      </div>
+                    )}
+                    {application.income_frequency && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Income Frequency</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.income_frequency}</dd>
+                      </div>
+                    )}
+                    {application.gross_income && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Gross Income</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">${Number(application.gross_income).toLocaleString()}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Business Information */}
+              {(application.business_name || application.business_abn || application.trading_name || application.business_structure) && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Business Information</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.business_name && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Business Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name}</dd>
+                      </div>
+                    )}
+                    {application.trading_name && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Trading Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.trading_name}</dd>
+                      </div>
+                    )}
                     {application.business_abn && (
                       <div className="rounded-xl bg-secondary/50 p-3">
                         <dt className="text-[12px] font-medium text-muted-foreground">ABN</dt>
                         <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_abn}</dd>
                       </div>
                     )}
-                  </>
-                )}
-              </dl>
+                    {application.business_structure && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Business Structure</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_structure}</dd>
+                      </div>
+                    )}
+                    {application.business_registration_date && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Registration Date</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_registration_date}</dd>
+                      </div>
+                    )}
+                    {application.time_trading && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Time Trading</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.time_trading}</dd>
+                      </div>
+                    )}
+                    {application.gst_registered !== null && application.gst_registered !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">GST Registered</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.gst_registered ? 'Yes' : 'No'}</dd>
+                      </div>
+                    )}
+                    {application.num_directors !== null && application.num_directors !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Number of Directors</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.num_directors}</dd>
+                      </div>
+                    )}
+                    {application.business_monthly_sales && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Monthly Sales</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">${Number(application.business_monthly_sales).toLocaleString()}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Loan Details */}
+              {(application.loan_term_requested || application.loan_purpose_id) && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Loan Details</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.loan_term_requested && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Loan Term</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.loan_term_requested} months</dd>
+                      </div>
+                    )}
+                    {application.loan_purpose_id && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Loan Purpose ID</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.loan_purpose_id}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Emergency Contact */}
+              {application.emergency_contact_name && (
+                <div className="mb-5 pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Emergency Contact</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                      <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_name}</dd>
+                    </div>
+                    {application.emergency_contact_relationship && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Relationship</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_relationship}</dd>
+                      </div>
+                    )}
+                    {application.emergency_contact_phone && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_phone}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Declarations */}
+              {(application.previously_declined !== null || application.change_of_circumstances !== null || application.signature_name) && (
+                <div className="pt-4 border-t border-border">
+                  <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Declarations</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {application.previously_declined !== null && application.previously_declined !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Previously Declined</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.previously_declined ? 'Yes' : 'No'}</dd>
+                      </div>
+                    )}
+                    {application.change_of_circumstances !== null && application.change_of_circumstances !== undefined && (
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Change of Circumstances</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.change_of_circumstances ? 'Yes' : 'No'}</dd>
+                      </div>
+                    )}
+                    {application.signature_name && (
+                      <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Signature Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.signature_name}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
             </GlassCard>
           )}
+
+          {/* Additional Data from lend_extra_data */}
+          {application.lend_extra_data && (() => {
+            try {
+              const extraData = JSON.parse(application.lend_extra_data);
+              const hasIdentification = extraData.identification && (extraData.identification.id_type || extraData.identification.id_number);
+              const hasEmployment = extraData.employment && (extraData.employment.occupation || extraData.employment.employer_name);
+              const hasIncome = extraData.income && (extraData.income.source || extraData.income.amount);
+              const hasAssets = extraData.assets && (Array.isArray(extraData.assets) ? extraData.assets.length > 0 : Object.keys(extraData.assets).length > 0);
+              const hasLiabilities = extraData.liabilities && (Array.isArray(extraData.liabilities) ? extraData.liabilities.length > 0 : Object.keys(extraData.liabilities).length > 0);
+              
+              if (!hasIdentification && !hasEmployment && !hasIncome && !hasAssets && !hasLiabilities) return null;
+
+              return (
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Additional Information</h2>
+                  
+                  {/* Identification */}
+                  {hasIdentification && (
+                    <div className="mb-5">
+                      <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Identification</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        {extraData.identification.id_type && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">ID Type</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.identification.id_type}</dd>
+                          </div>
+                        )}
+                        {extraData.identification.id_number && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">ID Number</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.identification.id_number}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
+                  )}
+
+                  {/* Employment */}
+                  {hasEmployment && (
+                    <div className="mb-5 pt-4 border-t border-border">
+                      <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Employment Details</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        {extraData.employment.occupation && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Occupation</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.employment.occupation}</dd>
+                          </div>
+                        )}
+                        {extraData.employment.employer_name && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Employer</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.employment.employer_name}</dd>
+                          </div>
+                        )}
+                        {extraData.employment.employment_type && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Employment Type</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.employment.employment_type}</dd>
+                          </div>
+                        )}
+                        {extraData.employment.length_of_employment && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Length of Employment</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.employment.length_of_employment}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
+                  )}
+
+                  {/* Income */}
+                  {hasIncome && (
+                    <div className="mb-5 pt-4 border-t border-border">
+                      <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Income Details</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        {extraData.income.source && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Income Source</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.income.source}</dd>
+                          </div>
+                        )}
+                        {extraData.income.amount && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Amount</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">${Number(extraData.income.amount).toLocaleString()}</dd>
+                          </div>
+                        )}
+                        {extraData.income.frequency && (
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Frequency</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{extraData.income.frequency}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
+                  )}
+
+                  {/* Assets */}
+                  {hasAssets && (
+                    <div className="mb-5 pt-4 border-t border-border">
+                      <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Assets</h3>
+                      {Array.isArray(extraData.assets) ? (
+                        <div className="space-y-3">
+                          {extraData.assets.map((asset: Record<string, unknown>, index: number) => {
+                            const description = String(asset.description ?? asset.type ?? `Asset ${index + 1}`);
+                            const value = asset.value ? Number(asset.value) : null;
+                            return (
+                              <div key={index} className="rounded-xl bg-secondary/50 p-3">
+                                <p className="text-[14px] font-medium text-foreground">{description}</p>
+                                {value !== null && value > 0 && <p className="text-[13px] text-muted-foreground">${value.toLocaleString()}</p>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          {Object.entries(extraData.assets).map(([key, value]) => (
+                            <div key={key} className="rounded-xl bg-secondary/50 p-3">
+                              <dt className="text-[12px] font-medium text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                                {typeof value === 'number' ? `$${value.toLocaleString()}` : String(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Liabilities */}
+                  {hasLiabilities && (
+                    <div className="pt-4 border-t border-border">
+                      <h3 className="text-[13px] font-medium text-muted-foreground mb-3">Liabilities</h3>
+                      {Array.isArray(extraData.liabilities) ? (
+                        <div className="space-y-3">
+                          {extraData.liabilities.map((liability: Record<string, unknown>, index: number) => {
+                            const description = String(liability.description ?? liability.type ?? `Liability ${index + 1}`);
+                            const balance = liability.balance ? Number(liability.balance) : null;
+                            const monthlyPayment = liability.monthly_payment ? Number(liability.monthly_payment) : null;
+                            return (
+                              <div key={index} className="rounded-xl bg-secondary/50 p-3">
+                                <p className="text-[14px] font-medium text-foreground">{description}</p>
+                                {balance !== null && balance > 0 && <p className="text-[13px] text-muted-foreground">Balance: ${balance.toLocaleString()}</p>}
+                                {monthlyPayment !== null && monthlyPayment > 0 && <p className="text-[13px] text-muted-foreground">Monthly: ${monthlyPayment.toLocaleString()}</p>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          {Object.entries(extraData.liabilities).map(([key, value]) => (
+                            <div key={key} className="rounded-xl bg-secondary/50 p-3">
+                              <dt className="text-[12px] font-medium text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                                {typeof value === 'number' ? `$${value.toLocaleString()}` : String(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                  )}
+                </GlassCard>
+              );
+            } catch {
+              return null;
+            }
+          })()}
 
           {/* Messages */}
           <GlassCard>
