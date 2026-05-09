@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.config import EMAIL_ENABLED, EMAIL_VERIFICATION_EXPIRE_HOURS, ENVIRONMENT, REFRESH_TOKEN_EXPIRE_DAYS
+from app.config import EMAIL_ENABLED, EMAIL_VERIFICATION_EXPIRE_HOURS
 from app.database import get_db
 from app.middleware.auth import _is_token_revoked_by_user, get_current_user
 from app.middleware.rate_limit import auth_limiter
@@ -34,35 +34,13 @@ from app.services.auth import (
     verify_login_code,
     verify_password,
 )
+from app.services.cookie_auth import clear_refresh_cookie as _clear_refresh_cookie, set_refresh_cookie as _set_refresh_cookie
 from app.services.email import send_login_code_email, send_verification_email
 from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-
-def _set_refresh_cookie(response: Response, token: str) -> None:
-    """Set refresh token as an httpOnly cookie."""
-    response.set_cookie(
-        key="refresh_token",
-        value=token,
-        httponly=True,
-        secure=ENVIRONMENT != "development",
-        samesite="lax",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path="/api/auth",
-    )
-
-
-def _clear_refresh_cookie(response: Response) -> None:
-    """Remove the refresh token cookie."""
-    response.delete_cookie(
-        key="refresh_token",
-        httponly=True,
-        secure=ENVIRONMENT != "development",
-        samesite="lax",
-        path="/api/auth",
-    )
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)

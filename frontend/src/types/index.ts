@@ -1,12 +1,29 @@
-export type UserRole = 'client' | 'broker' | 'admin' | 'referrer' | 'super_admin';
-export type AuthMethod = 'password' | 'code';
-export type LoanType = 'personal' | 'home' | 'business' | 'vehicle' | 'equipment_finance' | 'business_loan' | 'commercial_property' | 'home_loan';
-export type ApplicationStatus = 'draft' | 'application_received' | 'application_assessed' | 'submitted' | 'approval' | 'settled' | 'rejected' | 'not_proceeding';
-export type DocType = 'id_proof' | 'address_proof' | 'bank_statement' | 'payslip' | 'tax_return' | 'other';
-export type OcrStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type LendSyncStatus = 'pending' | 'synced' | 'failed';
-export type ServiceRequestStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
+export const USER_ROLES = ['client', 'broker', 'admin', 'referrer', 'super_admin'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const AUTH_METHODS = ['password', 'code'] as const;
+export type AuthMethod = (typeof AUTH_METHODS)[number];
+
+export const LOAN_TYPES = ['personal', 'home', 'business', 'vehicle', 'equipment_finance', 'business_loan', 'commercial_property', 'home_loan'] as const;
+export type LoanType = (typeof LOAN_TYPES)[number];
+
+export const APPLICATION_STATUSES = ['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected', 'not_proceeding'] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
+export const DOC_TYPES = ['id_proof', 'address_proof', 'bank_statement', 'payslip', 'tax_return', 'other'] as const;
+export type DocType = (typeof DOC_TYPES)[number];
+
+export const OCR_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+export type OcrStatus = (typeof OCR_STATUSES)[number];
+
+export const ANALYSIS_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
+
+export const LEND_SYNC_STATUSES = ['pending', 'synced', 'failed'] as const;
+export type LendSyncStatus = (typeof LEND_SYNC_STATUSES)[number];
+
+export const SERVICE_REQUEST_STATUSES = ['pending', 'in_progress', 'resolved', 'closed'] as const;
+export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
 
 export interface User {
   id: string;
@@ -173,7 +190,8 @@ export interface Document {
   lend_uploaded: boolean;
 }
 
-export type DocumentRequestStatus = 'pending' | 'fulfilled';
+export const DOCUMENT_REQUEST_STATUSES = ['pending', 'fulfilled'] as const;
+export type DocumentRequestStatus = (typeof DOCUMENT_REQUEST_STATUSES)[number];
 
 export interface DocumentRequest {
   id: string;
@@ -204,9 +222,14 @@ export interface PaginatedResponse<T> {
   per_page: number;
 }
 
-export type ReferralStatus = 'pending' | 'signed_up' | 'applied';
-export type ExternalReferralStatus = 'pending' | 'signed_up' | 'applied';
-export type ClientEngagementModel = 'self_managed' | 'direct_engagement';
+export const REFERRAL_STATUSES = ['pending', 'signed_up', 'applied'] as const;
+export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
+
+export const EXTERNAL_REFERRAL_STATUSES = ['pending', 'signed_up', 'applied'] as const;
+export type ExternalReferralStatus = (typeof EXTERNAL_REFERRAL_STATUSES)[number];
+
+export const CLIENT_ENGAGEMENT_MODELS = ['self_managed', 'direct_engagement'] as const;
+export type ClientEngagementModel = (typeof CLIENT_ENGAGEMENT_MODELS)[number];
 
 export interface ReferrerInfo {
   id: string;
@@ -235,7 +258,8 @@ export interface ExternalReferrerStats {
   applied: number;
 }
 
-export type NoteVisibility = 'broker' | 'client' | 'referrer' | 'personal';
+export const NOTE_VISIBILITIES = ['broker', 'client', 'referrer', 'personal'] as const;
+export type NoteVisibility = (typeof NOTE_VISIBILITIES)[number];
 
 export interface ApplicationNote {
   id: string;
@@ -404,7 +428,8 @@ export interface BrokerGroup {
   members: BrokerGroupMember[];
 }
 
-export type NotificationType = 'message' | 'alert' | 'status_change';
+export const NOTIFICATION_TYPES = ['message', 'alert', 'status_change'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface AppNotification {
   id: string;
@@ -416,7 +441,8 @@ export interface AppNotification {
   link: string;
 }
 
-export type LenderSubmissionStatus = 'pending' | 'approved' | 'declined' | 'conditional' | 'withdrawn';
+export const LENDER_SUBMISSION_STATUSES = ['pending', 'approved', 'declined', 'conditional', 'withdrawn'] as const;
+export type LenderSubmissionStatus = (typeof LENDER_SUBMISSION_STATUSES)[number];
 
 export interface LenderContact {
   id: string;
@@ -503,8 +529,11 @@ export interface KanbanBoard {
   updated_at: string;
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'completed';
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export const TASK_STATUSES = ['todo', 'in_progress', 'completed'] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 export interface ChecklistItem {
   id: string;
@@ -552,7 +581,8 @@ export interface TaskListItem {
   updated_at: string;
 }
 
-export type QuoteSheetStatus = 'draft' | 'sent';
+export const QUOTE_SHEET_STATUSES = ['draft', 'sent'] as const;
+export type QuoteSheetStatus = (typeof QUOTE_SHEET_STATUSES)[number];
 
 export interface QuoteOption {
   id: string;
@@ -583,8 +613,11 @@ export interface QuoteOption {
   created_at: string;
 }
 
-export type FacilityType = 'chattel' | 'hp' | 'lease';
-export type PaymentType = 'advance' | 'arrears';
+export const FACILITY_TYPES = ['chattel', 'hp', 'lease'] as const;
+export type FacilityType = (typeof FACILITY_TYPES)[number];
+
+export const PAYMENT_TYPES = ['advance', 'arrears'] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
 
 export interface QuoteInputParameters {
   facility_type: FacilityType;         // Chattel Mortgage / Hire Purchase / Lease

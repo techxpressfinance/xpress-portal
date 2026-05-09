@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.config import ENVIRONMENT, REFRESH_TOKEN_EXPIRE_DAYS
 from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.database import get_db
 from app.middleware.auth import require_super_admin
@@ -21,23 +20,12 @@ from app.services.auth import (
     hash_password,
     verify_password,
 )
+from app.services.cookie_auth import set_refresh_cookie as _set_refresh_cookie
 
 router = APIRouter(prefix="/api/super-admin", tags=["super-admin"])
 
 
 # ── Login ──────────────────────────────────────────────────────────────
-
-def _set_refresh_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key="refresh_token",
-        value=token,
-        httponly=True,
-        secure=ENVIRONMENT != "development",
-        samesite="lax",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path="/api/auth",
-    )
-
 
 @router.post("/login")
 def super_admin_login(data: SuperAdminLogin, response: Response, db: Session = Depends(get_db)):

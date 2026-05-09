@@ -27,8 +27,8 @@ export function getAccessToken() {
 }
 
 export function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
+  const pair = document.cookie.split('; ').find((r) => r.startsWith('csrf_token='));
+  return pair ? decodeURIComponent(pair.slice('csrf_token='.length)) : '';
 }
 
 export function getTenantSlug(): string | null {
@@ -98,10 +98,11 @@ api.interceptors.response.use(
         onTokenRefreshed(data.access_token);
         original.headers.Authorization = `Bearer ${data.access_token}`;
         return api(original);
-      } catch {
+      } catch (refreshError) {
         setAccessToken(null);
         refreshSubscribers = [];
         window.location.href = '/login';
+        return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }
