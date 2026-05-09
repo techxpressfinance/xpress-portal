@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Area,
@@ -121,6 +121,9 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
   );
 }
 
+const TERMINAL_STATUSES = ['draft', 'settled', 'rejected', 'not_proceeding'];
+const ACTIVE_STATUSES = ['application_received', 'application_assessed', 'submitted', 'approval'] as const;
+
 export default function AdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -154,7 +157,7 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [user?.role]);
 
-  const counts = {
+  const counts = useMemo(() => ({
     total: dashStats ? Object.values(dashStats.status_counts).reduce((a, b) => a + b, 0) : 0,
     draft: dashStats?.status_counts.draft ?? 0,
     application_received: dashStats?.status_counts.application_received ?? 0,
@@ -163,11 +166,12 @@ export default function AdminDashboard() {
     approval: dashStats?.status_counts.approval ?? 0,
     settled: dashStats?.status_counts.settled ?? 0,
     rejected: dashStats?.status_counts.rejected ?? 0,
-  };
+  }), [dashStats]);
 
-  const TERMINAL_STATUSES = ['draft', 'settled', 'rejected', 'not_proceeding'];
-  const ACTIVE_STATUSES = ['application_received', 'application_assessed', 'submitted', 'approval'];
-  const activeApplications = applications.filter((app) => !TERMINAL_STATUSES.includes(app.status));
+  const activeApplications = useMemo(
+    () => applications.filter((app) => !TERMINAL_STATUSES.includes(app.status)),
+    [applications],
+  );
   const totalVolume = dashStats
     ? ACTIVE_STATUSES.reduce((sum, s) => sum + (dashStats.volume_by_status[s] ?? 0), 0)
     : 0;
@@ -183,14 +187,20 @@ export default function AdminDashboard() {
   const overdueActions = dashStats?.action_items?.filter((task) => task.due_date && new Date(task.due_date) < startOfToday).length ?? 0;
   const urgentActions = dashStats?.action_items?.filter((task) => task.priority === 'urgent').length ?? 0;
 
-  const brokerAssignments = brokers
-    .map((broker) => {
-      const assigned = activeApplications.filter((a) => a.assigned_brokers?.some((ab) => ab.id === broker.id));
-      return { broker, applications: assigned };
-    })
-    .sort((a, b) => b.applications.length - a.applications.length || a.broker.full_name.localeCompare(b.broker.full_name));
+  const brokerAssignments = useMemo(
+    () => brokers
+      .map((broker) => {
+        const assigned = activeApplications.filter((a) => a.assigned_brokers?.some((ab) => ab.id === broker.id));
+        return { broker, applications: assigned };
+      })
+      .sort((a, b) => b.applications.length - a.applications.length || a.broker.full_name.localeCompare(b.broker.full_name)),
+    [brokers, activeApplications],
+  );
 
-  const maxBrokerLoad = Math.max(...brokerAssignments.map(({ applications: assignedApps }) => assignedApps.length), 1);
+  const maxBrokerLoad = useMemo(
+    () => Math.max(...brokerAssignments.map(({ applications: assignedApps }) => assignedApps.length), 1),
+    [brokerAssignments],
+  );
 
   const weekDelta = dashStats
     ? dashStats.apps_last_week > 0
@@ -202,34 +212,37 @@ export default function AdminDashboard() {
   const maxLoanTypeVolume = dashStats ? Math.max(...loanTypes.map((t) => dashStats.volume_by_loan_type[t] ?? 0), 1) : 1;
   const topLenderApprovalMax = Math.max(...(dashStats?.top_lenders?.map((lender) => lender.approvals) ?? [1]), 1);
 
-  const dailyTrendData = (dashStats?.daily_trend ?? []).map((entry) => ({
-    label: formatDayLabel(entry.date),
-    fullLabel: formatFullDayLabel(entry.date),
-    count: entry.count,
-  }));
-  const dailyTotal = dailyTrendData.reduce((sum, entry) => sum + entry.count, 0);
+  const dailyTrendData = useMemo(
+    () => (dashStats?.daily_trend ?? []).map((entry) => ({
+      label: formatDayLabel(entry.date),
+      fullLabel: formatFullDayLabel(entry.date),
+      count: entry.count,
+    })),
+    [dashStats],
+  );
+  const dailyTotal = useMemo(() => dailyTrendData.reduce((sum, entry) => sum + entry.count, 0), [dailyTrendData]);
   const dailyAverage = dailyTrendData.length ? dailyTotal / dailyTrendData.length : 0;
-  const dailyPeak = dailyTrendData.reduce<{ count: number; fullLabel: string } | null>((peak, entry) => {
-    if (!peak || entry.count > peak.count) {
-      return { count: entry.count, fullLabel: entry.fullLabel };
-    }
+  const dailyPeak = useMemo(() => dailyTrendData.reduce<{ count: number; fullLabel: string } | null>((peak, entry) => {
+    if (!peak || entry.count > peak.count) return { count: entry.count, fullLabel: entry.fullLabel };
     return peak;
-  }, null);
+  }, null), [dailyTrendData]);
 
-  const monthlyTrendData = (dashStats?.monthly_trend ?? []).map((entry) => ({
-    label: entry.month,
-    fullLabel: entry.month,
-    count: entry.count,
-  }));
-  const monthlyAverage = monthlyTrendData.length
-    ? monthlyTrendData.reduce((sum, entry) => sum + entry.count, 0) / monthlyTrendData.length
-    : 0;
-  const monthlyPeak = monthlyTrendData.reduce<{ count: number; fullLabel: string } | null>((peak, entry) => {
-    if (!peak || entry.count > peak.count) {
-      return { count: entry.count, fullLabel: entry.fullLabel };
-    }
+  const monthlyTrendData = useMemo(
+    () => (dashStats?.monthly_trend ?? []).map((entry) => ({
+      label: entry.month,
+      fullLabel: entry.month,
+      count: entry.count,
+    })),
+    [dashStats],
+  );
+  const monthlyAverage = useMemo(
+    () => monthlyTrendData.length ? monthlyTrendData.reduce((sum, entry) => sum + entry.count, 0) / monthlyTrendData.length : 0,
+    [monthlyTrendData],
+  );
+  const monthlyPeak = useMemo(() => monthlyTrendData.reduce<{ count: number; fullLabel: string } | null>((peak, entry) => {
+    if (!peak || entry.count > peak.count) return { count: entry.count, fullLabel: entry.fullLabel };
     return peak;
-  }, null);
+  }, null), [monthlyTrendData]);
 
   const selectedApp = activeApplications.find((app) => app.id === selectedAppId);
 

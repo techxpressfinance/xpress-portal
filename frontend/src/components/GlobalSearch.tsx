@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
@@ -69,15 +69,17 @@ export default function GlobalSearch() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
-  if (!isAdmin) return null;
+  const flatItems = useMemo(() => {
+    const items: { type: 'application' | 'user' | 'document'; id: string; appId?: string }[] = [];
+    if (results) {
+      for (const app of results.applications) items.push({ type: 'application', id: app.id });
+      for (const u of results.users) items.push({ type: 'user', id: u.id });
+      for (const d of results.documents) items.push({ type: 'document', id: d.id, appId: d.application_id });
+    }
+    return items;
+  }, [results]);
 
-  // Flatten results for keyboard navigation
-  const flatItems: { type: 'application' | 'user' | 'document'; id: string; appId?: string }[] = [];
-  if (results) {
-    for (const app of results.applications) flatItems.push({ type: 'application', id: app.id });
-    for (const u of results.users) flatItems.push({ type: 'user', id: u.id });
-    for (const d of results.documents) flatItems.push({ type: 'document', id: d.id, appId: d.application_id });
-  }
+  if (!isAdmin) return null;
 
   const navigateTo = (path: string) => {
     setOpen(false);
