@@ -3,12 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.database import get_db
 from app.middleware.auth import require_super_admin
+from app.middleware.rate_limit import auth_limiter
 from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
@@ -28,7 +29,9 @@ router = APIRouter(prefix="/api/super-admin", tags=["super-admin"])
 # ── Login ──────────────────────────────────────────────────────────────
 
 @router.post("/login")
-def super_admin_login(data: SuperAdminLogin, response: Response, db: Session = Depends(get_db)):
+def super_admin_login(data: SuperAdminLogin, request: Request, response: Response, db: Session = Depends(get_db)):
+    auth_limiter.check(request)
+    auth_limiter.check_key(data.email)
     user = (
         db.query(User)
         .filter(User.email == data.email, User.role == UserRole.super_admin, User.is_active == True)  # noqa: E712

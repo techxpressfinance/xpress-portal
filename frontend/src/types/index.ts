@@ -303,6 +303,7 @@ export interface ClientMessage {
   recipient_id: string | null;
   content: string;
   is_read: boolean;
+  visibility: string;
   created_at: string;
 }
 

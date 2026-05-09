@@ -84,7 +84,7 @@ export default function CreateApplication() {
   // Application config (UI state, not form fields)
   const [lendEnabled, setLendEnabled] = useState(false);
   const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
-  const [tab, setTab] = useState<'consumer' | 'commercial'>('consumer');
+  const [tab] = useState<'consumer' | 'commercial'>('consumer');
 
   useEffect(() => {
     api

@@ -4,7 +4,7 @@ import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatTime } from '../../lib/utils';
 import { Button, GlassCard, PageHeader } from '../../components/ui';
 import { useAuth } from '../../hooks/useAuth';
-import type { ClientConversation, ClientMessage } from '../../types';
+import type { ClientConversation, ClientMessage, User } from '../../types';
 
 export default function ClientMessages() {
   const { toast } = useToast();
@@ -12,16 +12,25 @@ export default function ClientMessages() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [conversations, setConversations] = useState<ClientConversation[]>([]);
+  const [allStaff, setAllStaff] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConv, setSelectedConv] = useState<ClientConversation | null>(null);
   const [chatMessages, setChatMessages] = useState<ClientMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [staffSearch, setStaffSearch] = useState('');
 
   useEffect(() => {
-    api.get('/messages/client-inbox')
-      .then(({ data }) => setConversations(data))
+    Promise.all([
+      api.get('/messages/client-inbox'),
+      api.get('/messages/recipients'),
+    ])
+      .then(([inboxRes, recipientsRes]) => {
+        setConversations(inboxRes.data);
+        setAllStaff(recipientsRes.data);
+      })
       .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
   }, []);
@@ -32,6 +41,8 @@ export default function ClientMessages() {
 
   const openConversation = async (conv: ClientConversation) => {
     setSelectedConv(conv);
+    setShowSearch(false);
+    setStaffSearch('');
     setChatLoading(true);
     try {
       const { data } = await api.get(`/clients/${conv.client_id}/messages`, { params: { peer_id: conv.peer_id } });
@@ -43,6 +54,26 @@ export default function ClientMessages() {
     }
   };
 
+  const openStaffConversation = (staff: User) => {
+    const conv: ClientConversation = conversations.find((c) => c.peer_id === staff.id) ?? {
+      client_id: user!.id,
+      client_name: user?.full_name ?? null,
+      peer_id: staff.id,
+      peer_name: staff.full_name,
+      last_message: null,
+      last_message_at: null,
+      last_message_author_name: null,
+      message_count: 0,
+    };
+    openConversation(conv);
+  };
+
+  const filteredStaff = allStaff.filter(
+    (s) =>
+      s.full_name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+      s.email.toLowerCase().includes(staffSearch.toLowerCase())
+  );
+
   const handleSend = async () => {
     if (!selectedConv || !content.trim()) return;
     setSending(true);
@@ -53,13 +84,21 @@ export default function ClientMessages() {
       });
       setChatMessages((prev) => [...prev, data]);
       setContent('');
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.peer_id === selectedConv.peer_id
-            ? { ...c, last_message: data.content, last_message_at: data.created_at, last_message_author_name: 'You', message_count: c.message_count + 1 }
-            : c
-        )
-      );
+      setConversations((prev) => {
+        const exists = prev.find((c) => c.peer_id === selectedConv.peer_id);
+        const updated = {
+          ...selectedConv,
+          last_message: data.content,
+          last_message_at: data.created_at,
+          last_message_author_name: 'You',
+          message_count: (selectedConv.message_count ?? 0) + 1,
+        };
+        if (exists) {
+          return prev.map((c) => c.peer_id === selectedConv.peer_id ? updated : c);
+        }
+        return [updated, ...prev];
+      });
+      setSelectedConv((prev) => prev ? { ...prev, last_message: data.content, last_message_at: data.created_at } : prev);
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send message'), 'error');
     } finally {
@@ -78,10 +117,57 @@ export default function ClientMessages() {
     );
   }
 
-  if (conversations.length === 0) {
-    return (
-      <div>
-        <PageHeader title="Messages" subtitle="Chat with your broker or referrer" />
+  return (
+    <div>
+      <PageHeader
+        title="Messages"
+        subtitle="Chat with your broker or referrer"
+        action={
+          allStaff.length > 0 ? (
+            <Button onClick={() => { setShowSearch((v) => !v); setStaffSearch(''); }}>
+              {showSearch ? 'Cancel' : '+ New Chat'}
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* New chat search */}
+      {showSearch && (
+        <GlassCard className="mb-6">
+          <h3 className="text-[14px] font-semibold text-foreground mb-3">Start a new conversation</h3>
+          <input
+            type="text"
+            autoFocus
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground mb-2"
+          />
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border">
+            {filteredStaff.length === 0 ? (
+              <p className="px-4 py-3 text-[13px] text-muted-foreground">No results</p>
+            ) : (
+              filteredStaff.slice(0, 20).map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => openStaffConversation(s)}
+                  className="w-full text-left px-4 py-3 hover:bg-secondary/50 transition-colors flex items-center gap-3"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <span className="text-[12px] font-semibold text-primary">{s.full_name.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-foreground truncate">{s.full_name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate capitalize">{s.role} &middot; {s.email}</p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </GlassCard>
+      )}
+
+      {conversations.length === 0 && !showSearch && !selectedConv ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
@@ -90,17 +176,10 @@ export default function ClientMessages() {
               </svg>
             </div>
             <p className="text-[15px] font-medium text-muted-foreground">No messages yet</p>
-            <p className="text-[13px] text-muted-foreground mt-1">Your broker or referrer will reach out here</p>
+            <p className="text-[13px] text-muted-foreground mt-1">Use "+ New Chat" to reach your broker or referrer</p>
           </div>
         </GlassCard>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <PageHeader title="Messages" subtitle="Chat with your broker or referrer" />
-
+      ) : (conversations.length > 0 || !!selectedConv) && (
       <GlassCard className="p-0 overflow-hidden">
         <div className="flex h-[560px]">
           {/* Conversation list — hidden on mobile when a conv is selected */}
@@ -234,6 +313,7 @@ export default function ClientMessages() {
           </div>
         </div>
       </GlassCard>
+      )}
     </div>
   );
 }

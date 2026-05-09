@@ -24,6 +24,9 @@ export default function AdminMessages() {
   const [showSearch, setShowSearch] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
 
+  // Message visibility
+  const [visibility, setVisibility] = useState<'all' | 'client' | 'internal'>('all');
+
   useEffect(() => {
     Promise.all([
       api.get('/messages/client-inbox'),
@@ -55,6 +58,7 @@ export default function AdminMessages() {
     setSelectedConv(conv);
     setShowSearch(false);
     setClientSearch('');
+    setVisibility('all');
     setChatLoading(true);
     try {
       const { data } = await api.get(`/clients/${clientId}/messages`, { params: { peer_id: user!.id } });
@@ -73,9 +77,11 @@ export default function AdminMessages() {
       const { data } = await api.post(`/clients/${selectedConv.client_id}/messages`, {
         content: newChatMsg.trim(),
         recipient_id: selectedConv.client_id,
+        visibility,
       });
       setChatMessages((prev) => [...prev, data]);
       setNewChatMsg('');
+      setVisibility('all');
       setConversations((prev) => {
         const exists = prev.find((c) => c.client_id === selectedConv.client_id);
         const updated = {
@@ -255,6 +261,9 @@ export default function AdminMessages() {
                     ) : (
                       chatMessages.map((msg) => {
                         const isOwn = msg.author_id === user?.id;
+                        const isStaffMsg = msg.author_role === 'broker' || msg.author_role === 'admin';
+                        const visibilityLabel = msg.visibility === 'client' ? 'Client only' : msg.visibility === 'internal' ? 'Internal' : null;
+                        const visibilityClass = msg.visibility === 'client' ? 'led-chip-warning' : 'led-chip-violet';
                         return (
                           <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
                             <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
@@ -262,6 +271,9 @@ export default function AdminMessages() {
                               <span className="text-[11px] text-muted-foreground">
                                 {formatTime(msg.created_at)}
                               </span>
+                              {isStaffMsg && visibilityLabel && (
+                                <span className={`led-chip ${visibilityClass} text-[10px] px-1.5 py-0.5`}>{visibilityLabel}</span>
+                              )}
                             </div>
                             <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
                               <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -289,11 +301,27 @@ export default function AdminMessages() {
                         className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
                         placeholder={`Message ${selectedConv.client_name ?? 'client'}…`}
                       />
-                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                        <span className="text-[11px] text-muted-foreground">⌘↵ to send</span>
+                      <div className="flex items-center justify-between px-3 pb-2.5 pt-1 gap-2">
+                        {/* Visibility toggle */}
+                        <div className="flex items-center rounded-lg bg-secondary border border-border/60 p-0.5 gap-0.5 shrink-0">
+                          {(['all', 'client', 'internal'] as const).map((v) => {
+                            const labels = { all: 'Everyone', client: 'Client only', internal: 'Internal' };
+                            const isActive = visibility === v;
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => setVisibility(v)}
+                                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${isActive ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                              >
+                                {labels[v]}
+                              </button>
+                            );
+                          })}
+                        </div>
                         <Button
                           size="sm"
-                          className="rounded-xl h-8 px-3.5"
+                          className="rounded-xl h-8 px-3.5 shrink-0"
                           loading={sendingChatMsg}
                           disabled={!newChatMsg.trim()}
                           onClick={handleSendChat}

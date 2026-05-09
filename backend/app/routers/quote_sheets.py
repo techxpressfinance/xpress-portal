@@ -24,8 +24,8 @@ from app.services.tenant_scope import get_tenant_id
 router = APIRouter(prefix="/api/applications/{app_id}/quote-sheets", tags=["quote-sheets"])
 
 
-def _get_application(db: Session, app_id: str) -> LoanApplication:
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+def _get_application(db: Session, app_id: str, tenant_id: str) -> LoanApplication:
+    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     return app
@@ -68,7 +68,7 @@ def list_quote_sheets(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     query = db.query(QuoteSheet).filter(QuoteSheet.application_id == app_id)
 
@@ -98,7 +98,7 @@ def create_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
 
     sheet = QuoteSheet(
@@ -135,7 +135,7 @@ def get_quote_sheet(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
 
@@ -160,7 +160,7 @@ def update_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
@@ -197,7 +197,7 @@ def delete_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
@@ -215,7 +215,7 @@ def duplicate_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     source = _get_sheet(db, app_id, sheet_id)
 
@@ -276,7 +276,7 @@ def add_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
@@ -298,7 +298,7 @@ def update_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)
@@ -324,7 +324,7 @@ def delete_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_application(db, app_id)
+    app = _get_application(db, app_id, tenant_id)
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
     _require_draft(sheet)

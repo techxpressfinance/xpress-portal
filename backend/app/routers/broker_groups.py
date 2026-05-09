@@ -37,7 +37,7 @@ def create_group(
 
     # Add initial members
     if data.member_ids:
-        brokers = db.query(User).filter(User.id.in_(data.member_ids), User.role == UserRole.broker).all()
+        brokers = db.query(User).filter(User.id.in_(data.member_ids), User.role == UserRole.broker, User.tenant_id == tenant_id).all()
         group.members = brokers
 
     db.add(group)
@@ -105,7 +105,7 @@ def add_member(
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
-    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker).first()
+    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker, User.tenant_id == tenant_id).first()
     if not broker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
 
@@ -130,7 +130,7 @@ def remove_member(
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
-    broker = db.query(User).filter(User.id == broker_id).first()
+    broker = db.query(User).filter(User.id == broker_id, User.tenant_id == tenant_id).first()
     if not broker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
 

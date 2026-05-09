@@ -18,9 +18,13 @@ from app.services.tenant_scope import get_tenant_id
 router = APIRouter(prefix="/api/clients", tags=["client-messages"])
 
 
+_VALID_VISIBILITY = {"all", "client", "internal"}
+
+
 class ClientMessageCreate(BaseModel):
     content: str
     recipient_id: str
+    visibility: str = "all"
 
 
 def _check_access(client_id: str, current_user: User, tenant_id: str, db: Session) -> None:
@@ -68,6 +72,7 @@ def _msg_out(msg: ClientMessage) -> dict:
         "recipient_id": msg.recipient_id,
         "content": msg.content,
         "is_read": msg.is_read,
+        "visibility": msg.visibility,
         "created_at": msg.created_at,
     }
 
@@ -85,6 +90,18 @@ def list_client_messages(
         ClientMessage.client_id == client_id,
         ClientMessage.tenant_id == tenant_id,
     )
+    if current_user.role == UserRole.client:
+        q = q.filter(ClientMessage.visibility.in_(["all", "client"]))
+    elif current_user.role == UserRole.referrer:
+        if peer_id:
+            q = q.filter(
+                or_(
+                    ClientMessage.author_id == peer_id,
+                    ClientMessage.recipient_id == peer_id,
+                    ClientMessage.visibility == "all",
+                )
+            )
+        peer_id = None  # already applied above for referrer
     if peer_id:
         q = q.filter(
             or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id)
@@ -110,6 +127,8 @@ def create_client_message(
     _check_access(client_id, current_user, tenant_id, db)
     if not data.content.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Content required")
+    if data.visibility not in _VALID_VISIBILITY:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid visibility value")
     recipient = db.query(User).filter(User.id == data.recipient_id).first()
     if not recipient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
@@ -133,6 +152,7 @@ def create_client_message(
         author_id=current_user.id,
         recipient_id=data.recipient_id,
         content=data.content.strip(),
+        visibility=data.visibility,
         tenant_id=tenant_id,
     )
     db.add(msg)

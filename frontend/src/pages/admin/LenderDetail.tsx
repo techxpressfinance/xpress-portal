@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
@@ -30,15 +30,15 @@ export default function LenderDetail() {
   const [contactDraft, setContactDraft] = useState<ContactDraft>(emptyDraft);
   const [savingContact, setSavingContact] = useState(false);
 
-  const fetchLender = () => {
+  const fetchLender = useCallback(() => {
     if (!id) return;
     api.get(`/lenders/${id}`)
       .then(({ data }) => setLender(data))
       .catch(() => toast('Failed to load lender', 'error'))
       .finally(() => setLoading(false));
-  };
+  }, [id, toast]);
 
-  useEffect(() => { fetchLender(); }, [id]);
+  useEffect(() => { fetchLender(); }, [fetchLender]);
 
   const startEdit = () => {
     if (!lender) return;

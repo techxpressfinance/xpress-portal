@@ -92,21 +92,21 @@ def _task_to_list_out(task: Task) -> dict:
     }
 
 
-def _validate_assignee(db: Session, user_id: str) -> User:
-    user = db.query(User).filter(User.id == user_id).first()
+def _validate_assignee(db: Session, user_id: str, tenant_id: str) -> User:
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user or user.role not in (UserRole.admin, UserRole.broker, UserRole.referrer):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee must be an admin, broker, or referrer")
     return user
 
 
-def _validate_application(db: Session, app_id: str) -> LoanApplication:
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id).first()
+def _validate_application(db: Session, app_id: str, tenant_id: str) -> LoanApplication:
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     return application
 
 
-def _get_task(db: Session, task_id: str) -> Task:
+def _get_task(db: Session, task_id: str, tenant_id: str) -> Task:
     task = (
         db.query(Task)
         .options(
@@ -115,7 +115,7 @@ def _get_task(db: Session, task_id: str) -> Task:
             joinedload(Task.application),
             joinedload(Task.checklist_items),
         )
-        .filter(Task.id == task_id)
+        .filter(Task.id == task_id, Task.tenant_id == tenant_id)
         .first()
     )
     if not task:
@@ -200,10 +200,10 @@ def create_task(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid priority: {data.priority}")
 
     if data.assigned_to_id:
-        _validate_assignee(db, data.assigned_to_id)
+        _validate_assignee(db, data.assigned_to_id, tenant_id)
 
     if data.application_id:
-        _validate_application(db, data.application_id)
+        _validate_application(db, data.application_id, tenant_id)
 
     task = Task(
         title=data.title,
@@ -244,7 +244,7 @@ def get_task(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    task = _get_task(db, task_id)
+    task = _get_task(db, task_id, tenant_id)
     return _task_to_out(task)
 
 
@@ -256,7 +256,7 @@ def update_task(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    task = _get_task(db, task_id)
+    task = _get_task(db, task_id, tenant_id)
     changes = {}
 
     if data.title is not None:
@@ -290,20 +290,20 @@ def update_task(
 
     if data.assigned_to_id is not None:
         if data.assigned_to_id:
-            _validate_assignee(db, data.assigned_to_id)
+            _validate_assignee(db, data.assigned_to_id, tenant_id)
         task.assigned_to_id = data.assigned_to_id or None
         changes["assigned_to_id"] = data.assigned_to_id
 
     if data.application_id is not None:
         if data.application_id:
-            _validate_application(db, data.application_id)
+            _validate_application(db, data.application_id, tenant_id)
         task.application_id = data.application_id or None
         changes["application_id"] = data.application_id
 
     log_activity(db, current_user.id, "task_updated", "task", task.id, changes, tenant_id=tenant_id)
     db.commit()
 
-    task = _get_task(db, task_id)
+    task = _get_task(db, task_id, tenant_id)
     return _task_to_out(task)
 
 

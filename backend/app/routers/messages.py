@@ -90,6 +90,7 @@ def get_notifications(
     for msg in client_msgs:
         sender_name = msg.author.full_name if msg.author else "Your broker"
         preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
+        link = "/messages" if current_user.role == UserRole.client else "/admin/messages"
         items.append({
             "id": msg.id,
             "type": "message",
@@ -97,7 +98,7 @@ def get_notifications(
             "body": preview,
             "is_read": msg.is_read,
             "created_at": msg.created_at.isoformat(),
-            "link": "/messages",
+            "link": link,
         })
 
     # Client alerts (for clients)
@@ -132,12 +133,12 @@ def unread_count(
 ):
     direct_count = (
         db.query(DirectMessage)
-        .filter(DirectMessage.recipient_id == current_user.id, DirectMessage.is_read == False)  # noqa: E712
+        .filter(DirectMessage.recipient_id == current_user.id, DirectMessage.is_read == False, DirectMessage.tenant_id == tenant_id)  # noqa: E712
         .count()
     )
     client_count = (
         db.query(ClientMessage)
-        .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False)  # noqa: E712
+        .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False, ClientMessage.tenant_id == tenant_id)  # noqa: E712
         .count()
     )
     return {"count": direct_count + client_count}
@@ -152,7 +153,8 @@ def list_messages(
     tenant_id: str = Depends(get_tenant_id),
 ):
     query = db.query(DirectMessage).filter(
-        or_(DirectMessage.recipient_id == current_user.id, DirectMessage.sender_id == current_user.id)
+        DirectMessage.tenant_id == tenant_id,
+        or_(DirectMessage.recipient_id == current_user.id, DirectMessage.sender_id == current_user.id),
     )
 
     total = query.count()
@@ -192,7 +194,11 @@ def list_application_note_messages(
         notes = (
             db.query(ApplicationNote)
             .join(LoanApplication, ApplicationNote.application_id == LoanApplication.id)
-            .filter(LoanApplication.user_id == current_user.id, ApplicationNote.visibility.contains("client"))
+            .filter(
+                ApplicationNote.tenant_id == tenant_id,
+                LoanApplication.user_id == current_user.id,
+                ApplicationNote.visibility.contains("client"),
+            )
             .order_by(ApplicationNote.created_at.desc())
             .all()
         )
@@ -200,7 +206,10 @@ def list_application_note_messages(
         # Referrer sees notes where visibility includes "referrer"
         notes = (
             db.query(ApplicationNote)
-            .filter(ApplicationNote.visibility.contains("referrer"))
+            .filter(
+                ApplicationNote.tenant_id == tenant_id,
+                ApplicationNote.visibility.contains("referrer"),
+            )
             .order_by(ApplicationNote.created_at.desc())
             .all()
         )
@@ -209,6 +218,7 @@ def list_application_note_messages(
         notes = (
             db.query(ApplicationNote)
             .filter(
+                ApplicationNote.tenant_id == tenant_id,
                 ApplicationNote.author_id == current_user.id,
                 ApplicationNote.visibility != "broker",
             )
@@ -285,7 +295,7 @@ def list_message_recipients(
 
 def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
     """Build per-peer conversation summaries. Each pair is (client_id, peer_id, client_name, peer_name)."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     from sqlalchemy import or_
     conversations = []
     for client_id, peer_id, client_name, peer_name in pairs:
@@ -318,7 +328,7 @@ def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
             "last_message_author_name": last_msg.author.full_name if last_msg and last_msg.author else None,
             "message_count": msg_count,
         })
-    conversations.sort(key=lambda c: c["last_message_at"] or datetime.min, reverse=True)
+    conversations.sort(key=lambda c: c["last_message_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return conversations
 
 
@@ -479,8 +489,8 @@ def send_message(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    # Validate recipient exists and is a client
-    recipient = db.query(User).filter(User.id == data.recipient_id).first()
+    # Validate recipient exists within the same tenant
+    recipient = db.query(User).filter(User.id == data.recipient_id, User.tenant_id == tenant_id).first()
     if not recipient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
 

@@ -183,6 +183,8 @@ _MIGRATIONS = [
     ("client_messages", "is_read", "BOOLEAN DEFAULT 0 NOT NULL"),
     # Assigned broker on service requests
     ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
+    # Message visibility: who can read the message beyond the direct recipient
+    ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -336,8 +338,14 @@ with engine.begin() as conn:
         import uuid as _uuid
         from datetime import datetime as _dt, timezone as _tz
         from app.services.auth import hash_password as _hash_pw
+        _DEFAULT_SA_PASSWORD = "Admin123!"
         _sa_email = _os.getenv("SUPER_ADMIN_EMAIL", "admin@xpresstech.com")
-        _sa_password = _os.getenv("SUPER_ADMIN_PASSWORD", "Admin123!")
+        _sa_password = _os.getenv("SUPER_ADMIN_PASSWORD", _DEFAULT_SA_PASSWORD)
+        if _sa_password == _DEFAULT_SA_PASSWORD and ENVIRONMENT != "development":
+            raise RuntimeError(
+                "SUPER_ADMIN_PASSWORD is still the default value. "
+                "Set a strong, unique SUPER_ADMIN_PASSWORD in your .env before running in production."
+            )
         _now = _dt.now(_tz.utc)
         conn.execute(text(
             "INSERT INTO users (id, email, password_hash, full_name, role, is_active, email_verified, auth_method, "

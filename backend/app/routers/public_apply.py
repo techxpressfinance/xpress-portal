@@ -3,14 +3,18 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.middleware.rate_limit import RateLimiter
 from app.models.loan_application import ApplicationStatus, LoanApplication
+from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/public/apply", tags=["public-apply"])
+
+_public_apply_limiter = RateLimiter(max_requests=10, window_seconds=60)
 
 
 class PublicApplyOut(BaseModel):
@@ -51,9 +55,10 @@ class PublicApplySubmit(BaseModel):
     lend_extra_data: Optional[str] = None
 
 
-def _get_draft_by_token(token: str, db: Session) -> LoanApplication:
+def _get_draft_by_token(token: str, tenant_id: str, db: Session) -> LoanApplication:
     app = db.query(LoanApplication).filter(
-        LoanApplication.client_invite_token == token
+        LoanApplication.client_invite_token == token,
+        LoanApplication.tenant_id == tenant_id,
     ).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired link")
@@ -61,8 +66,14 @@ def _get_draft_by_token(token: str, db: Session) -> LoanApplication:
 
 
 @router.get("/{token}", response_model=PublicApplyOut)
-def get_public_application(token: str, db: Session = Depends(get_db)):
-    app = _get_draft_by_token(token, db)
+def get_public_application(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    _public_apply_limiter.check(request)
+    app = _get_draft_by_token(token, tenant_id, db)
     return PublicApplyOut(
         id=app.id,
         applicant_first_name=app.applicant_first_name,
@@ -79,9 +90,12 @@ def get_public_application(token: str, db: Session = Depends(get_db)):
 def submit_public_application(
     token: str,
     data: PublicApplySubmit,
+    request: Request,
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
 ):
-    app = _get_draft_by_token(token, db)
+    _public_apply_limiter.check(request)
+    app = _get_draft_by_token(token, tenant_id, db)
     if app.status != ApplicationStatus.draft:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -237,6 +237,17 @@ const LEND_LOAN_TYPES = [
   { value: 'home_loan', label: 'Home Loan', description: 'Purchase or refinance residential property', icon: '🏠' },
 ];
 
+const CONSUMER_TYPE_TO_PURPOSE_ID: Record<string, number> = {
+  car: 20, motorcycle: 21, caravan: 22, other_vehicle: 23, personal: 24, purchase: 42, refinance: 41,
+};
+
+const COMMERCIAL_TYPE_TO_PURPOSE_ID: Record<string, number> = {
+  day_to_day_capital: 1, vehicles_or_transport: 3, machinery_or_equipment: 14, new_fit_out: 13,
+  staff_recruitment: 19, expansion: 11, renovation: 4, pay_suppliers: 15,
+  waiting_for_invoices: 18, property: 16, development_construction: 17,
+  new_business: 9, purchase_business: 10, other: 8,
+};
+
 const TOTAL_STEPS_LEND = 6;
 const maxInternalStep = 6;
 const STEP_LABELS_CONSUMER = ['Loan Details', 'Identification', 'Living & Employment', 'Financial Position', 'Declarations', 'Review'];
@@ -274,8 +285,6 @@ export default function NewApplication() {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
 
   const [tab, setTab] = useState<'consumer' | 'commercial'>('consumer');
-  const [purposeId, setPurposeId] = useState<number | ''>('');
-  const [commercialPurposeId, setCommercialPurposeId] = useState<number | ''>('');
   const [comBusinessName, setComBusinessName] = useState('');
   const [comAbn, setComAbn] = useState('');
   const [parentIndustryId, setParentIndustryId] = useState<number | ''>('');
@@ -286,6 +295,9 @@ export default function NewApplication() {
   // Selected loan sub-types for comprehensive fields
   const [selectedConsumerLoanType, setSelectedConsumerLoanType] = useState<string>('');
   const [selectedCommercialLoanType, setSelectedCommercialLoanType] = useState<string>('');
+
+  const purposeId: number | '' = CONSUMER_TYPE_TO_PURPOSE_ID[selectedConsumerLoanType] ?? '';
+  const commercialPurposeId: number | '' = COMMERCIAL_TYPE_TO_PURPOSE_ID[selectedCommercialLoanType] ?? '';
 
   const pendingFileInput = useRef<HTMLInputElement>(null);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
@@ -1063,6 +1075,20 @@ export default function NewApplication() {
               </>
             ) : (
               <>
+                {/* Consumer / Commercial Tab Switcher */}
+                <div className="flex rounded-xl bg-secondary p-1 gap-1">
+                  {(['consumer', 'commercial'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTab(t)}
+                      className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                      {t === 'consumer' ? 'Consumer' : 'Commercial'}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Consumer Loan Types with Comprehensive Fields */}
                 {tab === 'consumer' && (
                   <GlassCard className="space-y-4">

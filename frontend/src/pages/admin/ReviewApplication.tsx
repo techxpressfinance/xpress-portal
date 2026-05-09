@@ -684,22 +684,327 @@ export default function ReviewApplication() {
                       </div>
                     </div>
                   ) : (
-                    <dl className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-xl bg-secondary p-4">
-                        <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
-                        <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                    <dl className="space-y-6">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="rounded-xl bg-secondary p-4">
+                          <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
+                          <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                        </div>
+                        <div className="rounded-xl bg-secondary p-4">
+                          <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
+                          <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type.replace(/_/g, ' ')}</dd>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-secondary p-4">
-                        <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
-                        <dd className="mt-1 text-[28px] font-semibold text-foreground capitalize tracking-tight">{application.loan_type}</dd>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <dt className="text-[12px] text-muted-foreground">Loan Term</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                            {application.loan_term_requested
+                              ? `${Math.floor(application.loan_term_requested / 12)}y ${application.loan_term_requested % 12}m`
+                              : '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-[12px] text-muted-foreground">Loan Purpose ID</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.loan_purpose_id ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[12px] text-muted-foreground">Created</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{formatDate(application.created_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[12px] text-muted-foreground">Last Updated</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{formatDate(application.updated_at)}</dd>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <dt className="text-[12px] text-muted-foreground">Notes</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.notes || '—'}</dd>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-secondary p-4">
-                        <dt className="text-[13px] font-medium text-muted-foreground">Created</dt>
-                        <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.created_at)}</dd>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Personal</h3>
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Title</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_title || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">First Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_first_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Middle Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_middle_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Last Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_last_name || '—'}</dd>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3 mt-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Date of Birth</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Gender</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Marital Status</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status || '—'}</dd>
+                          </div>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-secondary p-4">
-                        <dt className="text-[13px] font-medium text-muted-foreground">Last Updated</dt>
-                        <dd className="mt-1 text-[14px] font-semibold text-foreground">{formatDate(application.updated_at)}</dd>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Address</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="sm:col-span-3">
+                            <dt className="text-[12px] text-muted-foreground">Street Address</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_address || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Suburb</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_suburb || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">State</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_state || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Postcode</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_postcode || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Contact</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Email</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_email || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Mobile</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_mobile || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Preferred Contact</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.preferred_contact_method || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Identification & Residency</h3>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">ID Expiry Date</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.id_expiry_date || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Residency Status</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Living Situation</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Residential Status</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.residential_status || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Time at Address</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.time_at_address || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Dependants</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_num_dependants ?? '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Has Partner</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.has_partner === null ? '—' : application.has_partner ? 'Yes' : 'No'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Partner Working</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.partner_working === null ? '—' : application.partner_working ? 'Yes' : 'No'}
+                            </dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Employment</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Employment Category</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employment_category || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Employer Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employer_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Industry</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.employer_industry || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Job Title</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.job_title || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Income Frequency</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.income_frequency || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Gross Income</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString()}` : '—'}
+                            </dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Business</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Business Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">ABN</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_abn || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Registration Date</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_registration_date || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Industry ID</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_industry_id ?? '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Monthly Sales</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.business_monthly_sales != null ? `$${Number(application.business_monthly_sales).toLocaleString()}` : '—'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Trading Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.trading_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Business Structure</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_structure || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">GST Registered</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.gst_registered === null ? '—' : application.gst_registered ? 'Yes' : 'No'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Directors</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.num_directors ?? '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Time Trading</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.time_trading || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Declarations</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Previously Declined</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.previously_declined === null ? '—' : application.previously_declined ? 'Yes' : 'No'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Change of Circumstances</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.change_of_circumstances === null ? '—' : application.change_of_circumstances ? 'Yes' : 'No'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Signature Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.signature_name || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Emergency Contact</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_name || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Relationship</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_relationship || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Phone</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_phone || '—'}</dd>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Lend Controls</h3>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Product Type ID</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_product_type_id ?? '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Owner Type</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_owner_type || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Send Type</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_send_type || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Who to Contact</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_who_to_contact || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Lend Ref</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_ref || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Sync Status</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_sync_status || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[12px] text-muted-foreground">Synced At</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {application.lend_synced_at ? formatDateTime(application.lend_synced_at) : '—'}
+                            </dd>
+                          </div>
+                          {application.lend_sync_error && (
+                            <div className="sm:col-span-3">
+                              <dt className="text-[12px] text-muted-foreground">Sync Error</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium text-destructive">{application.lend_sync_error}</dd>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </dl>
                   )}
