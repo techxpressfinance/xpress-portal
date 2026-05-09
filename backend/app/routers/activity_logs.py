@@ -82,6 +82,7 @@ def list_application_activity(
             ActivityLog.tenant_id == tenant_id,
         )
         .order_by(ActivityLog.created_at.desc())
+        .limit(200)
         .all()
     )
 

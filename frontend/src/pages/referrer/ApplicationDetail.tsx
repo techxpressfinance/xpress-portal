@@ -8,7 +8,7 @@ import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
-import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
+import { getErrorMessage, formatDate, formatTime, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS } from '../../lib/constants';
 import type { ApplicationNote, ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
@@ -611,8 +611,8 @@ export default function ReferrerApplicationDetail() {
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-medium text-foreground">{req.description}</p>
                             <p className="text-[11px] text-muted-foreground mt-0.5">
-                              Requested by {req.requested_by_name} &middot; {new Date(req.created_at).toLocaleDateString()}
-                              {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${new Date(req.fulfilled_at).toLocaleDateString()}`}
+                              Requested by {req.requested_by_name} &middot; {formatDate(req.created_at)}
+                              {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${formatDate(req.fulfilled_at)}`}
                             </p>
                           </div>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${req.status === 'fulfilled' ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
@@ -769,7 +769,7 @@ export default function ReferrerApplicationDetail() {
                               <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
                                 <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
                                 <span className="text-[11px] text-muted-foreground">
-                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatTime(msg.created_at)}
                                 </span>
                               </div>
                               <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn
@@ -852,7 +852,7 @@ export default function ReferrerApplicationDetail() {
                             <div className="flex items-center justify-between px-1">
                               <span className="text-[12px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
                               <span className="text-[11px] text-muted-foreground">
-                                {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {formatTime(note.created_at)}
                               </span>
                             </div>
                             <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed text-foreground ${isPersonal ? 'bg-amber-500/8 border border-amber-500/20' : 'bg-secondary/60'}`}>

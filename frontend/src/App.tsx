@@ -16,6 +16,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const BrokerManagement = lazy(() => import('./pages/admin/BrokerManagement'));
+const BrokerGroups = lazy(() => import('./pages/admin/BrokerGroups'));
 const ReferrerManagement = lazy(() => import('./pages/admin/ReferrerManagement'));
 const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderDetail = lazy(() => import('./pages/admin/LenderDetail'));
@@ -227,6 +228,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/admin/broker-groups"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <BrokerGroups />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin/lender-analytics"
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
@@ -237,7 +246,7 @@ export default function App() {
               <Route
                 path="/admin/lenders"
                 element={
-                  <ProtectedRoute roles={['admin']}>
+                  <ProtectedRoute roles={['admin', 'broker']}>
                     <LenderManagement />
                   </ProtectedRoute>
                 }

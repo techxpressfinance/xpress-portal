@@ -87,6 +87,7 @@ export interface LoanApplication {
   // Overflow JSON
   lend_extra_data: string | null;
   // Extended applicant fields
+  applicant_email: string | null;
   applicant_mobile: string | null;
   preferred_contact_method: string | null;
   id_expiry_date: string | null;
@@ -403,6 +404,18 @@ export interface BrokerGroup {
   members: BrokerGroupMember[];
 }
 
+export type NotificationType = 'message' | 'alert' | 'status_change';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+  link: string;
+}
+
 export type LenderSubmissionStatus = 'pending' | 'approved' | 'declined' | 'conditional' | 'withdrawn';
 
 export interface LenderContact {
@@ -684,6 +697,8 @@ export interface ServiceRequest {
   client_id: string;
   client_name: string | null;
   client_email: string | null;
+  assigned_broker_id: string | null;
+  assigned_broker_name: string | null;
   created_at: string;
   updated_at: string;
 }

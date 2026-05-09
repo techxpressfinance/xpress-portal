@@ -1063,26 +1063,6 @@ export default function NewApplication() {
               </>
             ) : (
               <>
-                {/* Consumer/Commercial Tabs */}
-                <div className="flex gap-1 p-1 rounded-xl bg-secondary w-fit">
-                  {(['consumer', 'commercial'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setTab(t);
-                        setPurposeId('');
-                        setCommercialPurposeId('');
-                        setSelectedConsumerLoanType('');
-                        setSelectedCommercialLoanType('');
-                      }}
-                      className={`px-5 py-2 rounded-lg text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                      {t === 'consumer' ? 'Consumer Loan' : 'Commercial Loan'}
-                    </button>
-                  ))}
-                </div>
-
                 {/* Consumer Loan Types with Comprehensive Fields */}
                 {tab === 'consumer' && (
                   <GlassCard className="space-y-4">
@@ -1259,7 +1239,6 @@ export default function NewApplication() {
                   </GlassCard>
                 )}
 
-                {/* Commercial Loan Types with Comprehensive Fields */}
                 {tab === 'commercial' && (
                   <GlassCard className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-foreground">Business & Loan Details</h3>

@@ -89,7 +89,7 @@ def list_client_messages(
         q = q.filter(
             or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id)
         )
-    msgs = q.order_by(ClientMessage.created_at.asc()).all()
+    msgs = q.order_by(ClientMessage.created_at.asc()).limit(500).all()
     # Mark received messages as read
     unread = [m for m in msgs if m.recipient_id == current_user.id and not m.is_read]
     if unread:

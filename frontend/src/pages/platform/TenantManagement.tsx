@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { PageHeader, Badge, Button } from '../../components/ui';
+import { formatDate } from '../../lib/utils';
 
 interface Tenant {
   id: string;
@@ -104,7 +105,7 @@ export default function TenantManagement() {
                     <Badge type="custom" value={t.is_active ? 'Active' : 'Inactive'} className={t.is_active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'} />
                   </td>
                   <td className="px-5 py-3.5 text-[13px] text-muted-foreground">
-                    {new Date(t.created_at).toLocaleDateString()}
+                    {formatDate(t.created_at)}
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-2">

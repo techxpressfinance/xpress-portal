@@ -3,6 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
+import { formatDateTime } from '../../lib/utils';
 import type { ActivityLog, User } from '../../types';
 
 
@@ -192,7 +193,7 @@ export default function ActivityLogs() {
                       </p>
                     </div>
                     <span className="text-[12px] text-muted-foreground whitespace-nowrap pt-1">
-                      {new Date(log.created_at).toLocaleString()}
+                      {formatDateTime(log.created_at)}
                     </span>
                   </div>
                 );

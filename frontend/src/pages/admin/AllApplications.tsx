@@ -373,7 +373,7 @@ export default function AllApplications() {
                   const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
                   const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
                   const firstBroker = app.assigned_brokers?.[0];
-                  const isDirectLead = app.user_role === 'referrer';
+                  const isDirectLead = app.user_role === 'referrer' || (app.user_role === 'broker' && !!(app.applicant_first_name || app.applicant_last_name));
                   const clientName = isDirectLead
                     ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
                     : app.user_name || 'Unknown';

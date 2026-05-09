@@ -5,7 +5,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, StatCard, Badge, PageHeader, Button } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
-import type { Invitation, LoanApplication, LoanType, PaginatedResponse, User } from '../../types';
+import type { Invitation, LoanApplication, LoanType, PaginatedResponse, ServiceRequest, ServiceRequestStatus, User } from '../../types';
+
+const DONE_SR: ServiceRequestStatus[] = ['resolved', 'closed'];
+const SR_STATUS_COLOR: Record<ServiceRequestStatus, string> = {
+  pending: 'text-amber-600 bg-amber-50 border-amber-200',
+  in_progress: 'text-blue-600 bg-blue-50 border-blue-200',
+  resolved: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+  closed: 'text-muted-foreground bg-secondary border-border',
+};
+const SR_STATUS_LABEL: Record<ServiceRequestStatus, string> = {
+  pending: 'Pending', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed',
+};
 
 type PendingAction =
   | { type: 'role'; userId: string; userName: string; from: string; to: string }
@@ -53,6 +64,11 @@ export default function UserManagement() {
   const [historyPage, setHistoryPage] = useState(1);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const perPage = 10;
+
+  // Client service requests panel
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [clientRequests, setClientRequests] = useState<ServiceRequest[]>([]);
+  const [clientRequestsLoading, setClientRequestsLoading] = useState(false);
 
   useEffect(() => {
     api.get('/users')
@@ -177,6 +193,16 @@ export default function UserManagement() {
     }
   };
 
+  const handleViewClientRequests = (clientId: string) => {
+    if (selectedClientId === clientId) { setSelectedClientId(null); return; }
+    setSelectedClientId(clientId);
+    setClientRequestsLoading(true);
+    api.get(`/service-requests?client_id=${clientId}&per_page=50`)
+      .then(({ data }) => setClientRequests(data.items))
+      .catch(() => toast('Failed to load service requests', 'error'))
+      .finally(() => setClientRequestsLoading(false));
+  };
+
   const totalPages = Math.ceil(historyTotal / perPage);
 
   return (
@@ -260,6 +286,14 @@ export default function UserManagement() {
                       <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(user.created_at)}</td>
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleViewClientRequests(user.id)}
+                            className={selectedClientId === user.id ? 'ring-1 ring-primary' : ''}
+                          >
+                            Requests
+                          </Button>
                           {user.auth_method === 'code' && !isSelf && (
                             <Button variant="secondary" size="sm" onClick={() => handleResendCode(user)}>Resend Code</Button>
                           )}
@@ -281,6 +315,68 @@ export default function UserManagement() {
           </div>
         )}
       </GlassCard>
+
+      {/* Client Service Requests Panel */}
+      {selectedClientId && (() => {
+        const client = users.find((u) => u.id === selectedClientId);
+        const active = clientRequests.filter((r) => !DONE_SR.includes(r.status));
+        const done = clientRequests.filter((r) => DONE_SR.includes(r.status));
+        return (
+          <GlassCard padding="none" className="mb-8">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="text-[15px] font-semibold text-foreground">
+                  Service Requests — {client?.full_name}
+                </h3>
+                <p className="text-[13px] text-muted-foreground mt-0.5">
+                  {clientRequestsLoading ? 'Loading...' : `${active.length} active · ${done.length} completed`}
+                </p>
+              </div>
+              <button onClick={() => setSelectedClientId(null)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {clientRequestsLoading ? (
+              <div className="p-4 space-y-3">
+                {[1, 2].map((i) => <div key={i} className="h-10 rounded-lg shimmer" />)}
+              </div>
+            ) : clientRequests.length === 0 ? (
+              <div className="px-5 py-8 text-center text-[13px] text-muted-foreground">No service requests from this client</div>
+            ) : (
+              <div className="divide-y divide-border">
+                {clientRequests.map((req) => {
+                  const isDone = DONE_SR.includes(req.status);
+                  const label = req.request_type === 'Other' && req.custom_request ? req.custom_request : req.request_type;
+                  return (
+                    <div key={req.id} className={`flex items-center gap-3 px-5 py-3 ${isDone ? 'opacity-60' : ''}`}>
+                      <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                        isDone ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-primary/40'
+                      }`}>
+                        {isDone && (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-[13px] font-medium ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{label}</span>
+                        {req.description && <span className="ml-2 text-[12px] text-muted-foreground line-clamp-1">{req.description}</span>}
+                      </div>
+                      {req.assigned_broker_name && (
+                        <span className="text-[12px] text-muted-foreground shrink-0">{req.assigned_broker_name}</span>
+                      )}
+                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded border shrink-0 ${SR_STATUS_COLOR[req.status]}`}>
+                        {SR_STATUS_LABEL[req.status]}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">{formatDate(req.created_at)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </GlassCard>
+        );
+      })()}
 
       {/* Invite & Onboarding */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Invite & Onboarding</h3>

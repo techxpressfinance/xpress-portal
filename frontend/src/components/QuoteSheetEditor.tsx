@@ -38,6 +38,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   non_taxable_charges: 0,
   luxury_car_tax: 0,
   fees_financed: true,
+  selected_terms: [...TERMS],
   show_interest_rate: false,
 };
 
@@ -273,6 +274,14 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
       ...prev,
       balloon_percentages: { ...prev.balloon_percentages, [term]: value },
     }));
+  };
+
+  const toggleTerm = (term: number) => {
+    setInputs(prev => {
+      const current = prev.selected_terms ?? TERMS;
+      const next = current.includes(term) ? current.filter(t => t !== term) : [...current, term];
+      return { ...prev, selected_terms: next };
+    });
   };
 
   // Derived values
@@ -686,6 +695,30 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               />
             ))}
           </div>
+        </div>
+
+        {/* ── Terms to Show Client ─────────────────────────────────── */}
+        <div className="border border-border rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Terms to Show Client</h3>
+          <div className="flex flex-wrap gap-3">
+            {TERMS.map(t => {
+              const isSelected = (inputs.selected_terms ?? TERMS).includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => toggleTerm(t)}
+                  className={`h-[40px] px-5 rounded-xl text-sm font-medium transition-colors border ${isSelected
+                    ? 'bg-primary/10 text-primary border-primary/30'
+                    : 'bg-muted text-muted-foreground border-transparent opacity-50'
+                  }`}
+                >
+                  {t} Year
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Only selected terms appear in the client PDF. Toggle to include or exclude.</p>
         </div>
 
         {/* ── Live Preview ─────────────────────────────────────────── */}

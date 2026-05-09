@@ -1,10 +1,12 @@
+import io
 import os
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import ONEDRIVE_ENABLED
@@ -104,6 +106,8 @@ def upload_document(
         tenant_id=tenant_id,
     )
     db.add(doc)
+    db.flush()
+    log_activity(db, current_user.id, "document_uploaded", "document", doc.id, {"filename": display_name, "doc_type": doc_type.value, "application_id": application_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(doc)
 
@@ -132,6 +136,52 @@ def upload_document(
     )
 
     return doc
+
+
+@router.get("/application/{application_id}/download-all")
+def download_all_documents(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    docs = db.query(Document).filter(Document.application_id == application_id).all()
+    if not docs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No documents found for this application")
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        seen: dict[str, int] = {}
+        for doc in docs:
+            contents = download_file(doc.file_path)
+            name = doc.original_filename or f"document_{doc.id[:8]}"
+            if name in seen:
+                seen[name] += 1
+                base, ext = os.path.splitext(name)
+                name = f"{base}_{seen[name]}{ext}"
+            else:
+                seen[name] = 0
+            zf.writestr(name, contents)
+    zip_buffer.seek(0)
+
+    first_name = application.applicant_first_name or ""
+    last_name = application.applicant_last_name or ""
+    applicant = f"{first_name} {last_name}".strip() or application.id[:8]
+    safe = "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in applicant).strip()
+    zip_filename = f"{safe}-documents.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
 
 
 @router.get("/application/{application_id}", response_model=list[DocumentOut])
@@ -169,6 +219,7 @@ def delete_document(
     # Remove file from storage
     delete_file(doc.file_path)
 
+    log_activity(db, current_user.id, "document_deleted", "document", doc_id, {"filename": doc.original_filename, "doc_type": doc.doc_type.value, "application_id": doc.application_id}, tenant_id=tenant_id)
     db.delete(doc)
     db.commit()
 
@@ -318,6 +369,7 @@ def fulfill_document_request(
 
     req.status = "fulfilled"
     req.fulfilled_at = datetime.now(timezone.utc)
+    log_activity(db, current_user.id, "document_request_fulfilled", "application", req.application_id, {"request_id": request_id, "description": req.description}, tenant_id=tenant_id)
     db.commit()
     db.refresh(req)
     return _serialize_request(req)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -31,11 +31,17 @@ def get_dashboard_stats(
     def scoped(q):
         q = q.filter(LoanApplication.tenant_id == tenant_id)
         if current_user.role == UserRole.broker:
+            referrer_ids = db.query(User.id).filter(
+                User.role == UserRole.referrer, User.tenant_id == tenant_id
+            )
             return q.filter(
-                LoanApplication.id.in_(
-                    db.query(ApplicationBroker.application_id).filter(
-                        ApplicationBroker.broker_id == current_user.id
-                    )
+                or_(
+                    LoanApplication.id.in_(
+                        db.query(ApplicationBroker.application_id).filter(
+                            ApplicationBroker.broker_id == current_user.id
+                        )
+                    ),
+                    LoanApplication.user_id.in_(referrer_ids),
                 )
             )
         return q

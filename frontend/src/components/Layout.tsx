@@ -5,8 +5,9 @@ import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
-import PageTransition from './PageTransition';
 import GlobalSearch from './GlobalSearch';
+import NotificationCenter from './NotificationCenter';
+import PageTransition from './PageTransition';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
   `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border ${isActive
@@ -20,7 +21,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { theme, toggle: toggleTheme } = useTheme();
   const brandName = tenant?.name || 'Xpress Finance';
-  const defaultLogo = theme === 'dark' ? '/xpress-dark.png' : '/xpress.png';
+  const defaultLogo = theme === 'dark' ? '/xpress-dark.svg' : '/xpress-light.svg';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
@@ -73,7 +74,7 @@ export default function Layout() {
         style={sidebarOpen ? { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)', animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)' }}
       >
         {/* Logo */}
-        <div className="flex h-20 items-center px-2">
+        <div className="flex h-24 items-center px-2">
           <Link to="/" className="flex h-full w-full items-center" onClick={() => setSidebarOpen(false)}>
             <img
               src={tenant?.logo_url || defaultLogo}
@@ -225,12 +226,10 @@ export default function Layout() {
                   <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
                   {!collapsed && 'Analytics'}
                 </NavLink>
-                {user?.role === 'admin' && (
-                  <NavLink to="/admin/lenders" className={linkClass} title="Lenders">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>
-                    {!collapsed && 'Lenders'}
-                  </NavLink>
-                )}
+                <NavLink to="/admin/lenders" className={linkClass} title="Lenders">
+                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>
+                  {!collapsed && 'Lenders'}
+                </NavLink>
               </div>
 
               <div className="led-nav-group">
@@ -259,11 +258,18 @@ export default function Layout() {
                     {!collapsed && 'Referrers'}
                   </NavLink>
                 )}
+                {user?.role === 'admin' && (
+                  <NavLink to="/admin/broker-groups" className={linkClass} title="Broker Groups">
+                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                    {!collapsed && 'Broker Groups'}
+                  </NavLink>
+                )}
               </div>
             </>
           )}
 
           <div className="!mt-5 !pt-4 border-t border-border">
+            {!isSuperAdmin && <NotificationCenter collapsed={collapsed} />}
             <NavLink to="/profile" className={linkClass} title="Profile">
               <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
               {!collapsed && 'Profile'}
@@ -356,7 +362,7 @@ export default function Layout() {
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
           </button>
-          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-7 w-auto object-contain" />
+          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-9 w-auto object-contain" />
         </header>
 
         {/* Page content */}

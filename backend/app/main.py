@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import ENCODERS_BY_TYPE
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
+
+# SQLite stores datetimes as timezone-naive text. Stamp UTC on every datetime
+# before JSON serialisation so JavaScript parses them correctly.
+ENCODERS_BY_TYPE[datetime] = lambda dt: (
+    dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+).isoformat()
 
 from app.config import CORS_ORIGINS, DATABASE_URL, ENVIRONMENT
 from app.database import Base, engine
@@ -26,16 +34,17 @@ from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ens
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
+from app.models.application_calculator import ApplicationCalculator  # noqa: F401 — ensure table is created
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
 )
 
 Base.metadata.create_all(bind=engine)
@@ -165,12 +174,15 @@ _MIGRATIONS = [
     ("loan_applications", "emergency_contact_relationship", "VARCHAR(100)"),
     ("loan_applications", "emergency_contact_phone", "VARCHAR(20)"),
     ("loan_applications", "client_engagement_model", "VARCHAR(20)"),
+    ("loan_applications", "applicant_email", "VARCHAR(200)"),
     # Client invite magic-link
     ("loan_applications", "client_invite_token", "VARCHAR(64)"),
     ("loan_applications", "client_invite_email", "VARCHAR(200)"),
     ("loan_applications", "client_invite_sent_at", "TIMESTAMP"),
     # Unread tracking for client messages
     ("client_messages", "is_read", "BOOLEAN DEFAULT 0 NOT NULL"),
+    # Assigned broker on service requests
+    ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -421,6 +433,7 @@ app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
 app.include_router(contacts.router)
 app.include_router(service_requests.router)
+app.include_router(application_calculators.router)
 app.include_router(public_apply.router)
 
 

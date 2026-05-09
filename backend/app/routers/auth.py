@@ -96,6 +96,8 @@ def register(
         email_verification_token_expires_at=token_expires,
     )
     db.add(user)
+    db.flush()
+    log_activity(db, user.id, "registered", "user", user.id, {"email": data.email, "full_name": data.full_name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
 
@@ -239,7 +241,7 @@ def change_password(
 
     current_user.password_hash = hash_password(data.new_password)
     blacklist_all_user_tokens(current_user.id, db)
-    log_activity(db, current_user.id, "password_changed", "user", current_user.id)
+    log_activity(db, current_user.id, "password_changed", "user", current_user.id, tenant_id=current_user.tenant_id)
     db.commit()
 
     return {"message": "Password changed. Please log in again."}

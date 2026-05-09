@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
@@ -11,6 +10,7 @@ from app.config import EMAIL_ENABLED
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.application_note import ApplicationNote
+from app.models.client_alert import ClientAlert
 from app.models.client_message import ClientMessage
 from app.models.direct_message import DirectMessage
 from app.models.external_referral import ExternalReferral
@@ -19,7 +19,7 @@ from app.models.referral import Referral
 from app.models.user import User
 from app.models.user import UserRole
 from app.schemas.message import ApplicationNoteMessageOut, MessageCreate, MessageOut, MessageRecipientOut, PaginatedMessages
-from app.services.email import _send_email
+from app.services.email import _send_async
 from app.services.tenant_scope import get_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,89 @@ def _message_to_out(msg: DirectMessage) -> MessageOut:
         is_read=msg.is_read,
         created_at=msg.created_at,
     )
+
+
+@router.get("/notifications")
+def get_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    items: list[dict] = []
+
+    # Unread direct messages
+    msgs = (
+        db.query(DirectMessage)
+        .filter(
+            DirectMessage.recipient_id == current_user.id,
+            DirectMessage.is_read == False,  # noqa: E712
+            DirectMessage.tenant_id == tenant_id,
+        )
+        .order_by(DirectMessage.created_at.desc())
+        .limit(15)
+        .all()
+    )
+    for msg in msgs:
+        sender_name = msg.sender.full_name if msg.sender else "Someone"
+        preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
+        link = "/messages" if current_user.role == UserRole.client else "/admin/messages"
+        items.append({
+            "id": msg.id,
+            "type": "message",
+            "title": f"Message from {sender_name}",
+            "body": msg.subject or preview,
+            "is_read": msg.is_read,
+            "created_at": msg.created_at.isoformat(),
+            "link": link,
+        })
+
+    # Unread client messages (for clients)
+    client_msgs = (
+        db.query(ClientMessage)
+        .filter(
+            ClientMessage.recipient_id == current_user.id,
+            ClientMessage.is_read == False,  # noqa: E712
+            ClientMessage.tenant_id == tenant_id,
+        )
+        .order_by(ClientMessage.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    for msg in client_msgs:
+        sender_name = msg.author.full_name if msg.author else "Your broker"
+        preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
+        items.append({
+            "id": msg.id,
+            "type": "message",
+            "title": f"Message from {sender_name}",
+            "body": preview,
+            "is_read": msg.is_read,
+            "created_at": msg.created_at.isoformat(),
+            "link": "/messages",
+        })
+
+    # Client alerts (for clients)
+    if current_user.role == UserRole.client:
+        alerts = (
+            db.query(ClientAlert)
+            .filter(ClientAlert.client_id == current_user.id, ClientAlert.tenant_id == tenant_id)
+            .order_by(ClientAlert.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        for alert in alerts:
+            items.append({
+                "id": alert.id,
+                "type": "alert",
+                "title": "Update from your broker",
+                "body": alert.content[:100] + ("..." if len(alert.content) > 100 else ""),
+                "is_read": False,
+                "created_at": alert.created_at.isoformat(),
+                "link": "/applications",
+            })
+
+    items.sort(key=lambda x: x["created_at"], reverse=True)
+    return items[:20]
 
 
 @router.get("/unread-count")
@@ -459,12 +542,7 @@ def send_message(
                 f"Log in to your Xpress Finance Portal account to reply.\n\n"
                 f"Best regards,\nXpress Finance Team"
             )
-        thread = threading.Thread(
-            target=_send_email,
-            args=(recipient.email, f"New Message: {data.subject} - Xpress Finance Portal", body),
-            daemon=True,
-        )
-        thread.start()
+        _send_async(recipient.email, f"New Message: {data.subject} - Xpress Finance Portal", body)
     else:
         logger.debug("Email not configured, skipping message notification to %s", recipient.email)
 

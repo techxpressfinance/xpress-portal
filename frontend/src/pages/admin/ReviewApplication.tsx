@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
+import ApplicationCalculators from '../../components/ApplicationCalculators';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
@@ -12,7 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
-import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
+import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
@@ -49,6 +50,10 @@ export default function ReviewApplication() {
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'submissions' | 'quotes' | 'messages' | 'activity'>('overview');
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadingAppPdf, setDownloadingAppPdf] = useState(false);
+  const [pdfRenderApp, setPdfRenderApp] = useState(false);
 
   // Document requests state
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
@@ -244,6 +249,44 @@ export default function ReviewApplication() {
 
   const handleDownloadDoc = (doc: Document) => downloadFile(doc.id, doc.original_filename);
 
+  const handleDownloadAll = async () => {
+    if (!id) return;
+    setDownloadingAll(true);
+    let url: string | null = null;
+    let a: HTMLAnchorElement | null = null;
+    try {
+      const { data } = await api.get(`/documents/application/${id}/download-all`, { responseType: 'blob' });
+      url = URL.createObjectURL(data);
+      a = document.createElement('a');
+      a.href = url;
+      a.download = `application-${id.slice(0, 8)}-documents.zip`;
+      document.body.appendChild(a);
+      a.click();
+    } catch {
+      toast('Failed to download documents', 'error');
+    } finally {
+      if (a?.parentNode) document.body.removeChild(a);
+      if (url) URL.revokeObjectURL(url);
+      setDownloadingAll(false);
+    }
+  };
+
+  const handleDownloadAppPdf = async () => {
+    if (!application) return;
+    setDownloadingAppPdf(true);
+    setPdfRenderApp(true);
+    await new Promise(r => setTimeout(r, 150));
+    try {
+      const filename = `application-${application.id.split('-')[0].toUpperCase()}.pdf`;
+      await downloadQuoteSheetPdf('application-pdf-render', filename);
+    } catch {
+      toast('Failed to generate PDF', 'error');
+    } finally {
+      setPdfRenderApp(false);
+      setDownloadingAppPdf(false);
+    }
+  };
+
   const handleVerifyDoc = async (docId: string) => {
     try {
       const { data } = await api.patch(`/documents/${docId}/verify`);
@@ -407,11 +450,15 @@ export default function ReviewApplication() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
+      <div className="flex items-center justify-between mb-6">
         <Link to="/admin/applications" className="inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-primary transition-colors" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
           Back to All Applications
         </Link>
+        <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
+          <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+          Download PDF
+        </Button>
       </div>
 
       {/* Status Timeline */}
@@ -1103,8 +1150,8 @@ export default function ReviewApplication() {
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-medium text-foreground">{req.description}</p>
                             <p className="text-[11px] text-muted-foreground mt-0.5">
-                              Requested by {req.requested_by_name} &middot; {new Date(req.created_at).toLocaleDateString()}
-                              {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${new Date(req.fulfilled_at).toLocaleDateString()}`}
+                              Requested by {req.requested_by_name} &middot; {formatDate(req.created_at)}
+                              {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${formatDate(req.fulfilled_at)}`}
                             </p>
                           </div>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${req.status === 'fulfilled' ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
@@ -1153,6 +1200,18 @@ export default function ReviewApplication() {
                           </div>
                           <div className="h-4 w-[1px] bg-border" />
                         </>
+                      )}
+                      {documents.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8"
+                          onClick={handleDownloadAll}
+                          loading={downloadingAll}
+                        >
+                          <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                          Download All
+                        </Button>
                       )}
                       <Button
                         size="sm"
@@ -1566,7 +1625,7 @@ export default function ReviewApplication() {
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                                   </button>
-                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDate(msg.created_at)} &middot; {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(msg.created_at)}</span>
                                 </div>
                               </div>
                               <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-primary/10 text-primary border border-primary/20">
@@ -1655,7 +1714,7 @@ export default function ReviewApplication() {
                                     >
                                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                                     </button>
-                                    <span className="text-[11px] font-medium text-muted-foreground">{formatDate(note.created_at)} &middot; {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(note.created_at)}</span>
                                   </div>
                                 </div>
                                 <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed text-foreground border ${isPersonal ? 'bg-amber-500/8 border-amber-500/20' : 'bg-secondary/40 border-transparent'}`}>
@@ -1763,7 +1822,7 @@ export default function ReviewApplication() {
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                                   </button>
-                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDate(alert.created_at)} &middot; {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(alert.created_at)}</span>
                                 </div>
                               </div>
                               <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-destructive/8 text-foreground border border-destructive/20">
@@ -1872,6 +1931,7 @@ export default function ReviewApplication() {
                     <QuoteSheetComparison quoteSheet={viewingQuoteSheet} showBrokerNotes />
                   </GlassCard>
                 ) : (
+                  <>
                   <GlassCard>
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
@@ -2003,6 +2063,8 @@ export default function ReviewApplication() {
                       </div>
                     )}
                   </GlassCard>
+                  <ApplicationCalculators applicationId={id!} />
+                  </>
                 )}
 
                 {/* On-demand off-screen render for PDF capture */}
@@ -2264,6 +2326,263 @@ export default function ReviewApplication() {
           )}
         </div>
       </div>
+
+      {/* Off-screen application PDF render */}
+      {pdfRenderApp && (() => {
+        let extraData: Record<string, unknown> = {};
+        try { if (application.lend_extra_data) extraData = JSON.parse(application.lend_extra_data); } catch {}
+        const loanDetails = extraData.loan_type_details as Record<string, unknown> | undefined;
+        const idEntry = Array.isArray(extraData.identification) ? (extraData.identification as Array<Record<string, string>>)[0] : null;
+        const empEntry = Array.isArray(extraData.employments) ? (extraData.employments as Array<Record<string, string>>)[0] : null;
+        const incomes = Array.isArray(extraData.incomes) ? (extraData.incomes as Array<{income_type?: string; amount?: number; frequency?: string}>).filter(i => (i.amount ?? 0) > 0) : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const realEstateAssets: Array<Record<string, any>> = Array.isArray((extraData.assets as Record<string, unknown> | undefined)?.real_estate) ? (extraData.assets as Record<string, unknown[]>).real_estate as Array<Record<string, any>> : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const otherAssets: Array<Record<string, any>> = Array.isArray((extraData.assets as Record<string, unknown> | undefined)?.other) ? (extraData.assets as Record<string, unknown[]>).other as Array<Record<string, any>> : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const liabs: Array<Record<string, any>> = Array.isArray(extraData.liabilities) ? extraData.liabilities as Array<Record<string, any>> : [];
+        const expenses = extraData.expenses as Record<string, number> | undefined;
+
+        const S = { section: { marginBottom: '20px' } as CSSProperties, h2: { fontSize: '13px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '8px', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px' }, grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } as CSSProperties, cell: { background: '#f9fafb', borderRadius: '8px', padding: '8px 10px' } as CSSProperties, label: { fontSize: '11px', color: '#9ca3af', fontWeight: 600 } as CSSProperties, value: { fontSize: '13px', color: '#111827', fontWeight: 500, marginTop: '2px' } as CSSProperties };
+
+        return (
+          <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '32px', fontFamily: 'system-ui, sans-serif', color: '#111827' }}>
+            <div id="application-pdf-render">
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '2px solid #e5e7eb', paddingBottom: '16px' }}>
+                <div>
+                  <h1 style={{ fontSize: '20px', fontWeight: 700, textTransform: 'capitalize', marginBottom: '4px' }}>{application.loan_type.replace(/_/g, ' ')} Loan Application</h1>
+                  {application.lend_ref && <p style={{ fontSize: '12px', color: '#6b7280' }}>Lend Ref: {application.lend_ref}</p>}
+                  <p style={{ fontSize: '12px', color: '#6b7280' }}>Ref: {application.id.split('-')[0].toUpperCase()} · Submitted {formatDate(application.created_at)}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Status</p>
+                  <p style={{ fontSize: '13px', fontWeight: 700, textTransform: 'capitalize', color: '#111827' }}>{application.status.replace(/_/g, ' ')}</p>
+                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Personal Details */}
+              {application.applicant_first_name && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Applicant Details</h2>
+                  <div style={S.grid}>
+                    <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}</p></div>
+                    {application.applicant_dob && <div style={S.cell}><p style={S.label}>Date of Birth</p><p style={S.value}>{application.applicant_dob}</p></div>}
+                    {application.applicant_gender && <div style={S.cell}><p style={S.label}>Gender</p><p style={S.value}>{application.applicant_gender}</p></div>}
+                    {application.applicant_marital_status && <div style={S.cell}><p style={S.label}>Marital Status</p><p style={S.value}>{application.applicant_marital_status}</p></div>}
+                    {application.applicant_mobile && <div style={S.cell}><p style={S.label}>Mobile</p><p style={S.value}>{application.applicant_mobile}</p></div>}
+                    {application.user_email && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{application.user_email}</p></div>}
+                    {application.preferred_contact_method && <div style={S.cell}><p style={S.label}>Preferred Contact</p><p style={S.value}>{application.preferred_contact_method}</p></div>}
+                    {application.applicant_residency_status && <div style={S.cell}><p style={S.label}>Residency Status</p><p style={S.value}>{application.applicant_residency_status}</p></div>}
+                    {idEntry?.type && <div style={S.cell}><p style={S.label}>ID Type</p><p style={S.value}>{idEntry.type}</p></div>}
+                    {idEntry?.number && <div style={S.cell}><p style={S.label}>ID Number</p><p style={S.value}>{idEntry.number}</p></div>}
+                    {(idEntry?.state || idEntry?.country) && <div style={S.cell}><p style={S.label}>{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p style={S.value}>{idEntry.state || idEntry.country}</p></div>}
+                    {(idEntry?.expiry_date || application.id_expiry_date) && <div style={S.cell}><p style={S.label}>ID Expiry</p><p style={S.value}>{idEntry?.expiry_date || application.id_expiry_date}</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Address */}
+              {application.applicant_address && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Address & Living Situation</h2>
+                  <div style={S.grid}>
+                    <div style={{ ...S.cell, gridColumn: '1 / -1' }}><p style={S.label}>Address</p><p style={S.value}>{application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}</p></div>
+                    {application.residential_status && <div style={S.cell}><p style={S.label}>Residential Status</p><p style={S.value}>{application.residential_status}</p></div>}
+                    {application.time_at_address && <div style={S.cell}><p style={S.label}>Time at Address</p><p style={S.value}>{application.time_at_address}</p></div>}
+                    {application.applicant_num_dependants != null && <div style={S.cell}><p style={S.label}>Dependants</p><p style={S.value}>{application.applicant_num_dependants}</p></div>}
+                    {application.has_partner != null && <div style={S.cell}><p style={S.label}>Has Partner</p><p style={S.value}>{application.has_partner ? 'Yes' : 'No'}</p></div>}
+                    {application.partner_working != null && <div style={S.cell}><p style={S.label}>Partner Working</p><p style={S.value}>{application.partner_working ? 'Yes' : 'No'}</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Employment */}
+              {(application.employment_category || empEntry) && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Employment</h2>
+                  <div style={S.grid}>
+                    {application.employment_category && <div style={S.cell}><p style={S.label}>Employment Type</p><p style={S.value}>{application.employment_category === 'self_employed' ? 'Self-Employed' : 'Employed'}</p></div>}
+                    {(application.employer_name || empEntry?.employer_name) && <div style={S.cell}><p style={S.label}>Employer</p><p style={S.value}>{application.employer_name || empEntry?.employer_name}</p></div>}
+                    {(application.job_title || empEntry?.job_title) && <div style={S.cell}><p style={S.label}>Job Title</p><p style={S.value}>{application.job_title || empEntry?.job_title}</p></div>}
+                    {empEntry?.employment_type && <div style={S.cell}><p style={S.label}>Employment Type Detail</p><p style={S.value}>{empEntry.employment_type}</p></div>}
+                    {empEntry?.start_date && <div style={S.cell}><p style={S.label}>Start Date</p><p style={S.value}>{empEntry.start_date}</p></div>}
+                    {(application.employer_industry || empEntry?.industry) && <div style={S.cell}><p style={S.label}>Industry</p><p style={S.value}>{application.employer_industry || empEntry?.industry}</p></div>}
+                    {application.income_frequency && <div style={S.cell}><p style={S.label}>Income Frequency</p><p style={S.value}>{application.income_frequency}</p></div>}
+                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString()}</p></div>}
+                    {empEntry?.contact_details && <div style={S.cell}><p style={S.label}>Employer Contact</p><p style={S.value}>{empEntry.contact_details}</p></div>}
+                    {application.business_name && <div style={S.cell}><p style={S.label}>Business Name</p><p style={S.value}>{application.business_name}</p></div>}
+                    {application.business_abn && <div style={S.cell}><p style={S.label}>ABN</p><p style={S.value}>{application.business_abn}</p></div>}
+                    {application.trading_name && <div style={S.cell}><p style={S.label}>Trading Name</p><p style={S.value}>{application.trading_name}</p></div>}
+                    {application.business_structure && <div style={S.cell}><p style={S.label}>Business Structure</p><p style={S.value}>{application.business_structure}</p></div>}
+                    {application.time_trading && <div style={S.cell}><p style={S.label}>Time Trading</p><p style={S.value}>{application.time_trading}</p></div>}
+                    {application.gst_registered != null && <div style={S.cell}><p style={S.label}>GST Registered</p><p style={S.value}>{application.gst_registered ? 'Yes' : 'No'}</p></div>}
+                    {application.num_directors != null && <div style={S.cell}><p style={S.label}>No. of Directors</p><p style={S.value}>{application.num_directors}</p></div>}
+                    {(extraData.other_directors as string | undefined) && <div style={{ ...S.cell, gridColumn: '1 / -1' }}><p style={S.label}>Other Directors / Partners</p><p style={S.value}>{String(extraData.other_directors)}</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Loan Type Details */}
+              {loanDetails && Object.keys(loanDetails).length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Loan Type Details</h2>
+                  {Object.entries(loanDetails).map(([key, val]) => {
+                    if (!val || typeof val !== 'object') return null;
+                    const entries = Object.entries(val as Record<string, unknown>).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0 && v !== false);
+                    if (entries.length === 0) return null;
+                    return (
+                      <div key={key} style={{ marginBottom: '12px' }}>
+                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</p>
+                        <div style={S.grid}>
+                          {entries.map(([k, v]) => (
+                            <div key={k} style={S.cell}>
+                              <p style={S.label}>{k.replace(/_/g, ' ')}</p>
+                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString()}` : String(v)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Income */}
+              {incomes.length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Income</h2>
+                  <div style={S.grid}>
+                    {incomes.map((inc, idx) => (
+                      <div key={idx} style={S.cell}>
+                        <p style={S.label}>{idx === 0 ? 'Primary Income' : `Additional Income ${idx}`}</p>
+                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Expenses */}
+              {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Monthly Expenses</h2>
+                  <div style={S.grid}>
+                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
+                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
+                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
+                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Real Estate Assets */}
+              {realEstateAssets.length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Real Estate Assets</h2>
+                  {realEstateAssets.map((asset, idx) => (
+                    <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
+                      <p style={{ ...S.label, marginBottom: '4px' }}>{String(asset.property_type || `Property ${idx + 1}`)}</p>
+                      {asset.address && <p style={S.value}>{String(asset.address)}</p>}
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const, marginTop: '4px' }}>
+                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                        {asset.ownership_type && <span style={{ fontSize: '12px', color: '#374151' }}>Ownership: {String(asset.ownership_type)}</span>}
+                        {asset.is_financed === 'yes' && asset.lender && <span style={{ fontSize: '12px', color: '#374151' }}>Lender: {String(asset.lender)}</span>}
+                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Other Assets */}
+              {otherAssets.length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Other Assets</h2>
+                  <div style={S.grid}>
+                    {otherAssets.map((asset, idx) => (
+                      <div key={idx} style={S.cell}>
+                        <p style={S.label}>{String(asset.asset_type || `Asset ${idx + 1}`)}</p>
+                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString()}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Liabilities */}
+              {liabs.length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Liabilities</h2>
+                  {liabs.map((lib, idx) => (
+                    <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
+                      <p style={{ ...S.label, marginBottom: '4px' }}>{String(lib.liability_type || `Liability ${idx + 1}`)}{lib.lender ? ` — ${lib.lender}` : ''}</p>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const }}>
+                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString()}</span>}
+                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString()}</span>}
+                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Declarations */}
+              {(application.previously_declined != null || application.change_of_circumstances != null || application.signature_name || application.emergency_contact_name) && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Declarations</h2>
+                  <div style={S.grid}>
+                    {application.previously_declined != null && <div style={S.cell}><p style={S.label}>Previously Declined</p><p style={S.value}>{application.previously_declined ? 'Yes' : 'No'}</p></div>}
+                    {application.change_of_circumstances != null && <div style={S.cell}><p style={S.label}>Change of Circumstances</p><p style={S.value}>{application.change_of_circumstances ? 'Yes' : 'No'}</p></div>}
+                    {application.emergency_contact_name && <div style={S.cell}><p style={S.label}>Emergency Contact</p><p style={S.value}>{application.emergency_contact_name}{application.emergency_contact_relationship ? ` (${application.emergency_contact_relationship})` : ''}{application.emergency_contact_phone ? ` · ${application.emergency_contact_phone}` : ''}</p></div>}
+                    {application.signature_name && <div style={S.cell}><p style={S.label}>Digital Signature</p><p style={S.value}>{application.signature_name}</p></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {application.notes && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Notes</h2>
+                  <div style={S.cell}><p style={{ fontSize: '13px', color: '#374151' }}>{application.notes}</p></div>
+                </div>
+              )}
+
+              {/* Documents */}
+              {documents.length > 0 && (
+                <div style={S.section}>
+                  <h2 style={S.h2}>Submitted Documents ({documents.length})</h2>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ background: '#f3f4f6' }}>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Document Type</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Filename</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Uploaded</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Verified</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {documents.map((doc, idx) => (
+                        <tr key={doc.id} style={{ background: idx % 2 === 0 ? 'white' : '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                          <td style={{ padding: '6px 10px', color: '#374151', fontWeight: 500 }}>{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}</td>
+                          <td style={{ padding: '6px 10px', color: '#374151', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.original_filename}</td>
+                          <td style={{ padding: '6px 10px', color: '#6b7280' }}>{formatDate(doc.uploaded_at)}</td>
+                          <td style={{ padding: '6px 10px', color: doc.is_verified ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{doc.is_verified ? 'Yes' : 'No'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '24px', borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
+                Generated {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} · Xpress Tech Portal
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {previewDoc && (
         <DocumentPreviewModal

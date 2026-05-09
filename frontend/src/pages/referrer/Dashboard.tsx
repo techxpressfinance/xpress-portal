@@ -14,6 +14,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { LOAN_TYPE_ICONS } from '../../lib/constants';
+import { formatShortDate, formatDateTime } from '../../lib/utils';
 import type { ExternalReferrerStats, LoanApplication } from '../../types';
 
 type MetricTone = 'accent' | 'success' | 'warning' | 'neutral';
@@ -421,7 +422,7 @@ export default function ReferrerDashboard() {
                       <td className="px-6 py-4 align-top">
                         <div className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">{app.id.substring(0, 8)}</div>
                         <div className="mt-1 text-[12px] text-[var(--led-muted)]">
-                          {new Date(app.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          {formatShortDate(app.updated_at)}
                         </div>
                       </td>
                       <td className="px-6 py-4 align-top">
@@ -594,14 +595,14 @@ export default function ReferrerDashboard() {
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Created</label>
                   <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
-                    {new Date(selectedApp.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatDateTime(selectedApp.created_at)}
                   </div>
                 </div>
                 <div className="h-px bg-[var(--led-line)]" />
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Last Updated</label>
                   <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
-                    {new Date(selectedApp.updated_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatDateTime(selectedApp.updated_at)}
                   </div>
                 </div>
               </div>

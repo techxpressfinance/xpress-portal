@@ -15,11 +15,32 @@ export function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Format a date string or Date object to locale date string.
- */
-export function formatDate(dateStr: string | Date): string {
-  return new Date(dateStr).toLocaleDateString();
+// SQLite strips timezone info; bare strings from the API must be treated as UTC.
+function parseAsUTC(date: string | Date): Date {
+  if (typeof date === 'string' && !date.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(date)) {
+    return new Date(date + 'Z');
+  }
+  return new Date(date as string);
+}
+
+export function formatDate(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  return parseAsUTC(date).toLocaleDateString('en-AU');
+}
+
+export function formatDateTime(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  return parseAsUTC(date).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+export function formatTime(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  return parseAsUTC(date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function formatShortDate(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  return parseAsUTC(date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -39,7 +60,7 @@ export function getInitials(name: string): string {
  */
 export function relativeTime(date: string | Date | null | undefined): string {
   if (!date) return '—';
-  const then = new Date(date).getTime();
+  const then = parseAsUTC(date).getTime();
   if (Number.isNaN(then)) return '—';
   const mins = Math.floor((Date.now() - then) / 60000);
   if (mins < 1) return 'just now';
@@ -79,7 +100,7 @@ export function avatarColor(seed: string): string {
  */
 export function daysSince(date: string | Date | null | undefined): number {
   if (!date) return 0;
-  const then = new Date(date).getTime();
+  const then = parseAsUTC(date).getTime();
   if (Number.isNaN(then)) return 0;
   return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
 }

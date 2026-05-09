@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,7 +12,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.referral import Referral, ReferralStatus, _generate_referral_code
 from app.models.user import User
 from app.schemas.referral import ReferralCodeOut, ReferralInvite, ReferralOut, ReferralStats
-from app.services.email import _send_email
+from app.services.email import _send_async
 from app.services.tenant_scope import get_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -147,12 +146,7 @@ def send_invite(
     )
 
     if EMAIL_ENABLED:
-        thread = threading.Thread(
-            target=_send_email,
-            args=(data.email, f"{current_user.full_name} invited you to Xpress Finance Portal", body),
-            daemon=True,
-        )
-        thread.start()
+        _send_async(data.email, f"{current_user.full_name} invited you to Xpress Finance Portal", body)
     else:
         logger.debug("Email not configured, skipping referral invite to %s", data.email)
 

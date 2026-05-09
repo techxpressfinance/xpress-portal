@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, StatCard, PageHeader, Button, Badge } from '../../components/ui';
@@ -12,6 +13,8 @@ const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: 
 export default function LenderManagement() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isReadOnly = user?.role !== 'admin';
   const [lenders, setLenders] = useState<Lender[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -198,12 +201,14 @@ export default function LenderManagement() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <PageHeader
-        title="Lender Management"
-        subtitle="Manage lenders for loan submissions"
+        title="Lenders"
+        subtitle={isReadOnly ? 'View lenders and their contact details' : 'Manage lenders for loan submissions'}
         action={
-          <Button onClick={() => { resetForm(); setShowForm(true); }}>
-            + Add Lender
-          </Button>
+          !isReadOnly ? (
+            <Button onClick={() => { resetForm(); setShowForm(true); }}>
+              + Add Lender
+            </Button>
+          ) : undefined
         }
       />
 

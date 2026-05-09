@@ -20,6 +20,8 @@ if JWT_SECRET_KEY == _DEFAULT_JWT_SECRET:
     warnings.warn("Using default JWT_SECRET_KEY — do NOT use in production", stacklevel=1)
 
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+# Separate secret for login-code HMAC so rotating one doesn't force rotating the other
+LOGIN_CODE_SECRET = os.getenv("LOGIN_CODE_SECRET", JWT_SECRET_KEY)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
@@ -56,6 +58,9 @@ S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "")
 S3_REGION = os.getenv("S3_REGION", "ap-southeast-2")
 S3_ENABLED = bool(S3_BUCKET_NAME)
 
+# Redis - optional; rate limiter uses in-memory fallback when not set
+REDIS_URL = os.getenv("REDIS_URL", "")
+
 # CORS origins - comma-separated list
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 
@@ -64,6 +69,12 @@ LEND_API_KEY = os.getenv("LEND_API_KEY", "")
 LEND_API_SECRET = os.getenv("LEND_API_SECRET", "")
 LEND_ENVIRONMENT = os.getenv("LEND_ENVIRONMENT", "sandbox")
 LEND_ENABLED = bool(LEND_API_KEY and LEND_API_SECRET)
+
+# SMS / Twilio — optional, silently skipped if not configured
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
+SMS_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
 
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")

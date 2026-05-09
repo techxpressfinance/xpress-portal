@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { getErrorMessage, formatDate } from '../../lib/utils';
+import { getErrorMessage, formatDate, formatTime } from '../../lib/utils';
 import { GlassCard, PageHeader, Button } from '../../components/ui';
 import type { ClientConversation, ClientMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
@@ -368,7 +368,7 @@ export default function ReferrerMessages() {
                             <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
                               <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Staff')}</span>
                               <span className="text-[11px] text-muted-foreground">
-                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {formatTime(msg.created_at)}
                               </span>
                             </div>
                             <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>

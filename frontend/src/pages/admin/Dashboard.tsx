@@ -16,6 +16,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { GlassCard, Badge, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS, LOAN_TYPE_ICONS } from '../../lib/constants';
+import { formatShortDate, formatDateTime, formatTime } from '../../lib/utils';
 import type { ActivityLog, DashboardStats, LoanApplication, User } from '../../types';
 
 type MetricTone = 'accent' | 'success' | 'warning' | 'neutral';
@@ -47,11 +48,11 @@ function formatVolume(v: number): string {
 }
 
 function formatDayLabel(date: string): string {
-  return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return new Date(date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
 }
 
 function formatFullDayLabel(date: string): string {
-  return new Date(date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return new Date(date).toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function formatDays(value: number | null): string {
@@ -164,12 +165,17 @@ export default function AdminDashboard() {
     rejected: dashStats?.status_counts.rejected ?? 0,
   };
 
-  const totalVolume = dashStats ? Object.values(dashStats.volume_by_status).reduce((a, b) => a + b, 0) : 0;
-  const activeApplications = applications.filter((app) => !['draft', 'settled', 'rejected'].includes(app.status));
+  const TERMINAL_STATUSES = ['draft', 'settled', 'rejected', 'not_proceeding'];
+  const ACTIVE_STATUSES = ['application_received', 'application_assessed', 'submitted', 'approval'];
+  const activeApplications = applications.filter((app) => !TERMINAL_STATUSES.includes(app.status));
+  const totalVolume = dashStats
+    ? ACTIVE_STATUSES.reduce((sum, s) => sum + (dashStats.volume_by_status[s] ?? 0), 0)
+    : 0;
   const totalActiveExposure = activeApplications.reduce((sum, app) => sum + Number(app.amount || 0), 0);
   const approvalsInFlight = counts.submitted + counts.approval;
-  const settlementRate = counts.total > 0 ? (counts.settled / counts.total) * 100 : 0;
-  const rejectedRate = counts.total > 0 ? (counts.rejected / counts.total) * 100 : 0;
+  const rateBase = counts.total - counts.draft - (dashStats?.status_counts.not_proceeding ?? 0);
+  const settlementRate = rateBase > 0 ? (counts.settled / rateBase) * 100 : 0;
+  const rejectedRate = rateBase > 0 ? (counts.rejected / rateBase) * 100 : 0;
   const unassignedActive = activeApplications.filter((app) => !app.assigned_brokers?.length).length;
 
   const today = new Date();
@@ -274,7 +280,7 @@ export default function AdminDashboard() {
     return 'Good Evening';
   })();
 
-  const todayLabel = today.toLocaleDateString(undefined, {
+  const todayLabel = today.toLocaleDateString('en-AU', {
     weekday: 'short',
     month: 'long',
     day: 'numeric',
@@ -493,6 +499,106 @@ export default function AdminDashboard() {
             </GlassCard>
           </div>
 
+          {/* Conversion Funnel */}
+          <GlassCard padding="none">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Conversion Intelligence</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Pipeline Funnel</h2>
+              <p className="mt-1 text-[13px] text-[var(--led-muted)]">Drop-off rates between each stage — click any stage to filter applications.</p>
+            </div>
+            <div className="p-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              ) : (() => {
+                const pipeline: { status: string; label: string; color: string }[] = [
+                  { status: 'draft', label: 'Draft', color: 'var(--led-muted)' },
+                  { status: 'application_received', label: 'Received', color: '#3b82f6' },
+                  { status: 'application_assessed', label: 'Assessed', color: '#8b5cf6' },
+                  { status: 'submitted', label: 'Submitted', color: '#f59e0b' },
+                  { status: 'approval', label: 'Approval', color: '#10b981' },
+                  { status: 'settled', label: 'Settled', color: '#059669' },
+                ];
+                const maxCount = Math.max(...pipeline.map((s) => dashStats?.status_counts[s.status] ?? 0), 1);
+                const totalCreated = (dashStats?.status_counts.draft ?? 0) + (dashStats?.status_counts.application_received ?? 0) +
+                  (dashStats?.status_counts.application_assessed ?? 0) + (dashStats?.status_counts.submitted ?? 0) +
+                  (dashStats?.status_counts.approval ?? 0) + (dashStats?.status_counts.settled ?? 0) +
+                  (dashStats?.status_counts.rejected ?? 0) + (dashStats?.status_counts.not_proceeding ?? 0);
+
+                return (
+                  <div className="space-y-3">
+                    {pipeline.map((stage, i) => {
+                      const count = dashStats?.status_counts[stage.status] ?? 0;
+                      const prevCount = i > 0 ? (dashStats?.status_counts[pipeline[i - 1].status] ?? 0) : totalCreated;
+                      const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                      const convRate = prevCount > 0 ? Math.round((count / prevCount) * 100) : null;
+
+                      return (
+                        <div key={stage.status}>
+                          <div className="flex items-center gap-4">
+                            <div className="w-[90px] shrink-0 text-right">
+                              <span className="text-[12px] font-semibold text-[var(--led-muted)]">{stage.label}</span>
+                            </div>
+                            <div className="flex-1 flex items-center gap-3">
+                              <div className="flex-1 h-7 rounded-lg overflow-hidden bg-[var(--led-bg-2)] relative">
+                                <div
+                                  className="h-full rounded-lg transition-all duration-500"
+                                  style={{
+                                    width: `${Math.max(pct, count > 0 ? 2 : 0)}%`,
+                                    background: stage.color,
+                                    opacity: 0.85,
+                                  }}
+                                />
+                                {count > 0 && (
+                                  <span className="absolute inset-y-0 left-3 flex items-center text-[12px] font-semibold text-white mix-blend-plus-lighter">
+                                    {count}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="w-[42px] shrink-0 text-right text-[13px] font-semibold led-tnum text-[var(--led-ink)]">
+                                {count}
+                              </span>
+                            </div>
+                          </div>
+                          {i < pipeline.length - 1 && convRate !== null && (
+                            <div className="flex items-center gap-4 my-1">
+                              <div className="w-[90px] shrink-0" />
+                              <div className="flex-1 flex items-center gap-2 px-1">
+                                <div className="h-px flex-1 border-l-2 border-dashed border-[var(--led-line)] ml-4" style={{ width: '16px', flex: 'none' }} />
+                                <span className={`text-[11px] font-medium ${convRate >= 50 ? 'text-emerald-500' : convRate >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
+                                  {convRate}% proceed
+                                </span>
+                                <div className="h-px flex-1 border-dashed border-t border-[var(--led-line)]" />
+                              </div>
+                              <div className="w-[42px] shrink-0" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Terminal states */}
+                    <div className="mt-4 pt-4 border-t border-[var(--led-line)] flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-red-500/60" />
+                        <span className="text-[12px] text-[var(--led-muted)]">Rejected: <strong className="text-[var(--led-ink)]">{dashStats?.status_counts.rejected ?? 0}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-[var(--led-muted)]/40" />
+                        <span className="text-[12px] text-[var(--led-muted)]">Not Proceeding: <strong className="text-[var(--led-ink)]">{dashStats?.status_counts.not_proceeding ?? 0}</strong></span>
+                      </div>
+                      <div className="ml-auto">
+                        <span className="text-[12px] text-[var(--led-muted)]">Overall settlement rate: </span>
+                        <strong className="text-[13px] text-emerald-500">{formatPercent(settlementRate)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </GlassCard>
+
           <div className="grid gap-5 xl:grid-cols-2">
             <GlassCard padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
@@ -635,7 +741,7 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 align-top">
                         <div className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">{app.id.substring(0, 8)}</div>
                         <div className="mt-1 text-[12px] text-[var(--led-muted)]">
-                          {new Date(app.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          {formatShortDate(app.updated_at)}
                         </div>
                       </td>
                       <td className="px-6 py-4 align-top">
@@ -704,7 +810,7 @@ export default function AdminDashboard() {
                     <span className="capitalize">{task.status.replace('_', ' ')}</span>
                     {task.due_date && (
                       <span className="led-tnum">
-                        Due {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        Due {formatShortDate(task.due_date)}
                       </span>
                     )}
                   </div>
@@ -772,7 +878,7 @@ export default function AdminDashboard() {
                       <span className="font-medium">{log.entity_type}</span>
                     </p>
                     <p className="mt-1 text-[12px] text-[var(--led-muted)]">
-                      {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(log.created_at)}
                     </p>
                   </div>
                 </div>
@@ -844,7 +950,7 @@ export default function AdminDashboard() {
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Created</label>
                   <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
-                    {new Date(selectedApp.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatDateTime(selectedApp.created_at)}
                   </div>
                 </div>
 
@@ -853,7 +959,7 @@ export default function AdminDashboard() {
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Last Updated</label>
                   <div className="mt-2 text-[14px] font-medium text-[var(--led-ink)]">
-                    {new Date(selectedApp.updated_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatDateTime(selectedApp.updated_at)}
                   </div>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
-import { getErrorMessage } from '../lib/utils';
+import { getErrorMessage, formatDateTime } from '../lib/utils';
 import { GlassCard, Badge, Button } from './ui';
 import {
   ANALYSIS_STATUS_BADGE,
@@ -290,7 +290,7 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
           {/* Timestamp */}
           {analyzedAt && (
             <p className="text-[11px] text-muted-foreground text-right">
-              Analyzed: {new Date(analyzedAt).toLocaleString()}
+              Analyzed: {formatDateTime(analyzedAt)}
             </p>
           )}
         </div>

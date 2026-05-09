@@ -38,6 +38,7 @@ class LoanApplicationCreate(BaseModel):
     # Overflow JSON
     lend_extra_data: Optional[str] = None
     # Extended fields
+    applicant_email: Optional[str] = None
     applicant_mobile: Optional[str] = None
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None
@@ -102,6 +103,7 @@ class LoanApplicationUpdate(BaseModel):
     lend_send_type: Optional[str] = None
     lend_who_to_contact: Optional[str] = None
     # Extended fields
+    applicant_email: Optional[str] = None
     applicant_mobile: Optional[str] = None
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None
@@ -205,6 +207,7 @@ class LoanApplicationOut(BaseModel):
     lend_sync_error: Optional[str] = None
     lend_synced_at: Optional[datetime] = None
     # Extended fields
+    applicant_email: Optional[str] = None
     applicant_mobile: Optional[str] = None
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None

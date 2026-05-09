@@ -22,12 +22,16 @@ function Icon({ name, size = 14, strokeWidth = 1.75, className = '' }: { name: s
   );
 }
 
-type ClientMode = 'existing' | 'new';
+type ClientMode = 'existing' | 'new' | 'none';
 
 interface FormValues {
   newName: string;
   newEmail: string;
   newPhone: string;
+  noFirstName: string;
+  noLastName: string;
+  noEmail: string;
+  noPhone: string;
   amount: string;
   notes: string;
   purposeId: string;
@@ -64,7 +68,7 @@ export default function CreateApplication() {
   const { toast } = useToast();
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    defaultValues: { newName: '', newEmail: '', newPhone: '', amount: '', notes: '', purposeId: '', commercialPurposeId: '', comBusinessName: '', comAbn: '' },
+    defaultValues: { newName: '', newEmail: '', newPhone: '', noFirstName: '', noLastName: '', noEmail: '', noPhone: '', amount: '', notes: '', purposeId: '', commercialPurposeId: '', comBusinessName: '', comAbn: '' },
   });
 
   const [mode, setMode] = useState<ClientMode>('existing');
@@ -127,6 +131,34 @@ export default function CreateApplication() {
       return;
     }
     try {
+      if (mode === 'none') {
+        const payload: Record<string, unknown> = {
+          amount: parseFloat(values.amount) || 0,
+          notes: values.notes || null,
+          applicant_first_name: values.noFirstName.trim() || null,
+          applicant_last_name: values.noLastName.trim() || null,
+          applicant_email: values.noEmail.trim() || null,
+          applicant_mobile: values.noPhone.trim() || null,
+        };
+
+        if (lendEnabled) {
+          payload.loan_type = selectedLoanTypes[0] || 'equipment_finance';
+        } else if (tab === 'consumer') {
+          payload.loan_type = 'personal';
+          if (values.purposeId) payload.loan_purpose_id = Number(values.purposeId);
+        } else {
+          payload.loan_type = 'business_loan';
+          if (values.commercialPurposeId) payload.loan_purpose_id = Number(values.commercialPurposeId);
+          if (values.comBusinessName.trim()) payload.business_name = values.comBusinessName.trim();
+          if (values.comAbn.trim()) payload.business_abn = values.comAbn.trim();
+        }
+
+        const { data } = await api.post('/applications', payload);
+        toast('Application created', 'success');
+        navigate(`/admin/applications/${data.id}`);
+        return;
+      }
+
       let clientId: string;
 
       if (mode === 'new') {
@@ -202,6 +234,13 @@ export default function CreateApplication() {
               onClick={() => setMode('new')}
             >
               <Icon name="plus" size={11} /> New client
+            </button>
+            <button
+              type="button"
+              className={mode === 'none' ? 'led-active' : ''}
+              onClick={() => setMode('none')}
+            >
+              No client yet
             </button>
           </div>
 
@@ -303,22 +342,51 @@ export default function CreateApplication() {
               />
             </div>
           )}
+
+          {/* No client — applicant info only */}
+          {mode === 'none' && (
+            <div className="space-y-3">
+              <p className="text-[12px] text-muted-foreground">
+                Start the application now — you can link or invite a client later from the application page.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="First Name"
+                  type="text"
+                  placeholder="Jane"
+                  {...register('noFirstName')}
+                />
+                <Input
+                  label="Last Name"
+                  type="text"
+                  placeholder="Smith"
+                  {...register('noLastName')}
+                />
+              </div>
+              <Input
+                label="Email"
+                type="email"
+                placeholder="jane@example.com"
+                error={errors.noEmail?.message}
+                {...register('noEmail', {
+                  pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Invalid email' },
+                })}
+              />
+              <Input
+                label="Phone"
+                type="tel"
+                placeholder="0412 345 678"
+                {...register('noPhone')}
+              />
+            </div>
+          )}
         </GlassCard>
 
         {/* Loan details card */}
         <GlassCard>
           <h2 className="text-[13px] font-semibold text-foreground mb-4">Loan Details</h2>
 
-          {!lendEnabled && (
-            <div className="led-segment mb-4 w-fit">
-              <button type="button" className={tab === 'consumer' ? 'led-active' : ''} onClick={() => setTab('consumer')}>
-                Consumer Loan
-              </button>
-              <button type="button" className={tab === 'commercial' ? 'led-active' : ''} onClick={() => setTab('commercial')}>
-                Commercial Loan
-              </button>
-            </div>
-          )}
+
 
           {!lendEnabled && tab === 'consumer' && (
             <div className="mb-4">

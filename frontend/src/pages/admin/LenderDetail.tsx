@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { GlassCard, Badge, Button, Input } from '../../components/ui';
@@ -12,6 +13,8 @@ const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: 
 export default function LenderDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isReadOnly = user?.role !== 'admin';
   const [lender, setLender] = useState<Lender | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -213,16 +216,18 @@ export default function LenderDetail() {
             {lender.notes && (
               <p className="text-[14px] text-muted-foreground mb-4">{lender.notes}</p>
             )}
-            <div className="flex gap-2 pt-3 border-t border-border">
-              <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
-              <Button
-                variant={lender.is_active ? 'danger' : 'success'}
-                size="sm"
-                onClick={handleToggleActive}
-              >
-                {lender.is_active ? 'Deactivate' : 'Activate'}
-              </Button>
-            </div>
+            {!isReadOnly && (
+              <div className="flex gap-2 pt-3 border-t border-border">
+                <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+                <Button
+                  variant={lender.is_active ? 'danger' : 'success'}
+                  size="sm"
+                  onClick={handleToggleActive}
+                >
+                  {lender.is_active ? 'Deactivate' : 'Activate'}
+                </Button>
+              </div>
+            )}
           </>
         )}
       </GlassCard>
@@ -233,7 +238,7 @@ export default function LenderDetail() {
           <h2 className="text-[15px] font-semibold text-foreground">
             Contacts · {lender.contacts.length}
           </h2>
-          {!showContactForm && (
+          {!showContactForm && !isReadOnly && (
             <Button variant="secondary" size="sm" onClick={openAddContact}>+ Add</Button>
           )}
         </div>
@@ -311,10 +316,12 @@ export default function LenderDetail() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" onClick={() => openEditContact(contact)}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDeleteContact(contact.id)}>Delete</Button>
-                  </div>
+                  {!isReadOnly && (
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" onClick={() => openEditContact(contact)}>Edit</Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleDeleteContact(contact.id)}>Delete</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

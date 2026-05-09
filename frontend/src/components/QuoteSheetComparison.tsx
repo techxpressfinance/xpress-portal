@@ -69,12 +69,18 @@ function TermBlock({ group, isClientView, assetDescription, showInterestRate }: 
     const balloonPct = opt.lender_name.match(/(\d+)%\s*Balloon/);
     const balloonLabel = balloonPct ? `Balloon ${balloonPct[1]}%` : 'Balloon';
 
+    // Client sees: asset price - deposit + fees (no brokerage commission)
+    const clientLoanAmount = (opt.purchase_price ?? 0) - (opt.deposit ?? 0) + (opt.establishment_fee ?? 0) + (opt.application_fee ?? 0);
+
     return (
       <div className="flex-1 w-full min-w-0">
         <div className="space-y-0">
           <Row label={`${assetDescription} price`} value={fmtCurrency(opt.purchase_price)} />
           <Row label="Deposit" value={fmtCurrency(opt.deposit)} />
-          <Row label="Loan applied for" value={fmtCurrency(opt.loan_amount)} />
+          <Row
+            label="Amount to be Financed"
+            value={isClientView ? fmtCurrency(clientLoanAmount) : fmtCurrency(opt.loan_amount)}
+          />
           <Row label="Term (years)" value={String(termYears)} />
           <Row
             label={(opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon'}
@@ -85,7 +91,9 @@ function TermBlock({ group, isClientView, assetDescription, showInterestRate }: 
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
           )}
           <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} />
-          <Row label="Total Interest (over term)" value={fmtCurrency(opt.total_interest)} />
+          {!isClientView && (
+            <Row label="Total Interest (over term)" value={fmtCurrency(opt.total_interest)} />
+          )}
         </div>
       </div>
     );
@@ -132,10 +140,13 @@ function PdfTermTable({ group, isClientView, assetDescription, showInterestRate 
     const balloonPct = opt.lender_name.match(/(\d+)%\s*Balloon/);
     const balloonLabel = balloonPct ? `Balloon ${balloonPct[1]}%` : 'Balloon';
 
+    // Client sees: asset price - deposit + fees (no brokerage commission)
+    const clientLoanAmount = (opt.purchase_price ?? 0) - (opt.deposit ?? 0) + (opt.establishment_fee ?? 0) + (opt.application_fee ?? 0);
+
     const rows: { label: string; value: string; highlight?: boolean }[] = [
       { label: `${assetDescription} price`, value: fmtCurrency(opt.purchase_price) },
       { label: 'Deposit', value: fmtCurrency(opt.deposit) },
-      { label: 'Loan applied for', value: fmtCurrency(opt.loan_amount) },
+      { label: 'Amount to be Financed', value: isClientView ? fmtCurrency(clientLoanAmount) : fmtCurrency(opt.loan_amount) },
       { label: 'Term (in years)', value: String(termYears) },
       { label: (opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon', value: fmtCurrency(opt.balloon_residual ?? 0) },
       { label: 'Repayments per month', value: fmtCurrency(opt.repayment_monthly), highlight: true },
@@ -145,10 +156,11 @@ function PdfTermTable({ group, isClientView, assetDescription, showInterestRate 
       rows.push({ label: 'Rate of Interest', value: fmtPercent(opt.interest_rate) });
     }
 
-    rows.push(
-      { label: 'Weekly Equivalent', value: fmtCurrency(opt.repayment_weekly) },
-      { label: 'Total Interest paid over the term', value: fmtCurrency(opt.total_interest) },
-    );
+    rows.push({ label: 'Weekly Equivalent', value: fmtCurrency(opt.repayment_weekly) });
+
+    if (!isClientView) {
+      rows.push({ label: 'Total Interest paid over the term', value: fmtCurrency(opt.total_interest) });
+    }
 
     return rows;
   };

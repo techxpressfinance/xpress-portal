@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { GlassCard } from '../../components/ui';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -137,6 +137,15 @@ interface PeriodCalc {
 interface CapexEntry { description: string; amount: string; }
 interface LoanEntry { description: string; monthly: string; }
 
+export interface BASCalcState {
+  mode: BASMode;
+  oncostsRate: string;
+  periods: PeriodInput[];
+  capexEntries: CapexEntry[];
+  loanEntries: LoanEntry[];
+  proposedLoan: LoanEntry;
+}
+
 // ── BAS Calculation Functions ─────────────────────────────────────────────────
 
 function calcPeriod(p: PeriodInput, rate: number): PeriodCalc {
@@ -262,26 +271,40 @@ const EMPTY_PERIOD: PeriodInput = {
   gstOnPurchases: '', wages: '', fbt: '',
 };
 
-function BASCalculator() {
-  const [mode, setMode] = useState<BASMode>('quarterly');
+export function BASCalculator({ initialState, onStateChange }: {
+  initialState?: BASCalcState;
+  onStateChange?: (s: BASCalcState) => void;
+} = {}) {
+  const _onSC = useRef(onStateChange);
+  useEffect(() => { _onSC.current = onStateChange; });
+
+  const [mode, setMode] = useState<BASMode>(initialState?.mode ?? 'quarterly');
   const [tab, setTab] = useState<BASTab>('collator');
-  const [oncostsRate, setOncostsRate] = useState('15');
+  const [oncostsRate, setOncostsRate] = useState(initialState?.oncostsRate ?? '15');
 
   const [periods, setPeriods] = useState<PeriodInput[]>(
-    Array.from({ length: 12 }, () => ({ ...EMPTY_PERIOD }))
+    initialState?.periods ?? Array.from({ length: 12 }, () => ({ ...EMPTY_PERIOD }))
   );
 
-  const [capexEntries, setCapexEntries] = useState<CapexEntry[]>([
-    { description: '', amount: '' },
-    { description: '', amount: '' },
-    { description: '', amount: '' },
-  ]);
+  const [capexEntries, setCapexEntries] = useState<CapexEntry[]>(
+    initialState?.capexEntries ?? [
+      { description: '', amount: '' },
+      { description: '', amount: '' },
+      { description: '', amount: '' },
+    ]
+  );
 
   const [loanEntries, setLoanEntries] = useState<LoanEntry[]>(
-    Array.from({ length: 7 }, () => ({ description: '', monthly: '' }))
+    initialState?.loanEntries ?? Array.from({ length: 7 }, () => ({ description: '', monthly: '' }))
   );
 
-  const [proposedLoan, setProposedLoan] = useState<LoanEntry>({ description: '', monthly: '' });
+  const [proposedLoan, setProposedLoan] = useState<LoanEntry>(
+    initialState?.proposedLoan ?? { description: '', monthly: '' }
+  );
+
+  useEffect(() => {
+    _onSC.current?.({ mode, oncostsRate, periods, capexEntries, loanEntries, proposedLoan });
+  }, [mode, oncostsRate, periods, capexEntries, loanEntries, proposedLoan]);
 
   // ── Derived values ────────────────────────────────────────────────────────
 
@@ -835,6 +858,18 @@ type PayCycle = 'hourly' | 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'ann
 type MedicareExemption = 'none' | 'half' | 'full';
 type SacrificeFreq = 'weekly' | 'fortnightly' | 'monthly' | 'annual';
 
+export interface PayCalcState {
+  salary: string;
+  cycle: PayCycle;
+  includesSuper: boolean;
+  superRate: string;
+  sacrificeAmount: string;
+  sacrificeFreq: SacrificeFreq;
+  studentLoan: boolean;
+  medicareExemption: MedicareExemption;
+  deductions: string;
+}
+
 function annualize(amount: number, cycle: PayCycle): number {
   switch (cycle) {
     case 'hourly': return amount * HOURS_PER_WEEK * WEEKS_PER_YEAR;
@@ -916,16 +951,26 @@ function calcPay(
   return { grossAnnual, superGuarantee, salarySacrifice, taxableIncome, incomeTax, medicare: medicareLevy, help, lito, netAnnual };
 }
 
-function PayCalculator() {
-  const [salary, setSalary] = useState('');
-  const [cycle, setCycle] = useState<PayCycle>('annual');
-  const [includesSuper, setIncludesSuper] = useState(false);
-  const [superRate, setSuperRate] = useState('12');
-  const [sacrificeAmount, setSacrificeAmount] = useState('');
-  const [sacrificeFreq, setSacrificeFreq] = useState<SacrificeFreq>('annual');
-  const [studentLoan, setStudentLoan] = useState(false);
-  const [medicareExemption, setMedicareExemption] = useState<MedicareExemption>('none');
-  const [deductions, setDeductions] = useState('');
+export function PayCalculator({ initialState, onStateChange }: {
+  initialState?: PayCalcState;
+  onStateChange?: (s: PayCalcState) => void;
+} = {}) {
+  const _onSC = useRef(onStateChange);
+  useEffect(() => { _onSC.current = onStateChange; });
+
+  const [salary, setSalary] = useState(initialState?.salary ?? '');
+  const [cycle, setCycle] = useState<PayCycle>(initialState?.cycle ?? 'annual');
+  const [includesSuper, setIncludesSuper] = useState(initialState?.includesSuper ?? false);
+  const [superRate, setSuperRate] = useState(initialState?.superRate ?? '12');
+  const [sacrificeAmount, setSacrificeAmount] = useState(initialState?.sacrificeAmount ?? '');
+  const [sacrificeFreq, setSacrificeFreq] = useState<SacrificeFreq>(initialState?.sacrificeFreq ?? 'annual');
+  const [studentLoan, setStudentLoan] = useState(initialState?.studentLoan ?? false);
+  const [medicareExemption, setMedicareExemption] = useState<MedicareExemption>(initialState?.medicareExemption ?? 'none');
+  const [deductions, setDeductions] = useState(initialState?.deductions ?? '');
+
+  useEffect(() => {
+    _onSC.current?.({ salary, cycle, includesSuper, superRate, sacrificeAmount, sacrificeFreq, studentLoan, medicareExemption, deductions });
+  }, [salary, cycle, includesSuper, superRate, sacrificeAmount, sacrificeFreq, studentLoan, medicareExemption, deductions]);
 
   const salaryVal = parseNum(salary);
   const result: PayResult | null = salaryVal !== null
@@ -1043,6 +1088,14 @@ function PayCalculator() {
 
 // ── Ratios Calculator ─────────────────────────────────────────────────────────
 
+export interface RatiosCalcState {
+  totalAssets: string; inventory: string; totalLiabilities: string; shareholderEquity: string;
+  ebitda: string; ebit: string; totalInterestExpense: string; totalDebt: string;
+  annualLoanRepayments: string; accountsReceivable: string; creditSales: string;
+  averageDailySales: string; costOfGoodsSold: string; averageInventory: string;
+  loanAmount: string; assetValue: string;
+}
+
 type RatioSignal = 'good' | 'warn' | 'bad' | 'neutral';
 
 interface RatioCard {
@@ -1100,13 +1153,23 @@ function RatioCardItem({ card }: { card: RatioCard }) {
   );
 }
 
-function RatiosCalculator() {
-  const [f, setF] = useState({
+export function RatiosCalculator({ initialState, onStateChange }: {
+  initialState?: RatiosCalcState;
+  onStateChange?: (s: RatiosCalcState) => void;
+} = {}) {
+  const _onSC = useRef(onStateChange);
+  useEffect(() => { _onSC.current = onStateChange; });
+
+  const [f, setF] = useState<RatiosCalcState>(initialState ?? {
     totalAssets: '', inventory: '', totalLiabilities: '', shareholderEquity: '',
     ebitda: '', ebit: '', totalInterestExpense: '', totalDebt: '', annualLoanRepayments: '',
     accountsReceivable: '', creditSales: '', averageDailySales: '',
     costOfGoodsSold: '', averageInventory: '', loanAmount: '', assetValue: '',
   });
+
+  useEffect(() => {
+    _onSC.current?.(f);
+  }, [f]);
 
   const s = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
   const n = (k: keyof typeof f) => parseNum(f[k]);

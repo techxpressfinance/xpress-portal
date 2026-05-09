@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
-import { getErrorMessage } from '../../lib/utils';
+import { getErrorMessage, formatDateTime } from '../../lib/utils';
 import { PageHeader, Badge, Button, Input } from '../../components/ui';
 
 interface Tenant {
@@ -162,7 +162,7 @@ export default function TenantDetail() {
         <div className="p-5 space-y-2 text-[13px] text-muted-foreground">
           <p><span className="font-medium text-foreground">ID:</span> {tenant.id}</p>
           <p><span className="font-medium text-foreground">Slug:</span> {tenant.slug}</p>
-          <p><span className="font-medium text-foreground">Created:</span> {new Date(tenant.created_at).toLocaleString()}</p>
+          <p><span className="font-medium text-foreground">Created:</span> {formatDateTime(tenant.created_at)}</p>
         </div>
       </div>
     </div>

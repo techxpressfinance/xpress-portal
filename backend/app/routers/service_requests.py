@@ -33,6 +33,8 @@ def _to_out(sr: ServiceRequest) -> dict:
         "client_id": sr.client_id,
         "client_name": sr.client.full_name if sr.client else None,
         "client_email": sr.client.email if sr.client else None,
+        "assigned_broker_id": sr.assigned_broker_id,
+        "assigned_broker_name": sr.assigned_broker.full_name if sr.assigned_broker else None,
         "created_at": sr.created_at,
         "updated_at": sr.updated_at,
     }
@@ -90,17 +92,20 @@ def list_service_requests(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
+    client_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
     q = (
         db.query(ServiceRequest)
-        .options(joinedload(ServiceRequest.client))
+        .options(joinedload(ServiceRequest.client), joinedload(ServiceRequest.assigned_broker))
         .filter(ServiceRequest.tenant_id == tenant_id)
     )
     if current_user.role in (UserRole.client.value, UserRole.referrer.value):
         q = q.filter(ServiceRequest.client_id == current_user.id)
+    elif client_id and current_user.role in (UserRole.broker.value, UserRole.admin.value):
+        q = q.filter(ServiceRequest.client_id == client_id)
     if status:
         q = q.filter(ServiceRequest.status == status)
     total = q.count()
@@ -123,16 +128,28 @@ def update_service_request(
 ):
     sr = (
         db.query(ServiceRequest)
-        .options(joinedload(ServiceRequest.client))
+        .options(joinedload(ServiceRequest.client), joinedload(ServiceRequest.assigned_broker))
         .filter(ServiceRequest.id == id, ServiceRequest.tenant_id == tenant_id)
         .first()
     )
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
+    is_completed = sr.status in ("resolved", "closed")
     if data.status is not None:
         if data.status not in VALID_STATUSES:
             raise HTTPException(status_code=422, detail=f"Invalid status: {data.status}")
         sr.status = data.status
+    if data.assigned_broker_id is not None:
+        sr.assigned_broker_id = data.assigned_broker_id or None
+    content_edit = data.request_type is not None or data.custom_request is not None or data.description is not None
+    if content_edit and is_completed:
+        raise HTTPException(status_code=422, detail="Cannot edit a completed service request")
+    if data.request_type is not None:
+        sr.request_type = data.request_type.strip()
+    if data.custom_request is not None:
+        sr.custom_request = data.custom_request.strip() or None
+    if data.description is not None:
+        sr.description = data.description.strip() or None
     log_activity(
         db, current_user.id, "updated", "service_request", sr.id,
         {"status": sr.status}, tenant_id,

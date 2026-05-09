@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import secrets
-import threading
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import EMAIL_ENABLED, LEND_ENABLED, LLM_ANALYSIS_ENABLED
@@ -89,7 +88,7 @@ def list_applications(
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
     elif current_user.role == UserRole.broker:
-        # Brokers see applications assigned to them + all referrer-submitted leads
+        # Brokers see: applications assigned to them + referrer-submitted leads + their own created leads
         from sqlalchemy import or_
         referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
@@ -98,6 +97,7 @@ def list_applications(
                     db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
                 ),
                 LoanApplication.user_id.in_(referrer_ids),
+                LoanApplication.user_id == current_user.id,
             )
         )
     elif current_user.role == UserRole.referrer:
@@ -139,14 +139,13 @@ def get_application_analytics(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
 
     query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id)
 
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
     elif current_user.role == UserRole.broker:
-        from sqlalchemy import or_
         referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
             or_(
@@ -161,7 +160,6 @@ def get_application_analytics(
             ExternalReferral.referrer_id == current_user.id,
             ExternalReferral.referred_client_id.isnot(None),
         )
-        from sqlalchemy import or_
         query = query.filter(
             or_(
                 LoanApplication.user_id.in_(referred_client_ids),
@@ -169,33 +167,55 @@ def get_application_analytics(
             )
         )
 
-    apps = query.all()
-
-    by_status: dict[str, int] = {}
-    by_loan_type: dict[str, int] = {}
-    total_value = 0.0
-    settled_count = 0
-    settled_value = 0.0
-    approval_count = 0
     active_statuses = {"application_received", "application_assessed", "submitted", "approval"}
 
-    for app in apps:
-        s = app.status.value if hasattr(app.status, "value") else str(app.status)
-        lt = app.loan_type.value if hasattr(app.loan_type, "value") else str(app.loan_type)
-        by_status[s] = by_status.get(s, 0) + 1
-        by_loan_type[lt] = by_loan_type.get(lt, 0) + 1
-        amt = float(app.amount or 0)
-        total_value += amt
-        if s == "settled":
-            settled_count += 1
-            settled_value += amt
-        if s == "approval":
-            approval_count += 1
+    # All aggregations run as DB queries — no Python-side row iteration
+    status_rows = (
+        query
+        .with_entities(LoanApplication.status, func.count().label("cnt"))
+        .group_by(LoanApplication.status)
+        .all()
+    )
+    by_status: dict[str, int] = {
+        (s.value if hasattr(s, "value") else str(s)): cnt
+        for s, cnt in status_rows
+    }
 
+    loan_type_rows = (
+        query
+        .with_entities(LoanApplication.loan_type, func.count().label("cnt"))
+        .group_by(LoanApplication.loan_type)
+        .all()
+    )
+    by_loan_type: dict[str, int] = {
+        (lt.value if hasattr(lt, "value") else str(lt)): cnt
+        for lt, cnt in loan_type_rows
+    }
+
+    totals = query.with_entities(
+        func.count().label("total"),
+        func.coalesce(func.sum(LoanApplication.amount), 0).label("total_value"),
+    ).first()
+    total_applications = totals.total if totals else 0
+    total_value = float(totals.total_value) if totals else 0.0
+
+    settled = (
+        query
+        .filter(LoanApplication.status == ApplicationStatus.settled)
+        .with_entities(
+            func.count().label("cnt"),
+            func.coalesce(func.sum(LoanApplication.amount), 0).label("val"),
+        )
+        .first()
+    )
+    settled_count = settled.cnt if settled else 0
+    settled_value = float(settled.val) if settled else 0.0
+
+    approval_count = by_status.get("approval", 0)
     active_count = sum(by_status.get(s, 0) for s in active_statuses)
 
     return {
-        "total_applications": len(apps),
+        "total_applications": total_applications,
         "total_value": total_value,
         "settled_count": settled_count,
         "settled_value": settled_value,
@@ -266,8 +286,10 @@ def update_application(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be submitted")
         updates["status"] = "application_received"
 
-        # Track broker/admin completion on behalf of client
-        if current_user.role != UserRole.client:
+        if current_user.role == UserRole.client:
+            log_activity(db, current_user.id, "submitted", "application", app_id, tenant_id=tenant_id)
+        else:
+            # Track broker/admin completion on behalf of client
             application.completed_by_id = current_user.id
             application.completed_at = datetime.now(timezone.utc)
             log_activity(db, current_user.id, "broker_completed", "application", app_id,
@@ -280,6 +302,9 @@ def update_application(
 
     for key, value in updates.items():
         setattr(application, key, value)
+
+    if updates:
+        log_activity(db, current_user.id, "updated", "application", app_id, {"fields": list(updates.keys())}, tenant_id=tenant_id)
 
     # Detect if status just changed to application_received for Lend auto-sync
     becoming_submitted = updates.get("status") == "application_received"
@@ -322,10 +347,13 @@ def change_status(
     db.commit()
     db.refresh(application)
 
-    # Send email notification to client
+    # Notify client via email and SMS
     client = db.query(User).filter(User.id == application.user_id).first()
     if client:
         send_status_notification(client.email, client.full_name, application.loan_type.value, new_status.value)
+        if client.phone:
+            from app.services.sms import send_status_sms
+            send_status_sms(client.phone, new_status.value)
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application)
@@ -463,6 +491,7 @@ def trigger_analysis(
     # Set to pending and kick off background task
     application.analysis_status = AnalysisStatus.pending
     application.analysis_error = None
+    log_activity(db, current_user.id, "analysis_triggered", "application", app_id, tenant_id=tenant_id)
     db.commit()
 
     from app.services.llm_analysis import run_analysis_background
@@ -527,6 +556,15 @@ class ClientInviteRequest(BaseModel):
     email: str
     portal_url: str
 
+    @field_validator("portal_url")
+    @classmethod
+    def validate_portal_url(cls, v: str) -> str:
+        from app.config import FRONTEND_URL
+        allowed = FRONTEND_URL.rstrip("/")
+        if not v.rstrip("/").startswith(allowed):
+            raise ValueError(f"portal_url must be within the configured frontend origin ({allowed})")
+        return v
+
 
 @router.post("/{app_id}/client-invite")
 def send_client_invite(
@@ -549,6 +587,7 @@ def send_client_invite(
     application.client_invite_token = token
     application.client_invite_email = data.email.strip()
     application.client_invite_sent_at = datetime.now(timezone.utc)
+    log_activity(db, current_user.id, "client_invite_sent", "application", app_id, {"email": data.email.strip()}, tenant_id=tenant_id)
     db.commit()
 
     invite_url = f"{data.portal_url.rstrip('/')}/apply/{token}"
@@ -556,7 +595,7 @@ def send_client_invite(
         filter(None, [application.applicant_first_name, application.applicant_last_name])
     ) or "there"
 
-    from app.services.email import _send_email
+    from app.services.email import _send_async
     if EMAIL_ENABLED:
         body = (
             f"Hi {applicant_name},\n\n"
@@ -566,10 +605,6 @@ def send_client_invite(
             f"This link is unique to you — please do not share it.\n\n"
             f"Best regards,\nXpress Finance Team"
         )
-        threading.Thread(
-            target=_send_email,
-            args=(data.email.strip(), "Complete Your Loan Application — Xpress Finance", body),
-            daemon=True,
-        ).start()
+        _send_async(data.email.strip(), "Complete Your Loan Application — Xpress Finance", body)
 
     return {"success": True, "invite_url": invite_url}

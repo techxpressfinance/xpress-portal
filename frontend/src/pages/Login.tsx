@@ -25,7 +25,7 @@ export default function Login() {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const brandName = tenant?.name || 'Xpress Finance';
-  const defaultLogo = theme === 'dark' ? '/xpress-dark.png' : '/xpress.png';
+  const defaultLogo = theme === 'dark' ? '/xpress-dark.svg' : '/xpress-light.svg';
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
   const [showResend, setShowResend] = useState(false);

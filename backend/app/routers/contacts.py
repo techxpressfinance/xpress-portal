@@ -78,8 +78,8 @@ def list_contacts(
 
     # For name search on encrypted fields, we need to fetch and filter in Python
     if search and not query.count():
-        # Fallback: load all and filter by decrypted name
-        all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).all()
+        # Fallback: load and filter by decrypted name (capped to prevent OOM on large tenants)
+        all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).limit(2000).all()
         safe_lower = search.lower()
         filtered = [
             c for c in all_contacts

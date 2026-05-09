@@ -100,6 +100,7 @@ class LoanApplication(Base):
     lend_extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Client-filled — Contact
+    applicant_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     applicant_mobile: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     preferred_contact_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 

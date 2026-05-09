@@ -52,10 +52,13 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    changes = data.model_dump(exclude_unset=True)
     if data.full_name is not None:
         current_user.full_name = data.full_name
     if data.phone is not None:
         current_user.phone = data.phone
+    if changes:
+        log_activity(db, current_user.id, "profile_updated", "user", current_user.id, {"fields": list(changes.keys())}, tenant_id=current_user.tenant_id)
     db.commit()
     db.refresh(current_user)
     return current_user
