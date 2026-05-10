@@ -127,8 +127,9 @@ def migrate():
             cur.execute("SAVEPOINT row_sp")
             try:
                 cur.execute(sql, values)
+                n = cur.rowcount  # save before RELEASE overwrites it
                 cur.execute("RELEASE SAVEPOINT row_sp")
-                if cur.rowcount > 0:
+                if n > 0:
                     inserted += 1
                 else:
                     skipped += 1  # ON CONFLICT DO NOTHING — row already exists
