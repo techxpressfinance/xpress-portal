@@ -58,7 +58,7 @@ _MIGRATIONS = [
     ("documents", "ocr_status", "VARCHAR(10) DEFAULT 'pending' NOT NULL"),
     ("documents", "ocr_text", "TEXT"),
     ("documents", "ocr_error", "VARCHAR(500)"),
-    ("users", "email_verified", "BOOLEAN DEFAULT 1 NOT NULL"),
+    ("users", "email_verified", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("users", "email_verification_token", "VARCHAR(36)"),
     ("users", "email_verification_token_expires_at", "TIMESTAMP"),
     ("loan_applications", "completed_by_id", "VARCHAR(36) REFERENCES users(id)"),
@@ -98,7 +98,7 @@ _MIGRATIONS = [
     ("loan_applications", "lend_synced_at", "TIMESTAMP"),
     # Lend.com.au integration — documents
     ("documents", "lend_document_type", "VARCHAR(100)"),
-    ("documents", "lend_uploaded", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ("documents", "lend_uploaded", "BOOLEAN DEFAULT FALSE NOT NULL"),
     # Account lockout
     ("users", "failed_login_attempts", "INTEGER DEFAULT 0 NOT NULL"),
     ("users", "locked_until", "TIMESTAMP"),
@@ -180,7 +180,7 @@ _MIGRATIONS = [
     ("loan_applications", "client_invite_email", "VARCHAR(200)"),
     ("loan_applications", "client_invite_sent_at", "TIMESTAMP"),
     # Unread tracking for client messages
-    ("client_messages", "is_read", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ("client_messages", "is_read", "BOOLEAN DEFAULT FALSE NOT NULL"),
     # Assigned broker on service requests
     ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
     # Message visibility: who can read the message beyond the direct recipient
@@ -189,6 +189,7 @@ _MIGRATIONS = [
 
 _logger = logging.getLogger(__name__)
 _inspector = inspect(engine)
+_dialect = engine.dialect.name
 _column_cache: dict[str, set[str]] = {}
 with engine.begin() as conn:
     for table, col, col_type in _MIGRATIONS:
@@ -211,59 +212,64 @@ with engine.begin() as conn:
         pass
 
     if _needs_rebuild:
-        _logger.info("Rebuilding quote_sheets table to make application_id nullable")
-        conn.execute(text("""
-            CREATE TABLE quote_sheets_new (
-                id VARCHAR(36) PRIMARY KEY,
-                application_id VARCHAR(36) REFERENCES loan_applications(id) ON DELETE CASCADE,
-                version INTEGER NOT NULL DEFAULT 1,
-                title VARCHAR(200),
-                status VARCHAR(5) NOT NULL DEFAULT 'draft',
-                created_by_id VARCHAR(36) NOT NULL REFERENCES users(id),
-                broker_notes TEXT,
-                input_parameters TEXT,
-                recipient_name VARCHAR(200),
-                recipient_email VARCHAR(255),
-                sent_at DATETIME,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL
-            )
-        """))
-        conn.execute(text("""
-            INSERT INTO quote_sheets_new
-                (id, application_id, version, title, status, created_by_id,
-                 broker_notes, input_parameters, recipient_name, recipient_email,
-                 sent_at, created_at, updated_at)
-            SELECT id, application_id, version, title, status, created_by_id,
-                   broker_notes, input_parameters, recipient_name, recipient_email,
-                   sent_at, created_at, updated_at
-            FROM quote_sheets
-        """))
-        conn.execute(text("DROP TABLE quote_sheets"))
-        conn.execute(text("ALTER TABLE quote_sheets_new RENAME TO quote_sheets"))
-        _logger.info("quote_sheets table rebuilt successfully")
+        if _dialect == "sqlite":
+            _logger.info("Rebuilding quote_sheets table to make application_id nullable")
+            conn.execute(text("""
+                CREATE TABLE quote_sheets_new (
+                    id VARCHAR(36) PRIMARY KEY,
+                    application_id VARCHAR(36) REFERENCES loan_applications(id) ON DELETE CASCADE,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    title VARCHAR(200),
+                    status VARCHAR(5) NOT NULL DEFAULT 'draft',
+                    created_by_id VARCHAR(36) NOT NULL REFERENCES users(id),
+                    broker_notes TEXT,
+                    input_parameters TEXT,
+                    recipient_name VARCHAR(200),
+                    recipient_email VARCHAR(255),
+                    sent_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """))
+            conn.execute(text("""
+                INSERT INTO quote_sheets_new
+                    (id, application_id, version, title, status, created_by_id,
+                     broker_notes, input_parameters, recipient_name, recipient_email,
+                     sent_at, created_at, updated_at)
+                SELECT id, application_id, version, title, status, created_by_id,
+                       broker_notes, input_parameters, recipient_name, recipient_email,
+                       sent_at, created_at, updated_at
+                FROM quote_sheets
+            """))
+            conn.execute(text("DROP TABLE quote_sheets"))
+            conn.execute(text("ALTER TABLE quote_sheets_new RENAME TO quote_sheets"))
+            _logger.info("quote_sheets table rebuilt successfully")
+        else:
+            conn.execute(text("ALTER TABLE quote_sheets ALTER COLUMN application_id DROP NOT NULL"))
+            _logger.info("Made quote_sheets.application_id nullable")
 
 # Data migration: remap legacy ApplicationStatus values to the new vocabulary.
 # Old: submitted, reviewing, approved  →  New: application_received, application_assessed, approval
-with engine.begin() as conn:
-    _status_remap = [
-        ("submitted", "application_received"),
-        ("reviewing", "application_assessed"),
-        ("approved", "approval"),
-    ]
-    for _old, _new in _status_remap:
-        conn.execute(
-            text("UPDATE loan_applications SET status = :new WHERE status = :old"),
-            {"old": _old, "new": _new},
-        )
-        conn.execute(
-            text("UPDATE kanban_columns SET mapped_status = :new WHERE mapped_status = :old"),
-            {"old": _old, "new": _new},
-        )
+# Postgres: enum is created fresh with correct values so legacy values can't exist; SQLite only.
+if _dialect == "sqlite":
+    with engine.begin() as conn:
+        _status_remap = [
+            ("submitted", "application_received"),
+            ("reviewing", "application_assessed"),
+            ("approved", "approval"),
+        ]
+        for _old, _new in _status_remap:
+            conn.execute(
+                text("UPDATE loan_applications SET status = :new WHERE status = :old"),
+                {"old": _old, "new": _new},
+            )
+            conn.execute(
+                text("UPDATE kanban_columns SET mapped_status = :new WHERE mapped_status = :old"),
+                {"old": _old, "new": _new},
+            )
 
 # Backfill: migrate existing assigned_broker_id rows into application_brokers
 if "application_brokers" in {t for t in _inspector.get_table_names()}:
-    _dialect = engine.dialect.name
     with engine.begin() as conn:
         if _dialect == "sqlite":
             conn.execute(text(
@@ -288,10 +294,10 @@ if "application_notes" in {t for t in _inspector.get_table_names()}:
         with engine.begin() as conn:
             # is_internal=true (broker-only) → "broker", is_internal=false (client-facing) → "broker,client,referrer"
             conn.execute(text(
-                "UPDATE application_notes SET visibility = 'broker' WHERE is_internal = 1 AND visibility = 'broker'"
+                "UPDATE application_notes SET visibility = 'broker' WHERE is_internal = TRUE AND visibility = 'broker'"
             ))
             conn.execute(text(
-                "UPDATE application_notes SET visibility = 'broker,client,referrer' WHERE is_internal = 0 AND visibility = 'broker'"
+                "UPDATE application_notes SET visibility = 'broker,client,referrer' WHERE is_internal = FALSE AND visibility = 'broker'"
             ))
             _logger.info("Backfilled application_notes.visibility from is_internal")
 
@@ -305,8 +311,8 @@ with engine.begin() as conn:
         _now = _dt.now(_tz.utc)
         conn.execute(text(
             "INSERT INTO tenants (id, name, slug, is_active, created_at, updated_at) "
-            "VALUES (:id, :name, :slug, 1, :now, :now)"
-        ), {"id": _default_tenant_id, "name": "Default", "slug": "default", "now": _now})
+            "VALUES (:id, :name, :slug, :active, :now, :now)"
+        ), {"id": _default_tenant_id, "name": "Default", "slug": "default", "active": True, "now": _now})
         _tenant_tables = [
             "users", "loan_applications", "documents", "contacts", "organizations",
             "contact_organizations", "lenders", "lender_submissions", "kanban_boards",
@@ -350,8 +356,9 @@ with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO users (id, email, password_hash, full_name, role, is_active, email_verified, auth_method, "
             "failed_login_attempts, login_code_attempts, created_at, updated_at) "
-            "VALUES (:id, :email, :pw, :name, 'super_admin', 1, 1, 'password', 0, 0, :now, :now)"
-        ), {"id": str(_uuid.uuid4()), "email": _sa_email, "pw": _hash_pw(_sa_password), "name": "Super Admin", "now": _now})
+            "VALUES (:id, :email, :pw, :name, 'super_admin', :active, :verified, 'password', 0, 0, :now, :now)"
+        ), {"id": str(_uuid.uuid4()), "email": _sa_email, "pw": _hash_pw(_sa_password), "name": "Super Admin",
+            "active": True, "verified": True, "now": _now})
         _logger.info("Seeded super_admin user: %s (change password immediately!)", _sa_email)
 
 # Seed a default Kanban board per tenant if they don't have one
@@ -359,7 +366,7 @@ try:
     import uuid as _uuid
     from datetime import datetime as _dt, timezone as _tz
     with engine.begin() as conn:
-        _tenants = conn.execute(text("SELECT id FROM tenants WHERE is_active = 1")).fetchall()
+        _tenants = conn.execute(text("SELECT id FROM tenants WHERE is_active = TRUE")).fetchall()
         for _tenant_row in _tenants:
             _tid = _tenant_row[0]
             _board_exists = conn.execute(
@@ -377,8 +384,9 @@ try:
             _creator_id = _admin_row[0]
             conn.execute(text(
                 "INSERT INTO kanban_boards (id, tenant_id, name, description, created_by_id, is_default, created_at, updated_at) "
-                "VALUES (:id, :tid, :name, :desc, :creator, 1, :now, :now)"
-            ), {"id": _board_id, "tid": _tid, "name": "Default Pipeline", "desc": "Default application pipeline board", "creator": _creator_id, "now": _now})
+                "VALUES (:id, :tid, :name, :desc, :creator, :is_default, :now, :now)"
+            ), {"id": _board_id, "tid": _tid, "name": "Default Pipeline", "desc": "Default application pipeline board",
+                "creator": _creator_id, "is_default": True, "now": _now})
             for col_def in DEFAULT_KANBAN_COLUMNS:
                 conn.execute(text(
                     "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, position, color, created_at) "
