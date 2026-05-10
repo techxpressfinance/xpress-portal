@@ -87,6 +87,13 @@ def migrate():
     ordered = [t for t in TABLE_ORDER if t in existing]
     ordered += [t for t in existing if t not in TABLE_ORDER]
 
+    # Wipe auto-seeded Postgres data so SQLite IDs/FKs insert cleanly
+    print("Clearing auto-seeded Postgres data...")
+    cur.execute("TRUNCATE TABLE tenants CASCADE")
+    cur.execute("TRUNCATE TABLE token_blacklist")
+    pg.commit()
+    print("Cleared.\n")
+
     total_inserted = total_skipped = 0
 
     for table in ordered:
@@ -121,7 +128,10 @@ def migrate():
             try:
                 cur.execute(sql, values)
                 cur.execute("RELEASE SAVEPOINT row_sp")
-                inserted += 1
+                if cur.rowcount > 0:
+                    inserted += 1
+                else:
+                    skipped += 1  # ON CONFLICT DO NOTHING — row already exists
             except Exception as e:
                 cur.execute("ROLLBACK TO SAVEPOINT row_sp")
                 skipped += 1
