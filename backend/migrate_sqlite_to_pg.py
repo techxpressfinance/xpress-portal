@@ -101,12 +101,21 @@ def migrate():
         col_list = ", ".join(f'"{c}"' for c in cols)
         sql = f'INSERT INTO "{table}" ({col_list}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
 
+        # Find which column indices are boolean in Postgres
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s AND data_type = 'boolean'
+        """, (table,))
+        bool_indices = {cols.index(r[0]) for r in cur.fetchall() if r[0] in cols}
+
         inserted = skipped = 0
         for row in rows:
             values = list(row)
             for i, col in enumerate(cols):
                 if col in STATUS_COLS and values[i] in STATUS_REMAP:
                     values[i] = STATUS_REMAP[values[i]]
+                if i in bool_indices and values[i] is not None:
+                    values[i] = bool(values[i])
 
             cur.execute("SAVEPOINT row_sp")
             try:
