@@ -373,10 +373,10 @@ export default function AllApplications() {
                   const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
                   const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
                   const firstBroker = app.assigned_brokers?.[0];
-                  const isDirectLead = app.user_role === 'referrer' || (app.user_role === 'broker' && !!(app.applicant_first_name || app.applicant_last_name));
+                  const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
                   const clientName = isDirectLead
-                    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
-                    : app.user_name || 'Unknown';
+                    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
+                    : app.user_name || '';
                   const referrerName = isDirectLead ? app.user_name || null : null;
                   const subtitle = app.business_name || (isDirectLead ? null : app.user_email) || '';
 

@@ -147,10 +147,10 @@ function KanbanCard({
   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
   const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
   const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
-  const isDirectLead = app.user_role === 'referrer';
+  const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
   const clientName = isDirectLead
-    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
-    : app.user_name || 'Unknown';
+    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
+    : app.user_name || '';
   const referrerName = isDirectLead ? app.user_name || null : null;
   const subtitle = app.business_name || (!isDirectLead ? app.user_email : null) || '';
   const brokers = app.assigned_brokers || [];
@@ -1230,9 +1230,9 @@ export default function KanbanBoardPage() {
                 </span>
               </div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {draggedApp.user_role === 'referrer'
-                  ? [draggedApp.applicant_first_name, draggedApp.applicant_last_name].filter(Boolean).join(' ') || 'Unknown'
-                  : draggedApp.user_name || 'Unknown'}
+                {draggedApp.user_role === 'referrer' || draggedApp.user_role === 'broker' || draggedApp.user_role === 'admin'
+                  ? [draggedApp.applicant_first_name, draggedApp.applicant_last_name].filter(Boolean).join(' ') || draggedApp.user_name || ''
+                  : draggedApp.user_name || ''}
               </div>
               <div className="led-mono led-tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--led-ink)' }}>
                 {fmtMoneyK(Number(draggedApp.amount) || 0)}
@@ -1249,8 +1249,8 @@ export default function KanbanBoardPage() {
         message={pendingMove ? (
           <>
             Move <span className="font-semibold text-foreground">
-              {pendingMove.app.user_role === 'referrer'
-                ? [pendingMove.app.applicant_first_name, pendingMove.app.applicant_last_name].filter(Boolean).join(' ') || 'this application'
+              {pendingMove.app.user_role === 'referrer' || pendingMove.app.user_role === 'broker' || pendingMove.app.user_role === 'admin'
+                ? [pendingMove.app.applicant_first_name, pendingMove.app.applicant_last_name].filter(Boolean).join(' ') || pendingMove.app.user_name || 'this application'
                 : pendingMove.app.user_name || 'this application'}
             </span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
           </>
