@@ -83,7 +83,7 @@ def _get_base_html(content: str) -> str:
                             <td style="padding: 24px 40px 32px; background-color: #fafafa; border-top: 1px solid #e4e4e7; text-align: center;">
                                 <p style="margin: 0; font-size: 13px; color: #71717a; line-height: 1.5;">
                                     This is an automated message from Xpress Finance.<br>
-                                    Please do not reply to this email.
+                                    To get in touch, reply to this email or contact us at enquiries@xpressfinance.com.au
                                 </p>
                             </td>
                         </tr>
@@ -100,6 +100,7 @@ def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str]
     try:
         msg = MIMEMultipart("alternative")
         msg["From"] = SES_FROM_EMAIL
+        msg["Reply-To"] = "enquiries@xpressfinance.com.au"
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
 
