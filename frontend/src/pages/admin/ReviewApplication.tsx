@@ -1,6 +1,6 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import ApplicationCalculators from '../../components/ApplicationCalculators';
@@ -23,6 +23,7 @@ import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 export default function ReviewApplication() {
   const { id } = useParams<{ id: string }>();
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { assignBroker, unassignBroker } = useBrokerAssignment();
   const { downloadFile } = useFileDownload();
@@ -102,6 +103,8 @@ export default function ReviewApplication() {
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletingApp, setDeletingApp] = useState(false);
   const [docType, setDocType] = useState<DocType>('id_proof');
   const [uploading, setUploading] = useState(false);
   const [fileLabel, setFileLabel] = useState('');
@@ -429,6 +432,21 @@ export default function ReviewApplication() {
     }
   };
 
+  const handleDeleteApplication = async () => {
+    if (!id) return;
+    setDeletingApp(true);
+    try {
+      await api.delete(`/applications/${id}`);
+      toast('Application deleted', 'success');
+      navigate('/admin/applications');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to delete application'), 'error');
+      setConfirmDelete(false);
+    } finally {
+      setDeletingApp(false);
+    }
+  };
+
   const handleUploadFile = async (file: File) => {
     if (!id) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -510,10 +528,16 @@ export default function ReviewApplication() {
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
           Back to All Applications
         </Link>
-        <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
-          <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-          Download PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
+            <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            Download PDF
+          </Button>
+          <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
+            <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+            Delete
+          </Button>
+        </div>
       </div>
 
       {/* Status Timeline */}
@@ -2051,6 +2075,21 @@ export default function ReviewApplication() {
                                 {sub.conditions && <div className="sm:col-span-2">Conditions: {sub.conditions}</div>}
                                 {sub.notes && <div className="sm:col-span-2">Notes: {sub.notes}</div>}
                               </div>
+                              {(() => {
+                                const contacts = availableLenders.find(l => l.id === sub.lender_id)?.contacts ?? [];
+                                return contacts.length > 0 ? (
+                                  <div className="mt-2 pt-2 border-t border-border/40 flex flex-wrap gap-x-5 gap-y-1">
+                                    {contacts.map(c => (
+                                      <div key={c.id} className="text-[12px] text-muted-foreground">
+                                        <span className="font-medium text-foreground/80">{c.name}</span>
+                                        {c.designation && <span className="ml-1">· {c.designation}</span>}
+                                        {c.email && <a href={`mailto:${c.email}`} className="ml-1 hover:text-foreground transition-colors">{c.email}</a>}
+                                        {c.phone && <a href={`tel:${c.phone}`} className="ml-1 hover:text-foreground transition-colors">{c.phone}</a>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              })()}
                               <div className="text-[12px] text-muted-foreground/60 mt-1">By {sub.submitted_by_name}</div>
                             </div>
                             <div className="flex gap-1 shrink-0">
@@ -3155,6 +3194,20 @@ export default function ReviewApplication() {
         onConfirm={confirmBrokerSubmitAction}
         onCancel={() => {
           if (!submittingOnBehalf) setConfirmBrokerSubmit(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this application?"
+        message="This will permanently delete the application, all its documents, notes, and related records. This cannot be undone."
+        confirmText="Delete Application"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deletingApp}
+        onConfirm={handleDeleteApplication}
+        onCancel={() => {
+          if (!deletingApp) setConfirmDelete(false);
         }}
       />
     </div>

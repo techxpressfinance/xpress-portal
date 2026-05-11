@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, GlassCard, PageHeader } from '../../components/ui';
+import { Button, ConfirmDialog, GlassCard, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
 import type { ServiceRequest, ServiceRequestStatus, User } from '../../types';
@@ -32,6 +32,7 @@ export default function AdminServiceRequests() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
+  const [clients, setClients] = useState<User[]>([]);
   const [completedCollapsed, setCompletedCollapsed] = useState(false);
   const [editingReq, setEditingReq] = useState<ServiceRequest | null>(null);
   const [editType, setEditType] = useState('');
@@ -39,6 +40,14 @@ export default function AdminServiceRequests() {
   const [editDesc, setEditDesc] = useState('');
   const [editBrokerNotes, setEditBrokerNotes] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  const [confirmCompleteReq, setConfirmCompleteReq] = useState<ServiceRequest | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createClientId, setCreateClientId] = useState('');
+  const [createType, setCreateType] = useState('Status Update');
+  const [createCustom, setCreateCustom] = useState('');
+  const [createDesc, setCreateDesc] = useState('');
+  const [createBrokerId, setCreateBrokerId] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     api.get('/service-requests?per_page=100')
@@ -46,15 +55,60 @@ export default function AdminServiceRequests() {
       .catch(() => toast('Failed to load service requests', 'error'))
       .finally(() => setLoading(false));
 
-    api.get('/users?role=broker&per_page=100')
-      .then(({ data }) => setBrokers(data.items || data))
+    api.get('/users')
+      .then(({ data }) => {
+        const users: User[] = Array.isArray(data) ? data : (data.items ?? []);
+        setBrokers(users.filter((u) => u.role === 'broker'));
+        setClients(users.filter((u) => u.role === 'client'));
+      })
       .catch(() => {});
   }, []);
 
-  const toggleComplete = async (req: ServiceRequest) => {
+  const openCreate = () => {
+    setCreateClientId('');
+    setCreateType('Status Update');
+    setCreateCustom('');
+    setCreateDesc('');
+    setCreateBrokerId('');
+    setShowCreate(true);
+  };
+
+  const handleCreate = async () => {
+    if (createType === 'Other' && !createCustom.trim()) {
+      toast('Please describe the request', 'error');
+      return;
+    }
+    setCreating(true);
+    try {
+      const { data } = await api.post('/service-requests', {
+        request_type: createType,
+        custom_request: createType === 'Other' ? createCustom.trim() : null,
+        description: createDesc.trim() || null,
+        client_id: createClientId || null,
+        assigned_broker_id: createBrokerId || null,
+      });
+      setRequests((prev) => [data, ...prev]);
+      setShowCreate(false);
+      toast('Service request created', 'success');
+    } catch {
+      toast('Failed to create request', 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleComplete = (req: ServiceRequest) => {
     if (toggling) return;
+    if (DONE_STATUSES.includes(req.status)) {
+      // Re-activating — no confirmation needed
+      doStatusChange(req, 'in_progress');
+    } else {
+      setConfirmCompleteReq(req);
+    }
+  };
+
+  const doStatusChange = async (req: ServiceRequest, newStatus: ServiceRequestStatus) => {
     setToggling(req.id);
-    const newStatus: ServiceRequestStatus = DONE_STATUSES.includes(req.status) ? 'in_progress' : 'resolved';
     try {
       const { data } = await api.patch(`/service-requests/${req.id}`, { status: newStatus });
       setRequests((prev) => prev.map((r) => (r.id === req.id ? data : r)));
@@ -232,6 +286,7 @@ export default function AdminServiceRequests() {
       <PageHeader
         title="Service Requests"
         subtitle="Client requests requiring attention"
+        action={<Button onClick={openCreate}>+ New Request</Button>}
       />
 
       {/* Tab pills */}
@@ -300,6 +355,110 @@ export default function AdminServiceRequests() {
           )}
         </GlassCard>
       )}
+
+      {showCreate && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCreate(false)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[16px] font-semibold text-foreground">New Service Request</h2>
+              <button onClick={() => setShowCreate(false)} className="rounded-lg p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Client <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <select
+                  value={createClientId}
+                  onChange={(e) => setCreateClientId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">No client</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name}{c.email ? ` (${c.email})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Request type</label>
+                <select
+                  value={createType}
+                  onChange={(e) => setCreateType(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {SERVICE_REQUEST_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {createType === 'Other' && (
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1.5">Describe the request <span className="text-destructive">*</span></label>
+                  <input
+                    type="text"
+                    value={createCustom}
+                    onChange={(e) => setCreateCustom(e.target.value)}
+                    placeholder="Briefly describe what is needed..."
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Additional details <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <textarea
+                  value={createDesc}
+                  onChange={(e) => setCreateDesc(e.target.value)}
+                  rows={3}
+                  placeholder="Any additional context..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Assign to broker <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <select
+                  value={createBrokerId}
+                  onChange={(e) => setCreateBrokerId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Unassigned</option>
+                  {brokers.map((b) => (
+                    <option key={b.id} value={b.id}>{b.full_name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button variant="secondary" className="flex-1" onClick={() => setShowCreate(false)}>Cancel</Button>
+              <Button className="flex-1" onClick={handleCreate} loading={creating}>Create Request</Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <ConfirmDialog
+        open={!!confirmCompleteReq}
+        title="Mark as resolved?"
+        message={`This will mark "${confirmCompleteReq?.request_type === 'Other' && confirmCompleteReq?.custom_request ? confirmCompleteReq.custom_request : confirmCompleteReq?.request_type}" as resolved. You can reopen it later if needed.`}
+        confirmText="Mark Resolved"
+        cancelText="Cancel"
+        variant="primary"
+        loading={toggling === confirmCompleteReq?.id}
+        onConfirm={() => {
+          if (confirmCompleteReq) doStatusChange(confirmCompleteReq, 'resolved');
+          setConfirmCompleteReq(null);
+        }}
+        onCancel={() => { if (!toggling) setConfirmCompleteReq(null); }}
+      />
 
       {editingReq && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

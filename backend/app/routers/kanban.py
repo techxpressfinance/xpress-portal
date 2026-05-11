@@ -202,7 +202,7 @@ def add_column(
     db.refresh(col)
     count = 0
     if col.mapped_status:
-        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id).count()
+        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).count()
     return {**{c.name: getattr(col, c.name) for c in col.__table__.columns}, "application_count": count}
 
 
@@ -228,7 +228,7 @@ def update_column(
     db.refresh(col)
     count = 0
     if col.mapped_status:
-        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id).count()
+        count = db.query(LoanApplication).filter(LoanApplication.status == col.mapped_status, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).count()
     return {**{c.name: getattr(col, c.name) for c in col.__table__.columns}, "application_count": count}
 
 
@@ -306,7 +306,7 @@ def get_board_applications(
         joinedload(LoanApplication.user),
         selectinload(LoanApplication.brokers),
         joinedload(LoanApplication.completed_by),
-    ).filter(LoanApplication.tenant_id == tenant_id)
+    ).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     # Broker access: only their assigned applications
     if current_user.role == UserRole.broker:

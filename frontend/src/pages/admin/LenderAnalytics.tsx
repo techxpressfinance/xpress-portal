@@ -22,21 +22,30 @@ export default function LenderAnalyticsPage() {
   const [data, setData] = useState<LenderAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
+    if (period === 'custom' && (!dateFrom || !dateTo)) return;
     setLoading(true);
-    api.get(`/lenders/analytics?period=${period}`)
+    const params = new URLSearchParams({ period });
+    if (period === 'custom') {
+      params.set('date_from', dateFrom);
+      params.set('date_to', dateTo);
+    }
+    api.get(`/lenders/analytics?${params}`)
       .then(({ data }) => setData(data))
       .catch(() => toast('Failed to load analytics', 'error'))
       .finally(() => setLoading(false));
-  }, [period]);
+  }, [period, dateFrom, dateTo]);
 
   const periods = [
-    { value: '30d', label: '30 Days' },
-    { value: '90d', label: '90 Days' },
-    { value: '6m', label: '6 Months' },
-    { value: '1y', label: '1 Year' },
-    { value: 'all', label: 'All Time' },
+    { value: '30d', label: '30D' },
+    { value: '90d', label: '90D' },
+    { value: '6m', label: '6M' },
+    { value: '1y', label: '1Y' },
+    { value: 'all', label: 'All' },
+    { value: 'custom', label: 'Custom' },
   ];
 
   // Prepare pie chart data from totals
@@ -56,20 +65,40 @@ export default function LenderAnalyticsPage() {
         title="Lender Analytics"
         subtitle="Submission performance across lenders"
         action={
-          <div className="flex items-center gap-1 rounded-xl bg-secondary p-1">
-            {periods.map(p => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all ${
-                  period === p.value
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl bg-secondary p-1">
+              {periods.map(p => (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all ${
+                    period === p.value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {period === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <span className="text-[13px] text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            )}
           </div>
         }
       />

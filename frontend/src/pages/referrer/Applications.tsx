@@ -58,12 +58,24 @@ export default function ReferrerApplications() {
       <PageHeader
         title="Referred Applications"
         subtitle="View applications from clients you've referred"
-        action={
-          <Link to="/referrer/add-lead">
-            <Button size="sm">+ Add Lead</Button>
-          </Link>
-        }
       />
+
+      {/* Add Lead CTA */}
+      <Link to="/referrer/add-lead" className="block mb-6">
+        <div className="group rounded-2xl border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary/60 transition-all duration-200 px-6 py-7 text-center cursor-pointer">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+            <svg className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+          </div>
+          <p className="text-[15px] font-semibold text-foreground mb-1">Add a New Lead</p>
+          <p className="text-[13px] text-muted-foreground mb-5">Refer a new client and track their application progress</p>
+          <span className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-[14px] font-semibold text-primary-foreground shadow-sm group-hover:opacity-90 transition-opacity">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            Add Lead
+          </span>
+        </div>
+      </Link>
 
       {/* Filters */}
       <GlassCard className="mb-6">

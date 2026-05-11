@@ -152,7 +152,7 @@ def get_contact(
         })
 
     # Get lending history
-    apps = db.query(LoanApplication).filter(LoanApplication.contact_id == contact_id).order_by(LoanApplication.created_at.desc()).all()
+    apps = db.query(LoanApplication).filter(LoanApplication.contact_id == contact_id, LoanApplication.deleted_at.is_(None)).order_by(LoanApplication.created_at.desc()).all()
     applications = [
         {
             "id": a.id,
@@ -311,7 +311,7 @@ def auto_create_contacts(
     Matching priority: DL number > phone+DOB > DOB+name > name.
     Also auto-creates organizations from business_name/business_abn on applications.
     """
-    unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None), LoanApplication.tenant_id == tenant_id).all()
+    unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None), LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).all()
     # Load all existing contacts once; refresh after each new creation
     all_contacts: list[Contact] = list(db.query(Contact).filter(Contact.tenant_id == tenant_id).all())
     created = 0

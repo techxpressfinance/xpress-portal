@@ -48,13 +48,16 @@ def create_service_request(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    is_staff = current_user.role in (UserRole.broker.value, UserRole.admin.value)
+    client_id = (data.client_id or current_user.id) if is_staff else current_user.id
     sr = ServiceRequest(
         tenant_id=tenant_id,
-        client_id=current_user.id,
+        client_id=client_id,
         request_type=data.request_type,
         custom_request=data.custom_request,
         description=data.description,
         status=ServiceRequestStatus.pending.value,
+        assigned_broker_id=data.assigned_broker_id if is_staff else None,
     )
     db.add(sr)
     db.flush()

@@ -64,7 +64,12 @@ def get_notifications(
     for msg in msgs:
         sender_name = msg.sender.full_name if msg.sender else "Someone"
         preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
-        link = "/messages" if current_user.role == UserRole.client else "/admin/messages"
+        if current_user.role == UserRole.client:
+            link = "/messages"
+        elif current_user.role == UserRole.referrer:
+            link = "/referrer/messages"
+        else:
+            link = "/admin/messages"
         items.append({
             "id": msg.id,
             "type": "message",
@@ -90,7 +95,12 @@ def get_notifications(
     for msg in client_msgs:
         sender_name = msg.author.full_name if msg.author else "Your broker"
         preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
-        link = "/messages" if current_user.role == UserRole.client else "/admin/messages"
+        if current_user.role == UserRole.client:
+            link = "/messages"
+        elif current_user.role == UserRole.referrer:
+            link = "/referrer/messages"
+        else:
+            link = "/admin/messages"
         items.append({
             "id": msg.id,
             "type": "message",
@@ -328,7 +338,7 @@ def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
             "last_message_author_name": last_msg.author.full_name if last_msg and last_msg.author else None,
             "message_count": msg_count,
         })
-    conversations.sort(key=lambda c: c["last_message_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    conversations.sort(key=lambda c: c["last_message_at"] or datetime.min, reverse=True)
     return conversations
 
 

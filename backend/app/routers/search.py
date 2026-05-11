@@ -29,7 +29,7 @@ def global_search(
     pattern = f"%{safe_q}%"
 
     # ── Applications ───────────────────────────────────────
-    app_query = db.query(LoanApplication).join(User, LoanApplication.user_id == User.id).filter(LoanApplication.tenant_id == tenant_id)
+    app_query = db.query(LoanApplication).join(User, LoanApplication.user_id == User.id).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     # Brokers only see their assigned applications
     if current_user.role == UserRole.broker:

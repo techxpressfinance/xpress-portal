@@ -38,7 +38,7 @@ from app.models.application_calculator import ApplicationCalculator  # noqa: F40
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -187,6 +187,8 @@ _MIGRATIONS = [
     ("service_requests", "broker_notes", "TEXT"),
     # Message visibility: who can read the message beyond the direct recipient
     ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
+    # Soft delete: timestamp set when an admin/broker deletes an application
+    ("loan_applications", "deleted_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -338,6 +340,50 @@ with engine.begin() as conn:
         conn.execute(text("DELETE FROM token_blacklist WHERE expires_at < NOW()"))
     _logger.info("Purged expired blacklisted tokens")
 
+# Permanently purge soft-deleted applications older than 60 days
+try:
+    from datetime import timedelta as _timedelta
+    from app.database import SessionLocal as _SessionLocal
+    from app.models.loan_application import LoanApplication as _LoanApplication
+    from app.models.document import Document as _Document
+    from app.models.application_note import ApplicationNote as _ApplicationNote
+    from app.models.document_request import DocumentRequest as _DocumentRequest
+    from app.models.application_calculator import ApplicationCalculator as _ApplicationCalculator
+    from app.models.task import Task as _Task
+    from app.services.s3_storage import delete_file as _delete_file
+
+    _cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - _timedelta(days=60)
+    _purge_session = _SessionLocal()
+    try:
+        _expired = _purge_session.query(_LoanApplication).filter(
+            _LoanApplication.deleted_at.isnot(None),
+            _LoanApplication.deleted_at < _cutoff,
+        ).all()
+        for _app in _expired:
+            _docs = _purge_session.query(_Document).filter(_Document.application_id == _app.id).all()
+            for _doc in _docs:
+                if _doc.file_path:
+                    try:
+                        _delete_file(_doc.file_path)
+                    except Exception:
+                        pass
+                _purge_session.delete(_doc)
+            _purge_session.query(_ApplicationNote).filter(_ApplicationNote.application_id == _app.id).delete()
+            _purge_session.query(_DocumentRequest).filter(_DocumentRequest.application_id == _app.id).delete()
+            _purge_session.query(_ApplicationCalculator).filter(_ApplicationCalculator.application_id == _app.id).delete()
+            _purge_session.query(_Task).filter(_Task.application_id == _app.id).update({"application_id": None})
+            _purge_session.delete(_app)
+        _purge_session.commit()
+        if _expired:
+            _logger.info("Purged %d soft-deleted applications older than 60 days", len(_expired))
+    except Exception as _e:
+        _purge_session.rollback()
+        _logger.warning("Failed to purge soft-deleted applications: %s", _e)
+    finally:
+        _purge_session.close()
+except Exception as _e:
+    _logger.warning("Soft-delete purge setup failed: %s", _e)
+
 # Seed super_admin user if none exists
 with engine.begin() as conn:
     _sa_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")).scalar()
@@ -437,6 +483,7 @@ app.include_router(client_alerts.router)
 app.include_router(documents.router)
 app.include_router(messages.router)
 app.include_router(referrals.router)
+app.include_router(referrer.router)
 app.include_router(activity_logs.router)
 app.include_router(dashboard.router)
 app.include_router(lend.router)

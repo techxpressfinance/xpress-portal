@@ -281,21 +281,11 @@ export default function QuoteSheetComparison({
         {/* ── Header bar ──────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '20px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0' }}>
           {/* Brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #1e40af, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontSize: '24px', fontWeight: 900, flexShrink: 0 }}>
-              X
-            </div>
-            <div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px', lineHeight: 1.3 }}>
-                XPRESS <span style={{ color: '#2563eb' }}>FINANCE</span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', fontWeight: 500 }}>Finance &amp; Lending Solutions</div>
-            </div>
-          </div>
+          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '80px', objectFit: 'contain' }} />
           {/* Contact */}
           <div style={{ textAlign: 'right', fontSize: '11px', color: '#64748b', lineHeight: 1.8 }}>
-            <div style={{ fontWeight: 600, color: '#374151' }}>123 Business Road, Sydney NSW 2000</div>
-            <div>Ph: (02) 9876 5432</div>
+            <div style={{ fontWeight: 600, color: '#374151' }}>727 Collins Street, Docklands VIC 3008</div>
+            <div>Ph: (03) 8456 7996</div>
           </div>
         </div>
 

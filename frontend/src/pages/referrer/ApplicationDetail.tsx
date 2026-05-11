@@ -25,7 +25,7 @@ export default function ReferrerApplicationDetail() {
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'details' | 'documents' | 'messages'>('overview');
 
   // Document upload
   const [docType, setDocType] = useState<DocType>('id_proof');
@@ -57,12 +57,23 @@ export default function ReferrerApplicationDetail() {
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
   const EDIT_DEFAULTS = {
     loan_type: 'personal' as LoanType, notes: '',
     amount: '', applicant_title: '', applicant_first_name: '', applicant_last_name: '',
     applicant_middle_name: '', applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
     business_name: '', business_abn: '',
+    // Extended details
+    applicant_email: '', applicant_mobile: '', preferred_contact_method: '',
+    id_expiry_date: '', applicant_residency_status: '',
+    residential_status: '', time_at_address: '', applicant_num_dependants: '',
+    has_partner: false, partner_working: false,
+    employment_category: '', employer_name: '', employer_industry: '', job_title: '',
+    income_frequency: '', gross_income: '',
+    trading_name: '', business_structure: '', gst_registered: false, num_directors: '', time_trading: '',
+    previously_declined: false, change_of_circumstances: '',
+    signature_name: '', emergency_contact_name: '', emergency_contact_relationship: '',
   };
   const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
@@ -90,6 +101,21 @@ export default function ReferrerApplicationDetail() {
           applicant_address: d.applicant_address || '', applicant_suburb: d.applicant_suburb || '',
           applicant_state: d.applicant_state || '', applicant_postcode: d.applicant_postcode || '',
           business_name: d.business_name || '', business_abn: d.business_abn || '',
+          applicant_email: d.applicant_email || '', applicant_mobile: d.applicant_mobile || '',
+          preferred_contact_method: d.preferred_contact_method || '',
+          id_expiry_date: d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
+          residential_status: d.residential_status || '', time_at_address: d.time_at_address || '',
+          applicant_num_dependants: d.applicant_num_dependants != null ? String(d.applicant_num_dependants) : '',
+          has_partner: d.has_partner || false, partner_working: d.partner_working || false,
+          employment_category: d.employment_category || '', employer_name: d.employer_name || '',
+          employer_industry: d.employer_industry || '', job_title: d.job_title || '',
+          income_frequency: d.income_frequency || '', gross_income: d.gross_income != null ? String(d.gross_income) : '',
+          trading_name: d.trading_name || '', business_structure: d.business_structure || '',
+          gst_registered: d.gst_registered || false,
+          num_directors: d.num_directors != null ? String(d.num_directors) : '', time_trading: d.time_trading || '',
+          previously_declined: d.previously_declined || false, change_of_circumstances: d.change_of_circumstances || '',
+          signature_name: d.signature_name || '', emergency_contact_name: d.emergency_contact_name || '',
+          emergency_contact_relationship: d.emergency_contact_relationship || '',
         });
         if (d.user_id && d.user_id !== currentUser?.id) {
           api.get(`/users/${d.user_id}`).then(({ data }) => setClient(data)).catch(() => { });
@@ -194,6 +220,47 @@ export default function ReferrerApplicationDetail() {
     }
   };
 
+  const handleSaveDetails = async (fields: typeof EDIT_DEFAULTS) => {
+    if (!id) return;
+    setSavingDetails(true);
+    try {
+      const { data } = await api.patch(`/applications/${id}`, {
+        applicant_email: fields.applicant_email || null,
+        applicant_mobile: fields.applicant_mobile || null,
+        preferred_contact_method: fields.preferred_contact_method || null,
+        id_expiry_date: fields.id_expiry_date || null,
+        applicant_residency_status: fields.applicant_residency_status || null,
+        residential_status: fields.residential_status || null,
+        time_at_address: fields.time_at_address || null,
+        applicant_num_dependants: fields.applicant_num_dependants ? parseInt(fields.applicant_num_dependants) : null,
+        has_partner: fields.has_partner,
+        partner_working: fields.partner_working,
+        employment_category: fields.employment_category || null,
+        employer_name: fields.employer_name || null,
+        employer_industry: fields.employer_industry || null,
+        job_title: fields.job_title || null,
+        income_frequency: fields.income_frequency || null,
+        gross_income: fields.gross_income ? parseFloat(fields.gross_income) : null,
+        trading_name: fields.trading_name || null,
+        business_structure: fields.business_structure || null,
+        gst_registered: fields.gst_registered,
+        num_directors: fields.num_directors ? parseInt(fields.num_directors) : null,
+        time_trading: fields.time_trading || null,
+        previously_declined: fields.previously_declined,
+        change_of_circumstances: fields.change_of_circumstances || null,
+        signature_name: fields.signature_name || null,
+        emergency_contact_name: fields.emergency_contact_name || null,
+        emergency_contact_relationship: fields.emergency_contact_relationship || null,
+      });
+      setApplication(data);
+      toast('Details saved', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to save details'), 'error');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
   const handleSubmitDocRequest = async () => {
     if (!id || !docRequestDescription.trim()) return;
     setSubmittingDocRequest(true);
@@ -260,14 +327,19 @@ export default function ReferrerApplicationDetail() {
         <div className="lg:col-span-2 space-y-6">
           {/* Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'messages'] as const).map((tab) => (
+            {([
+              { key: 'overview', label: 'Overview' },
+              { key: 'details', label: 'Full Details' },
+              { key: 'documents', label: 'Documents' },
+              { key: 'messages', label: 'Messages' },
+            ] as const).map(({ key, label }) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative capitalize ${activeTab === tab ? 'text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'}`}
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`whitespace-nowrap px-4 py-3 text-[14px] font-semibold transition-all duration-300 relative ${activeTab === key ? 'text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'}`}
               >
-                {tab === 'documents' ? 'Documents' : tab === 'messages' ? 'Messages' : 'Overview'}
-                {activeTab === tab && (
+                {label}
+                {activeTab === key && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full" />
                 )}
               </button>
@@ -536,6 +608,214 @@ export default function ReferrerApplicationDetail() {
                   </GlassCard>
                 )}
               </>
+            )}
+
+            {/* ── FULL DETAILS ── */}
+            {activeTab === 'details' && (
+              <div className="space-y-6">
+                {/* Contact */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Contact Details</h2>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Email</label>
+                        <input type="email" className="led-input" placeholder="client@email.com" {...regEdit('applicant_email')} />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Mobile</label>
+                        <input type="text" className="led-input" placeholder="04XX XXX XXX" {...regEdit('applicant_mobile')} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Preferred Contact Method</label>
+                      <select {...regEdit('preferred_contact_method')} className="led-input">
+                        <option value="">Select...</option>
+                        {['Phone', 'Email', 'SMS'].map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Identification */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Identification</h2>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">ID Expiry Date</label>
+                      <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('id_expiry_date')} />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Residency Status</label>
+                      <select {...regEdit('applicant_residency_status')} className="led-input">
+                        <option value="">Select...</option>
+                        {['Australian Citizen', 'Permanent Resident', 'Temporary Resident', 'Non-Resident'].map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Living Situation */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Living Situation</h2>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Residential Status</label>
+                        <select {...regEdit('residential_status')} className="led-input">
+                          <option value="">Select...</option>
+                          {['Owner', 'Renting', 'Living with parents', 'Other'].map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Time at Address</label>
+                        <input type="text" placeholder="e.g. 2 years" className="led-input" {...regEdit('time_at_address')} />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Number of Dependants</label>
+                        <input type="number" min="0" className="led-input" {...regEdit('applicant_num_dependants')} />
+                      </div>
+                      <div className="flex flex-col justify-end pb-[2px]">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('has_partner')} />
+                          <span className="text-[13px] font-medium text-foreground">Has a partner</span>
+                        </label>
+                      </div>
+                      <div className="flex flex-col justify-end pb-[2px]">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('partner_working')} />
+                          <span className="text-[13px] font-medium text-foreground">Partner is working</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Employment & Income */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Employment & Income</h2>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Employment Category</label>
+                        <select {...regEdit('employment_category')} className="led-input">
+                          <option value="">Select...</option>
+                          {['Full-time', 'Part-time', 'Casual', 'Self-employed', 'Contract', 'Retired', 'Unemployed'].map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Employer Name</label>
+                        <input type="text" className="led-input" {...regEdit('employer_name')} />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Industry</label>
+                        <input type="text" className="led-input" {...regEdit('employer_industry')} />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Job Title</label>
+                        <input type="text" className="led-input" {...regEdit('job_title')} />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Income Frequency</label>
+                        <select {...regEdit('income_frequency')} className="led-input">
+                          <option value="">Select...</option>
+                          {['Weekly', 'Fortnightly', 'Monthly', 'Annually'].map((f) => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Gross Income (AUD)</label>
+                        <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                          <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                          <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
+                            {...regEdit('gross_income')} onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); regEdit('gross_income').onChange({ target: { value: v } }); }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Business Details */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Business Details</h2>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Trading Name</label>
+                        <input type="text" className="led-input" {...regEdit('trading_name')} />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Business Structure</label>
+                        <select {...regEdit('business_structure')} className="led-input">
+                          <option value="">Select...</option>
+                          {['Sole Trader', 'Partnership', 'Company', 'Trust'].map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Time Trading</label>
+                        <input type="text" placeholder="e.g. 3 years" className="led-input" {...regEdit('time_trading')} />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Number of Directors</label>
+                        <input type="number" min="1" className="led-input" {...regEdit('num_directors')} />
+                      </div>
+                      <div className="flex flex-col justify-end pb-[2px]">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('gst_registered')} />
+                          <span className="text-[13px] font-medium text-foreground">GST Registered</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Emergency Contact */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Emergency Contact</h2>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Name</label>
+                      <input type="text" className="led-input" {...regEdit('emergency_contact_name')} />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Relationship</label>
+                      <input type="text" className="led-input" placeholder="e.g. Spouse, Parent" {...regEdit('emergency_contact_relationship')} />
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* Declarations */}
+                <GlassCard>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Declarations</h2>
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3">
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('previously_declined')} />
+                        <span className="text-[13px] font-medium text-foreground">Previously declined for credit</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Change of Circumstances</label>
+                      <textarea rows={2} className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground" placeholder="Any changes in financial circumstances..." {...regEdit('change_of_circumstances')} />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Signature Name</label>
+                      <input type="text" className="led-input" placeholder="Full legal name" {...regEdit('signature_name')} />
+                    </div>
+                  </div>
+                </GlassCard>
+
+                <div className="flex items-center gap-3 pb-2">
+                  <Button onClick={handleEditSubmit(handleSaveDetails)} loading={savingDetails}>Save Details</Button>
+                </div>
+              </div>
             )}
 
             {/* ── DOCUMENTS ── */}

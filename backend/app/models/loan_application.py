@@ -165,6 +165,7 @@ class LoanApplication(Base):
     client_invite_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     client_invite_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])

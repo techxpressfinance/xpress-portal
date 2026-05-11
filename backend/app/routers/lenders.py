@@ -147,14 +147,22 @@ def delete_contact(
 
 @router.get("/analytics")
 def lender_analytics(
-    period: str = Query("all", pattern="^(30d|90d|6m|1y|all)$"),
+    period: str = Query("all", pattern="^(30d|90d|6m|1y|all|custom)$"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     now = datetime.now(timezone.utc)
     cutoff = None
-    if period == "30d":
+    cutoff_end = None
+    if period == "custom":
+        if date_from:
+            cutoff = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)
+        if date_to:
+            cutoff_end = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc).replace(hour=23, minute=59, second=59)
+    elif period == "30d":
         cutoff = now - timedelta(days=30)
     elif period == "90d":
         cutoff = now - timedelta(days=90)
@@ -166,6 +174,8 @@ def lender_analytics(
     base_query = db.query(LenderSubmission).join(Lender).filter(LenderSubmission.tenant_id == tenant_id)
     if cutoff:
         base_query = base_query.filter(LenderSubmission.submitted_at >= cutoff)
+    if cutoff_end:
+        base_query = base_query.filter(LenderSubmission.submitted_at <= cutoff_end)
 
     submissions = base_query.all()
 

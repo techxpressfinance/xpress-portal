@@ -83,7 +83,7 @@ def list_applications(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.tenant_id == tenant_id)
+    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
@@ -141,7 +141,7 @@ def get_application_analytics(
 ):
     from sqlalchemy import func, or_
 
-    query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id)
+    query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
@@ -233,7 +233,7 @@ def get_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -249,7 +249,7 @@ def update_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -536,27 +536,15 @@ def delete_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    if application.status.value != "draft":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be deleted")
+    if current_user.role not in (UserRole.admin, UserRole.broker):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and brokers can delete applications")
 
-    # Delete associated documents and their files via the storage abstraction
-    from app.services.s3_storage import delete_file
-
-    docs = db.query(Document).filter(Document.application_id == app_id).all()
-    for doc in docs:
-        if doc.file_path:
-            delete_file(doc.file_path)
-        db.delete(doc)
-
-    # Delete associated notes
-    db.query(ApplicationNote).filter(ApplicationNote.application_id == app_id).delete()
-
+    application.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     log_activity(db, current_user.id, "deleted", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
-    db.delete(application)
     db.commit()
 
 

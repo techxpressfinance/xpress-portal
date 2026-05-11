@@ -29,8 +29,8 @@ const QuoteSheets = lazy(() => import('./pages/admin/QuoteSheets'));
 const BasCalculator = lazy(() => import('./pages/admin/BasCalculator'));
 const AdminServiceRequests = lazy(() => import('./pages/admin/ServiceRequests'));
 const ClientServiceRequests = lazy(() => import('./pages/client/ServiceRequests'));
-const ReferrerDashboard = lazy(() => import('./pages/referrer/Dashboard'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
+const ReferrerClients = lazy(() => import('./pages/referrer/Clients'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
 const ReferrerMessages = lazy(() => import('./pages/referrer/Messages'));
 const ReferrerAddLead = lazy(() => import('./pages/referrer/AddLead'));
@@ -60,7 +60,7 @@ function HomeRedirect() {
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'super_admin') return <Navigate to="/platform" replace />;
-  if (user.role === 'referrer') return <Navigate to="/referrer" replace />;
+  if (user.role === 'referrer') return <Navigate to="/referrer/applications" replace />;
   return <Navigate to={user.role === 'client' ? '/dashboard' : '/admin'} replace />;
 }
 
@@ -361,11 +361,7 @@ export default function App() {
               {/* Referrer Routes */}
               <Route
                 path="/referrer"
-                element={
-                  <ProtectedRoute roles={['referrer']}>
-                    <ReferrerDashboard />
-                  </ProtectedRoute>
-                }
+                element={<Navigate to="/referrer/applications" replace />}
               />
               <Route
                 path="/referrer/applications"
@@ -384,18 +380,18 @@ export default function App() {
                 }
               />
               <Route
-                path="/referrer/messages"
+                path="/referrer/clients"
                 element={
                   <ProtectedRoute roles={['referrer']}>
-                    <ReferrerMessages />
+                    <ReferrerClients />
                   </ProtectedRoute>
                 }
               />
               <Route
-                path="/referrer/quote-sheets"
+                path="/referrer/messages"
                 element={
                   <ProtectedRoute roles={['referrer']}>
-                    <QuoteSheets />
+                    <ReferrerMessages />
                   </ProtectedRoute>
                 }
               />
