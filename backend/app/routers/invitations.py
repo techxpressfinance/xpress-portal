@@ -11,6 +11,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
+from app.models.application_broker import ApplicationBroker
 from app.services.email import send_complete_application_email, send_invitation_email
 from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
@@ -173,9 +174,16 @@ def start_application_for_client(
         amount=data.amount,
         notes=data.notes,
         tenant_id=tenant_id,
+        assigned_broker_id=current_user.id,
     )
     db.add(application)
     db.flush()
+
+    db.add(ApplicationBroker(
+        application_id=application.id,
+        broker_id=current_user.id,
+        tenant_id=tenant_id,
+    ))
 
     # Regenerate login code for code-auth users
     login_code = None
