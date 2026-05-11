@@ -37,6 +37,7 @@ export default function AdminServiceRequests() {
   const [editType, setEditType] = useState('');
   const [editCustom, setEditCustom] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editBrokerNotes, setEditBrokerNotes] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
@@ -45,13 +46,9 @@ export default function AdminServiceRequests() {
       .catch(() => toast('Failed to load service requests', 'error'))
       .finally(() => setLoading(false));
 
-    Promise.all([
-      api.get('/users?role=broker&per_page=100'),
-      api.get('/users?role=admin&per_page=100'),
-    ]).then(([{ data: b }, { data: a }]) => {
-      const all = [...(b.items || b), ...(a.items || a)];
-      setBrokers(all.filter((u: User, i: number, arr: User[]) => arr.findIndex((x) => x.id === u.id) === i));
-    }).catch(() => {});
+    api.get('/users?role=broker&per_page=100')
+      .then(({ data }) => setBrokers(data.items || data))
+      .catch(() => {});
   }, []);
 
   const toggleComplete = async (req: ServiceRequest) => {
@@ -84,6 +81,7 @@ export default function AdminServiceRequests() {
     setEditType(req.request_type);
     setEditCustom(req.custom_request ?? '');
     setEditDesc(req.description ?? '');
+    setEditBrokerNotes(req.broker_notes ?? '');
     setEditingReq(req);
   };
 
@@ -99,6 +97,7 @@ export default function AdminServiceRequests() {
         request_type: editType,
         custom_request: editType === 'Other' ? editCustom.trim() : null,
         description: editDesc.trim() || null,
+        broker_notes: editBrokerNotes.trim() || null,
       });
       setRequests((prev) => prev.map((r) => (r.id === editingReq.id ? data : r)));
       setEditingReq(null);
@@ -169,6 +168,11 @@ export default function AdminServiceRequests() {
           )}
           {req.description && (
             <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-1">{req.description}</p>
+          )}
+          {req.broker_notes && (
+            <p className="text-[12px] text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-1">
+              <span className="font-medium">Note:</span> {req.broker_notes}
+            </p>
           )}
           <p className="text-[11px] text-muted-foreground mt-0.5">{formatDate(req.created_at)}</p>
         </div>
@@ -344,6 +348,17 @@ export default function AdminServiceRequests() {
                   onChange={(e) => setEditDesc(e.target.value)}
                   rows={3}
                   placeholder="Any additional context..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Broker notes <span className="text-muted-foreground font-normal">(internal)</span></label>
+                <textarea
+                  value={editBrokerNotes}
+                  onChange={(e) => setEditBrokerNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Internal notes visible only to brokers and admins..."
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 />
               </div>

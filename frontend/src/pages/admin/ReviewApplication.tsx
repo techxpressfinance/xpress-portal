@@ -108,12 +108,22 @@ export default function ReviewApplication() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const EDIT_DEFAULTS = {
-    loan_type: 'personal' as LoanType, notes: '',
+    loan_type: 'personal' as LoanType, notes: '', amount: '',
     applicant_title: '', applicant_first_name: '', applicant_last_name: '', applicant_middle_name: '',
     applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
+    applicant_email: '', applicant_mobile: '', preferred_contact_method: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
+    id_expiry_date: '', applicant_residency_status: '',
+    residential_status: '', time_at_address: '', applicant_num_dependants: '',
+    has_partner: '' as '' | 'true' | 'false', partner_working: '' as '' | 'true' | 'false',
+    employment_category: '', employer_name: '', employer_industry: '', job_title: '', income_frequency: '', gross_income: '',
     business_name: '', business_abn: '', business_registration_date: '', business_industry_id: '',
-    business_monthly_sales: '', loan_term_years: '', loan_term_months: '', loan_purpose_id: '', amount: '',
+    business_monthly_sales: '', trading_name: '', business_structure: '',
+    gst_registered: '' as '' | 'true' | 'false', num_directors: '', time_trading: '',
+    loan_term_years: '', loan_term_months: '', loan_purpose_id: '',
+    previously_declined: '' as '' | 'true' | 'false', change_of_circumstances: '' as '' | 'true' | 'false',
+    signature_name: '',
+    emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
   };
   const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
@@ -148,21 +158,39 @@ export default function ReviewApplication() {
         setAppNotes(notesRes.data);
         const d = appRes.data;
         resetEdit({
-          loan_type: d.loan_type || 'personal', notes: d.notes || '',
+          loan_type: d.loan_type || 'personal', notes: d.notes || '', amount: d.amount ? String(d.amount) : '',
           applicant_title: d.applicant_title || '', applicant_first_name: d.applicant_first_name || '',
           applicant_last_name: d.applicant_last_name || '', applicant_middle_name: d.applicant_middle_name || '',
           applicant_dob: d.applicant_dob || '', applicant_gender: d.applicant_gender || '',
           applicant_marital_status: d.applicant_marital_status || '',
+          applicant_email: d.applicant_email || '', applicant_mobile: d.applicant_mobile || '',
+          preferred_contact_method: d.preferred_contact_method || '',
           applicant_address: d.applicant_address || '', applicant_suburb: d.applicant_suburb || '',
           applicant_state: d.applicant_state || '', applicant_postcode: d.applicant_postcode || '',
+          id_expiry_date: d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
+          residential_status: d.residential_status || '', time_at_address: d.time_at_address || '',
+          applicant_num_dependants: d.applicant_num_dependants != null ? String(d.applicant_num_dependants) : '',
+          has_partner: d.has_partner === null || d.has_partner === undefined ? '' : d.has_partner ? 'true' : 'false',
+          partner_working: d.partner_working === null || d.partner_working === undefined ? '' : d.partner_working ? 'true' : 'false',
+          employment_category: d.employment_category || '', employer_name: d.employer_name || '',
+          employer_industry: d.employer_industry || '', job_title: d.job_title || '',
+          income_frequency: d.income_frequency || '', gross_income: d.gross_income ? String(d.gross_income) : '',
           business_name: d.business_name || '', business_abn: d.business_abn || '',
           business_registration_date: d.business_registration_date || '',
           business_industry_id: d.business_industry_id ? String(d.business_industry_id) : '',
           business_monthly_sales: d.business_monthly_sales ? String(d.business_monthly_sales) : '',
+          trading_name: d.trading_name || '', business_structure: d.business_structure || '',
+          gst_registered: d.gst_registered === null || d.gst_registered === undefined ? '' : d.gst_registered ? 'true' : 'false',
+          num_directors: d.num_directors != null ? String(d.num_directors) : '', time_trading: d.time_trading || '',
           loan_term_years: d.loan_term_requested ? String(Math.floor(d.loan_term_requested / 12)) : '',
           loan_term_months: d.loan_term_requested ? String(d.loan_term_requested % 12) : '',
           loan_purpose_id: d.loan_purpose_id ? String(d.loan_purpose_id) : '',
-          amount: d.amount ? String(d.amount) : '',
+          previously_declined: d.previously_declined === null || d.previously_declined === undefined ? '' : d.previously_declined ? 'true' : 'false',
+          change_of_circumstances: d.change_of_circumstances === null || d.change_of_circumstances === undefined ? '' : d.change_of_circumstances ? 'true' : 'false',
+          signature_name: d.signature_name || '',
+          emergency_contact_name: d.emergency_contact_name || '',
+          emergency_contact_relationship: d.emergency_contact_relationship || '',
+          emergency_contact_phone: d.emergency_contact_phone || '',
         });
 
         const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
@@ -329,19 +357,46 @@ export default function ReviewApplication() {
         applicant_dob: fields.applicant_dob || null,
         applicant_gender: fields.applicant_gender || null,
         applicant_marital_status: fields.applicant_marital_status || null,
+        applicant_email: fields.applicant_email || null,
+        applicant_mobile: fields.applicant_mobile || null,
+        preferred_contact_method: fields.preferred_contact_method || null,
         applicant_address: fields.applicant_address || null,
         applicant_suburb: fields.applicant_suburb || null,
         applicant_state: fields.applicant_state || null,
         applicant_postcode: fields.applicant_postcode || null,
+        id_expiry_date: fields.id_expiry_date || null,
+        applicant_residency_status: fields.applicant_residency_status || null,
+        residential_status: fields.residential_status || null,
+        time_at_address: fields.time_at_address || null,
+        applicant_num_dependants: fields.applicant_num_dependants !== '' ? parseInt(fields.applicant_num_dependants) : null,
+        has_partner: fields.has_partner === '' ? null : fields.has_partner === 'true',
+        partner_working: fields.partner_working === '' ? null : fields.partner_working === 'true',
+        employment_category: fields.employment_category || null,
+        employer_name: fields.employer_name || null,
+        employer_industry: fields.employer_industry || null,
+        job_title: fields.job_title || null,
+        income_frequency: fields.income_frequency || null,
+        gross_income: fields.gross_income ? parseFloat(fields.gross_income) : null,
         business_name: fields.business_name || null,
         business_abn: fields.business_abn || null,
         business_registration_date: fields.business_registration_date || null,
         business_industry_id: fields.business_industry_id ? parseInt(fields.business_industry_id) : null,
         business_monthly_sales: fields.business_monthly_sales ? parseFloat(fields.business_monthly_sales) : null,
+        trading_name: fields.trading_name || null,
+        business_structure: fields.business_structure || null,
+        gst_registered: fields.gst_registered === '' ? null : fields.gst_registered === 'true',
+        num_directors: fields.num_directors !== '' ? parseInt(fields.num_directors) : null,
+        time_trading: fields.time_trading || null,
         loan_term_requested: (fields.loan_term_years || fields.loan_term_months)
           ? (parseInt(fields.loan_term_years || '0') * 12) + parseInt(fields.loan_term_months || '0')
           : null,
         loan_purpose_id: fields.loan_purpose_id ? parseInt(fields.loan_purpose_id) : null,
+        previously_declined: fields.previously_declined === '' ? null : fields.previously_declined === 'true',
+        change_of_circumstances: fields.change_of_circumstances === '' ? null : fields.change_of_circumstances === 'true',
+        signature_name: fields.signature_name || null,
+        emergency_contact_name: fields.emergency_contact_name || null,
+        emergency_contact_relationship: fields.emergency_contact_relationship || null,
+        emergency_contact_phone: fields.emergency_contact_phone || null,
       };
       const { data } = await api.patch(`/applications/${id}`, payload);
       setApplication(data);
@@ -619,36 +674,166 @@ export default function ReviewApplication() {
                         </div>
                       </div>
 
-                      {/* Business (only for business loans) */}
-                      {watchEdit('loan_type') === 'business' && (
-                        <>
-                          <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
-                              <input type="text" className="led-input" {...regEdit('business_name')} />
-                            </div>
-                            <div>
-                              <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
-                              <input type="text" className="led-input" {...regEdit('business_abn')} />
-                            </div>
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div>
-                              <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                              <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('business_registration_date')} />
-                            </div>
-                            <div>
-                              <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
-                              <input type="number" className="led-input" {...regEdit('business_industry_id')} />
-                            </div>
-                            <div>
-                              <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales</label>
-                              <input type="number" className="led-input" {...regEdit('business_monthly_sales')} />
-                            </div>
-                          </div>
-                        </>
-                      )}
+                      {/* Contact */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Contact</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Email</label>
+                          <input type="email" className="led-input" {...regEdit('applicant_email')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Mobile</label>
+                          <input type="text" className="led-input" {...regEdit('applicant_mobile')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Preferred Contact</label>
+                          <select {...regEdit('preferred_contact_method')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Email', 'Phone', 'Mobile'].map((m) => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* ID & Residency */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">ID & Residency</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">ID Expiry Date</label>
+                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('id_expiry_date')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Residency Status</label>
+                          <select {...regEdit('applicant_residency_status')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Australian Citizen', 'Permanent Resident', 'Temporary Resident', 'Visa Holder'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Living Situation */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Living Situation</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Residential Status</label>
+                          <select {...regEdit('residential_status')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Renting', 'Owning', 'Mortgage', 'Living with Family', 'Other'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Time at Address</label>
+                          <input type="text" placeholder="e.g. 2 years" className="led-input" {...regEdit('time_at_address')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Dependants</label>
+                          <input type="number" min="0" className="led-input" {...regEdit('applicant_num_dependants')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Has Partner</label>
+                          <select {...regEdit('has_partner')} className="led-input">
+                            <option value="">Select...</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Partner Working</label>
+                          <select {...regEdit('partner_working')} className="led-input">
+                            <option value="">Select...</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Employment */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Employment</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Employment Category</label>
+                          <select {...regEdit('employment_category')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Full Time', 'Part Time', 'Casual', 'Self Employed', 'Contractor', 'Unemployed', 'Retired', 'Other'].map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Employer Name</label>
+                          <input type="text" className="led-input" {...regEdit('employer_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Industry</label>
+                          <input type="text" className="led-input" {...regEdit('employer_industry')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Job Title</label>
+                          <input type="text" className="led-input" {...regEdit('job_title')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Income Frequency</label>
+                          <select {...regEdit('income_frequency')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Weekly', 'Fortnightly', 'Monthly', 'Annually'].map((f) => <option key={f} value={f}>{f}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Gross Income ($)</label>
+                          <input type="number" min="0" step="0.01" className="led-input" {...regEdit('gross_income')} />
+                        </div>
+                      </div>
+
+                      {/* Business */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
+                          <input type="text" className="led-input" {...regEdit('business_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Trading Name</label>
+                          <input type="text" className="led-input" {...regEdit('trading_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">ABN</label>
+                          <input type="text" className="led-input" {...regEdit('business_abn')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Business Structure</label>
+                          <select {...regEdit('business_structure')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Sole Trader', 'Partnership', 'Company', 'Trust', 'Other'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
+                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('business_registration_date')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
+                          <input type="number" className="led-input" {...regEdit('business_industry_id')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Monthly Sales ($)</label>
+                          <input type="number" min="0" step="0.01" className="led-input" {...regEdit('business_monthly_sales')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">GST Registered</label>
+                          <select {...regEdit('gst_registered')} className="led-input">
+                            <option value="">Select...</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Directors</label>
+                          <input type="number" min="0" className="led-input" {...regEdit('num_directors')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Time Trading</label>
+                          <input type="text" placeholder="e.g. 3 years" className="led-input" {...regEdit('time_trading')} />
+                        </div>
+                      </div>
 
                       {/* Loan terms */}
                       <h3 className="text-[13px] font-medium text-muted-foreground">Loan Details</h3>
@@ -664,6 +849,48 @@ export default function ReviewApplication() {
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Purpose ID</label>
                           <input type="number" className="led-input" {...regEdit('loan_purpose_id')} />
+                        </div>
+                      </div>
+
+                      {/* Declarations */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Declarations</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Previously Declined</label>
+                          <select {...regEdit('previously_declined')} className="led-input">
+                            <option value="">Select...</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Change of Circumstances</label>
+                          <select {...regEdit('change_of_circumstances')} className="led-input">
+                            <option value="">Select...</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Signature Name</label>
+                          <input type="text" className="led-input" {...regEdit('signature_name')} />
+                        </div>
+                      </div>
+
+                      {/* Emergency Contact */}
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Emergency Contact</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Name</label>
+                          <input type="text" className="led-input" {...regEdit('emergency_contact_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Relationship</label>
+                          <input type="text" className="led-input" {...regEdit('emergency_contact_relationship')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Phone</label>
+                          <input type="text" className="led-input" {...regEdit('emergency_contact_phone')} />
                         </div>
                       </div>
 

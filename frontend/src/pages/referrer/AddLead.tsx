@@ -217,13 +217,20 @@ const COMMERCIAL_LABELS = ['Client & Loan Details', 'Identification', 'Declarati
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AddLead() {
+interface AddLeadProps {
+  basePath?: string;
+  title?: string;
+  submitLabel?: string;
+  skipEngagement?: boolean;
+}
+
+export default function AddLead({ basePath = '/referrer/applications', title = 'Add Lead', submitLabel = 'Submit Lead', skipEngagement = false }: AddLeadProps = {}) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const pendingFileInput = useRef<HTMLInputElement>(null);
 
   // Pre-screen engagement state
-  const [showEngagementScreen, setShowEngagementScreen] = useState(true);
+  const [showEngagementScreen, setShowEngagementScreen] = useState(!skipEngagement);
   const [engagementModel, setEngagementModel] = useState<'self_managed' | 'direct_engagement' | ''>('');
   const [engagementError, setEngagementError] = useState('');
   const [draftCreating, setDraftCreating] = useState(false);
@@ -231,6 +238,14 @@ export default function AddLead() {
   const [preLastName, setPreLastName] = useState('');
   const [preEmail, setPreEmail] = useState('');
   const [preMobile, setPreMobile] = useState('');
+
+  // Client picker pre-screen (broker mode only)
+  const [showClientPicker, setShowClientPicker] = useState(skipEngagement);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clients, setClients] = useState<{ id: string; full_name: string; email: string; phone?: string; role: string }[]>([]);
+  const [clientPickerLoading, setClientPickerLoading] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<{ id: string; full_name: string; email: string; phone?: string } | null>(null);
+  const [clientPickerMode, setClientPickerMode] = useState<'existing' | 'none'>('existing');
 
   // Draft tracking
   const [draftAppId, setDraftAppId] = useState<string | null>(null);
@@ -353,6 +368,13 @@ export default function AddLead() {
     api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!skipEngagement) return;
+    api.get('/users')
+      .then(({ data }) => setClients((data.items ?? data).filter((u: { role: string }) => u.role === 'client')))
+      .catch(() => {});
+  }, [skipEngagement]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const totalSteps = lendEnabled ? CONSUMER_STEPS : (tab === 'commercial' ? COMMERCIAL_STEPS : CONSUMER_STEPS);
   const stepLabels = lendEnabled ? CONSUMER_LABELS : (tab === 'commercial' ? COMMERCIAL_LABELS : CONSUMER_LABELS);
 
@@ -396,6 +418,31 @@ export default function AddLead() {
       toast(getErrorMessage(err, 'Failed to create lead'), 'error');
     } finally {
       setDraftCreating(false);
+    }
+  };
+
+  // ── Client picker (broker mode) ──
+
+  const handleClientPickerContinue = async () => {
+    setClientPickerLoading(true);
+    try {
+      const { data } = await api.post('/applications', { loan_type: 'personal', amount: 0 });
+      setDraftAppId(data.id);
+      if (clientPickerMode === 'existing' && selectedClient) {
+        const nameParts = selectedClient.full_name.trim().split(/\s+/);
+        const first = nameParts[0] ?? '';
+        const last = nameParts.slice(1).join(' ') || first;
+        setValue('applicant_first_name', first);
+        setValue('applicant_last_name', last);
+        setValue('applicant_email', selectedClient.email);
+        if (selectedClient.phone) setValue('applicant_mobile', selectedClient.phone);
+      }
+      setShowClientPicker(false);
+      setStep(1);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to initialise application'), 'error');
+    } finally {
+      setClientPickerLoading(false);
     }
   };
 
@@ -477,7 +524,7 @@ export default function AddLead() {
       });
       toast('Invite sent to client successfully', 'success');
       setShowSendModal(false);
-      navigate('/referrer/applications');
+      navigate(basePath);
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send invite'), 'error');
     } finally {
@@ -801,15 +848,85 @@ export default function AddLead() {
               </svg>
             </div>
             <div>
-              <h2 className="text-[18px] font-semibold text-foreground">Lead Submitted</h2>
-              <p className="text-[14px] text-muted-foreground mt-1">The lead has been created and is ready for review.</p>
+              <h2 className="text-[18px] font-semibold text-foreground">Application Submitted</h2>
+              <p className="text-[14px] text-muted-foreground mt-1">The application has been created and is ready for review.</p>
             </div>
             <div className="flex gap-3 justify-center pt-2">
-              <Button onClick={() => navigate(`/referrer/applications/${createdAppId}`)}>View Application</Button>
-              <Button variant="secondary" onClick={() => navigate('/referrer/applications')}>All Applications</Button>
+              <Button onClick={() => navigate(`${basePath}/${createdAppId}`)}>View Application</Button>
+              <Button variant="secondary" onClick={() => navigate(basePath)}>All Applications</Button>
             </div>
           </div>
         </GlassCard>
+      </div>
+    );
+  }
+
+  // ── Client picker pre-screen (broker mode) ───────────────────────────────
+
+  if (showClientPicker) {
+    const filteredClients = clients.filter(c => {
+      const q = clientSearch.toLowerCase();
+      return c.full_name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+    });
+    return (
+      <div className="mx-auto max-w-xl">
+        <PageHeader title={title} subtitle="Select a client for this application" />
+        <GlassCard className="space-y-4">
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setClientPickerMode('existing'); setSelectedClient(null); }}
+              className={`flex-1 rounded-xl border py-2.5 text-[14px] font-medium transition-colors ${clientPickerMode === 'existing' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'}`}
+            >
+              Select existing client
+            </button>
+            <button
+              onClick={() => { setClientPickerMode('none'); setSelectedClient(null); }}
+              className={`flex-1 rounded-xl border py-2.5 text-[14px] font-medium transition-colors ${clientPickerMode === 'none' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'}`}
+            >
+              No client yet
+            </button>
+          </div>
+
+          {clientPickerMode === 'existing' && (
+            <div className="space-y-3">
+              <Input
+                placeholder="Search by name or email..."
+                value={clientSearch}
+                onChange={e => setClientSearch(e.target.value)}
+              />
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {filteredClients.length === 0 && (
+                  <p className="text-[13px] text-muted-foreground text-center py-4">No clients found</p>
+                )}
+                {filteredClients.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedClient(c)}
+                    className={`w-full text-left rounded-xl border px-4 py-3 transition-colors ${selectedClient?.id === c.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
+                  >
+                    <p className="text-[14px] font-medium text-foreground">{c.full_name}</p>
+                    <p className="text-[12px] text-muted-foreground">{c.email}{c.phone ? ` · ${c.phone}` : ''}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {clientPickerMode === 'none' && (
+            <p className="text-[13px] text-muted-foreground">You can fill in the client details in the next step.</p>
+          )}
+        </GlassCard>
+
+        <div className="mt-6 flex gap-3">
+          <Button
+            size="lg"
+            onClick={handleClientPickerContinue}
+            disabled={clientPickerLoading || (clientPickerMode === 'existing' && !selectedClient)}
+          >
+            {clientPickerLoading ? 'Setting up...' : 'Continue'}
+          </Button>
+          <Button variant="secondary" size="lg" onClick={() => navigate(basePath)}>Cancel</Button>
+        </div>
       </div>
     );
   }
@@ -819,7 +936,7 @@ export default function AddLead() {
   if (showEngagementScreen) {
     return (
       <div className="mx-auto max-w-xl">
-        <PageHeader title="Add Lead" subtitle="First, tell us who the client is and how they'll be managed" />
+        <PageHeader title={title} subtitle="First, tell us who the client is and how they'll be managed" />
         <GlassCard className="space-y-4">
           <div>
             <p className="text-[15px] font-semibold text-foreground mb-1">Client Information</p>
@@ -875,7 +992,7 @@ export default function AddLead() {
           <Button size="lg" onClick={handleEngagementContinue} disabled={draftCreating}>
             {draftCreating ? 'Creating lead...' : 'Continue'}
           </Button>
-          <Button variant="secondary" size="lg" onClick={() => navigate('/referrer/applications')}>Cancel</Button>
+          <Button variant="secondary" size="lg" onClick={() => navigate(basePath)}>Cancel</Button>
         </div>
       </div>
     );
@@ -890,7 +1007,7 @@ export default function AddLead() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="Add Lead" subtitle={stepLabels[toUiStep(step) - 1]} />
+      <PageHeader title={title} subtitle={stepLabels[toUiStep(step) - 1]} />
 
       {/* Progress */}
       <div className="mb-6">
@@ -2235,10 +2352,12 @@ export default function AddLead() {
                   <p className="text-[14px] font-semibold text-foreground">${Number(watch('amount') || 0).toLocaleString()}</p>
                 </div>
               )}
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Engagement</p>
-                <p className="text-[14px] font-semibold text-foreground">{engagementModel === 'self_managed' ? 'Referrer manages' : 'Direct client contact'}</p>
-              </div>
+              {!skipEngagement && (
+                <div className="rounded-xl bg-secondary/50 p-3">
+                  <p className="text-[12px] font-medium text-muted-foreground">Engagement</p>
+                  <p className="text-[14px] font-semibold text-foreground">{engagementModel === 'self_managed' ? 'Referrer manages' : 'Direct client contact'}</p>
+                </div>
+              )}
               {uploadedDocs.length > 0 && (
                 <div className="rounded-xl bg-secondary/50 p-3">
                   <p className="text-[12px] font-medium text-muted-foreground">Documents</p>
@@ -2270,7 +2389,7 @@ export default function AddLead() {
             <Button type="button" size="lg" onClick={goNext}>Continue</Button>
           ) : (
             <Button type="submit" size="lg" disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit Lead'}
+              {submitting ? 'Submitting...' : submitLabel}
             </Button>
           )}
           {step === 1 && (
@@ -2281,7 +2400,7 @@ export default function AddLead() {
           {step > 1 && step < maxInternalStep && (
             <Button type="button" variant="secondary" size="lg" onClick={() => setStep(maxInternalStep)}>Skip to Review</Button>
           )}
-          <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/referrer/applications')}>Cancel</Button>
+          <Button type="button" variant="secondary" size="lg" onClick={() => navigate(basePath)}>Cancel</Button>
         </div>
       </form>
 

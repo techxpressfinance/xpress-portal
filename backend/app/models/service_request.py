@@ -35,6 +35,7 @@ class ServiceRequest(Base):
     )
 
     assigned_broker_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    broker_notes = Column(Text, nullable=True)
 
     client = relationship("User", foreign_keys=[client_id], backref="service_requests")
     assigned_broker = relationship("User", foreign_keys=[assigned_broker_id])

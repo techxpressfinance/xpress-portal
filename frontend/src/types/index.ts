@@ -733,6 +733,7 @@ export interface ServiceRequest {
   client_email: string | null;
   assigned_broker_id: string | null;
   assigned_broker_name: string | null;
+  broker_notes: string | null;
   created_at: string;
   updated_at: string;
 }

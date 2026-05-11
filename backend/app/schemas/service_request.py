@@ -53,6 +53,7 @@ class ServiceRequestUpdate(BaseModel):
     request_type: Optional[str] = None
     custom_request: Optional[str] = None
     description: Optional[str] = None
+    broker_notes: Optional[str] = None
 
 
 class ServiceRequestOut(BaseModel):
@@ -66,6 +67,7 @@ class ServiceRequestOut(BaseModel):
     client_email: Optional[str] = None
     assigned_broker_id: Optional[str] = None
     assigned_broker_name: Optional[str] = None
+    broker_notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

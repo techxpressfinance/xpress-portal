@@ -183,6 +183,8 @@ _MIGRATIONS = [
     ("client_messages", "is_read", "BOOLEAN DEFAULT FALSE NOT NULL"),
     # Assigned broker on service requests
     ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
+    # Broker-side notes on service requests
+    ("service_requests", "broker_notes", "TEXT"),
     # Message visibility: who can read the message beyond the direct recipient
     ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
 ]

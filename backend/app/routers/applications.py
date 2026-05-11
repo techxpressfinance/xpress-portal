@@ -272,6 +272,14 @@ def update_application(
             "applicant_dob", "applicant_gender", "applicant_marital_status",
             "applicant_address", "applicant_suburb", "applicant_state", "applicant_postcode",
             "business_abn", "business_name", "business_registration_date", "business_industry_id", "business_monthly_sales",
+            "applicant_email", "applicant_mobile", "preferred_contact_method",
+            "id_expiry_date", "applicant_residency_status",
+            "residential_status", "time_at_address", "applicant_num_dependants", "has_partner", "partner_working",
+            "employment_category", "employer_name", "employer_industry", "job_title", "income_frequency", "gross_income",
+            "trading_name", "business_structure", "gst_registered", "num_directors", "time_trading",
+            "previously_declined", "change_of_circumstances", "signature_name",
+            "emergency_contact_name", "emergency_contact_relationship", "emergency_contact_phone",
+            "client_engagement_model",
         }
         disallowed = set(field_updates.keys()) - _BROKER_ALLOWED_FIELDS
         if disallowed:

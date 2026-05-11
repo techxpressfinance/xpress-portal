@@ -35,6 +35,7 @@ def _to_out(sr: ServiceRequest) -> dict:
         "client_email": sr.client.email if sr.client else None,
         "assigned_broker_id": sr.assigned_broker_id,
         "assigned_broker_name": sr.assigned_broker.full_name if sr.assigned_broker else None,
+        "broker_notes": sr.broker_notes,
         "created_at": sr.created_at,
         "updated_at": sr.updated_at,
     }
@@ -150,6 +151,8 @@ def update_service_request(
         sr.custom_request = data.custom_request.strip() or None
     if data.description is not None:
         sr.description = data.description.strip() or None
+    if data.broker_notes is not None:
+        sr.broker_notes = data.broker_notes.strip() or None
     log_activity(
         db, current_user.id, "updated", "service_request", sr.id,
         {"status": sr.status}, tenant_id,
