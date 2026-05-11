@@ -125,7 +125,7 @@ export default function ReviewApplication() {
     signature_name: '',
     emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
   };
-  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   useEffect(() => {
     if (!id || activeTab !== 'activity') return;
