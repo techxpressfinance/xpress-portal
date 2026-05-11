@@ -26,13 +26,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15")
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 
-# Email (SMTP) configuration - optional, emails silently skipped if not configured
-SMTP_HOST = os.getenv("SMTP_HOST", "")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM = os.getenv("SMTP_FROM", "tech@xpressfinance.com.au")
-EMAIL_ENABLED = bool(SMTP_HOST)
+# Amazon SES - optional, emails silently skipped if not configured
+SES_REGION = os.getenv("SES_REGION", "ap-southeast-2")
+SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL", "")
+EMAIL_ENABLED = bool(SES_FROM_EMAIL)
 
 # OpenAI / LLM analysis - optional, analysis feature disabled if no key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

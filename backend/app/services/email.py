@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import html
 import logging
-import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
-from app.config import EMAIL_ENABLED, FRONTEND_URL, SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USER
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+from app.config import EMAIL_ENABLED, FRONTEND_URL, SES_FROM_EMAIL, SES_REGION
 
 
 def _esc(value: str) -> str:
@@ -94,26 +96,27 @@ def _get_base_html(content: str) -> str:
     """
 
 def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
-    """Send email in the background. Fails silently with logging."""
+    """Send email via Amazon SES. Fails silently with logging."""
     try:
         msg = MIMEMultipart("alternative")
-        msg["From"] = SMTP_FROM
+        msg["From"] = SES_FROM_EMAIL
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
 
-        html = html_body or _get_base_html(f'<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3f3f46;">{body}</p>')
+        rendered_html = html_body or _get_base_html(f'<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3f3f46;">{body}</p>')
 
         msg.attach(MIMEText(body, "plain"))
-        msg.attach(MIMEText(html, "html"))
+        msg.attach(MIMEText(rendered_html, "html"))
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            if SMTP_USER and SMTP_PASSWORD:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        client = boto3.client("ses", region_name=SES_REGION)
+        client.send_raw_email(
+            Source=SES_FROM_EMAIL,
+            Destinations=[to_email],
+            RawMessage={"Data": msg.as_string()},
+        )
 
         logger.info("Email sent to %s: %s", to_email, subject)
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         logger.warning("Failed to send email to %s: %s", to_email, e)
 
 
