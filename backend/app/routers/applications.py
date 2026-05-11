@@ -305,8 +305,11 @@ def update_application(
 
             # Notify the client
             client_user = db.query(User).filter(User.id == application.user_id).first()
-            if client_user:
+            if client_user and client_user.role == UserRole.client:
                 send_status_notification(client_user.email, client_user.full_name, application.loan_type.value, "application_received")
+            elif application.applicant_email:
+                applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
+                send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, "application_received")
 
     for key, value in updates.items():
         setattr(application, key, value)
@@ -357,11 +360,14 @@ def change_status(
 
     # Notify client via email and SMS
     client = db.query(User).filter(User.id == application.user_id).first()
-    if client:
+    if client and client.role == UserRole.client:
         send_status_notification(client.email, client.full_name, application.loan_type.value, new_status.value)
         if client.phone:
             from app.services.sms import send_status_sms
             send_status_sms(client.phone, new_status.value)
+    elif application.applicant_email:
+        applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
+        send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, new_status.value)
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application)
