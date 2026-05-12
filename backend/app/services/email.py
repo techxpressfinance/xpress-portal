@@ -95,7 +95,7 @@ def _get_base_html(content: str) -> str:
     </html>
     """
 
-def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None) -> None:
+def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None, cc_emails: Optional[list[str]] = None) -> None:
     """Send email via Amazon SES. Fails silently with logging."""
     try:
         msg = MIMEMultipart("alternative")
@@ -104,15 +104,19 @@ def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str]
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
 
+        if cc_emails:
+            msg["Cc"] = ", ".join(_sanitize_header(e) for e in cc_emails)
+
         rendered_html = html_body or _get_base_html(f'<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3f3f46;">{body}</p>')
 
         msg.attach(MIMEText(body, "plain"))
         msg.attach(MIMEText(rendered_html, "html"))
 
+        destinations = [to_email] + (cc_emails or [])
         client = boto3.client("ses", region_name=SES_REGION)
         client.send_raw_email(
             Source=SES_FROM_EMAIL,
-            Destinations=[to_email],
+            Destinations=destinations,
             RawMessage={"Data": msg.as_string()},
         )
 
@@ -539,6 +543,78 @@ def send_document_request_email(
     html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
+
+
+def send_direct_engagement_referrer_thankyou(
+    referrer_email: str,
+    referrer_name: str,
+    client_name: str,
+    client_email: str,
+) -> None:
+    """Thank-you email to referrer (CC client) when they choose Xpress Finance direct engagement. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping direct engagement referrer thank-you for %s", referrer_email)
+        return
+
+    subject = "Thank you for your referral — Xpress Finance"
+    body = (
+        f"Hi {referrer_name},\n\n"
+        f"Thank you for referring {client_name} to Xpress Finance. "
+        f"One of our team members will contact them today to discuss the specifics of the deal.\n\n"
+        f"We'll keep you updated as the application progresses.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Hi {_esc(referrer_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            Thank you for referring <strong>{_esc(client_name)}</strong> to Xpress Finance.
+            One of our team members will contact them today to discuss the specifics of the deal.
+        </p>
+        <p style="margin: 0; font-size: 14px; color: #71717a;">We'll keep you updated as the application progresses.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(referrer_email, subject, body, html_body)
+
+
+def send_direct_engagement_client_invite(
+    client_email: str,
+    client_name: str,
+    referrer_name: str,
+    invite_url: str,
+) -> None:
+    """Invite client to complete their application when referred via direct engagement. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping direct engagement client invite for %s", client_email)
+        return
+
+    subject = "You've been referred to Xpress Finance — Complete Your Application"
+    body = (
+        f"Hi {client_name},\n\n"
+        f"{referrer_name} has referred you to Xpress Finance. "
+        f"One of our team members will be in touch with you shortly to discuss the specifics of your deal.\n\n"
+        f"In the meantime, you can get started by completing your application:\n"
+        f"{invite_url}\n\n"
+        f"This link is unique to you — please do not share it.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Hi {_esc(client_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{_esc(referrer_name)}</strong> has referred you to Xpress Finance.
+            One of our team members will be in touch with you shortly to discuss the specifics of your deal.
+        </p>
+        <p style="margin: 0 0 32px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            In the meantime, you can get started by completing your application below.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(invite_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Complete Application</a>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #71717a; text-align: center;">This link is unique to you — please do not share it.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(client_email, subject, body, html_body)
 
 
 def send_service_request_notification(

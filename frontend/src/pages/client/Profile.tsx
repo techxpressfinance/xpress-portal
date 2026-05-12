@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, Button, Input, PageHeader } from '../../components/ui';
-import type { ServiceRequest, ServiceRequestStatus } from '../../types';
 
 interface FormData {
   full_name: string;
@@ -18,27 +16,9 @@ interface PasswordFormData {
   confirm_password: string;
 }
 
-const DONE_STATUSES: ServiceRequestStatus[] = ['resolved', 'closed'];
-
-const STATUS_COLOR: Record<ServiceRequestStatus, string> = {
-  pending: 'text-amber-600 bg-amber-50 border-amber-200',
-  in_progress: 'text-blue-600 bg-blue-50 border-blue-200',
-  resolved: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-  closed: 'text-muted-foreground bg-secondary border-border',
-};
-
-const STATUS_LABEL: Record<ServiceRequestStatus, string> = {
-  pending: 'Pending',
-  in_progress: 'In Progress',
-  resolved: 'Resolved',
-  closed: 'Closed',
-};
-
 export default function Profile() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [requestsLoading, setRequestsLoading] = useState(true);
 
   const {
     register,
@@ -58,13 +38,6 @@ export default function Profile() {
     reset: resetPw,
     watch,
   } = useForm<PasswordFormData>();
-
-  useEffect(() => {
-    api.get('/service-requests?per_page=10')
-      .then(({ data }) => setRequests(data.items))
-      .catch(() => {})
-      .finally(() => setRequestsLoading(false));
-  }, []);
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -184,58 +157,6 @@ export default function Profile() {
           </GlassCard>
         </form>
 
-        {/* Service Requests */}
-        <GlassCard padding="none">
-          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <div>
-              <h2 className="text-[15px] font-semibold text-foreground">Service Requests</h2>
-              <p className="text-[13px] text-muted-foreground mt-0.5">Your recent requests</p>
-            </div>
-            {requests.length > 0 && (
-              <a href="/service-requests" className="text-[13px] font-medium text-primary hover:underline">View all</a>
-            )}
-          </div>
-
-          {requestsLoading ? (
-            <div className="p-4 space-y-3">
-              {[1, 2].map((i) => <div key={i} className="h-10 rounded-lg shimmer" />)}
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="px-5 py-8 text-center">
-              <p className="text-[13px] text-muted-foreground">No service requests yet</p>
-              <a href="/service-requests" className="mt-2 inline-block text-[13px] font-medium text-primary hover:underline">Submit a request</a>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {requests.map((req) => {
-                const isDone = DONE_STATUSES.includes(req.status);
-                const label = req.request_type === 'Other' && req.custom_request ? req.custom_request : req.request_type;
-                return (
-                  <div key={req.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                      isDone ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-primary/40'
-                    }`}>
-                      {isDone && (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className={`text-[13px] font-medium ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                        {label}
-                      </span>
-                      <span className="ml-2 text-[11px] text-muted-foreground">{formatDate(req.created_at)}</span>
-                    </div>
-                    <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded border shrink-0 ${STATUS_COLOR[req.status]}`}>
-                      {STATUS_LABEL[req.status]}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </GlassCard>
       </div>
     </div>
   );

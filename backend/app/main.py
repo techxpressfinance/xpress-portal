@@ -189,6 +189,8 @@ _MIGRATIONS = [
     ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
     # Soft delete: timestamp set when an admin/broker deletes an application
     ("loan_applications", "deleted_at", "TIMESTAMP"),
+    # Company name on external referrals (for contact book)
+    ("external_referrals", "company_name", "VARCHAR(200)"),
 ]
 
 _logger = logging.getLogger(__name__)

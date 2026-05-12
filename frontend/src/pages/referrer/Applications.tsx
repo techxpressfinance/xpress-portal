@@ -153,6 +153,7 @@ export default function ReferrerApplications() {
                 <thead>
                   <tr className="border-b border-border">
                     <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Client</th>
+                    <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Company</th>
                     <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Type</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
                     <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
@@ -190,6 +191,9 @@ export default function ReferrerApplications() {
                             </div>
                           );
                         })()}
+                      </td>
+                      <td className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[13px] text-foreground truncate max-w-[140px]">
+                        {app.business_name || <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>

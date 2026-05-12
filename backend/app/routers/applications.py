@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.config import EMAIL_ENABLED, LEND_ENABLED, LLM_ANALYSIS_ENABLED
+from app.config import EMAIL_ENABLED, FRONTEND_URL, LEND_ENABLED, LLM_ANALYSIS_ENABLED
 from app.database import SessionLocal, get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
@@ -25,7 +25,11 @@ from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.serialization import app_with_user as _app_with_user
-from app.services.email import send_status_notification
+from app.services.email import (
+    send_direct_engagement_client_invite,
+    send_direct_engagement_referrer_thankyou,
+    send_status_notification,
+)
 from app.schemas.loan_application import (
     LoanApplicationCreate,
     LoanApplicationOut,
@@ -67,7 +71,27 @@ def create_application(
         ext_referral.status = ExternalReferralStatus.applied
         ext_referral.converted_at = datetime.now(timezone.utc)
 
+    # For direct engagement, generate invite token so client can complete the form
+    direct_engagement_invite_url = None
+    if data.client_engagement_model == "direct_engagement" and data.applicant_email:
+        token = secrets.token_urlsafe(32)
+        app.client_invite_token = token
+        app.client_invite_email = data.applicant_email.strip()
+        app.client_invite_sent_at = datetime.now(timezone.utc)
+        direct_engagement_invite_url = f"{FRONTEND_URL}/apply/{token}"
+
     db.commit()
+
+    if direct_engagement_invite_url:
+        client_name = " ".join(filter(None, [data.applicant_first_name, data.applicant_last_name])) or "there"
+        referrer_name = current_user.full_name or current_user.email
+        send_direct_engagement_referrer_thankyou(
+            current_user.email, referrer_name, client_name, data.applicant_email.strip()
+        )
+        send_direct_engagement_client_invite(
+            data.applicant_email.strip(), client_name, referrer_name, direct_engagement_invite_url
+        )
+
     db.refresh(app, attribute_names=["user"])
     return _app_with_user(app)
 

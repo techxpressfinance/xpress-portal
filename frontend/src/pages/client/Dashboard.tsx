@@ -44,12 +44,25 @@ export default function ClientDashboard() {
       <PageHeader
         title={`Welcome back, ${user?.full_name?.split(' ')[0]}`}
         subtitle="Here's an overview of your loan applications"
-        action={
-          <Link to="/applications/new">
-            <Button>+ New Application</Button>
-          </Link>
-        }
       />
+
+      {/* Large CTA Banner */}
+      <GlassCard className="mb-8 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6">
+          <div>
+            <h2 className="text-[20px] font-semibold text-foreground">Need a new loan?</h2>
+            <p className="text-[14px] text-muted-foreground mt-1">Start a new application and get approved faster</p>
+          </div>
+          <Link to="/applications/new">
+            <Button size="lg" className="h-12 px-6 text-[15px]">
+              <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              New Application
+            </Button>
+          </Link>
+        </div>
+      </GlassCard>
 
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">

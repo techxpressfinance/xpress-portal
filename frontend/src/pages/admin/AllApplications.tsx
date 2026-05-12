@@ -338,6 +338,7 @@ export default function AllApplications() {
               <thead>
                 <tr>
                   <SortHead k="user_name">Applicant</SortHead>
+                  <th>Company</th>
                   <th>ID</th>
                   <th>Type</th>
                   <SortHead k="amount" align="right">Amount</SortHead>
@@ -352,14 +353,14 @@ export default function AllApplications() {
                 {loading ? (
                   [1, 2, 3, 4, 5].map((i) => (
                     <tr key={i}>
-                      <td colSpan={9}>
+                      <td colSpan={10}>
                         <div style={{ height: 22 }} className="shimmer" />
                       </td>
                     </tr>
                   ))
                 ) : sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="led-empty">
                         <div className="led-empty-icon"><Icon name="search" size={18} /></div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 4 }}>No applications found</div>
@@ -378,7 +379,7 @@ export default function AllApplications() {
                     ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
                     : app.user_name || '';
                   const referrerName = isDirectLead ? app.user_name || null : null;
-                  const subtitle = app.business_name || (isDirectLead ? null : app.user_email) || '';
+                  const subtitle = isDirectLead ? null : (app.user_email || '');
 
                   return (
                     <tr key={app.id} onClick={() => navigate(`/admin/applications/${app.id}`)}>
@@ -386,16 +387,25 @@ export default function AllApplications() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                           <Avatar name={clientName} size="sm" />
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 500, color: 'var(--led-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                            <div style={{ fontWeight: 500, color: 'var(--led-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
                               {clientName}
                             </div>
                             {subtitle && (
-                              <div style={{ fontSize: 12, color: 'var(--led-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                              <div style={{ fontSize: 12, color: 'var(--led-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
                                 {subtitle}
                               </div>
                             )}
                           </div>
                         </div>
+                      </td>
+                      <td>
+                        {app.business_name ? (
+                          <span style={{ fontSize: 13, color: 'var(--led-ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 160 }}>
+                            {app.business_name}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--led-muted)' }}>—</span>
+                        )}
                       </td>
                       <td>
                         <span className="led-mono" style={{ fontSize: 11.5, color: 'var(--led-muted)', letterSpacing: 0.3 }}>

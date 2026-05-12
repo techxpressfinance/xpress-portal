@@ -36,6 +36,7 @@ class ExternalReferral(Base):
     client_engagement_model: Mapped[Optional[ClientEngagementModel]] = mapped_column(
         Enum(ClientEngagementModel), nullable=True
     )
+    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
-from app.models.external_referral import ExternalReferral
+from app.models.external_referral import ExternalReferral, ExternalReferralStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
+from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
@@ -46,6 +51,7 @@ def list_referrer_clients(
             "last_name": app.applicant_last_name or "",
             "email": app.applicant_email or "",
             "mobile": app.applicant_mobile or "",
+            "company_name": app.business_name or "",
             "source": "direct",
         })
 
@@ -74,7 +80,83 @@ def list_referrer_clients(
             "last_name": " ".join(name_parts[1:]),
             "email": client.email,
             "mobile": client.phone or "",
+            "company_name": ref.company_name or "",
             "source": "referred",
         })
 
     return clients
+
+
+class NewClientContact(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    mobile: Optional[str] = None
+    company_name: Optional[str] = None
+
+
+@router.post("/clients", status_code=status.HTTP_201_CREATED)
+def create_referrer_client(
+    data: NewClientContact,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    email = data.email.lower().strip()
+
+    if email == current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot add yourself as a contact")
+
+    # Prevent duplicate referral for this email
+    existing_referral = db.query(ExternalReferral).filter(
+        ExternalReferral.referrer_id == current_user.id,
+        ExternalReferral.referred_email == email,
+    ).first()
+    if existing_referral:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A contact with this email already exists")
+
+    existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
+
+    if not existing_user:
+        full_name = f"{data.first_name.strip()} {data.last_name.strip()}".strip()
+        new_user = User(
+            email=email,
+            full_name=full_name,
+            password_hash="!invited",
+            auth_method="code",
+            role="client",
+            is_active=True,
+            email_verified=True,
+            login_code_attempts=0,
+            invited_by_id=current_user.id,
+            tenant_id=tenant_id,
+        )
+        set_login_code(new_user)
+        db.add(new_user)
+        db.flush()
+        client_id = new_user.id
+    else:
+        client_id = existing_user.id
+
+    referral = ExternalReferral(
+        referrer_id=current_user.id,
+        referred_email=email,
+        referred_client_id=client_id,
+        status=ExternalReferralStatus.signed_up,
+        converted_at=datetime.now(timezone.utc),
+        company_name=data.company_name.strip() if data.company_name else None,
+        tenant_id=tenant_id,
+    )
+    db.add(referral)
+    db.commit()
+
+    name_parts = (data.first_name.strip(), data.last_name.strip())
+    return {
+        "id": client_id,
+        "first_name": name_parts[0],
+        "last_name": name_parts[1],
+        "email": email,
+        "mobile": data.mobile or "",
+        "company_name": data.company_name or "",
+        "source": "referred",
+    }

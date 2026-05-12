@@ -22,24 +22,23 @@ export default function ReferrerMessages() {
 
   const [showStaffSearch, setShowStaffSearch] = useState(false);
   const [staffSearch, setStaffSearch] = useState('');
-  const [showClientSearch, setShowClientSearch] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
-  const [referredClients, setReferredClients] = useState<User[]>([]);
 
   useEffect(() => {
+    if (!user) return;
     Promise.all([
       api.get('/messages/client-inbox'),
       api.get('/messages/recipients'),
     ])
       .then(([convRes, recipientsRes]) => {
-        setConversations(convRes.data);
+        const allConvs = convRes.data as ClientConversation[];
+        // Only show staff conversations (referrer is the "client" subject)
+        setConversations(allConvs.filter((c) => c.client_id === user.id));
         const recipients = recipientsRes.data as User[];
         setAllStaff(recipients.filter((u) => u.role === 'admin' || u.role === 'broker'));
-        setReferredClients(recipients.filter((u) => u.role === 'client'));
       })
       .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,9 +51,7 @@ export default function ReferrerMessages() {
   const openConversation = async (conv: ClientConversation) => {
     setSelectedConv(conv);
     setShowStaffSearch(false);
-    setShowClientSearch(false);
     setStaffSearch('');
-    setClientSearch('');
     setChatLoading(true);
     try {
       const { data } = await api.get(`/clients/${conv.client_id}/messages`, { params: { peer_id: conv.peer_id } });
@@ -74,22 +71,6 @@ export default function ReferrerMessages() {
       client_name: user?.full_name ?? null,
       peer_id: staff.id,
       peer_name: staff.full_name,
-      last_message: null,
-      last_message_at: null,
-      last_message_author_name: null,
-      message_count: 0,
-    };
-    openConversation(conv);
-  };
-
-  const openClientConversation = (client: User) => {
-    const conv: ClientConversation = conversations.find(
-      (c) => c.client_id === client.id && c.peer_id === user!.id
-    ) ?? {
-      client_id: client.id,
-      client_name: client.full_name,
-      peer_id: user!.id,
-      peer_name: user?.full_name ?? null,
       last_message: null,
       last_message_at: null,
       last_message_author_name: null,
@@ -139,16 +120,10 @@ export default function ReferrerMessages() {
       s.email.toLowerCase().includes(staffSearch.toLowerCase())
   );
 
-  const filteredClients = referredClients.filter(
-    (c) =>
-      c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(clientSearch.toLowerCase())
-  );
-
   if (loading) {
     return (
       <div>
-        <PageHeader title="Messages" subtitle="Chat with clients and your broker team" />
+        <PageHeader title="Messages" subtitle="Chat with your broker team" />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-2xl shimmer" />)}
         </div>
@@ -160,29 +135,17 @@ export default function ReferrerMessages() {
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Chat with clients and your broker team"
+        subtitle="Chat with your broker team"
         action={
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowClientSearch((v) => !v);
-                setClientSearch('');
-                setShowStaffSearch(false);
-              }}
-            >
-              {showClientSearch ? 'Cancel' : '+ Message Clients'}
-            </Button>
-            <Button
-              onClick={() => {
-                setShowStaffSearch((v) => !v);
-                setStaffSearch('');
-                setShowClientSearch(false);
-              }}
-            >
-              {showStaffSearch ? 'Cancel' : '+ Message Staff'}
-            </Button>
-          </div>
+          <Button
+            size="lg"
+            onClick={() => {
+              setShowStaffSearch((v) => !v);
+              setStaffSearch('');
+            }}
+          >
+            {showStaffSearch ? 'Cancel' : '+ Message Staff'}
+          </Button>
         }
       />
 
@@ -222,45 +185,7 @@ export default function ReferrerMessages() {
         </GlassCard>
       )}
 
-      {/* New client chat search */}
-      {showClientSearch && (
-        <GlassCard className="mb-6">
-          <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a referred client</h3>
-          <input
-            type="text"
-            autoFocus
-            value={clientSearch}
-            onChange={(e) => setClientSearch(e.target.value)}
-            placeholder="Search by name or email..."
-            className="w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground mb-2"
-          />
-          <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border">
-            {filteredClients.length === 0 ? (
-              <p className="px-4 py-3 text-[13px] text-muted-foreground">
-                {referredClients.length === 0 ? 'No referred clients found' : 'No matching clients'}
-              </p>
-            ) : (
-              filteredClients.slice(0, 20).map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => openClientConversation(c)}
-                  className="w-full text-left px-4 py-3 hover:bg-secondary/50 transition-colors flex items-center gap-3"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                    <span className="text-[12px] font-semibold text-primary">{c.full_name.charAt(0).toUpperCase()}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-foreground truncate">{c.full_name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </GlassCard>
-      )}
-
-      {conversations.length === 0 && !showStaffSearch && !showClientSearch && !selectedConv ? (
+      {conversations.length === 0 && !showStaffSearch && !selectedConv ? (
         <GlassCard>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
@@ -269,7 +194,7 @@ export default function ReferrerMessages() {
               </svg>
             </div>
             <p className="text-[15px] font-medium text-muted-foreground">No conversations yet</p>
-            <p className="text-[13px] text-muted-foreground mt-1">Chat with your referred clients or use "+ Message Staff" to contact your broker team</p>
+            <p className="text-[13px] text-muted-foreground mt-1">Use "Message Staff" above to start a conversation with your broker team</p>
           </div>
         </GlassCard>
       ) : (conversations.length > 0 || !!selectedConv) && (

@@ -8,8 +8,8 @@ interface Props {
   docType: DocType;
   onDocTypeChange: (type: DocType) => void;
   uploading: boolean;
-  onFile: (file: File) => void;
-  /** Show optional label field (used by broker/admin uploaders) */
+  onFile: (file: File, label?: string) => void;
+  /** Always show optional label field (used by broker/admin uploaders) */
   showLabel?: boolean;
   fileLabel?: string;
   onFileLabelChange?: (label: string) => void;
@@ -21,20 +21,37 @@ export default function DocumentUploader({
   onDocTypeChange,
   uploading,
   onFile,
-  showLabel = false,
-  fileLabel = '',
+  showLabel: alwaysShowLabel = false,
+  fileLabel: externalFileLabel = '',
   onFileLabelChange,
   onError,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [internalLabel, setInternalLabel] = useState('');
+
+  // Show label field when docType is "other" or when alwaysShowLabel is true
+  const isOtherType = docType === 'other';
+  const showLabelField = alwaysShowLabel || isOtherType;
+
+  // Use external label if provided, otherwise use internal state
+  const fileLabel = externalFileLabel !== undefined ? externalFileLabel : internalLabel;
+  const handleLabelChange = (value: string) => {
+    if (onFileLabelChange) {
+      onFileLabelChange(value);
+    } else {
+      setInternalLabel(value);
+    }
+  };
 
   const handleFile = (file: File) => {
     if (file.size > MAX_SIZE) {
       onError?.('File size exceeds 10MB limit');
       return;
     }
-    onFile(file);
+    // Pass the label only when "other" is selected
+    const labelToPass = isOtherType ? fileLabel : undefined;
+    onFile(file, labelToPass);
     if (fileInput.current) fileInput.current.value = '';
   };
 
@@ -55,18 +72,18 @@ export default function DocumentUploader({
         </select>
       </div>
 
-      {/* Optional label */}
-      {showLabel && (
+      {/* Optional label - shown for "other" doc type or when alwaysShowLabel is true */}
+      {showLabelField && (
         <div>
           <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">
-            Label <span className="font-normal">(optional)</span>
+            {isOtherType ? 'Document Name' : 'Label'} <span className="font-normal">(optional)</span>
           </label>
           <input
             type="text"
             className="led-input"
-            placeholder={DOC_TYPE_LABELS[docType] || 'e.g. June payslip'}
+            placeholder={isOtherType ? 'e.g. Custom document description' : DOC_TYPE_LABELS[docType] || 'e.g. June payslip'}
             value={fileLabel}
-            onChange={(e) => onFileLabelChange?.(e.target.value)}
+            onChange={(e) => handleLabelChange(e.target.value)}
             disabled={uploading}
           />
         </div>
