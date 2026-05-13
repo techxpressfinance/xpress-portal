@@ -18,6 +18,7 @@ from app.schemas.service_request import (
 )
 from app.services.activity_log import log_activity
 from app.services.email import send_service_request_notification
+from app.services.notification_service import create_notification
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/service-requests", tags=["service_requests"])
@@ -87,6 +88,18 @@ def create_service_request(
             custom_request=data.custom_request,
             description=data.description,
         )
+        request_label = data.custom_request or data.request_type
+        create_notification(
+            db,
+            user_id=broker.id,
+            type="status_change",
+            title="Service request received",
+            body=f"{current_user.full_name} submitted a service request: {request_label}",
+            link="/admin/service-requests",
+            tenant_id=tenant_id,
+        )
+
+    db.commit()
 
     return _to_out(sr)
 

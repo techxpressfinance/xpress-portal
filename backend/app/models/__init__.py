@@ -15,5 +15,6 @@ from app.models.task import Task, ChecklistItem
 from app.models.quote_sheet import QuoteSheet, QuoteOption
 from app.models.contact import Contact, Organization, ContactOrganization
 from app.models.service_request import ServiceRequest
+from app.models.notification import Notification
 
-__all__ = ["Tenant", "User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization", "ServiceRequest"]
+__all__ = ["Tenant", "User", "LoanApplication", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization", "ServiceRequest", "Notification"]

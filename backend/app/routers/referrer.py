@@ -160,3 +160,87 @@ def create_referrer_client(
         "company_name": data.company_name or "",
         "source": "referred",
     }
+
+
+class UpdateClientContact(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    mobile: Optional[str] = None
+    company_name: Optional[str] = None
+
+
+@router.patch("/clients/{contact_id}")
+def update_referrer_client(
+    contact_id: str,
+    data: UpdateClientContact,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    if contact_id.startswith("direct_"):
+        app_id = contact_id[len("direct_"):]
+        app = (
+            db.query(LoanApplication)
+            .filter(
+                LoanApplication.id == app_id,
+                LoanApplication.user_id == current_user.id,
+                LoanApplication.tenant_id == tenant_id,
+                LoanApplication.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not app:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+        if data.first_name is not None:
+            app.applicant_first_name = data.first_name.strip() or None
+        if data.last_name is not None:
+            app.applicant_last_name = data.last_name.strip() or None
+        if data.mobile is not None:
+            app.applicant_mobile = data.mobile.strip() or None
+        if data.company_name is not None:
+            app.business_name = data.company_name.strip() or None
+        db.commit()
+        return {
+            "id": contact_id,
+            "first_name": app.applicant_first_name or "",
+            "last_name": app.applicant_last_name or "",
+            "email": app.applicant_email or "",
+            "mobile": app.applicant_mobile or "",
+            "company_name": app.business_name or "",
+            "source": "direct",
+        }
+
+    # referred contact — contact_id is the User id
+    ref = (
+        db.query(ExternalReferral)
+        .filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id == contact_id,
+        )
+        .first()
+    )
+    if not ref or not ref.referred_client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    client = ref.referred_client
+
+    if data.first_name is not None or data.last_name is not None:
+        existing_parts = client.full_name.split() if client.full_name else [""]
+        first = data.first_name.strip() if data.first_name is not None else existing_parts[0]
+        last = data.last_name.strip() if data.last_name is not None else " ".join(existing_parts[1:])
+        client.full_name = f"{first} {last}".strip()
+    if data.mobile is not None:
+        client.phone = data.mobile.strip() or None
+    if data.company_name is not None:
+        ref.company_name = data.company_name.strip() or None
+    db.commit()
+
+    name_parts = client.full_name.split() if client.full_name else [""]
+    return {
+        "id": client.id,
+        "first_name": name_parts[0],
+        "last_name": " ".join(name_parts[1:]),
+        "email": client.email,
+        "mobile": client.phone or "",
+        "company_name": ref.company_name or "",
+        "source": "referred",
+    }

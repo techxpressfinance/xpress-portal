@@ -7,6 +7,7 @@ export default function CreateApplication() {
       title="New Application"
       submitLabel="Create Application"
       skipEngagement
+      showFullDetails
     />
   );
 }

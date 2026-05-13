@@ -23,6 +23,7 @@ from app.schemas.document_request import DocumentRequestCreate, DocumentRequestO
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.email import send_document_request_email
+from app.services.notification_service import create_notification
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -332,6 +333,16 @@ def create_document_request(
             application_id=application_id,
             loan_type=application.loan_type.value,
         )
+        create_notification(
+            db,
+            user_id=client.id,
+            type="status_change",
+            title="Document requested",
+            body=f"{current_user.full_name} has requested documents for your {application.loan_type.value} application.",
+            link=f"/applications/{application_id}",
+            tenant_id=tenant_id,
+        )
+        db.commit()
 
     return _serialize_request(req)
 

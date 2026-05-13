@@ -1555,6 +1555,135 @@ export default function ReviewApplication() {
                   }
                 })()}
 
+                {/* Financial Position */}
+                {application.lend_extra_data && (() => {
+                  let extra: Record<string, unknown> = {};
+                  try { extra = JSON.parse(application.lend_extra_data); } catch { return null; }
+                  const idEntry = Array.isArray(extra.identification) ? (extra.identification as Array<Record<string, string>>)[0] : null;
+                  const empEntry = Array.isArray(extra.employments) ? (extra.employments as Array<Record<string, string>>)[0] : null;
+                  const incomes = Array.isArray(extra.incomes) ? (extra.incomes as Array<{ income_type?: string; amount?: number; frequency?: string }>).filter(i => (i.amount ?? 0) > 0) : [];
+                  const realEstateAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.real_estate) ? (extra.assets as Record<string, any[]>).real_estate as Array<Record<string, any>> : [];
+                  const otherAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.other) ? (extra.assets as Record<string, any[]>).other as Array<Record<string, any>> : [];
+                  const liabs: Array<Record<string, any>> = Array.isArray(extra.liabilities) ? extra.liabilities as Array<Record<string, any>> : [];
+                  const expenses = extra.expenses as Record<string, number> | undefined;
+                  const hasAny = idEntry || (empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details)) || incomes.length > 0 || realEstateAssets.length > 0 || otherAssets.length > 0 || liabs.length > 0 || (expenses && Object.values(expenses).some(v => v > 0));
+                  if (!hasAny) return null;
+                  return (
+                    <GlassCard>
+                      <h2 className="text-[15px] font-semibold text-foreground mb-5">Financial Position</h2>
+                      <div className="space-y-5">
+
+                        {/* ID Document */}
+                        {idEntry && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">ID Document</h3>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              {idEntry.type && <div><p className="text-[12px] text-muted-foreground">ID Type</p><p className="text-[14px] font-medium text-foreground">{idEntry.type}</p></div>}
+                              {idEntry.number && <div><p className="text-[12px] text-muted-foreground">ID Number</p><p className="text-[14px] font-medium text-foreground">{idEntry.number}</p></div>}
+                              {(idEntry.state || idEntry.country) && <div><p className="text-[12px] text-muted-foreground">{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p className="text-[14px] font-medium text-foreground">{idEntry.state || idEntry.country}</p></div>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Employment Details */}
+                        {empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details) && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Employment Details</h3>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              {empEntry.employment_type && <div><p className="text-[12px] text-muted-foreground">Employment Type</p><p className="text-[14px] font-medium text-foreground">{empEntry.employment_type}</p></div>}
+                              {empEntry.start_date && <div><p className="text-[12px] text-muted-foreground">Start Date</p><p className="text-[14px] font-medium text-foreground">{empEntry.start_date}</p></div>}
+                              {empEntry.contact_details && <div><p className="text-[12px] text-muted-foreground">Employer Contact</p><p className="text-[14px] font-medium text-foreground">{empEntry.contact_details}</p></div>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Income */}
+                        {incomes.length > 0 && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Income</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {incomes.map((inc, i) => (
+                                <div key={i} className="rounded-xl bg-secondary/50 p-3">
+                                  <p className="text-[12px] text-muted-foreground">{i === 0 ? 'Primary Income' : `Additional Income ${i}`}</p>
+                                  <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Expenses */}
+                        {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Monthly Expenses</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
+                              {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
+                              {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
+                              {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Real Estate Assets */}
+                        {realEstateAssets.length > 0 && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Real Estate Assets</h3>
+                            <div className="space-y-2">
+                              {realEstateAssets.map((asset, i) => (
+                                <div key={i} className="rounded-xl bg-secondary/50 p-3">
+                                  <p className="text-[13px] font-medium text-foreground">{String(asset.property_type || `Property ${i + 1}`)}</p>
+                                  {asset.address && <p className="text-[13px] text-muted-foreground mt-0.5">{String(asset.address)}</p>}
+                                  <div className="flex gap-4 flex-wrap mt-1.5">
+                                    {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                                    {asset.ownership_type && <span className="text-[12px] text-muted-foreground">Ownership: {String(asset.ownership_type)}</span>}
+                                    {asset.is_financed === 'yes' && asset.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(asset.lender)}</span>}
+                                    {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span className="text-[12px] text-muted-foreground">Owing: ${Number(asset.amount_owing).toLocaleString()}</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Other Assets */}
+                        {otherAssets.length > 0 && (
+                          <div className="border-b border-border pb-4">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Other Assets</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {otherAssets.map((asset, i) => (
+                                <div key={i} className="rounded-xl bg-secondary/50 p-3">
+                                  <p className="text-[12px] text-muted-foreground">{String(asset.asset_type || `Asset ${i + 1}`)}</p>
+                                  {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString()}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Liabilities */}
+                        {liabs.length > 0 && (
+                          <div>
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Liabilities</h3>
+                            <div className="space-y-2">
+                              {liabs.map((liab, i) => (
+                                <div key={i} className="rounded-xl bg-secondary/50 p-3">
+                                  <p className="text-[13px] font-medium text-foreground">{String(liab.liability_type || `Liability ${i + 1}`)}</p>
+                                  <div className="flex gap-4 flex-wrap mt-1.5">
+                                    {liab.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(liab.lender)}</span>}
+                                    {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString()}</span>}
+                                    {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString()}/mo</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </GlassCard>
+                  );
+                })()}
+
                 {/* Client Info */}
                 {(() => {
                   const isDirectLead = !client && !!application.applicant_first_name;

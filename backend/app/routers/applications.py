@@ -30,6 +30,7 @@ from app.services.email import (
     send_direct_engagement_referrer_thankyou,
     send_status_notification,
 )
+from app.services.notification_service import create_notification
 from app.schemas.loan_application import (
     LoanApplicationCreate,
     LoanApplicationOut,
@@ -331,6 +332,15 @@ def update_application(
             client_user = db.query(User).filter(User.id == application.user_id).first()
             if client_user and client_user.role == UserRole.client:
                 send_status_notification(client_user.email, client_user.full_name, application.loan_type.value, "application_received")
+                create_notification(
+                    db,
+                    user_id=client_user.id,
+                    type="status_change",
+                    title="Application received",
+                    body=f"Your {application.loan_type.value} application has been received and is being reviewed.",
+                    link=f"/applications/{app_id}",
+                    tenant_id=tenant_id,
+                )
             elif application.applicant_email:
                 applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
                 send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, "application_received")
@@ -389,6 +399,16 @@ def change_status(
         if client.phone:
             from app.services.sms import send_status_sms
             send_status_sms(client.phone, new_status.value)
+        create_notification(
+            db,
+            user_id=client.id,
+            type="status_change",
+            title=f"Application {new_status.value.replace('_', ' ')}",
+            body=f"Your {application.loan_type.value} application has been updated to: {new_status.value.replace('_', ' ')}",
+            link=f"/applications/{app_id}",
+            tenant_id=tenant_id,
+        )
+        db.commit()
     elif application.applicant_email:
         applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
         send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, new_status.value)
@@ -422,6 +442,15 @@ def assign_broker(
     if not application.assigned_broker_id:
         application.assigned_broker_id = broker_id
     log_activity(db, current_user.id, "broker_assigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name}, tenant_id=tenant_id)
+    create_notification(
+        db,
+        user_id=broker.id,
+        type="status_change",
+        title="Application assigned",
+        body=f"You have been assigned to {application.applicant_first_name or 'a new'} {application.loan_type.value} application.",
+        link=f"/admin/applications/{app_id}",
+        tenant_id=tenant_id,
+    )
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application)

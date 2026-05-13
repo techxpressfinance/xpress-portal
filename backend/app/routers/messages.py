@@ -13,6 +13,7 @@ from app.models.application_note import ApplicationNote
 from app.models.client_alert import ClientAlert
 from app.models.client_message import ClientMessage
 from app.models.direct_message import DirectMessage
+from app.models.notification import Notification
 from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
@@ -115,7 +116,11 @@ def get_notifications(
     if current_user.role == UserRole.client:
         alerts = (
             db.query(ClientAlert)
-            .filter(ClientAlert.client_id == current_user.id, ClientAlert.tenant_id == tenant_id)
+            .filter(
+                ClientAlert.client_id == current_user.id,
+                ClientAlert.is_read == False,  # noqa: E712
+                ClientAlert.tenant_id == tenant_id,
+            )
             .order_by(ClientAlert.created_at.desc())
             .limit(10)
             .all()
@@ -126,10 +131,33 @@ def get_notifications(
                 "type": "alert",
                 "title": "Update from your broker",
                 "body": alert.content[:100] + ("..." if len(alert.content) > 100 else ""),
-                "is_read": False,
+                "is_read": alert.is_read,
                 "created_at": alert.created_at.isoformat(),
                 "link": "/applications",
             })
+
+    # Dedicated notification records (status changes, document requests, etc.)
+    db_notifs = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,  # noqa: E712
+            Notification.tenant_id == tenant_id,
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    for n in db_notifs:
+        items.append({
+            "id": n.id,
+            "type": n.type,
+            "title": n.title,
+            "body": n.body or "",
+            "is_read": n.is_read,
+            "created_at": n.created_at.isoformat(),
+            "link": n.link,
+        })
 
     items.sort(key=lambda x: x["created_at"], reverse=True)
     return items[:20]
@@ -151,7 +179,73 @@ def unread_count(
         .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False, ClientMessage.tenant_id == tenant_id)  # noqa: E712
         .count()
     )
-    return {"count": direct_count + client_count}
+    alert_count = 0
+    if current_user.role == UserRole.client:
+        alert_count = (
+            db.query(ClientAlert)
+            .filter(ClientAlert.client_id == current_user.id, ClientAlert.is_read == False, ClientAlert.tenant_id == tenant_id)  # noqa: E712
+            .count()
+        )
+    notif_count = (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id, Notification.is_read == False, Notification.tenant_id == tenant_id)  # noqa: E712
+        .count()
+    )
+    return {"count": direct_count + client_count + alert_count + notif_count}
+
+
+@router.post("/notifications/{notification_id}/read", status_code=status.HTTP_200_OK)
+def mark_notification_read(
+    notification_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    # Try DirectMessage
+    msg = db.query(DirectMessage).filter(
+        DirectMessage.id == notification_id,
+        DirectMessage.recipient_id == current_user.id,
+        DirectMessage.tenant_id == tenant_id,
+    ).first()
+    if msg:
+        msg.is_read = True
+        db.commit()
+        return {"ok": True}
+
+    # Try ClientMessage
+    client_msg = db.query(ClientMessage).filter(
+        ClientMessage.id == notification_id,
+        ClientMessage.recipient_id == current_user.id,
+        ClientMessage.tenant_id == tenant_id,
+    ).first()
+    if client_msg:
+        client_msg.is_read = True
+        db.commit()
+        return {"ok": True}
+
+    # Try ClientAlert
+    alert = db.query(ClientAlert).filter(
+        ClientAlert.id == notification_id,
+        ClientAlert.client_id == current_user.id,
+        ClientAlert.tenant_id == tenant_id,
+    ).first()
+    if alert:
+        alert.is_read = True
+        db.commit()
+        return {"ok": True}
+
+    # Try Notification
+    notif = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id,
+        Notification.tenant_id == tenant_id,
+    ).first()
+    if notif:
+        notif.is_read = True
+        db.commit()
+        return {"ok": True}
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
 
 
 @router.get("", response_model=PaginatedMessages)
@@ -391,7 +485,7 @@ def list_client_inbox(
                 staff_peers.add(row.recipient_id)
         for pid in staff_peers:
             peer = db.query(User).filter(User.id == pid).first()
-            if peer and peer.role in (UserRole.broker, UserRole.admin):
+            if peer and peer.role == UserRole.broker:
                 pairs.append((current_user.id, pid, current_user.full_name, peer.full_name))
 
     elif role in ("admin", "broker"):

@@ -34,7 +34,7 @@ export default function ReferrerMessages() {
         // Only show staff conversations (referrer is the "client" subject)
         setConversations(allConvs.filter((c) => c.client_id === user.id));
         const recipients = recipientsRes.data as User[];
-        setAllStaff(recipients.filter((u) => u.role === 'admin' || u.role === 'broker'));
+        setAllStaff(recipients.filter((u) => u.role === 'broker'));
       })
       .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
@@ -144,7 +144,7 @@ export default function ReferrerMessages() {
               setStaffSearch('');
             }}
           >
-            {showStaffSearch ? 'Cancel' : '+ Message Staff'}
+            {showStaffSearch ? 'Cancel' : '+ Message Broker'}
           </Button>
         }
       />
@@ -152,7 +152,7 @@ export default function ReferrerMessages() {
       {/* New staff chat search */}
       {showStaffSearch && (
         <GlassCard className="mb-6">
-          <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a broker or admin</h3>
+          <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a broker</h3>
           <input
             type="text"
             autoFocus
@@ -176,7 +176,7 @@ export default function ReferrerMessages() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[13px] font-medium text-foreground truncate">{s.full_name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate capitalize">{s.role} &middot; {s.email}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{s.email}</p>
                   </div>
                 </button>
               ))
@@ -194,7 +194,7 @@ export default function ReferrerMessages() {
               </svg>
             </div>
             <p className="text-[15px] font-medium text-muted-foreground">No conversations yet</p>
-            <p className="text-[13px] text-muted-foreground mt-1">Use "Message Staff" above to start a conversation with your broker team</p>
+            <p className="text-[13px] text-muted-foreground mt-1">Use "Message Broker" above to start a conversation</p>
           </div>
         </GlassCard>
       ) : (conversations.length > 0 || !!selectedConv) && (
@@ -208,7 +208,6 @@ export default function ReferrerMessages() {
               <div className="flex-1 overflow-y-auto">
                 {conversations.map((conv) => {
                   const displayName = convDisplayName(conv);
-                  const isStaffChat = conv.client_id === user?.id;
                   const convKey = `${conv.client_id}_${conv.peer_id}`;
                   const isSelected = selectedConv?.client_id === conv.client_id && selectedConv?.peer_id === conv.peer_id;
                   return (
@@ -218,17 +217,14 @@ export default function ReferrerMessages() {
                       className={`w-full text-left px-4 py-3.5 border-b border-border/40 transition-colors hover:bg-secondary/50 ${isSelected ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isStaffChat ? 'bg-amber-500/15' : 'bg-primary/15'}`}>
-                          <span className={`text-[13px] font-semibold ${isStaffChat ? 'text-amber-600' : 'text-primary'}`}>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                          <span className="text-[13px] font-semibold text-primary">
                             {displayName?.charAt(0).toUpperCase() ?? '?'}
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p className="text-[13px] font-semibold text-foreground truncate">{displayName ?? 'Unknown'}</p>
-                            {isStaffChat && (
-                              <span className="shrink-0 text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full">Staff</span>
-                            )}
                           </div>
                           {conv.last_message ? (
                             <p className="text-[12px] text-muted-foreground truncate">

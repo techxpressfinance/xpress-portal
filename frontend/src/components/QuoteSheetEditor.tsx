@@ -5,12 +5,11 @@ import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
 
-// ── Default balloon percentages per term (from Excel) ─────────────────
 const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = {
-  '2': 62,
-  '3': 55,
-  '4': 42,
-  '5': 35,
+  '2': 0,
+  '3': 0,
+  '4': 0,
+  '5': 0,
   '7': 0,
 };
 
@@ -21,17 +20,17 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   payment_type: 'advance',
   asset_price: 0,
   asset_description: 'Motor Vehicle',
-  deposit_percent: 10,
+  deposit_percent: 0,
   deposit_amount: null,
-  establishment_fee: 500,
-  ppsr_fee: 10,
-  origination_fee: 100,
-  brokerage_percent: 4,
+  establishment_fee: 0,
+  ppsr_fee: 0,
+  origination_fee: 0,
+  brokerage_percent: 0,
   brokerage_amount: null,
   gst_on_brokerage: false,
   balloon_on_total_price: true,
-  interest_rate: 5.99,
-  gst_percent: 10,
+  interest_rate: 0,
+  gst_percent: 0,
   balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
   balloon_amounts: {},
   monthly_account_fee: 0,
@@ -241,6 +240,70 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
   }));
 }
 
+// ── Shared field components ──────────────────────────────────────────
+
+function DollarInput({ label, value, onChange, placeholder }: {
+  label: string;
+  value: number | string;
+  onChange: (val: number) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+      <div className="relative">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+        <input
+          type="number"
+          step="any"
+          placeholder={placeholder}
+          value={value}
+          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+        />
+      </div>
+    </div>
+  );
+}
+
+function CalcField({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">
+        {label}
+        <span className="ml-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">calc</span>
+      </label>
+      <div className={`h-[44px] flex items-center px-4 rounded-xl bg-muted/40 text-sm text-foreground font-medium border border-dashed border-border/50 ${className ?? ''}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ToggleButton({ label, active, activeLabel, inactiveLabel, onClick }: {
+  label: string;
+  active: boolean;
+  activeLabel: string;
+  inactiveLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors border ${active
+          ? 'bg-primary/10 text-primary border-primary/30'
+          : 'bg-muted text-muted-foreground border-transparent'
+        }`}
+      >
+        {active ? activeLabel : inactiveLabel}
+      </button>
+    </div>
+  );
+}
+
 
 interface QuoteSheetEditorProps {
   applicationId?: string;
@@ -349,8 +412,9 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
 
   return (
     <GlassCard>
-      <div className="space-y-6">
-        {/* Sheet-level fields */}
+      <div className="space-y-5">
+
+        {/* Sheet meta */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Title"
@@ -359,10 +423,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             onChange={e => setTitle(e.target.value)}
           />
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Broker Notes (internal)</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">Broker Notes <span className="text-[11px] text-muted-foreground font-normal">(internal, not shown to client)</span></label>
             <textarea
               className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent min-h-[44px]"
-              placeholder="Internal notes (not visible to client)"
+              placeholder="Internal notes..."
               value={brokerNotes}
               onChange={e => setBrokerNotes(e.target.value)}
               rows={1}
@@ -370,11 +434,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
           </div>
         </div>
 
-        {/* ── INPUT Parameters ─────────────────────────────────────── */}
-        <div className="border border-border rounded-xl p-5 space-y-5">
-          <h3 className="text-sm font-semibold text-foreground">Loan Parameters</h3>
+        {/* ── SECTION 1: Loan Setup ─────────────────────────────── */}
+        <section className="border border-border rounded-xl p-5 space-y-4">
+          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Loan Setup</h3>
 
-          {/* Row 0: Facility type, Payment type, Asset description */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Facility Type</label>
@@ -388,19 +451,13 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <option value="lease">Lease</option>
               </select>
             </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Payment Type</label>
-              <button
-                type="button"
-                onClick={() => updateInput('payment_type', inputs.payment_type === 'advance' ? 'arrears' : 'advance')}
-                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.payment_type === 'advance'
-                  ? 'bg-primary/10 text-primary border border-primary/30'
-                  : 'bg-muted text-muted-foreground border border-transparent'
-                }`}
-              >
-                {inputs.payment_type === 'advance' ? 'Advance (Start)' : 'Arrears (End)'}
-              </button>
-            </div>
+            <ToggleButton
+              label="Payment Type"
+              active={inputs.payment_type === 'advance'}
+              activeLabel="Advance (Start)"
+              inactiveLabel="Arrears (End)"
+              onClick={() => updateInput('payment_type', inputs.payment_type === 'advance' ? 'arrears' : 'advance')}
+            />
             <div className="md:col-span-2">
               <Input
                 label="Asset / Loan Type"
@@ -411,21 +468,12 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             </div>
           </div>
 
-          {/* Row 1: Core loan details */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Asset Price</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.asset_price || ''}
-                  onChange={e => updateInput('asset_price', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-              </div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DollarInput
+              label="Asset Price"
+              value={inputs.asset_price || ''}
+              onChange={v => updateInput('asset_price', v)}
+            />
             <Input
               label="Deposit %"
               type="number"
@@ -435,7 +483,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               suffix="%"
             />
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Deposit $ <span className="text-[10px] text-muted-foreground">(override)</span></label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+                Deposit $
+                <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">override</span>
+              </label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                 <input
@@ -448,55 +499,38 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Amount Borrowed</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.amountBorrowed)}
-              </div>
-            </div>
+            <CalcField label="Amount Borrowed" value={fmtCurrency(derived.amountBorrowed)} />
+          </div>
+        </section>
+
+        {/* ── SECTION 2: Fees & Charges ────────────────────────── */}
+        <section className="border border-border rounded-xl p-5 space-y-4">
+          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Fees & Charges</h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DollarInput
+              label="Establishment Fee"
+              value={inputs.establishment_fee || ''}
+              onChange={v => updateInput('establishment_fee', v)}
+            />
+            <DollarInput
+              label="PPSR"
+              value={inputs.ppsr_fee || ''}
+              onChange={v => updateInput('ppsr_fee', v)}
+            />
+            <DollarInput
+              label="Origination Fee"
+              value={inputs.origination_fee || ''}
+              onChange={v => updateInput('origination_fee', v)}
+            />
+            <DollarInput
+              label="Monthly Account Fee"
+              value={inputs.monthly_account_fee || ''}
+              onChange={v => updateInput('monthly_account_fee', v)}
+            />
           </div>
 
-          {/* Row 2: Fees */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Loan Establishment Fee</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.establishment_fee || ''}
-                  onChange={e => updateInput('establishment_fee', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">PPSR</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.ppsr_fee || ''}
-                  onChange={e => updateInput('ppsr_fee', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Origination Fee</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.origination_fee || ''}
-                  onChange={e => updateInput('origination_fee', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-              </div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Fees Treatment</label>
               <select
@@ -508,107 +542,42 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <option value="non-financed">Non-Financed (charged separately)</option>
               </select>
             </div>
-          </div>
-
-          {/* Row 2b: Computed amounts */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Total Fees</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.totalFees)}
-                {!inputs.fees_financed && <span className="ml-1.5 text-[10px] text-warning font-semibold uppercase">(separate)</span>}
-              </div>
-            </div>
+            <CalcField
+              label="Total Fees"
+              value={`${fmtCurrency(derived.totalFees)}${!inputs.fees_financed ? ' (separate)' : ''}`}
+            />
             {derived.itcBenefit > 0 && (
-              <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">ITC Benefit</label>
-                <div className="h-[44px] flex items-center px-4 rounded-xl bg-green-500/10 text-sm text-green-700 font-medium">
-                  -{fmtCurrency(derived.itcBenefit)}
-                </div>
-              </div>
+              <CalcField
+                label="ITC Benefit"
+                value={`-${fmtCurrency(derived.itcBenefit)}`}
+                className="!text-green-700 !bg-green-500/10 !border-green-200"
+              />
             )}
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Amount to be Financed</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.amountFinanced)}
-              </div>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Monthly Account Fee</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.monthly_account_fee || ''}
-                  onChange={e => updateInput('monthly_account_fee', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-              </div>
-            </div>
+            <CalcField label="Amount to be Financed" value={fmtCurrency(derived.amountFinanced)} />
           </div>
 
           {/* Lease-specific fields */}
           {inputs.facility_type === 'lease' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start border-t border-border/50 pt-4">
-              <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">Non-Taxable On-Road Charges</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <input
-                    type="number"
-                    step="any"
-                    value={inputs.non_taxable_charges || ''}
-                    onChange={e => updateInput('non_taxable_charges', parseFloat(e.target.value) || 0)}
-                    className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">Luxury Car Tax</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <input
-                    type="number"
-                    step="any"
-                    value={inputs.luxury_car_tax || ''}
-                    onChange={e => updateInput('luxury_car_tax', parseFloat(e.target.value) || 0)}
-                    className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                  />
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1 border-t border-border/50">
+              <DollarInput
+                label="Non-Taxable On-Road Charges"
+                value={inputs.non_taxable_charges || ''}
+                onChange={v => updateInput('non_taxable_charges', v)}
+              />
+              <DollarInput
+                label="Luxury Car Tax"
+                value={inputs.luxury_car_tax || ''}
+                onChange={v => updateInput('luxury_car_tax', v)}
+              />
             </div>
           )}
+        </section>
 
-          {/* Row 3: Brokerage & Rate */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-            <Input
-              label="Brokerage"
-              type="number"
-              step="any"
-              value={inputs.brokerage_percent || ''}
-              onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
-              suffix="%"
-            />
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Brokerage</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.brokerage)}
-              </div>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST on Brokerage</label>
-              <button
-                type="button"
-                onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
-                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.gst_on_brokerage
-                  ? 'bg-primary/10 text-primary border border-primary/30'
-                  : 'bg-muted text-muted-foreground border border-transparent'
-                  }`}
-              >
-                {inputs.gst_on_brokerage ? 'With GST' : 'Without GST'}
-              </button>
-            </div>
+        {/* ── SECTION 3: Rate & Brokerage ──────────────────────── */}
+        <section className="border border-border rounded-xl p-5 space-y-4">
+          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Rate & Brokerage</h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">Lender Interest Rate</label>
               <div className="relative">
@@ -622,25 +591,34 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
             </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Show Rate to Client</label>
-              <button
-                type="button"
-                onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
-                className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors ${inputs.show_interest_rate
-                  ? 'bg-primary/10 text-primary border border-primary/30'
-                  : 'bg-muted text-muted-foreground border border-transparent'
-                  }`}
-              >
-                {inputs.show_interest_rate ? 'Visible to client' : 'Hidden from client'}
-              </button>
-            </div>
+            <ToggleButton
+              label="Show Rate to Client"
+              active={inputs.show_interest_rate ?? false}
+              activeLabel="Visible to client"
+              inactiveLabel="Hidden from client"
+              onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
+            />
+            <Input
+              label="Brokerage %"
+              type="number"
+              step="any"
+              value={inputs.brokerage_percent || ''}
+              onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
+              suffix="%"
+            />
+            <ToggleButton
+              label="GST on Brokerage"
+              active={inputs.gst_on_brokerage}
+              activeLabel="With GST"
+              inactiveLabel="Without GST"
+              onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
+            />
           </div>
 
-          {/* Row 4: GST Rate */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <CalcField label="Brokerage Amount" value={fmtCurrency(derived.brokerage)} />
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST</label>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST Rate</label>
               <div className="relative">
                 <input
                   type="number"
@@ -653,53 +631,45 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               </div>
             </div>
           </div>
+        </section>
 
-          {/* Row 4: Balloon config */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Balloon calculated on</label>
-              <button
-                type="button"
-                onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
-                className={`h-[44px] w-full px-4 rounded-xl text-sm font-medium transition-colors border ${inputs.balloon_on_total_price
-                  ? 'bg-primary/10 text-primary border-primary/30'
-                  : 'bg-muted text-muted-foreground border-transparent'
-                  }`}
-              >
-                {inputs.balloon_on_total_price ? 'Total Price' : 'Amount Financed'}
-              </button>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Balloon Base</label>
-              <div className="h-[44px] flex items-center px-4 rounded-xl bg-muted/50 text-sm text-foreground font-medium">
-                {fmtCurrency(derived.balloonBase)}
-              </div>
+        {/* ── SECTION 4: Balloon Settings ──────────────────────── */}
+        <section className="border border-border rounded-xl p-5 space-y-4">
+          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Balloon Settings</h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <ToggleButton
+              label="Balloon calculated on"
+              active={inputs.balloon_on_total_price}
+              activeLabel="Total Price"
+              inactiveLabel="Amount Financed"
+              onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
+            />
+            <CalcField label="Balloon Base" value={fmtCurrency(derived.balloonBase)} />
+          </div>
+
+          <div>
+            <p className="text-[13px] font-medium text-foreground mb-3">Balloon % per Term</p>
+            <div className="grid grid-cols-5 gap-3">
+              {TERMS.map(t => (
+                <Input
+                  key={t}
+                  label={`${t} Year`}
+                  type="number"
+                  step="any"
+                  value={inputs.balloon_percentages[String(t)] ?? 0}
+                  onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
+                  className="!text-center"
+                  suffix="%"
+                />
+              ))}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* ── Balloon % per Term ───────────────────────────────────── */}
-        <div className="border border-border rounded-xl p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Balloon % per Term</h3>
-          <div className="grid grid-cols-5 gap-3">
-            {TERMS.map(t => (
-              <Input
-                key={t}
-                label={`${t} Year`}
-                type="number"
-                step="any"
-                value={inputs.balloon_percentages[String(t)] ?? 0}
-                onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
-                className="!text-center"
-                suffix="%"
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* ── Terms to Show Client ─────────────────────────────────── */}
-        <div className="border border-border rounded-xl p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Terms to Show Client</h3>
+        {/* ── Terms to Show Client ─────────────────────────────── */}
+        <section className="border border-border rounded-xl p-5 space-y-3">
+          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Terms to Show Client</h3>
           <div className="flex flex-wrap gap-3">
             {TERMS.map(t => {
               const isSelected = (inputs.selected_terms ?? TERMS).includes(t);
@@ -718,14 +688,14 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               );
             })}
           </div>
-          <p className="text-[11px] text-muted-foreground">Only selected terms appear in the client PDF. Toggle to include or exclude.</p>
-        </div>
+          <p className="text-[11px] text-muted-foreground">Only selected terms appear in the client PDF.</p>
+        </section>
 
-        {/* ── Live Preview ─────────────────────────────────────────── */}
+        {/* ── Live Preview ─────────────────────────────────────── */}
         {scenarios.length > 0 && (
-          <div className="border border-border rounded-xl p-5 space-y-4">
+          <section className="border border-border rounded-xl p-5 space-y-4">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-foreground">Preview — Generated Scenarios</h3>
+              <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Preview</h3>
               <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
                 {inputs.facility_type === 'chattel' ? 'Chattel' : inputs.facility_type === 'hp' ? 'HP' : 'Lease'}
               </span>
@@ -764,11 +734,11 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-3 pt-1">
           <Button onClick={handleSave} loading={saving}>
             {quoteSheet ? 'Update Quote Sheet' : 'Create Quote Sheet'}
           </Button>

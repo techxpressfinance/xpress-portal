@@ -25,6 +25,85 @@ interface NewContactForm {
 
 const LABEL = 'block text-sm font-medium text-foreground mb-1';
 
+function EditContactModal({ contact, onClose, onSaved }: { contact: ReferrerClient; onClose: () => void; onSaved: (c: ReferrerClient) => void }) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    mobile: contact.mobile,
+    company_name: contact.company_name,
+  });
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const field = (key: keyof typeof form) => ({
+    value: form[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [key]: e.target.value })),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.first_name.trim() || !form.last_name.trim()) return;
+    setSaving(true);
+    try {
+      const { data } = await api.patch(`/referrer/clients/${contact.id}`, {
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        mobile: form.mobile.trim() || null,
+        company_name: form.company_name.trim() || null,
+      });
+      toast('Contact updated', 'success');
+      onSaved(data as ReferrerClient);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update contact'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl">
+        <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Contact</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">{contact.email}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>First Name *</label>
+              <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />
+            </div>
+            <div>
+              <label className={LABEL}>Last Name *</label>
+              <Input placeholder="Last name" required {...field('last_name')} />
+            </div>
+          </div>
+          <div>
+            <label className={LABEL}>Mobile <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <Input type="tel" placeholder="04XX XXX XXX" {...field('mobile')} />
+          </div>
+          <div>
+            <label className={LABEL}>Company Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <Input placeholder="Acme Pty Ltd" {...field('company_name')} />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreated: (c: ReferrerClient) => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -109,6 +188,7 @@ export default function ReferrerClients() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<ReferrerClient | null>(null);
 
   useEffect(() => {
     api.get('/referrer/clients')
@@ -181,6 +261,7 @@ export default function ReferrerClients() {
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Email</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Company</th>
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Mobile</th>
+                  <th className="px-6 py-4" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -203,6 +284,17 @@ export default function ReferrerClients() {
                       <td className="hidden sm:table-cell px-6 py-4 text-[13px] text-muted-foreground">{c.email || '—'}</td>
                       <td className="hidden md:table-cell px-6 py-4 text-[13px] text-foreground">{c.company_name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="hidden sm:table-cell px-6 py-4 text-[13px] text-muted-foreground">{c.mobile || '—'}</td>
+                      <td className="px-4 py-4 text-right">
+                        <button
+                          onClick={() => setEditing(c)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                          aria-label="Edit contact"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -216,6 +308,17 @@ export default function ReferrerClients() {
         <NewContactModal
           onClose={() => setShowModal(false)}
           onCreated={c => { setClients(prev => [c, ...prev]); setShowModal(false); }}
+        />
+      )}
+
+      {editing && (
+        <EditContactModal
+          contact={editing}
+          onClose={() => setEditing(null)}
+          onSaved={updated => {
+            setClients(prev => prev.map(c => c.id === updated.id ? updated : c));
+            setEditing(null);
+          }}
         />
       )}
     </div>

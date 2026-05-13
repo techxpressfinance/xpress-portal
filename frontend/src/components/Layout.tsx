@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import api from '../api/client';
@@ -26,14 +26,26 @@ export default function Layout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   const [unreadCount, setUnreadCount] = useState(0);
+  const unreadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const fetchUnreadCount = useCallback(() => {
     if (user && user.role !== 'super_admin') {
       api.get('/messages/unread-count')
         .then(({ data }) => setUnreadCount(data.count))
         .catch(() => { });
     }
   }, [user]);
+
+  useEffect(() => {
+    fetchUnreadCount();
+    unreadIntervalRef.current = setInterval(fetchUnreadCount, 60_000);
+    const onEvent = () => fetchUnreadCount();
+    window.addEventListener('unread-count-changed', onEvent);
+    return () => {
+      if (unreadIntervalRef.current) clearInterval(unreadIntervalRef.current);
+      window.removeEventListener('unread-count-changed', onEvent);
+    };
+  }, [fetchUnreadCount]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {

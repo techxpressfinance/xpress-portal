@@ -60,11 +60,9 @@ export default function NotificationCenter({ collapsed }: Props) {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   const fetchNotifications = useCallback(() => {
-    setLoading(true);
-    api.get('/notifications')
+    api.get('/messages/notifications')
       .then(({ data }) => setNotifications(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -75,14 +73,38 @@ export default function NotificationCenter({ collapsed }: Props) {
     };
   }, [fetchNotifications]);
 
+  const markAsRead = useCallback(async (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    try {
+      await api.post(`/messages/notifications/${id}/read`);
+      window.dispatchEvent(new CustomEvent('unread-count-changed'));
+    } catch {
+      fetchNotifications();
+    }
+  }, [fetchNotifications]);
+
+  const markAllAsRead = useCallback(async () => {
+    const unread = notifications.filter((n) => !n.is_read);
+    if (unread.length === 0) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    try {
+      await Promise.all(unread.map((n) => api.post(`/messages/notifications/${n.id}/read`)));
+      window.dispatchEvent(new CustomEvent('unread-count-changed'));
+    } catch {
+      fetchNotifications();
+    }
+  }, [notifications, fetchNotifications]);
+
   const handleOpen = () => {
     setOpen(true);
-    fetchNotifications();
   };
 
-  const handleNavigate = (link: string) => {
+  const handleNavigate = async (notification: AppNotification) => {
+    if (!notification.is_read) {
+      await markAsRead(notification.id);
+    }
     setOpen(false);
-    navigate(link);
+    navigate(notification.link);
   };
 
   return (
@@ -126,14 +148,24 @@ export default function NotificationCenter({ collapsed }: Props) {
                   </span>
                 )}
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllAsRead}
+                    className="rounded-lg px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    Mark all read
+                  </button>
+                )}
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Body */}
@@ -157,7 +189,7 @@ export default function NotificationCenter({ collapsed }: Props) {
                   {notifications.map((n) => (
                     <li
                       key={n.id}
-                      onClick={() => handleNavigate(n.link)}
+                      onClick={() => handleNavigate(n)}
                       className={`flex cursor-pointer gap-3 px-5 py-4 transition-colors hover:bg-secondary/50 ${!n.is_read ? 'bg-primary/[0.03]' : ''}`}
                     >
                       <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${TYPE_COLORS[n.type]}`}>
