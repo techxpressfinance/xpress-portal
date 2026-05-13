@@ -53,7 +53,6 @@ interface Props {
 export default function NotificationCenter({ collapsed }: Props) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -170,11 +169,7 @@ export default function NotificationCenter({ collapsed }: Props) {
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto">
-              {loading && notifications.length === 0 ? (
-                <div className="flex items-center justify-center py-16">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                </div>
-              ) : notifications.length === 0 ? (
+              {notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                     <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
