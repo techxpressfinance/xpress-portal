@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, ServiceRequestStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -61,13 +61,6 @@ export const FLAG_SEVERITY_STYLES: Record<string, { bg: string; border: string; 
   info: { bg: 'bg-primary/5', border: 'border-primary/20', text: 'text-primary' },
   warning: { bg: 'bg-warning/5', border: 'border-warning/20', text: 'text-warning' },
   critical: { bg: 'bg-destructive/5', border: 'border-destructive/20', text: 'text-destructive' },
-};
-
-export const SERVICE_REQUEST_STATUS_BADGE: Record<ServiceRequestStatus, { label: string; className: string }> = {
-  pending: { label: 'Pending', className: 'led-chip-warning' },
-  in_progress: { label: 'In Progress', className: 'led-chip-info' },
-  resolved: { label: 'Resolved', className: 'led-chip-success' },
-  closed: { label: 'Closed', className: '' },
 };
 
 export const SERVICE_REQUEST_TYPES = [
@@ -189,10 +182,6 @@ export const GENDER_OPTIONS = ['Male', 'Female', 'Other'] as const;
 
 export const MARITAL_STATUS_OPTIONS = ['Single', 'Married', 'De Facto', 'Divorced', 'Widowed', 'Separated'] as const;
 
-export const CREDIT_HISTORY_OPTIONS = ['Clear', 'Minor Issues', 'Major Issues', 'Bankrupt', 'Unknown'] as const;
-
-export const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'] as const;
-
 export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'bank_statement', 'payslip', 'tax_return'];
 
 // NOTE: backend source of truth at backend/app/constants.py — keep in sync
@@ -216,26 +205,6 @@ export const COLUMN_COLOR_OPTIONS = [
   { value: 'chart-2', label: 'Teal' },
   { value: 'chart-5', label: 'Purple' },
 ] as const;
-
-export const COLUMN_COLOR_BG: Record<string, string> = {
-  'muted-foreground': 'bg-muted-foreground',
-  'primary': 'bg-primary',
-  'chart-4': 'bg-chart-4',
-  'success': 'bg-success',
-  'destructive': 'bg-destructive',
-  'chart-2': 'bg-chart-2',
-  'chart-5': 'bg-chart-5',
-};
-
-export const COLUMN_COLOR_BORDER_L: Record<string, string> = {
-  'muted-foreground': 'border-l-muted-foreground',
-  'primary': 'border-l-primary',
-  'chart-4': 'border-l-chart-4',
-  'success': 'border-l-success',
-  'destructive': 'border-l-destructive',
-  'chart-2': 'border-l-chart-2',
-  'chart-5': 'border-l-chart-5',
-};
 
 // Comprehensive Loan Type Configurations
 export const CONSUMER_LOAN_TYPES = [
@@ -287,6 +256,4 @@ export const LOAN_TERM_OPTIONS = ['1 year', '2 years', '3 years', '4 years', '5 
 
 export const VEHICLE_CONDITION_OPTIONS = ['New', 'Used - Excellent', 'Used - Good', 'Used - Fair', 'Demo'] as const;
 
-export const BUSINESS_STRUCTURE_OPTIONS = ['Sole Trader', 'Partnership', 'Company (Pty Ltd)', 'Trust', 'Incorporated Association'] as const;
 
-export const EMPLOYMENT_TYPE_OPTIONS = ['Full Time', 'Part Time', 'Casual', 'Contract', 'Self Employed', 'Retired', 'Student', 'Unemployed'] as const;

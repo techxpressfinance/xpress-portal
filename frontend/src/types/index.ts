@@ -225,9 +225,6 @@ export interface PaginatedResponse<T> {
 export const REFERRAL_STATUSES = ['pending', 'signed_up', 'applied'] as const;
 export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
 
-export const EXTERNAL_REFERRAL_STATUSES = ['pending', 'signed_up', 'applied'] as const;
-export type ExternalReferralStatus = (typeof EXTERNAL_REFERRAL_STATUSES)[number];
-
 export const CLIENT_ENGAGEMENT_MODELS = ['self_managed', 'direct_engagement'] as const;
 export type ClientEngagementModel = (typeof CLIENT_ENGAGEMENT_MODELS)[number];
 
@@ -237,19 +234,6 @@ export interface ReferrerInfo {
   email: string | null;
   phone: string | null;
   organization_name: string | null;
-}
-
-export interface ExternalReferral {
-  id: string;
-  referrer_id: string;
-  referrer_name: string | null;
-  referred_email: string;
-  referred_client_id: string | null;
-  referred_client_name: string | null;
-  status: ExternalReferralStatus;
-  client_engagement_model: ClientEngagementModel | null;
-  created_at: string;
-  converted_at: string | null;
 }
 
 export interface ExternalReferrerStats {
@@ -281,16 +265,6 @@ export interface DirectMessage {
   subject: string;
   content: string;
   is_read: boolean;
-  created_at: string;
-}
-
-export interface ApplicationNoteMessage {
-  id: string;
-  application_id: string;
-  loan_type: string;
-  author_id: string;
-  author_name: string | null;
-  content: string;
   created_at: string;
 }
 

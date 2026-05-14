@@ -34,6 +34,4 @@ def get_tenant(request: Request):
     return tenant
 
 
-def tenant_query(db: Session, model, tenant_id: str):
-    """Return a query pre-filtered by tenant_id."""
-    return db.query(model).filter(model.tenant_id == tenant_id)
+
