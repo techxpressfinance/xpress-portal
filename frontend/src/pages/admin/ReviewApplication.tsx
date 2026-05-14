@@ -13,7 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
-import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
+import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
@@ -35,13 +35,16 @@ export default function ReviewApplication() {
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
-  const [msgTab, setMsgTab] = useState<'client_messages' | 'deal_notes' | 'alerts'>('client_messages');
+  const [msgTab, setMsgTab] = useState<'referrer_messages' | 'client_messages' | 'deal_notes' | 'alerts'>('referrer_messages');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<'broker' | 'personal'>('broker');
   const [sendingNote, setSendingNote] = useState(false);
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
   const [newClientMsgContent, setNewClientMsgContent] = useState('');
   const [sendingClientMsg, setSendingClientMsg] = useState(false);
+  const [referrerMessages, setReferrerMessages] = useState<ClientMessage[]>([]);
+  const [newRefMsgContent, setNewRefMsgContent] = useState('');
+  const [sendingRefMsg, setSendingRefMsg] = useState(false);
   const [alerts, setAlerts] = useState<ClientAlert[]>([]);
   const [newAlertContent, setNewAlertContent] = useState('');
   const [sendingAlert, setSendingAlert] = useState(false);
@@ -217,15 +220,20 @@ export default function ReviewApplication() {
   }, [id, toast]);
 
   useEffect(() => {
-    if (!client?.id) return;
-    Promise.all([
-      api.get(`/clients/${client.id}/messages`),
-      api.get(`/clients/${client.id}/alerts`),
-    ]).then(([msgsRes, alertsRes]) => {
-      setClientMessages(msgsRes.data);
-      setAlerts(alertsRes.data);
-    }).catch(() => { });
-  }, [client?.id]);
+    if (client?.id) {
+      api.get(`/clients/${client.id}/messages`)
+        .then(({ data }) => setClientMessages(data))
+        .catch(() => { });
+      api.get(`/clients/${client.id}/alerts`)
+        .then(({ data }) => setAlerts(data))
+        .catch(() => { });
+    }
+    if (referrer?.id) {
+      api.get(`/clients/${referrer.id}/messages`)
+        .then(({ data }) => setReferrerMessages(data))
+        .catch(() => { });
+    }
+  }, [client?.id, referrer?.id]);
 
   const refetchApplication = async () => {
     if (!id) return;
@@ -2270,7 +2278,8 @@ export default function ReviewApplication() {
                   {/* Tab bar */}
                   <div className="flex items-center gap-1 border-b border-border pb-4 mb-4 bg-secondary/50 rounded-xl p-1">
                     {([
-                      { key: 'client_messages' as const, label: 'Client Messages' },
+                      { key: 'referrer_messages' as const, label: 'Message to Ref' },
+                      { key: 'client_messages' as const, label: 'Message to client' },
                       { key: 'deal_notes' as const, label: 'Deal Notes' },
                       { key: 'alerts' as const, label: 'Alerts' },
                     ]).map(({ key, label }) => (
@@ -2287,66 +2296,172 @@ export default function ReviewApplication() {
                     ))}
                   </div>
 
+                  {/* Message to Ref tab */}
+                  {msgTab === 'referrer_messages' && (
+                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
+                      {!referrer ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
+                          <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                            <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+                          </div>
+                          <p className="text-[13px] font-medium text-muted-foreground">No ref associated with this contact</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
+                            {referrerMessages.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
+                                <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                                <p className="text-[13px] text-muted-foreground">No messages yet</p>
+                              </div>
+                            ) : (
+                              referrerMessages.map((msg) => {
+                                const isOwn = msg.author_id === currentUser?.id;
+                                return (
+                                  <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                                    <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                                      <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || referrer.full_name)}</span>
+                                      <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
+                                      {!isOwn && (
+                                        <button
+                                          onClick={async () => {
+                                            if (!referrer?.id) return;
+                                            try {
+                                              await api.delete(`/clients/${referrer.id}/messages/${msg.id}`);
+                                              setReferrerMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                                            } catch {}
+                                          }}
+                                          className="opacity-0 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                          title="Delete"
+                                        >
+                                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
+                            <textarea
+                              value={newRefMsgContent}
+                              onChange={(e) => setNewRefMsgContent(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  if (!referrer?.id || !newRefMsgContent.trim()) return;
+                                  setSendingRefMsg(true);
+                                  api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id })
+                                    .then(({ data }) => { setReferrerMessages((prev) => [...prev, data]); setNewRefMsgContent(''); toast('Message sent', 'success'); })
+                                    .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
+                                    .finally(() => setSendingRefMsg(false));
+                                }
+                              }}
+                              rows={2}
+                              className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                              placeholder={`Message ${referrer.full_name}…`}
+                            />
+                            <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                              <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
+                              <Button
+                                size="sm"
+                                className="rounded-xl h-8 px-3.5"
+                                loading={sendingRefMsg}
+                                disabled={!newRefMsgContent.trim() || !referrer?.id}
+                                onClick={async () => {
+                                  if (!referrer?.id || !newRefMsgContent.trim()) return;
+                                  setSendingRefMsg(true);
+                                  try {
+                                    const { data } = await api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id });
+                                    setReferrerMessages((prev) => [...prev, data]);
+                                    setNewRefMsgContent('');
+                                    toast('Message sent', 'success');
+                                  } catch (err: unknown) {
+                                    toast(getErrorMessage(err, 'Failed to send'), 'error');
+                                  } finally {
+                                    setSendingRefMsg(false);
+                                  }
+                                }}
+                              >
+                                <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                                Send
+                              </Button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* Client Messages tab */}
                   {msgTab === 'client_messages' && (
                     <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
+                      <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
                         {clientMessages.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
-                            </div>
-                            <p className="text-[13px] font-medium text-muted-foreground">No messages yet</p>
+                          <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
+                            <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                            <p className="text-[13px] text-muted-foreground">No messages yet</p>
                           </div>
                         ) : (
-                          clientMessages.map((msg) => (
-                            <div key={msg.id} className="flex flex-col gap-1.5 group/msg">
-                              <div className="flex items-baseline justify-between px-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[13px] font-semibold text-foreground">{msg.author_name || 'Staff'}</span>
-                                  {msg.author_role && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{msg.author_role}</span>
+                          clientMessages.map((msg) => {
+                            const isOwn = msg.author_id === currentUser?.id;
+                            return (
+                              <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                                <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                                  <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
+                                  <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
+                                  {!isOwn && (
+                                    <button
+                                      onClick={async () => {
+                                        if (!client?.id) return;
+                                        try {
+                                          await api.delete(`/clients/${client.id}/messages/${msg.id}`);
+                                          setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                                        } catch {}
+                                      }}
+                                      className="opacity-0 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                      title="Delete"
+                                    >
+                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    </button>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={async () => {
-                                      if (!client?.id) return;
-                                      try {
-                                        await api.delete(`/clients/${client.id}/messages/${msg.id}`);
-                                        setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
-                                        toast('Message deleted', 'success');
-                                      } catch (err: unknown) {
-                                        toast(getErrorMessage(err, 'Failed to delete'), 'error');
-                                      }
-                                    }}
-                                    className="opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                    title="Delete"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                                  </button>
-                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(msg.created_at)}</span>
+                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                                  <p className="whitespace-pre-wrap">{msg.content}</p>
                                 </div>
                               </div>
-                              <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-primary/10 text-primary border border-primary/20">
-                                <p className="whitespace-pre-wrap">{msg.content}</p>
-                              </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
-                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
+                      <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
                         <textarea
                           value={newClientMsgContent}
                           onChange={(e) => setNewClientMsgContent(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (!client?.id || !newClientMsgContent.trim()) return;
+                              setSendingClientMsg(true);
+                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id })
+                                .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
+                                .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
+                                .finally(() => setSendingClientMsg(false));
+                            }
+                          }}
                           rows={2}
-                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                          placeholder="Write a message to the client..."
+                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
+                          placeholder="Message the client…"
                         />
-                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                        <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                          <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
                           <Button
                             size="sm"
-                            className="rounded-xl px-4 h-9"
+                            className="rounded-xl h-8 px-3.5"
                             loading={sendingClientMsg}
                             disabled={!newClientMsgContent.trim() || !client?.id}
                             onClick={async () => {
@@ -2364,7 +2479,7 @@ export default function ReviewApplication() {
                               }
                             }}
                           >
-                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                            <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
                             Send
                           </Button>
                         </div>

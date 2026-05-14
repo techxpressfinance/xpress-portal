@@ -12,7 +12,7 @@ export default function AdminMessages() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [conversations, setConversations] = useState<ClientConversation[]>([]);
-  const [allClients, setAllClients] = useState<User[]>([]);
+  const [allRecipients, setAllRecipients] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConv, setSelectedConv] = useState<ClientConversation | null>(null);
   const [chatMessages, setChatMessages] = useState<ClientMessage[]>([]);
@@ -34,7 +34,7 @@ export default function AdminMessages() {
     ])
       .then(([convRes, recipientsRes]) => {
         setConversations(convRes.data);
-        setAllClients(recipientsRes.data);
+        setAllRecipients(recipientsRes.data);
       })
       .catch(() => toast('Failed to load messages', 'error'))
       .finally(() => setLoading(false));
@@ -104,7 +104,7 @@ export default function AdminMessages() {
     }
   };
 
-  const filteredClients = allClients.filter(
+  const filteredClients = allRecipients.filter(
     (c) =>
       (c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
        c.email.toLowerCase().includes(clientSearch.toLowerCase()))
@@ -113,7 +113,7 @@ export default function AdminMessages() {
   if (loading) {
     return (
       <div>
-        <PageHeader title="Messages" subtitle="Chat with clients and referrers" />
+        <PageHeader title="Messages" subtitle="Message clients and referrers" />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-2xl shimmer" />)}
         </div>
@@ -125,7 +125,7 @@ export default function AdminMessages() {
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Chat with clients and referrers"
+        subtitle="Message clients and referrers"
         action={
           <Button onClick={() => { setShowSearch((v) => !v); setClientSearch(''); }}>
             {showSearch ? 'Cancel' : '+ New Chat'}
