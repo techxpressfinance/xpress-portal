@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, Button, Input, PageHeader } from '../../components/ui';
+import { GlassCard, Button, Input } from '../../components/ui';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
   CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES, VEHICLE_MAKES, PROPERTY_TYPES,
@@ -13,9 +13,10 @@ import {
 } from '../../lib/constants';
 import type { DocType } from '../../types';
 
-const SELECT_CLS = 'w-full rounded-xl bg-secondary px-3.5 py-2 text-[14px] text-foreground h-10 border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none';
-const TEXTAREA_CLS = 'w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent resize-none';
+const SELECT_CLS = 'led-input';
+const TEXTAREA_CLS = 'w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent resize-none';
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
+
 
 interface FormData {
   // Non-lend simple path
@@ -248,10 +249,6 @@ const COMMERCIAL_TYPE_TO_PURPOSE_ID: Record<string, number> = {
   new_business: 9, purchase_business: 10, other: 8,
 };
 
-const TOTAL_STEPS_LEND = 6;
-const maxInternalStep = 6;
-const STEP_LABELS_CONSUMER = ['Loan Details', 'Identification', 'Living & Employment', 'Financial Position', 'Declarations', 'Review'];
-const STEP_LABELS_COMMERCIAL = ['Loan Details', 'Identification', 'Declarations', 'Review'];
 
 const blankRealEstate = (): RealEstateAsset => ({
   property_type: 'Home', address: '', estimated_value: '', ownership_type: 'Sole',
@@ -271,7 +268,6 @@ export default function NewApplication() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [step, setStep] = useState(0);
   const [lendEnabled, setLendEnabled] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -319,7 +315,6 @@ export default function NewApplication() {
     register,
     handleSubmit,
     watch,
-    trigger,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
@@ -384,12 +379,6 @@ export default function NewApplication() {
     if (user?.email) setValue('applicant_email', user.email);
   }, [user, setValue]);
 
-  const totalSteps = lendEnabled ? TOTAL_STEPS_LEND : (tab === 'commercial' ? 4 : 6);
-  const stepLabels = lendEnabled ? STEP_LABELS_CONSUMER : (tab === 'commercial' ? STEP_LABELS_COMMERCIAL : STEP_LABELS_CONSUMER);
-  const toUiStep = (internal: number) => {
-    if (!lendEnabled && tab === 'commercial' && internal >= 5) return internal - 2;
-    return internal;
-  };
 
   const toggleLoanType = (type: string) => {
     setSelectedLoanTypes(prev =>
@@ -436,27 +425,6 @@ export default function NewApplication() {
     }
   };
 
-  const goNext = async () => {
-    if (step === 1) {
-      if (lendEnabled) {
-        const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile']);
-        if (!ok) return;
-        if (selectedLoanTypes.length === 0) { setLoanTypeError('Please select at least one loan type'); return; }
-        setLoanTypeError('');
-      } else {
-        const ok = await trigger(['applicant_first_name', 'applicant_last_name', 'applicant_email', 'applicant_mobile', 'amount']);
-        if (!ok) return;
-      }
-    }
-    const next = lendEnabled ? step + 1 : step + (tab === 'commercial' && step === 2 ? 3 : 1);
-    setStep(Math.min(next, maxInternalStep));
-  };
-
-  const goBack = () => {
-    if (step === 1) return;
-    const prev = lendEnabled ? step - 1 : step - (tab === 'commercial' && step === 5 ? 3 : 1);
-    setStep(Math.max(prev, 1));
-  };
 
   const onSubmit = async (data: FormData) => {
     const extraData: Record<string, unknown> = {};
@@ -772,10 +740,16 @@ export default function NewApplication() {
   // ── Acknowledgment ──
   if (!acknowledged) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <PageHeader title="Important Information" subtitle="Please read the following information carefully before proceeding" />
+      <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
+        <div className="mb-8 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="led-chip led-chip-accent">Disclosure</span>
+          </div>
+          <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Important Information</h1>
+          <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Please read the following information carefully before proceeding</p>
+        </div>
         <GlassCard>
-          <div className="max-h-80 overflow-y-auto rounded-xl bg-secondary p-5 text-[14px] text-foreground leading-relaxed space-y-4">
+          <div className="max-h-80 overflow-y-auto rounded-xl bg-[var(--led-surface-2)] p-5 text-[14px] text-[var(--led-ink)] leading-relaxed space-y-4">
             <h3 className="text-[15px] font-semibold">Loan Application Disclosure</h3>
             <p>By submitting a loan application through this portal, you acknowledge and agree to the following terms and conditions. Please read this information carefully before proceeding.</p>
             <p><strong>Information Accuracy:</strong> All information provided in your loan application must be accurate and complete. Providing false or misleading information may result in the denial of your application and could have legal consequences.</p>
@@ -786,62 +760,52 @@ export default function NewApplication() {
           </div>
           <div className="mt-5">
             <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} className="h-4 w-4 rounded border-border accent-[var(--primary)]" />
-              <span className="text-[13px] text-foreground">I have read and understood the above information</span>
+              <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} className="h-4 w-4 rounded border-[var(--led-line)] accent-[var(--led-accent)]" />
+              <span className="text-[13px] text-[var(--led-ink)]">I have read and understood the above information</span>
             </label>
           </div>
         </GlassCard>
         <div className="mt-6 flex gap-3">
-          <Button size="lg" disabled={!checked} onClick={() => { setAcknowledged(true); setStep(1); }}>Continue</Button>
+          <Button size="lg" disabled={!checked} onClick={() => setAcknowledged(true)}>Continue</Button>
           <Button variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>Cancel</Button>
         </div>
       </div>
     );
   }
 
-  const progress = (toUiStep(step) / (lendEnabled ? 6 : (tab === 'commercial' ? 4 : 6))) * 100;
-
   const currentPurposeLabel = tab === 'consumer'
     ? CONSUMER_PURPOSES.find(p => p.id === purposeId)?.label
     : COMMERCIAL_PURPOSES.find(p => p.id === commercialPurposeId)?.label;
 
-  const uiTotal = lendEnabled ? 6 : (tab === 'commercial' ? 4 : 6);
-
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title="New Loan Application" subtitle={stepLabels[toUiStep(step) - 1] || `Step ${step}`} />
-
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[12px] font-medium text-muted-foreground">Step {toUiStep(step)} of {uiTotal}</span>
-          <span className="text-[12px] font-medium text-muted-foreground">{Math.round(progress)}%</span>
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
+      <div className="mb-8 mt-2">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="led-chip led-chip-accent">New Application</span>
         </div>
-        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${progress}%` }} />
-        </div>
+        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">New Loan Application</h1>
+        <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Complete all sections below to submit your application</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
-        {/* ── Step 1: Loan Type & Details ── */}
-        {step === 1 && (
-          <>
-            {lendEnabled ? (
-              <>
+        {/* ── Loan Type & Details ── */}
+            {lendEnabled && (
+              <div className="contents">
                 <GlassCard>
                   <label className={LABEL_CLS}>Select Loan Type(s)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {LEND_LOAN_TYPES.map(type => {
                       const active = selectedLoanTypes.includes(type.value);
                       return (
-                        <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-primary/5 ring-2 ring-primary/30 shadow-[0_0_0_1px_var(--primary)]' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => toggleLoanType(type.value)}>
-                          <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                        <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => toggleLoanType(type.value)}>
+                          <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                             {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                           </div>
                           <span className="text-2xl">{type.icon}</span>
                           <div>
-                            <p className={`text-[14px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.label}</p>
-                            <p className="text-[13px] text-muted-foreground mt-0.5">{type.description}</p>
+                            <p className={`text-[14px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
+                            <p className="text-[13px] text-[var(--led-muted)] mt-0.5">{type.description}</p>
                           </div>
                         </label>
                       );
@@ -852,7 +816,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('equipment_finance') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">🏗️ Equipment Finance Details</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏗️ Equipment Finance Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className={LABEL_CLS}>Asset Type</label>
@@ -906,7 +870,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('business_loan') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">💼 Business Loan Details</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">💼 Business Loan Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Loan Purpose</label>
                       <textarea {...register('bl_loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
@@ -932,12 +896,12 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('commercial_property') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">🏢 Commercial Property Details</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏢 Commercial Property Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Purchase or Refinance?</label>
                       <div className="flex gap-3">
                         {['Purchase', 'Refinance'].map(v => (
-                          <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('cp_purchase_or_refinance') === v ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                          <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('cp_purchase_or_refinance') === v ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
                             <input type="radio" value={v} {...register('cp_purchase_or_refinance')} className="sr-only" />
                             {v}
                           </label>
@@ -965,13 +929,13 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('home_loan') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">🏠 Home Loan Details</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏠 Home Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className={LABEL_CLS}>Purchase or Refinance?</label>
                         <div className="flex gap-3">
                           {['Purchase', 'Refinance'].map(v => (
-                            <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('hl_purchase_or_refinance') === v ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                            <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('hl_purchase_or_refinance') === v ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
                               <input type="radio" value={v} {...register('hl_purchase_or_refinance')} className="sr-only" />
                               {v}
                             </label>
@@ -1004,20 +968,20 @@ export default function NewApplication() {
                 {/* Document upload */}
                 <GlassCard className="space-y-4">
                   <div>
-                    <h3 className="text-[14px] font-semibold text-foreground">Supporting Documents</h3>
-                    <p className="text-[12px] text-muted-foreground mt-0.5">Optional — files upload immediately.</p>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
+                    <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files upload immediately.</p>
                   </div>
 
                   {uploadedDocs.length > 0 && (
                     <ul className="space-y-2">
                       {uploadedDocs.map((d, i) => (
-                        <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                            <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <li key={i} className="flex items-center gap-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/40 px-3 py-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--led-accent)]/10">
+                            <svg className="h-4 w-4 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-medium text-foreground truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
-                            <p className="text-[11px] text-muted-foreground truncate">{d.filename}</p>
+                            <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
+                            <p className="text-[11px] text-[var(--led-muted)] truncate">{d.filename}</p>
                           </div>
                           <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                         </li>
@@ -1026,11 +990,11 @@ export default function NewApplication() {
                   )}
 
                   {stagedFile ? (
-                    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                    <div className="rounded-xl border border-primary/30 bg-[var(--led-accent)]/5 p-4 space-y-3">
                       <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                        <span className="text-[13px] font-medium text-foreground truncate">{stagedFile.name}</span>
-                        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{(stagedFile.size / 1024).toFixed(0)} KB</span>
+                        <svg className="h-4 w-4 text-[var(--led-accent)] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <span className="text-[13px] font-medium text-[var(--led-ink)] truncate">{stagedFile.name}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-[var(--led-muted)]">{(stagedFile.size / 1024).toFixed(0)} KB</span>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
@@ -1055,26 +1019,28 @@ export default function NewApplication() {
                     </div>
                   ) : (
                     <div
-                      className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/40'}`}
+                      className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-[var(--led-accent)]/5' : 'border-[var(--led-line)] hover:border-primary/50 hover:bg-[var(--led-surface-2)]/40'}`}
                       onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
                       onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
                       onDragLeave={() => setIsDragOver(false)}
                       onDrop={handleDrop}
                     >
                       <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
-                        <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-[var(--led-accent)]/15' : 'bg-[var(--led-surface-2)]'}`}>
+                        <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
                       </div>
                       <div>
-                        <p className="text-[13px] font-medium text-foreground">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
-                        <p className="text-[12px] text-muted-foreground mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
+                        <p className="text-[13px] font-medium text-[var(--led-ink)]">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
+                        <p className="text-[12px] text-[var(--led-muted)] mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
                       </div>
                     </div>
                   )}
                 </GlassCard>
-              </>
-            ) : (
-              <>
+              </div>
+            )}
+
+            {!lendEnabled && (
+              <div className="contents">
                 {/* Consumer / Commercial Tab Switcher */}
                 <div className="flex rounded-xl bg-secondary p-1 gap-1">
                   {(['consumer', 'commercial'] as const).map(t => (
@@ -1092,19 +1058,19 @@ export default function NewApplication() {
                 {/* Consumer Loan Types with Comprehensive Fields */}
                 {tab === 'consumer' && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">Select Loan Type</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Select Loan Type</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {CONSUMER_LOAN_TYPES.map(type => {
                         const active = selectedConsumerLoanType === type.value;
                         return (
-                          <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-primary/5 ring-2 ring-primary/30 shadow-[0_0_0_1px_var(--primary)]' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => setSelectedConsumerLoanType(type.value)}>
-                            <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                          <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => setSelectedConsumerLoanType(type.value)}>
+                            <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                               {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                             </div>
                             <span className="text-2xl">{type.icon}</span>
                             <div>
-                              <p className={`text-[14px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.label}</p>
-                              <p className="text-[13px] text-muted-foreground mt-0.5">{type.description}</p>
+                              <p className={`text-[14px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
+                              <p className="text-[13px] text-[var(--led-muted)] mt-0.5">{type.description}</p>
                             </div>
                           </label>
                         );
@@ -1113,8 +1079,8 @@ export default function NewApplication() {
 
                     {/* Vehicle Loan Fields */}
                     {['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Vehicle Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Vehicle Details</h4>
                         {selectedConsumerLoanType === 'other_vehicle' && (
                           <div>
                             <label className={LABEL_CLS}>Vehicle Type</label>
@@ -1173,8 +1139,8 @@ export default function NewApplication() {
 
                     {/* Personal Loan Fields */}
                     {selectedConsumerLoanType === 'personal' && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Personal Loan Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Personal Loan Details</h4>
                         <div>
                           <label className={LABEL_CLS}>Loan Purpose</label>
                           <textarea {...register('loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe what the loan is for..." />
@@ -1196,8 +1162,8 @@ export default function NewApplication() {
 
                     {/* Purchase/Refinance Fields */}
                     {['purchase', 'refinance'].includes(selectedConsumerLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Property Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Property Details</h4>
                         <div>
                           <label className={LABEL_CLS}>Property Address</label>
                           <Input placeholder="123 Main St, Sydney NSW 2000" {...register('property_address')} />
@@ -1267,7 +1233,7 @@ export default function NewApplication() {
 
                 {tab === 'commercial' && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-foreground">Business & Loan Details</h3>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business & Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className={LABEL_CLS}>Business / Entity Name</label>
@@ -1285,12 +1251,12 @@ export default function NewApplication() {
                         {COMMERCIAL_LOAN_TYPES.map(type => {
                           const active = selectedCommercialLoanType === type.value;
                           return (
-                            <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-all duration-200 ${active ? 'bg-primary/5 ring-1 ring-primary/30' : 'bg-secondary hover:bg-secondary/80'}`} onClick={() => setSelectedCommercialLoanType(type.value)}>
-                              <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border" style={active ? { background: 'var(--primary)', borderColor: 'var(--primary)' } : {}}>
+                            <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => setSelectedCommercialLoanType(type.value)}>
+                              <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                                 {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                               </div>
                               <div>
-                                <p className={`text-[13px] font-semibold ${active ? 'text-primary' : 'text-foreground'}`}>{type.icon} {type.label}</p>
+                                <p className={`text-[13px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.icon} {type.label}</p>
                               </div>
                             </label>
                           );
@@ -1300,8 +1266,8 @@ export default function NewApplication() {
 
                     {/* Commercial Vehicle/Equipment Fields */}
                     {['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Asset Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Asset Details</h4>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className={LABEL_CLS}>Asset Type</label>
@@ -1355,8 +1321,8 @@ export default function NewApplication() {
 
                     {/* Property/Development Fields */}
                     {['property', 'development_construction', 'new_fit_out', 'renovation'].includes(selectedCommercialLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Property Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Property Details</h4>
                         <div>
                           <label className={LABEL_CLS}>Property Address</label>
                           <Input placeholder="123 Main St, Sydney NSW 2000" {...register('property_address')} />
@@ -1416,8 +1382,8 @@ export default function NewApplication() {
 
                     {/* Business Acquisition/Startup Fields */}
                     {['new_business', 'purchase_business'].includes(selectedCommercialLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Business Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Business Details</h4>
                         {selectedCommercialLoanType === 'new_business' ? (
                           <>
                             <div>
@@ -1470,8 +1436,8 @@ export default function NewApplication() {
 
                     {/* Working Capital/Expansion Fields */}
                     {['day_to_day_capital', 'expansion', 'staff_recruitment', 'pay_suppliers', 'waiting_for_invoices', 'other'].includes(selectedCommercialLoanType) && (
-                      <div className="space-y-4 pt-4 border-t border-border">
-                        <h4 className="text-[13px] font-semibold text-foreground">Loan Details</h4>
+                      <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
+                        <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Loan Details</h4>
                         {selectedCommercialLoanType === 'staff_recruitment' && (
                           <div>
                             <label className={LABEL_CLS}>Recruitment Details</label>
@@ -1522,7 +1488,7 @@ export default function NewApplication() {
                       <div>
                         <label className={LABEL_CLS}>Loan Amount *</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-[var(--led-muted)] pointer-events-none">$</span>
                           <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} {...register('amount')} />
                         </div>
                       </div>
@@ -1532,27 +1498,24 @@ export default function NewApplication() {
                       <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
                       <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
                     </div>
-                  </GlassCard>
-                )}
-              </>
+            </GlassCard>
             )}
-          </>
-        )}
-        {/* ── Step 2: Identification & Residency ── */}
-        {step === 2 && (
-          <>
-            <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Personal Details</h3>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label className={LABEL_CLS}>Title</label>
-                  <select {...register('applicant_title')} className={SELECT_CLS}>
-                    {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>Gender <span className="font-normal">(optional)</span></label>
-                  <select {...register('applicant_gender')} className={SELECT_CLS}>
+            </div>
+          )}
+
+        {/* ── Identification ── */}
+          <GlassCard className="space-y-4">
+            <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Personal Details</h3>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className={LABEL_CLS}>Title</label>
+                <select {...register('applicant_title')} className={SELECT_CLS}>
+                  {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL_CLS}>Gender <span className="font-normal">(optional)</span></label>
+                <select {...register('applicant_gender')} className={SELECT_CLS}>
                     {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
@@ -1590,12 +1553,12 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Identification</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Identification</h3>
               <div>
                 <label className={LABEL_CLS}>ID Type</label>
                 <div className="flex gap-3">
                   {(['license', 'passport'] as const).map(t => (
-                    <label key={t} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${idType === t ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                    <label key={t} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${idType === t ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
                       <input type="radio" value={t} {...register('id_type')} className="sr-only" />
                       {t === 'license' ? 'Driver Licence' : 'Passport'}
                     </label>
@@ -1625,12 +1588,12 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Residency Status</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'].map(r => (
-                  <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${residencyStatus === r ? 'bg-primary/5 ring-1 ring-primary/30' : 'bg-secondary hover:bg-secondary/80'}`}>
-                    <input type="radio" value={r} {...register('residency_status')} className="h-4 w-4 accent-[var(--primary)]" />
-                    <span className="text-[13px] font-medium text-foreground">{r}</span>
+                  <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${residencyStatus === r ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`}>
+                    <input type="radio" value={r} {...register('residency_status')} className="h-4 w-4 accent-[var(--led-accent)]" />
+                    <span className="text-[13px] font-medium text-[var(--led-ink)]">{r}</span>
                   </label>
                 ))}
               </div>
@@ -1641,7 +1604,7 @@ export default function NewApplication() {
 
             {!lendEnabled && tab === 'commercial' && (
               <GlassCard className="space-y-4">
-                <h3 className="text-[14px] font-semibold text-foreground">Business Details</h3>
+                <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>
                   <label className={LABEL_CLS}>Industry</label>
                   <select value={parentIndustryId} onChange={e => { setParentIndustryId(e.target.value ? Number(e.target.value) : ''); setSubIndustryId(''); }} className={SELECT_CLS}>
@@ -1666,16 +1629,16 @@ export default function NewApplication() {
                   <div>
                     <label className={LABEL_CLS}>Monthly Sales ($)</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-muted-foreground pointer-events-none">$</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-[var(--led-muted)] pointer-events-none">$</span>
                       <Input type="number" step="1" min="0" placeholder="30,000" style={{ paddingLeft: '2rem' }} value={comMonthlySales} onChange={e => setComMonthlySales(e.target.value)} />
                     </div>
                   </div>
                 </div>
-              </GlassCard>
+            </GlassCard>
             )}
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Contact Details</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Contact Details</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={LABEL_CLS}>Email Address *</label>
@@ -1693,21 +1656,19 @@ export default function NewApplication() {
                 </select>
               </div>
             </GlassCard>
-          </>
-        )}
 
-        {/* ── Step 3: Living & Employment (consumer / LEND only) ── */}
-        {step === 3 && (tab === 'consumer' || lendEnabled) && (
+        {/* ── Living & Employment ── */}
+        {(tab === 'consumer' || lendEnabled) && (
           <>
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Living Situation</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Living Situation</h3>
               <div>
                 <label className={LABEL_CLS}>Residential Status</label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {['Renting', 'Owner (Mortgage)', 'Owner (No Mortgage)', 'Living with Family'].map(r => (
-                    <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${watch('residential_status') === r ? 'bg-primary/5 ring-1 ring-primary/30' : 'bg-secondary hover:bg-secondary/80'}`}>
-                      <input type="radio" value={r} {...register('residential_status')} className="h-4 w-4 accent-[var(--primary)]" />
-                      <span className="text-[13px] font-medium text-foreground">{r}</span>
+                    <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${watch('residential_status') === r ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`}>
+                      <input type="radio" value={r} {...register('residential_status')} className="h-4 w-4 accent-[var(--led-accent)]" />
+                      <span className="text-[13px] font-medium text-[var(--led-ink)]">{r}</span>
                     </label>
                   ))}
                 </div>
@@ -1739,7 +1700,7 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Household</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Household</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className={LABEL_CLS}>Partner / Spouse?</label>
@@ -1765,12 +1726,12 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Employment</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Employment</h3>
               <div>
                 <label className={LABEL_CLS}>Employment Type</label>
                 <div className="flex gap-3">
                   {[{ value: 'employed', label: 'Employed' }, { value: 'self_employed', label: 'Self-Employed / Business Owner' }].map(opt => (
-                    <label key={opt.value} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${employmentCategory === opt.value ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                    <label key={opt.value} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${employmentCategory === opt.value ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
                       <input type="radio" value={opt.value} {...register('employment_category')} className="sr-only" />
                       {opt.label}
                     </label>
@@ -1883,9 +1844,9 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Income</h3>
-              <div className="rounded-xl bg-secondary/40 p-4 space-y-3">
-                <p className="text-[13px] font-semibold text-foreground">Primary Income</p>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Income</h3>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
+                <p className="text-[13px] font-semibold text-[var(--led-ink)]">Primary Income</p>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
                     <label className={LABEL_CLS}>Type</label>
@@ -1908,11 +1869,11 @@ export default function NewApplication() {
 
               {additionalIncomes.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-[13px] font-semibold text-foreground">Additional Income</p>
+                  <p className="text-[13px] font-semibold text-[var(--led-ink)]">Additional Income</p>
                   {additionalIncomes.map((inc, idx) => (
-                    <div key={idx} className="rounded-xl bg-secondary/40 p-4 space-y-3">
+                    <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[12px] font-medium text-muted-foreground">Income Source {idx + 1}</span>
+                        <span className="text-[12px] font-medium text-[var(--led-muted)]">Income Source {idx + 1}</span>
                         <button type="button" onClick={() => setAdditionalIncomes(prev => prev.filter((_, i) => i !== idx))} className="text-[12px] text-destructive hover:underline">Remove</button>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
@@ -1937,20 +1898,20 @@ export default function NewApplication() {
                   ))}
                 </div>
               )}
-              <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, blankIncome()])} className="text-[13px] text-primary font-medium hover:underline">+ Add Additional Income</button>
+              <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, blankIncome()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Additional Income</button>
             </GlassCard>
           </>
         )}
 
-        {/* ── Step 4: Financial Position (consumer / LEND only) ── */}
-        {step === 4 && (tab === 'consumer' || lendEnabled) && (
+        {/* ── Financial Position ── */}
+        {(tab === 'consumer' || lendEnabled) && (
           <>
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Real Estate Assets</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Real Estate Assets</h3>
               {realEstateAssets.map((asset, idx) => (
-                <div key={idx} className="rounded-xl bg-secondary/40 p-4 space-y-3">
+                <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-semibold text-foreground">Property {idx + 1}</span>
+                    <span className="text-[13px] font-semibold text-[var(--led-ink)]">Property {idx + 1}</span>
                     <button type="button" onClick={() => setRealEstateAssets(prev => prev.filter((_, i) => i !== idx))} className="text-[12px] text-destructive hover:underline">Remove</button>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2009,11 +1970,11 @@ export default function NewApplication() {
                   )}
                 </div>
               ))}
-              <button type="button" onClick={() => setRealEstateAssets(prev => [...prev, blankRealEstate()])} className="text-[13px] text-primary font-medium hover:underline">+ Add Property</button>
+              <button type="button" onClick={() => setRealEstateAssets(prev => [...prev, blankRealEstate()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Property</button>
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Other Assets</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Other Assets</h3>
               {otherAssets.map((asset, idx) => (
                 <div key={idx} className="flex items-end gap-3">
                   <div className="flex-1">
@@ -2029,15 +1990,15 @@ export default function NewApplication() {
                   <button type="button" onClick={() => setOtherAssets(prev => prev.filter((_, i) => i !== idx))} className="mb-0.5 text-[12px] text-destructive hover:underline whitespace-nowrap">Remove</button>
                 </div>
               ))}
-              <button type="button" onClick={() => setOtherAssets(prev => [...prev, blankOtherAsset()])} className="text-[13px] text-primary font-medium hover:underline">+ Add Asset</button>
+              <button type="button" onClick={() => setOtherAssets(prev => [...prev, blankOtherAsset()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Asset</button>
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Liabilities</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Liabilities</h3>
               {liabilities.map((liability, idx) => (
-                <div key={idx} className="rounded-xl bg-secondary/40 p-4 space-y-3">
+                <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-semibold text-foreground">Liability {idx + 1}</span>
+                    <span className="text-[13px] font-semibold text-[var(--led-ink)]">Liability {idx + 1}</span>
                     <button type="button" onClick={() => setLiabilities(prev => prev.filter((_, i) => i !== idx))} className="text-[12px] text-destructive hover:underline">Remove</button>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2068,11 +2029,11 @@ export default function NewApplication() {
                   </div>
                 </div>
               ))}
-              <button type="button" onClick={() => setLiabilities(prev => [...prev, blankLiability()])} className="text-[13px] text-primary font-medium hover:underline">+ Add Liability</button>
+              <button type="button" onClick={() => setLiabilities(prev => [...prev, blankLiability()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Liability</button>
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Monthly Expenses</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Monthly Expenses</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={LABEL_CLS}>Estimated Living Expenses ($) *</label>
@@ -2095,11 +2056,9 @@ export default function NewApplication() {
           </>
         )}
 
-        {/* ── Step 5: Declarations ── */}
-        {step === 5 && (
-          <>
+        {/* ── Declarations ── */}
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Credit History</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Credit History</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={LABEL_CLS}>Previously declined for finance?</label>
@@ -2119,7 +2078,7 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Emergency Contact</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Emergency Contact</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className={LABEL_CLS}>Name</label>
@@ -2137,87 +2096,73 @@ export default function NewApplication() {
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-foreground">Signature</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Signature</h3>
               <div>
                 <label className={LABEL_CLS}>Digital Signature — Type your full name</label>
                 <Input placeholder="Your full legal name" {...register('signature_name')} />
               </div>
-              <p className="text-[12px] text-muted-foreground">Date: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              <p className="text-[12px] text-[var(--led-muted)]">Date: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
             </GlassCard>
-          </>
-        )}
 
-        {/* ── Step 6: Review ── */}
-        {step === 6 && (
+        {/* ── Review ── */}
           <GlassCard className="space-y-4">
-            <h3 className="text-[14px] font-semibold text-foreground">Review Your Application</h3>
+            <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Review Your Application</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Applicant</p>
-                <p className="text-[14px] font-semibold text-foreground">{watch('applicant_title')} {watch('applicant_first_name')} {watch('applicant_last_name')}</p>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Applicant</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)]">{watch('applicant_title')} {watch('applicant_first_name')} {watch('applicant_last_name')}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Contact</p>
-                <p className="text-[14px] font-semibold text-foreground">{watch('applicant_mobile') || watch('applicant_email') || '—'}</p>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Contact</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)]">{watch('applicant_mobile') || watch('applicant_email') || '—'}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Loan Type</p>
-                <p className="text-[14px] font-semibold text-foreground capitalize">
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Loan Type</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)] capitalize">
                   {lendEnabled
                     ? (selectedLoanTypes.map(t => t.replace(/_/g, ' ')).join(', ') || '—')
                     : `${tab === 'consumer' ? 'Consumer' : 'Commercial'} · ${currentPurposeLabel || 'No purpose selected'}`}
                 </p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Employment</p>
-                <p className="text-[14px] font-semibold text-foreground capitalize">{watch('employment_category') === 'self_employed' ? 'Self-Employed' : 'Employed'}</p>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Employment</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)] capitalize">{watch('employment_category') === 'self_employed' ? 'Self-Employed' : 'Employed'}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Address</p>
-                <p className="text-[14px] font-semibold text-foreground">{[watch('applicant_suburb'), watch('applicant_state'), watch('applicant_postcode')].filter(Boolean).join(', ') || '—'}</p>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Address</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)]">{[watch('applicant_suburb'), watch('applicant_state'), watch('applicant_postcode')].filter(Boolean).join(', ') || '—'}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
-                <p className="text-[12px] font-medium text-muted-foreground">Residency</p>
-                <p className="text-[14px] font-semibold text-foreground">{watch('residency_status')}</p>
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                <p className="text-[12px] font-medium text-[var(--led-muted)]">Residency</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)]">{watch('residency_status')}</p>
               </div>
               {realEstateAssets.length > 0 && (
-                <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
-                  <p className="text-[12px] font-medium text-muted-foreground">Properties</p>
-                  <p className="text-[14px] font-semibold text-foreground">{realEstateAssets.length} propert{realEstateAssets.length === 1 ? 'y' : 'ies'} listed</p>
+                <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3 sm:col-span-2">
+                  <p className="text-[12px] font-medium text-[var(--led-muted)]">Properties</p>
+                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{realEstateAssets.length} propert{realEstateAssets.length === 1 ? 'y' : 'ies'} listed</p>
                 </div>
               )}
               {liabilities.length > 0 && (
-                <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
-                  <p className="text-[12px] font-medium text-muted-foreground">Liabilities</p>
-                  <p className="text-[14px] font-semibold text-foreground">{liabilities.length} liabilit{liabilities.length === 1 ? 'y' : 'ies'} listed</p>
+                <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3 sm:col-span-2">
+                  <p className="text-[12px] font-medium text-[var(--led-muted)]">Liabilities</p>
+                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{liabilities.length} liabilit{liabilities.length === 1 ? 'y' : 'ies'} listed</p>
                 </div>
               )}
               {uploadedDocs.length > 0 && (
-                <div className="rounded-xl bg-secondary/50 p-3">
-                  <p className="text-[12px] font-medium text-muted-foreground">Documents</p>
-                  <p className="text-[14px] font-semibold text-foreground">{uploadedDocs.length} uploaded</p>
+                <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                  <p className="text-[12px] font-medium text-[var(--led-muted)]">Documents</p>
+                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{uploadedDocs.length} uploaded</p>
                 </div>
               )}
             </div>
-            <p className="text-[13px] text-muted-foreground">Please review the details above. Once you submit, you can upload supporting documents on the next screen.</p>
+            <p className="text-[13px] text-[var(--led-muted)]">Please review the details above. Once you submit, you can upload supporting documents on the next screen.</p>
           </GlassCard>
-        )}
 
-        {/* ── Navigation ── */}
+        {/* ── Submit ── */}
         <div className="flex flex-wrap gap-3">
-          {step > 1 && (
-            <Button type="button" variant="secondary" size="lg" onClick={goBack}>Back</Button>
-          )}
-          {step < totalSteps ? (
-            <Button type="button" size="lg" onClick={goNext}>Continue</Button>
-          ) : (
             <Button type="submit" loading={isSubmitting} size="lg">
               {isSubmitting ? 'Submitting...' : 'Submit Application'}
             </Button>
-          )}
-          {lendEnabled && step > 1 && step < totalSteps && (
-            <Button type="button" variant="secondary" size="lg" onClick={() => setStep(totalSteps)}>Skip to Review</Button>
-          )}
           <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>Cancel</Button>
         </div>
       </form>

@@ -2,10 +2,54 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Badge, PageHeader, Button } from '../../components/ui';
+import { GlassCard, Badge, Button } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
-import { LOAN_TYPE_ICONS } from '../../lib/constants';
-import type { LoanApplication } from '../../types';
+import type { ApplicationStatus, LoanApplication } from '../../types';
+
+const LOAN_ICON: Record<string, string> = {
+  personal: '💳',
+  home: '🏠',
+  home_loan: '🏠',
+  vehicle: '🚗',
+  business: '💼',
+  business_loan: '💼',
+  equipment_finance: '🏗️',
+  commercial_property: '🏢',
+};
+
+const STATUS_ACCENT: Record<ApplicationStatus, string> = {
+  draft: 'bg-[var(--led-muted)]',
+  application_received: 'bg-[var(--led-accent)]',
+  application_assessed: 'bg-purple-500',
+  submitted: 'bg-blue-500',
+  approval: 'bg-amber-500',
+  settled: 'bg-[var(--led-success)]',
+  rejected: 'bg-red-500',
+  not_proceeding: 'bg-[var(--led-muted)]',
+};
+
+const PIPELINE: ApplicationStatus[] = [
+  'application_received',
+  'application_assessed',
+  'submitted',
+  'approval',
+  'settled',
+];
+
+function PipelineBar({ status }: { status: ApplicationStatus }) {
+  if (status === 'rejected' || status === 'not_proceeding' || status === 'draft') return null;
+  const idx = PIPELINE.indexOf(status);
+  return (
+    <div className="flex items-center gap-1 mt-2">
+      {PIPELINE.map((s, i) => (
+        <div
+          key={s}
+          className={`h-1 flex-1 rounded-full transition-colors ${i <= idx ? STATUS_ACCENT[status] : 'bg-[var(--led-line)]'}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function Applications() {
   const { toast } = useToast();
@@ -20,71 +64,101 @@ export default function Applications() {
       .finally(() => setLoading(false));
   }, []);
 
+  const active = applications.filter((a) => !['settled', 'rejected', 'not_proceeding', 'draft'].includes(a.status));
+  const rest = applications.filter((a) => ['settled', 'rejected', 'not_proceeding', 'draft'].includes(a.status));
+  const ordered = [...active, ...rest];
+
   return (
-    <div>
-      <PageHeader
-        title="My Applications"
-        subtitle="Track and manage all your loan applications"
-        action={
-          <Link to="/applications/new">
-            <Button>+ New Application</Button>
-          </Link>
-        }
-      />
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
+      <div className="mb-8 mt-2 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="led-chip led-chip-accent">Client</span>
+            {!loading && applications.length > 0 && (
+              <span className="led-chip">{applications.length} application{applications.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <div>
+            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">My Applications</h1>
+            <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Track and manage all your loan applications</p>
+          </div>
+        </div>
+        <Link to="/applications/new">
+          <Button size="lg" className="h-11 px-5">+ New Application</Button>
+        </Link>
+      </div>
 
       {loading ? (
-        <GlassCard>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between rounded-xl bg-secondary/50 p-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-xl shimmer" />
-                  <div className="space-y-2">
-                    <div className="h-4 w-32 rounded shimmer" />
-                    <div className="h-3 w-24 rounded shimmer" />
-                  </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-2xl border border-[var(--led-line)] bg-[var(--led-surface)] p-5">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-xl shimmer shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-36 rounded shimmer" />
+                  <div className="h-3 w-24 rounded shimmer" />
+                  <div className="h-1.5 w-full rounded-full shimmer mt-3" />
                 </div>
-                <div className="h-6 w-20 rounded-full shimmer" />
+                <div className="h-6 w-24 rounded-full shimmer" />
               </div>
-            ))}
-          </div>
-        </GlassCard>
+            </div>
+          ))}
+        </div>
       ) : applications.length === 0 ? (
-        <GlassCard className="px-6 py-16 text-center">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10">
-            <svg className="h-10 w-10 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+        <GlassCard padding="none" className="text-center">
+          <div className="px-6 py-16">
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--led-surface-2)]">
+              <svg className="h-10 w-10 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[var(--led-ink)] mb-1">No applications yet</h3>
+            <p className="text-[14px] text-[var(--led-muted)] mb-5">Get started by creating your first loan application</p>
+            <Link to="/applications/new">
+              <Button>Create Application</Button>
+            </Link>
           </div>
-          <h3 className="text-[15px] font-semibold text-foreground mb-1">No applications yet</h3>
-          <p className="text-[14px] text-muted-foreground mb-5">Get started by creating your first loan application</p>
-          <Link to="/applications/new">
-            <Button>Create Application</Button>
-          </Link>
         </GlassCard>
       ) : (
         <div className="space-y-3">
-          {applications.map((app) => (
+          {ordered.map((app) => (
             <Link
               key={app.id}
               to={`/applications/${app.id}`}
-              className="rounded-2xl bg-card shadow-[0_0_0_1px_var(--border),0_1px_3px_0_rgba(0,0,0,0.04),0_2px_8px_0_rgba(0,0,0,0.02)] flex items-center justify-between p-5 transition-all duration-200 hover:bg-secondary/40"
-              style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
+              className="group flex items-start gap-4 rounded-2xl border border-[var(--led-line)] bg-[var(--led-surface)] p-5 transition-all duration-200 hover:border-[var(--led-accent)]/30 hover:bg-[var(--led-surface-2)] hover:shadow-sm"
             >
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-xl">
-                  {LOAN_TYPE_ICONS[app.loan_type] || '\u{1F4C4}'}
-                </div>
-                <div>
-                  <p className="text-[14px] font-semibold text-foreground capitalize">
-                    {app.loan_type} Loan
-                  </p>
-                  <p className="text-[13px] text-muted-foreground mt-0.5">
-                    ${Number(app.amount).toLocaleString()} &middot; {formatDate(app.created_at)}
-                  </p>
-                </div>
+              {/* Status accent bar */}
+              <div className={`mt-0.5 h-12 w-1 shrink-0 rounded-full ${STATUS_ACCENT[app.status]}`} />
+
+              {/* Loan type icon */}
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--led-surface-2)] text-xl">
+                {LOAN_ICON[app.loan_type] ?? '📄'}
               </div>
-              <div className="flex items-center gap-3">
-                <Badge value={app.status} />
-                <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+
+              {/* Main content */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[15px] font-semibold text-[var(--led-ink)] capitalize leading-tight">
+                      {app.loan_type.replace(/_/g, ' ')} Loan
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-[var(--led-muted)]">
+                      <span className="font-medium text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</span>
+                      {' · '}Applied {formatDate(app.created_at)}
+                      {app.updated_at !== app.created_at && (
+                        <> · Updated {formatDate(app.updated_at)}</>
+                      )}
+                    </p>
+                    {app.assigned_broker_name && (
+                      <p className="mt-1 text-[12px] text-[var(--led-muted)]">
+                        Broker: <span className="font-medium text-[var(--led-ink-2)]">{app.assigned_broker_name}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge value={app.status} />
+                    <svg className="h-4 w-4 text-[var(--led-muted)] transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  </div>
+                </div>
+                <PipelineBar status={app.status} />
               </div>
             </Link>
           ))}
