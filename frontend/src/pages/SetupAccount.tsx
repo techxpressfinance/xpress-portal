@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
@@ -122,7 +122,6 @@ export default function SetupAccount() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
-  const passwordRef = useRef<HTMLInputElement>(null);
 
   const brandName = tenant?.name || 'Xpress Finance';
 
