@@ -16,7 +16,7 @@ const fmtCurrency = (v: number | null) => {
 
 const fmtPercent = (v: number | null) => {
   if (v === null || v === undefined) return '—';
-  return `${v}%`;
+  return `${Number(v).toFixed(2)}%`;
 };
 
 type TermGroup = {
@@ -420,7 +420,7 @@ export default function QuoteSheetComparison({
                 {parsedParams.brokeragePercent != null && (
                   <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
                     <td style={{ padding: '7px 16px', color: '#4b5563' }}>Brokerage %</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{parsedParams.brokeragePercent}%</td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{Number(parsedParams.brokeragePercent).toFixed(2)}%</td>
                   </tr>
                 )}
                 {options[0]?.brokerage != null && (
@@ -515,7 +515,7 @@ export default function QuoteSheetComparison({
             <Row label="Lender's Rate" value={fmtPercent(parsedParams.interestRate)} />
           )}
           {parsedParams.brokeragePercent != null && (
-            <Row label="Brokerage %" value={`${parsedParams.brokeragePercent}%`} />
+            <Row label="Brokerage %" value={`${Number(parsedParams.brokeragePercent).toFixed(2)}%`} />
           )}
           {options[0]?.brokerage != null && (
             <Row label="Brokerage $" value={fmtCurrency(options[0].brokerage)} bold />
