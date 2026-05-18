@@ -218,19 +218,12 @@ export const CONSUMER_LOAN_TYPES = [
 ] as const;
 
 export const COMMERCIAL_LOAN_TYPES = [
-  { value: 'day_to_day_capital', label: 'Day-to-day Capital', icon: '💵', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
-  { value: 'vehicles_or_transport', label: 'Vehicles or Transport', icon: '🚛', description: 'Commercial vehicle finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
-  { value: 'machinery_or_equipment', label: 'Machinery or Equipment', icon: '⚙️', description: 'Finance business equipment', fields: ['equipment_type', 'equipment_description', 'equipment_price', 'deposit_amount', 'loan_term', 'vendor_type'] },
-  { value: 'new_fit_out', label: 'New Fit-out', icon: '🏗️', description: 'Shop or office fit-out', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
-  { value: 'staff_recruitment', label: 'Staff Recruitment Costs', icon: '👥', description: 'Hiring and training costs', fields: ['loan_amount', 'loan_term', 'recruitment_details'] },
-  { value: 'expansion', label: 'Expansion', icon: '📈', description: 'Business expansion funding', fields: ['expansion_description', 'loan_amount', 'loan_term'] },
-  { value: 'renovation', label: 'Renovation', icon: '🔨', description: 'Property renovation', fields: ['property_address', 'renovation_description', 'estimated_cost', 'loan_term'] },
-  { value: 'pay_suppliers', label: 'Pay Domestic or International Suppliers', icon: '📦', description: 'Supplier payment financing', fields: ['supplier_details', 'invoice_amount', 'loan_term'] },
-  { value: 'waiting_for_invoices', label: 'Waiting for Invoices to be Paid', icon: '⏳', description: 'Invoice factoring or cash flow', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
-  { value: 'property', label: 'Property', icon: '🏢', description: 'Commercial property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
-  { value: 'development_construction', label: 'Development & Construction', icon: '🏗️', description: 'Construction and development', fields: ['project_description', 'property_address', 'project_value', 'loan_term', 'development_experience'] },
-  { value: 'new_business', label: 'Start a New Business', icon: '🚀', description: 'Startup funding', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
-  { value: 'purchase_business', label: 'Purchase Existing Business', icon: '🤝', description: 'Business acquisition', fields: ['business_details', 'purchase_price', 'loan_amount', 'loan_term', 'business_type'] },
+  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', icon: '💵', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
+  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', icon: '🚛', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
+  { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', icon: '🏗️', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
+  { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', icon: '⏳', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
+  { value: 'property', label: 'Development finance & Construction', icon: '🏢', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
+  { value: 'new_business', label: 'Start a new business/ Purchase an existing business', icon: '🚀', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
   { value: 'other', label: 'Other', icon: '📋', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
 ] as const;
 

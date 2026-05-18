@@ -1592,7 +1592,7 @@ export default function ReferrerApplicationDetail() {
                                 {loanDetails.commercial_loan_type && (
                                   <div className="rounded-xl bg-secondary p-4">
                                     <p className="text-[13px] font-medium text-muted-foreground">Commercial Loan Type</p>
-                                    <p className="mt-1 text-[16px] font-semibold text-foreground capitalize">{loanDetails.commercial_loan_type.type?.replace(/_/g, ' ')}</p>
+                                    <p className="mt-1 text-[16px] font-semibold text-foreground">{loanDetails.commercial_loan_type.label || loanDetails.commercial_loan_type.type?.replace(/_/g, ' ')}</p>
                                   </div>
                                 )}
 

@@ -222,12 +222,12 @@ const CONSUMER_PURPOSES = [
 ];
 
 const COMMERCIAL_PURPOSES = [
-  { id: 1, label: 'Day-to-day Capital' }, { id: 3, label: 'Vehicles or Transport' },
-  { id: 14, label: 'Machinery or Equipment' }, { id: 13, label: 'New Fit-out' },
+  { id: 1, label: 'Working capital/ overdraft' }, { id: 3, label: 'Vehicle/car/ transport/ Equipment / Machinery' },
+  { id: 14, label: 'Machinery or Equipment' }, { id: 13, label: 'Fitouts / Biz Expansion/grow staff' },
   { id: 19, label: 'Staff Recruitment Costs' }, { id: 11, label: 'Expansion' },
   { id: 4, label: 'Renovation' }, { id: 15, label: 'Pay Domestic or International Suppliers' },
-  { id: 18, label: 'Waiting for Invoices to be Paid' }, { id: 16, label: 'Property' },
-  { id: 17, label: 'Development & Construction' }, { id: 9, label: 'Start a New Business' },
+  { id: 18, label: 'Invoice financing/ pay to international suppliers' }, { id: 16, label: 'Development finance & Construction' },
+  { id: 17, label: 'Development & Construction' }, { id: 9, label: 'Start a new business/ Purchase an existing business' },
   { id: 10, label: 'Purchase Existing Business' }, { id: 8, label: 'Other' },
 ];
 

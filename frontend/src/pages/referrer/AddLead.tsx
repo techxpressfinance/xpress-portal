@@ -10,25 +10,6 @@ const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
 
 
-interface Industry { id: number; label: string; children: { id: number; label: string }[]; }
-
-const INDUSTRIES: Industry[] = [
-  { id: 52, label: 'Arts & Lifestyle', children: [{ id: 53, label: 'Health & Fitness Centres, Gyms' }, { id: 54, label: 'Movie, Film & Video Services' }, { id: 55, label: 'Parks & Gardens' }, { id: 56, label: 'Photographic Services' }, { id: 57, label: 'Radio & TV Services' }, { id: 58, label: 'Religious Organisations' }, { id: 59, label: 'Services to the Arts' }, { id: 60, label: 'Sports & Physical Recreation' }, { id: 61, label: 'Other' }, { id: 195, label: 'Events' }] },
-  { id: 62, label: 'Construction & Trades', children: [{ id: 63, label: 'Air Con, Heating, Solar Services' }, { id: 64, label: 'Bricklaying' }, { id: 65, label: 'Building Construction' }, { id: 66, label: 'Carpentry' }, { id: 67, label: 'Concreting, Paving' }, { id: 68, label: 'Electrical, Lighting' }, { id: 69, label: 'Fire & Security Alarm Services' }, { id: 70, label: 'Gardening' }, { id: 71, label: 'Glazing' }, { id: 72, label: 'Household Equipment Repair' }, { id: 73, label: 'Landscaping' }, { id: 74, label: 'Mechanic, Technician' }, { id: 75, label: 'Motor Vehicle Related Services' }, { id: 76, label: 'Painting & Decorating' }, { id: 77, label: 'Plastering' }, { id: 78, label: 'Plumbing' }, { id: 79, label: 'Property Maintenance, Handyman' }, { id: 80, label: 'Roofing' }, { id: 81, label: 'Steel Fabrication, Welding' }, { id: 82, label: 'Tiling, Carpentry, Floors' }, { id: 83, label: 'Other' }, { id: 205, label: 'Traffic Management' }] },
-  { id: 84, label: 'Financial Services & Insurance', children: [{ id: 85, label: 'Accounting, Tax, Bookkeeping Services' }, { id: 86, label: 'Asset Finance' }, { id: 87, label: 'Credit Union Operation' }, { id: 88, label: 'Health Insurance' }, { id: 89, label: 'Life Insurance, Superannuation' }, { id: 90, label: 'Other' }, { id: 197, label: 'Banking' }, { id: 201, label: 'Wealth Management' }] },
-  { id: 91, label: 'Hair & Beauty', children: [{ id: 92, label: 'Cosmetics Supplies' }, { id: 93, label: 'Day Spas, Health Retreats' }, { id: 94, label: 'Hair, Beauty Salons' }, { id: 95, label: 'Other' }] },
-  { id: 96, label: 'Health', children: [{ id: 97, label: 'Chiropractic, Osteopathic Services' }, { id: 98, label: 'Dental Services' }, { id: 99, label: 'General Practice Medical Services' }, { id: 100, label: 'Health Foods, Nutrition, Supplements' }, { id: 101, label: 'Optometry Services' }, { id: 102, label: 'Pathology & Imaging Services' }, { id: 103, label: 'Physiotherapy Services' }, { id: 104, label: 'Specialist Medical Services' }, { id: 105, label: 'Other' }] },
-  { id: 106, label: 'Hospitality', children: [{ id: 107, label: 'Accommodation' }, { id: 108, label: 'Cafes' }, { id: 109, label: 'Catering Services' }, { id: 110, label: 'Clubs' }, { id: 111, label: 'Pubs, Bars, Taverns' }, { id: 112, label: 'Restaurants' }, { id: 113, label: 'Takeaway Food' }, { id: 114, label: 'Other' }] },
-  { id: 115, label: 'Manufacturing', children: [{ id: 116, label: 'Beverage Manufacturing' }, { id: 117, label: 'Clothing, Footwear, Textile Manufacturing' }, { id: 118, label: 'Food Manufacturing' }, { id: 119, label: 'Furniture Manufacturing' }, { id: 120, label: 'Glass, Ceramic, Cement Manufacturing' }, { id: 121, label: 'Machinery & Equipment Manufacturing' }, { id: 122, label: 'Metal Product Manufacturing' }, { id: 123, label: 'Paper Product Manufacturing' }, { id: 124, label: 'Printing, Publishing, Media Manufacturing' }, { id: 125, label: 'Wood Product Manufacturing' }, { id: 126, label: 'Other' }] },
-  { id: 127, label: 'Primary Industries', children: [{ id: 128, label: 'Agriculture' }, { id: 129, label: 'Commercial Fishing' }, { id: 130, label: 'Forestry & Logging' }, { id: 131, label: 'Mining' }, { id: 192, label: 'Other' }, { id: 193, label: 'Oil & Gas' }] },
-  { id: 132, label: 'Professional Services', children: [{ id: 133, label: 'Architectural Services' }, { id: 134, label: 'Child Care Services' }, { id: 135, label: 'Cleaning Services' }, { id: 136, label: 'Education Services' }, { id: 137, label: 'Engineering Services' }, { id: 138, label: 'IT Services' }, { id: 139, label: 'Legal Services' }, { id: 140, label: 'Marketing Services' }, { id: 141, label: 'Pest Control Services' }, { id: 142, label: 'Property Developers' }, { id: 143, label: 'Real Estate Services' }, { id: 144, label: 'Recruitment Services' }, { id: 145, label: 'Rental, Hiring Services' }, { id: 146, label: 'Storage Services' }, { id: 147, label: 'Travel Agent, Tour Services' }, { id: 148, label: 'Veterinary Services' }, { id: 149, label: 'Other' }, { id: 196, label: 'Administrative & Support Services' }, { id: 203, label: 'Labour Hire' }, { id: 204, label: 'Security Services' }] },
-  { id: 150, label: 'Retail', children: [{ id: 151, label: 'Antique & Used Goods' }, { id: 152, label: 'Clothing, Footwear' }, { id: 153, label: 'Department Stores' }, { id: 154, label: 'Flower Retailing' }, { id: 155, label: 'Furniture Retailing' }, { id: 156, label: 'Garden Supplies' }, { id: 157, label: 'Hardware & Building Supplies' }, { id: 158, label: 'Homeware Retailing' }, { id: 159, label: 'Liquor Retailing' }, { id: 160, label: 'Marine Retailing' }, { id: 161, label: 'Motor Vehicle Retailing' }, { id: 162, label: 'Newsagency, Book Retailing' }, { id: 163, label: 'Personal Services' }, { id: 164, label: 'Pharmaceutical Goods' }, { id: 165, label: 'Sport & Camping Equipment' }, { id: 166, label: 'Stationery Goods' }, { id: 167, label: 'Supermarket, Grocery & Food Retailing' }, { id: 168, label: 'Tools & Equipment Retailing' }, { id: 169, label: 'Toy & Game Retailing' }, { id: 170, label: 'Watch & Jewellery Retailing' }, { id: 171, label: 'Other' }, { id: 190, label: 'Electronics & Electrical Retailing' }, { id: 191, label: 'Online Retailing' }] },
-  { id: 172, label: 'Transport', children: [{ id: 173, label: 'Freight, Courier, Pick-up Services' }, { id: 174, label: 'Taxi, Uber Services' }, { id: 175, label: 'Rail Transport' }, { id: 176, label: 'Road Transport' }, { id: 177, label: 'Water Transport' }, { id: 178, label: 'Other' }] },
-  { id: 179, label: 'Wholesale Trade', children: [{ id: 180, label: 'Builders Supplies Wholesaling' }, { id: 181, label: 'Farm Produce Wholesaling' }, { id: 182, label: 'Food & Drink Wholesaling' }, { id: 183, label: 'Household Good Wholesaling' }, { id: 184, label: 'Machinery & Equipment Wholesaling' }, { id: 185, label: 'Mineral, Metal & Chemical Wholesaling' }, { id: 186, label: 'Motor Vehicle Wholesaling' }, { id: 187, label: 'Clothing, Footwear, Textile Wholesaling' }, { id: 188, label: 'Other' }] },
-  { id: 189, label: 'Other', children: [] },
-  { id: 194, label: 'Utilities', children: [{ id: 202, label: 'Other' }] },
-  { id: 198, label: 'Government', children: [{ id: 199, label: 'Defence' }, { id: 200, label: 'Public administration & Safety' }] },
-];
 
 const EXTRA_DEFAULTS = {
   applicant_title: '',
@@ -294,10 +275,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [subLoanType, setSubLoanType] = useState('');
   const [comBusinessName, setComBusinessName] = useState('');
   const [comAbn, setComAbn] = useState('');
-  const [parentIndustryId, setParentIndustryId] = useState<number | ''>('');
-  const [subIndustryId, setSubIndustryId] = useState<number | ''>('');
-  const [comPostcode, setComPostcode] = useState('');
-  const [comMonthlySales, setComMonthlySales] = useState('');
   const [files, setFiles] = useState<File[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -305,8 +282,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
   const isBusinessLoan = loanType === 'business_loan';
-  const selectedParent = INDUSTRIES.find(i => i.id === parentIndustryId);
-  const subChildren = selectedParent?.children ?? [];
 
   useEffect(() => {
     if (clientMode !== 'existing') return;
@@ -443,10 +418,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         ...(tab === 'commercial' ? {
           business_name: comBusinessName.trim() || null,
           business_abn: comAbn.trim() || null,
-          business_postcode: comPostcode.trim() || null,
-          monthly_sales: comMonthlySales ? parseFloat(comMonthlySales) : null,
-          industry_id: parentIndustryId || null,
-          sub_industry_id: subIndustryId || null,
         } : {}),
         ...extraPayload,
       });
@@ -477,7 +448,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     setEngagementModel(''); setEngagementError('');
     setExtraFields(EXTRA_DEFAULTS);
     setAdditionalIncomes([]); setRealEstateAssets([]); setOtherAssets([]); setLiabilities([]);
-    setLoanType(''); setAmount(''); setNotes(''); setTab('consumer'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setParentIndustryId(''); setSubIndustryId(''); setComPostcode(''); setComMonthlySales(''); setFiles([]);
+    setLoanType(''); setAmount(''); setNotes(''); setTab('consumer'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
     setDone(false);
   };
 
@@ -780,15 +751,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         {/* Commercial business info */}
         {tab === 'commercial' && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LBL}>Business / Entity Name</label>
-                <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
-              </div>
-              <div>
-                <label className={LBL}>ACN / ABN</label>
-                <input type="text" className="led-input" placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
-              </div>
+            <div>
+              <label className={LBL}>Business / Entity Name</label>
+              <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
             </div>
             <div>
               <label className={LBL}>Loan Purpose</label>
@@ -804,33 +769,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   );
                 })}
               </div>
-            </div>
-            {/* Industry */}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className={LBL}>Industry</label>
-                <select value={parentIndustryId} onChange={e => { setParentIndustryId(e.target.value ? parseInt(e.target.value as string) : ''); setSubIndustryId(''); }} className="led-input">
-                  <option value="">Select industry...</option>
-                  {INDUSTRIES.map(ind => <option key={ind.id} value={ind.id}>{ind.label}</option>)}
-                </select>
-              </div>
-              {subChildren.length > 0 && (
-                <div>
-                  <label className={LBL}>Sub-Industry</label>
-                  <select value={subIndustryId} onChange={e => setSubIndustryId(e.target.value ? parseInt(e.target.value as string) : '')} className="led-input">
-                    <option value="">Select sub-industry...</option>
-                    {subChildren.map(ch => <option key={ch.id} value={ch.id}>{ch.label}</option>)}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label className={LBL}>Postcode</label>
-                <input type="text" className="led-input" placeholder="3000" maxLength={4} value={comPostcode} onChange={e => setComPostcode(e.target.value.replace(/\D/g, ''))} />
-              </div>
-            </div>
-            <div>
-              <label className={LBL}>Estimated Monthly Sales ($)</label>
-              <input type="text" inputMode="numeric" className="led-input" placeholder="50,000" value={comMonthlySales} onChange={e => setComMonthlySales(e.target.value.replace(/[^0-9.]/g, ''))} />
             </div>
 
             {/* Commercial sub-forms */}
