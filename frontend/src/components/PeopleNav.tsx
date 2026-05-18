@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 const ALL_TABS = [
   { label: 'Clients', to: '/admin/users', adminOnly: false },
   { label: 'Brokers', to: '/admin/brokers', adminOnly: true },
-  { label: 'Referrers', to: '/admin/referrers', adminOnly: true },
+  { label: 'Referrers', to: '/admin/referrers', adminOnly: false },
 ];
 
 export default function PeopleNav() {

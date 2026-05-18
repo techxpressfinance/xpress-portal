@@ -1,0 +1,351 @@
+import { useEffect, useRef, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { useTenant } from '../contexts/TenantContext';
+import { getErrorMessage } from '../lib/utils';
+import { Button } from '../components/ui';
+import api from '../api/client';
+
+interface TokenInfo {
+  valid: boolean;
+  reason?: string;
+  full_name?: string;
+  email?: string;
+  role?: string;
+}
+
+const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+
+const REQUIREMENTS = [
+  { label: 'At least 8 characters', test: (p: string) => p.length >= 8 },
+  { label: 'One uppercase letter', test: (p: string) => /[A-Z]/.test(p) },
+  { label: 'One number', test: (p: string) => /[0-9]/.test(p) },
+];
+
+const ROLE_LABEL: Record<string, string> = {
+  client: 'Client',
+  broker: 'Broker',
+  referrer: 'Referrer',
+  admin: 'Admin',
+};
+
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+    </svg>
+  ) : (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+    </svg>
+  );
+}
+
+function StrengthBar({ password }: { password: string }) {
+  const met = REQUIREMENTS.filter(r => r.test(password)).length;
+  if (!password) return null;
+
+  const bars = [
+    met >= 1 ? (met === 1 ? 'bg-destructive' : met === 2 ? 'bg-warning' : 'bg-success') : 'bg-border',
+    met >= 2 ? (met === 2 ? 'bg-warning' : 'bg-success') : 'bg-border',
+    met >= 3 ? 'bg-success' : 'bg-border',
+  ];
+  const label = met === 0 ? '' : met === 1 ? 'Weak' : met === 2 ? 'Fair' : 'Strong';
+  const labelColor = met === 1 ? 'text-destructive' : met === 2 ? 'text-warning' : 'text-success';
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex gap-1">
+        {bars.map((cls, i) => (
+          <div key={i} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${cls}`} />
+        ))}
+      </div>
+      {label && <p className={`text-[11px] font-medium ${labelColor}`}>{label}</p>}
+    </div>
+  );
+}
+
+function PasswordInput({
+  label,
+  placeholder,
+  value,
+  onChange,
+  error,
+  autoComplete,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+      <div className="relative">
+        <input
+          type={show ? 'text' : 'password'}
+          placeholder={placeholder}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          autoComplete={autoComplete}
+          className="w-full rounded-xl border border-border bg-background/60 px-3.5 py-2.5 pr-10 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          tabIndex={-1}
+        >
+          <EyeIcon open={show} />
+        </button>
+      </div>
+      {error && <p className="mt-1 text-[12px] text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+export default function SetupAccount() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user, setupAccount } = useAuth();
+  const { tenant } = useTenant();
+  const token = searchParams.get('token') || '';
+
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+  const [validating, setValidating] = useState(true);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const brandName = tenant?.name || 'Xpress Finance';
+
+  useEffect(() => {
+    if (!token) {
+      setTokenInfo({ valid: false, reason: 'No setup token found in this link.' });
+      setValidating(false);
+      return;
+    }
+    api.get(`/auth/validate-setup-token?token=${encodeURIComponent(token)}`)
+      .then(({ data }) => setTokenInfo(data))
+      .catch(() => setTokenInfo({ valid: false, reason: 'Failed to validate link. Please try again.' }))
+      .finally(() => setValidating(false));
+  }, [token]);
+
+  if (user) {
+    const target = user.role === 'super_admin' ? '/platform' : user.role === 'client' ? '/dashboard' : user.role === 'referrer' ? '/referrer/applications' : '/admin';
+    return <Navigate to={target} replace />;
+  }
+
+  const metCount = REQUIREMENTS.filter(r => r.test(password)).length;
+  const passwordMet = metCount === REQUIREMENTS.length;
+  const canSubmit = passwordMet && password === confirm && !done;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setError('');
+    setSubmitting(true);
+    try {
+      await setupAccount(token, password);
+      setDone(true);
+      setTimeout(() => navigate('/'), 1200);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to set up account. The link may have expired.'));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen" style={{ fontFamily: "'Outfit', sans-serif" }}>
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex lg:w-[45%] bg-secondary relative overflow-hidden items-center justify-center">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] rounded-full bg-primary/10 blur-[100px]" />
+          <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-info/10 blur-[80px]" />
+        </div>
+        <div className="relative z-10 px-16 max-w-md" style={{ animation: `fadeInUp 0.7s ${easing} both` }}>
+          <div className="flex items-center gap-3 mb-14">
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-10 w-auto max-w-[160px] object-contain" />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[16px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>
+          </div>
+
+          <h2 className="text-[34px] font-semibold text-foreground leading-[1.15] mb-4">
+            You've been{' '}
+            <span className="text-primary">invited.</span>
+          </h2>
+          <p className="text-[15px] text-muted-foreground leading-relaxed mb-10">
+            Set a password to secure your account and get instant access to {brandName}.
+          </p>
+
+          {/* Steps */}
+          <div className="space-y-4">
+            {[
+              { n: '1', label: 'Set your password', done: passwordMet },
+              { n: '2', label: 'Sign in automatically', done: done },
+            ].map(step => (
+              <div key={step.n} className="flex items-center gap-3">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-all duration-300 ${step.done ? 'bg-success text-white' : 'bg-secondary border border-border text-muted-foreground'}`}>
+                  {step.done
+                    ? <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    : step.n}
+                </div>
+                <span className={`text-[14px] transition-colors duration-300 ${step.done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{step.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex w-full lg:w-[55%] items-center justify-center bg-background px-6 py-10">
+        <div className="w-full max-w-[400px]" style={{ animation: `fadeInUp 0.6s ${easing} 0.1s both` }}>
+
+          {/* Mobile logo */}
+          <div className="flex items-center gap-3 mb-10 lg:hidden">
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={brandName} className="h-9 w-auto object-contain" />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-[15px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            <span className="text-[18px] font-semibold text-foreground tracking-tight">{brandName}</span>
+          </div>
+
+          {validating ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-primary border-t-transparent" />
+              <p className="text-[14px] text-muted-foreground">Validating your invitation…</p>
+            </div>
+          ) : !tokenInfo?.valid ? (
+            /* Invalid / expired state */
+            <div style={{ animation: `fadeInUp 0.4s ${easing} both` }}>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 mb-6">
+                <svg className="h-7 w-7 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+              </div>
+              <h1 className="text-[26px] font-semibold text-foreground mb-2 tracking-tight">Link unavailable</h1>
+              <p className="text-[15px] text-muted-foreground mb-6 leading-relaxed">
+                {tokenInfo?.reason || 'This setup link is invalid or has expired.'}
+              </p>
+              <div className="rounded-xl bg-secondary border border-border px-4 py-3.5 text-[13px] text-muted-foreground">
+                Contact your administrator to request a new invitation link.
+              </div>
+            </div>
+          ) : done ? (
+            /* Success state */
+            <div className="flex flex-col items-center text-center py-8" style={{ animation: `fadeInUp 0.4s ${easing} both` }}>
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 mb-5">
+                <svg className="h-8 w-8 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              </div>
+              <h2 className="text-[24px] font-semibold text-foreground mb-2">All set!</h2>
+              <p className="text-[15px] text-muted-foreground">Signing you in…</p>
+            </div>
+          ) : (
+            /* Form state */
+            <>
+              <h1 className="text-[28px] font-semibold text-foreground mb-1 tracking-tight">Set up your account</h1>
+              <p className="text-[15px] text-muted-foreground mb-6">Choose a password to access your account.</p>
+
+              {/* Context block */}
+              {(tokenInfo.full_name || tokenInfo.email) && (
+                <div className="flex items-center gap-3 rounded-xl bg-secondary border border-border px-4 py-3 mb-6" style={{ animation: `fadeInUp 0.3s ${easing} both` }}>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <span className="text-[13px] font-semibold text-primary">
+                      {tokenInfo.full_name?.charAt(0).toUpperCase() ?? '?'}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    {tokenInfo.full_name && <p className="text-[14px] font-semibold text-foreground truncate">{tokenInfo.full_name}</p>}
+                    {tokenInfo.email && <p className="text-[12px] text-muted-foreground truncate">{tokenInfo.email}</p>}
+                  </div>
+                  {tokenInfo.role && (
+                    <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
+                      {ROLE_LABEL[tokenInfo.role] ?? tokenInfo.role}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div className="mb-5 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 border border-destructive/20" style={{ animation: `fadeInUp 0.3s ${easing} both` }}>
+                  <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                  </svg>
+                  <span className="text-[13px] text-destructive">{error}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <PasswordInput
+                    label="Password"
+                    placeholder="Create a strong password"
+                    value={password}
+                    onChange={setPassword}
+                    autoComplete="new-password"
+                  />
+                  <StrengthBar password={password} />
+                  {password && (
+                    <ul className="mt-2.5 space-y-1">
+                      {REQUIREMENTS.map(r => {
+                        const ok = r.test(password);
+                        return (
+                          <li key={r.label} className={`flex items-center gap-1.5 text-[12px] transition-colors duration-200 ${ok ? 'text-success' : 'text-muted-foreground'}`}>
+                            <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={ok ? 3 : 1.5} stroke="currentColor">
+                              {ok
+                                ? <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                : <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />}
+                            </svg>
+                            {r.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <PasswordInput
+                  label="Confirm password"
+                  placeholder="Re-enter your password"
+                  value={confirm}
+                  onChange={setConfirm}
+                  autoComplete="new-password"
+                  error={confirm && password !== confirm ? 'Passwords do not match' : undefined}
+                />
+
+                <div className="pt-1">
+                  <Button
+                    type="submit"
+                    loading={submitting}
+                    disabled={!canSubmit}
+                    size="lg"
+                    className="w-full h-12 text-[15px] rounded-2xl shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                  >
+                    {submitting ? 'Setting up…' : 'Set Password & Sign In'}
+                  </Button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

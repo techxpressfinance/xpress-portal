@@ -18,6 +18,7 @@ from app.schemas.user import (
     CodeRequest,
     CodeVerify,
     ResendVerificationRequest,
+    SetupAccountRequest,
     UserLogin,
     UserOut,
     UserRegister,
@@ -307,6 +308,43 @@ def verify_code(data: CodeVerify, request: Request, response: Response, db: Sess
     user.login_code_attempts = 0
     db.commit()
 
+    _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
+    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
+
+
+@router.get("/validate-setup-token")
+def validate_setup_token(token: str = Query(...), db: Session = Depends(get_db)):
+    """Check if an account setup token is valid. Returns user details if valid."""
+    user = db.query(User).filter(User.email_verification_token == token).first()
+    if not user:
+        return {"valid": False, "reason": "Invalid or expired link"}
+    expires_at = user.email_verification_token_expires_at
+    if expires_at:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            return {"valid": False, "reason": "This link has expired. Request a new invitation."}
+    return {"valid": True, "full_name": user.full_name, "email": user.email, "role": user.role.value}
+
+
+@router.post("/setup-account", response_model=AccessTokenResponse)
+def setup_account(data: SetupAccountRequest, response: Response, db: Session = Depends(get_db)):
+    """Set password from an invitation token and auto-login."""
+    user = db.query(User).filter(User.email_verification_token == data.token).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired setup link")
+    expires_at = user.email_verification_token_expires_at
+    if expires_at:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link has expired. Request a new invitation.")
+    user.password_hash = hash_password(data.password)
+    user.auth_method = "password"
+    user.email_verification_token = None
+    user.email_verification_token_expires_at = None
+    db.commit()
+    tenant_id = user.tenant_id or ""
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
     return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
 

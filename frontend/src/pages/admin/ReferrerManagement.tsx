@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
@@ -20,6 +21,8 @@ type PendingAction =
   | { type: 'delete'; userId: string; userName: string };
 
 export default function ReferrerManagement() {
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ReferrerForm>(INITIAL_FORM);
@@ -147,7 +150,7 @@ export default function ReferrerManagement() {
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Organization</th>
                   <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Joined</th>
-                  <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>
+                  {isAdmin && <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -173,12 +176,14 @@ export default function ReferrerManagement() {
                     </td>
                     <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(referrer.created_at)}</td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
-                          {referrer.is_active ? 'Deactivate' : 'Activate'}
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={() => setPendingAction({ type: 'delete', userId: referrer.id, userName: referrer.full_name })}>Delete</Button>
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
+                            {referrer.is_active ? 'Deactivate' : 'Activate'}
+                          </Button>
+                          <Button size="sm" variant="danger" onClick={() => setPendingAction({ type: 'delete', userId: referrer.id, userName: referrer.full_name })}>Delete</Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

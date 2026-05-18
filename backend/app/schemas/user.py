@@ -181,3 +181,13 @@ class StartApplicationForClient(BaseModel):
     loan_type: str
     amount: float
     notes: Optional[str] = None
+
+
+class SetupAccountRequest(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password(v)

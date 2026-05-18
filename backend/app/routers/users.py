@@ -1,9 +1,10 @@
 import secrets
-import string
 
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.activity_log import ActivityLog
@@ -17,19 +18,10 @@ from app.models.user import User
 from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import hash_password
-from app.services.email import send_broker_welcome_email
+from app.services.email import send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
-
-
-def _generate_temp_password(length: int = 12) -> str:
-    """Generate a temporary password that meets strength requirements."""
-    alphabet = string.ascii_letters + string.digits
-    while True:
-        password = "".join(secrets.choice(alphabet) for _ in range(length))
-        if any(c.isupper() for c in password) and any(c.isdigit() for c in password):
-            return password
 
 
 @router.get("", response_model=list[UserOut])
@@ -79,13 +71,13 @@ def create_broker(
             detail="A user with this email already exists",
         )
 
-    temp_password = _generate_temp_password()
+    setup_token = secrets.token_urlsafe(32)
 
     user = User(
         email=data.email,
         full_name=data.full_name,
         phone=data.phone,
-        password_hash=hash_password(temp_password),
+        password_hash="!",
         auth_method="password",
         role="broker",
         is_active=True,
@@ -95,6 +87,8 @@ def create_broker(
         license_number=data.license_number,
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
+        email_verification_token=setup_token,
+        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
     )
     db.add(user)
     db.flush()
@@ -102,7 +96,8 @@ def create_broker(
     db.commit()
     db.refresh(user)
 
-    send_broker_welcome_email(data.email, data.full_name, temp_password)
+    setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
+    send_setup_account_email(data.email, data.full_name, setup_url, role="broker")
     return user
 
 

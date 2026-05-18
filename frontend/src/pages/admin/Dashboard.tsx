@@ -318,7 +318,7 @@ export default function AdminDashboard() {
             />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
+          {!isBroker && <div className="grid gap-5 xl:grid-cols-2">
             <GlassCard padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -452,7 +452,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </GlassCard>
-          </div>
+          </div>}
 
           {/* Conversion Funnel */}
           <GlassCard padding="none">

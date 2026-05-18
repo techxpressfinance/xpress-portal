@@ -56,6 +56,7 @@ export default function ReferrerMessages() {
     try {
       const { data } = await api.get(`/clients/${conv.client_id}/messages`, { params: { peer_id: conv.peer_id } });
       setChatMessages(data);
+      window.dispatchEvent(new CustomEvent('unread-count-changed'));
     } catch {
       toast('Failed to load chat', 'error');
     } finally {

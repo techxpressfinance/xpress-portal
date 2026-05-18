@@ -63,6 +63,7 @@ export default function AdminMessages() {
     try {
       const { data } = await api.get(`/clients/${clientId}/messages`, { params: { peer_id: user!.id } });
       setChatMessages(data);
+      window.dispatchEvent(new CustomEvent('unread-count-changed'));
     } catch {
       toast('Failed to load chat', 'error');
     } finally {

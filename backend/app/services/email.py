@@ -365,6 +365,41 @@ def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) ->
     _send_async(to_email, subject, body, html_body)
 
 
+def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_name: Optional[str] = None, role: str = "client") -> None:
+    """Send account setup link to a newly invited user. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping setup account email for %s", to_email)
+        return
+
+    role_label = {"broker": "broker", "referrer": "referrer"}.get(role, "client")
+    inviter_line = f"<strong>{_esc(inviter_name)}</strong> has invited you" if inviter_name else "You have been invited"
+    subject = "Set up your Xpress Finance account"
+    body = (
+        f"Dear {name},\n\n"
+        f"{'%s has invited you' % inviter_name if inviter_name else 'You have been invited'} to join Xpress Finance Portal as a {role_label}.\n\n"
+        f"Click the link below to set your password and access your account:\n\n"
+        f"{setup_url}\n\n"
+        f"This link expires in 48 hours.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            {inviter_line} to join Xpress Finance Portal as a <strong>{_esc(role_label)}</strong>.
+            Click the button below to set your password and access your account.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(setup_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Set Up My Account</a>
+        </div>
+        <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">Or copy and paste this link:</p>
+        <p style="margin: 0 0 24px; font-size: 14px; color: #000000; word-break: break-all;"><a href="{_esc(setup_url)}" style="color: #09090b;">{_esc(setup_url)}</a></p>
+        <p style="margin: 0; font-size: 14px; color: #71717a;">This link expires in 48 hours. If you did not expect this invitation, you can safely ignore this email.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_referral_notification_email(to_email: str, client_name: str, referrer_name: str, organization_name: Optional[str] = None) -> None:
     """Notify an existing password-auth client that they've been referred. Non-blocking."""
     if not EMAIL_ENABLED:

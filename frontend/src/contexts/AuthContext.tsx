@@ -11,6 +11,7 @@ interface AuthState {
   register: (name: string, email: string, phone: string, password: string, ref?: string) => Promise<User>;
   requestCode: (email: string) => Promise<void>;
   loginWithCode: (email: string, code: string) => Promise<void>;
+  setupAccount: (token: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -22,6 +23,7 @@ export const AuthContext = createContext<AuthState>({
   register: async () => ({} as User),
   requestCode: async () => {},
   loginWithCode: async () => {},
+  setupAccount: async () => {},
   logout: () => {},
 });
 
@@ -100,6 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   };
 
+  const setupAccount = async (token: string, password: string) => {
+    const { data } = await api.post('/auth/setup-account', { token, password });
+    setAccessToken(data.access_token);
+    await fetchUser();
+  };
+
   const logout = () => {
     // Await the server blacklisting the refresh token before clearing local state,
     // but still clear state on failure to avoid trapping the user in a logged-in state.
@@ -110,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, requestCode, loginWithCode, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, requestCode, loginWithCode, setupAccount, logout }}>
       {children}
     </AuthContext.Provider>
   );

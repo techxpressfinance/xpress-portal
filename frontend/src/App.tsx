@@ -42,13 +42,13 @@ const NewApplication = lazy(() => import('./pages/client/NewApplication'));
 const Profile = lazy(() => import('./pages/client/Profile'));
 const AdminMessages = lazy(() => import('./pages/admin/Messages'));
 const ClientMessages = lazy(() => import('./pages/client/Messages'));
-const Referrals = lazy(() => import('./pages/client/Referrals'));
 const Login = lazy(() => import('./pages/Login'));
 const EnterCode = lazy(() => import('./pages/EnterCode'));
 const Register = lazy(() => import('./pages/Register'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const ResendVerification = lazy(() => import('./pages/ResendVerification'));
 const PlatformLogin = lazy(() => import('./pages/PlatformLogin'));
+const SetupAccount = lazy(() => import('./pages/SetupAccount'));
 const PublicApply = lazy(() => import('./pages/PublicApply'));
 const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'));
 const TenantManagement = lazy(() => import('./pages/platform/TenantManagement'));
@@ -75,6 +75,7 @@ export default function App() {
           <Routes>
             <Route path="/platform-login" element={<PlatformLogin />} />
             <Route path="/apply/:token" element={<PublicApply />} />
+            <Route path="/setup-account" element={<SetupAccount />} />
             <Route path="/login" element={<Login />} />
             <Route path="/enter-code" element={<EnterCode />} />
             <Route path="/register" element={<Register />} />
@@ -121,14 +122,6 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['client']}>
                     <ClientMessages />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/referrals"
-                element={
-                  <ProtectedRoute roles={['client']}>
-                    <Referrals />
                   </ProtectedRoute>
                 }
               />
@@ -222,7 +215,7 @@ export default function App() {
               <Route
                 path="/admin/referrers"
                 element={
-                  <ProtectedRoute roles={['admin']}>
+                  <ProtectedRoute roles={['admin', 'broker']}>
                     <ReferrerManagement />
                   </ProtectedRoute>
                 }

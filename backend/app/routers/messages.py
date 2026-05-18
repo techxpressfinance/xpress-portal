@@ -179,19 +179,7 @@ def unread_count(
         .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False, ClientMessage.tenant_id == tenant_id)  # noqa: E712
         .count()
     )
-    alert_count = 0
-    if current_user.role == UserRole.client:
-        alert_count = (
-            db.query(ClientAlert)
-            .filter(ClientAlert.client_id == current_user.id, ClientAlert.is_read == False, ClientAlert.tenant_id == tenant_id)  # noqa: E712
-            .count()
-        )
-    notif_count = (
-        db.query(Notification)
-        .filter(Notification.user_id == current_user.id, Notification.is_read == False, Notification.tenant_id == tenant_id)  # noqa: E712
-        .count()
-    )
-    return {"count": direct_count + client_count + alert_count + notif_count}
+    return {"count": direct_count + client_count}
 
 
 @router.post("/notifications/{notification_id}/read", status_code=status.HTTP_200_OK)
@@ -485,7 +473,7 @@ def list_client_inbox(
                 staff_peers.add(row.recipient_id)
         for pid in staff_peers:
             peer = db.query(User).filter(User.id == pid).first()
-            if peer and peer.role == UserRole.broker:
+            if peer and peer.role in (UserRole.broker, UserRole.admin):
                 pairs.append((current_user.id, pid, current_user.full_name, peer.full_name))
 
     elif role in ("admin", "broker"):

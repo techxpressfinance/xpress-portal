@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import secrets
-import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.external_referral import ClientEngagementModel, ExternalReferral, ExternalReferralStatus
@@ -19,19 +19,11 @@ from app.schemas.external_referrer import (
 )
 from app.schemas.user import UserOut
 from app.services.auth import hash_password
-from app.services.email import send_invitation_email, send_referrer_welcome_email
+from app.services.email import send_invitation_email, send_setup_account_email
 from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/external-referrers", tags=["external-referrers"])
-
-
-def _generate_temp_password(length: int = 12) -> str:
-    alphabet = string.ascii_letters + string.digits
-    while True:
-        password = "".join(secrets.choice(alphabet) for _ in range(length))
-        if any(c.isupper() for c in password) and any(c.isdigit() for c in password):
-            return password
 
 
 # --- Admin endpoints ---
@@ -41,10 +33,10 @@ def _generate_temp_password(length: int = 12) -> str:
 def create_referrer(
     data: ReferrerCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Create a new external referrer account. Admin only."""
+    """Create a new external referrer account. Admin or broker."""
     existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(
@@ -52,13 +44,13 @@ def create_referrer(
             detail="A user with this email already exists",
         )
 
-    temp_password = _generate_temp_password()
+    setup_token = secrets.token_urlsafe(32)
 
     user = User(
         email=data.email,
         full_name=data.full_name,
         phone=data.phone,
-        password_hash=hash_password(temp_password),
+        password_hash="!",
         auth_method="password",
         role="referrer",
         is_active=True,
@@ -66,23 +58,29 @@ def create_referrer(
         organization_name=data.organization_name,
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
+        email_verification_token=setup_token,
+        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    send_referrer_welcome_email(data.email, data.full_name, temp_password)
+    setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
+    send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="referrer")
     return user
 
 
 @router.get("", response_model=list[UserOut])
 def list_referrers(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """List all external referrers. Admin only."""
-    return db.query(User).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id).order_by(User.created_at.desc()).all()
+    """List external referrers. Brokers see only referrers they invited."""
+    query = db.query(User).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
+    if current_user.role.value == "broker":
+        query = query.filter(User.invited_by_id == current_user.id)
+    return query.order_by(User.created_at.desc()).all()
 
 
 @router.get("/admin/all-referrals", response_model=list[ExternalReferralOut])

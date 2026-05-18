@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
+from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
 from app.models.application_broker import ApplicationBroker
-from app.services.email import send_complete_application_email, send_invitation_email
+from app.services.email import send_complete_application_email, send_invitation_email, send_setup_account_email
 from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
 
@@ -69,43 +71,45 @@ def invite_user(
     existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
 
     if existing:
-        if existing.auth_method != "code":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This email already has a password-based account",
-            )
         if not existing.is_active:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This account has been deactivated. Reactivate it first.",
             )
-        # Re-invite: generate a fresh code
-        plain = set_login_code(existing)
+        # Re-invite: generate a fresh setup token
+        token = secrets.token_urlsafe(32)
+        existing.email_verification_token = token
+        existing.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+        existing.auth_method = "password"
         db.commit()
         db.refresh(existing)
-        send_invitation_email(data.email, existing.full_name, plain, current_user.full_name)
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}"
+        send_setup_account_email(data.email, existing.full_name, setup_url, current_user.full_name, role="client")
         return existing
 
     # Create new invited user
+    token = secrets.token_urlsafe(32)
     user = User(
         email=data.email,
         full_name=data.full_name,
         phone=data.phone,
         password_hash="!",
-        auth_method="code",
+        auth_method="password",
         role="client",
         is_active=True,
         email_verified=True,
         login_code_attempts=0,
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
+        email_verification_token=token,
+        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
     )
-    plain = set_login_code(user)
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    send_invitation_email(data.email, data.full_name, plain, current_user.full_name)
+    setup_url = f"{FRONTEND_URL}/setup-account?token={token}"
+    send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="client")
     return user
 
 
