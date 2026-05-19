@@ -621,13 +621,6 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
             </div>
-            <ToggleButton
-              label="Show Rate to Client"
-              active={inputs.show_interest_rate ?? false}
-              activeLabel="Visible to client"
-              inactiveLabel="Hidden from client"
-              onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
-            />
             <Input
               label="Brokerage %"
               type="number"

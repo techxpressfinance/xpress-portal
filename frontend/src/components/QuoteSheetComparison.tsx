@@ -126,7 +126,7 @@ function TermBlock({ group, isClientView, assetDescription, showInterestRate, pa
             value={fmtCurrency(opt.balloon_residual ?? 0)}
           />
           <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold />
-          {(!isClientView || showInterestRate) && (
+          {!isClientView && (
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
           )}
           {allUpRate != null && (
@@ -195,7 +195,7 @@ function PdfTermTable({ group, isClientView, assetDescription, showInterestRate,
       { label: 'Repayments per month', value: fmtCurrency(opt.repayment_monthly), highlight: true },
     ];
 
-    if (!isClientView || showInterestRate) {
+    if (!isClientView) {
       rows.push({ label: 'Rate of Interest', value: fmtPercent(opt.interest_rate) });
     }
 
