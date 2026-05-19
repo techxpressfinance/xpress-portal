@@ -262,7 +262,7 @@ export default function Layout() {
                     {!collapsed && 'Brokers'}
                   </NavLink>
                 )}
-                {user?.role === 'admin' && (
+                {(user?.role === 'admin' || user?.role === 'broker') && (
                   <NavLink to="/admin/referrers" className={linkClass} title="Referrers">
                     <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
                     {!collapsed && 'Referrers'}
