@@ -46,7 +46,7 @@ export function getTenantSlug(): string | null {
   }
 
   const params = new URLSearchParams(window.location.search);
-  return params.get('tenant') || 'default';
+  return params.get('tenant') || 'xpress';
 }
 
 api.interceptors.request.use((config) => {
