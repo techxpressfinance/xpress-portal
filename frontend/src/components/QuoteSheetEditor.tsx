@@ -30,7 +30,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   gst_on_brokerage: false,
   balloon_on_total_price: true,
   interest_rate: 0,
-  gst_percent: 0,
+  gst_percent: 10,
   balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES },
   balloon_amounts: {},
   monthly_account_fee: 0,
@@ -51,6 +51,26 @@ function pmt(rate: number, nper: number, pv: number, fv = 0, type: 0 | 1 = 0): n
 }
 
 const fmt2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── RATE — Excel-compatible Newton-Raphson solver ────────────────────
+// Excel B46: RATE(nper, pmt, pv, fv, type, guess) * 12
+function rateNR(nper: number, pmt: number, pv: number, fv = 0, type: 0 | 1 = 0, guess = 0.01): number {
+  let r = guess;
+  for (let i = 0; i < 300; i++) {
+    const f = Math.pow(1 + r, nper);
+    const df = nper * Math.pow(1 + r, nper - 1);
+    const yr = type === 0
+      ? pv * f + pmt * (f - 1) / r + fv
+      : pv * f + pmt * (1 + r) * (f - 1) / r + fv;
+    const yr_d = type === 0
+      ? pv * df + pmt * (r * df - (f - 1)) / (r * r)
+      : pv * df + pmt * ((1 + r) * (r * df - (f - 1)) / (r * r) + (f - 1) / r);
+    const rNew = r - yr / yr_d;
+    if (Math.abs(rNew - r) < 1e-10) return rNew;
+    r = rNew;
+  }
+  return r;
+}
 
 // ── ITC Benefit (lease only, from Excel formula page B1-B3) ──────────
 function calcItcBenefit(inputs: QuoteInputParameters): number {
@@ -120,10 +140,11 @@ type Scenario = {
   totalInterest: number;
   totalAnnual: number;
   totalOverTerm: number;
+  clientInterest: number | null; // All Up Interest Rate (advance only)
 };
 
 function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
-  const { amountFinanced, amountBorrowed, balloonBase } = computeFromInputs(inputs);
+  const { amountFinanced, amountBorrowed, balloonBase, subTotal: financedSubTotal } = computeFromInputs(inputs);
   const rate = inputs.interest_rate / 100;
   const monthlyRate = rate / 12;
   const isAdvance = inputs.payment_type === 'advance';
@@ -161,15 +182,22 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
       }
       netRental = fmt2(netRental);
 
+      // Client Interest (All Up Interest Rate) — Excel B46
+      // RATE(nper, netRental, -financedSubTotal, balloon, 1) * 12
+      // Advance only; arrears is "Unable to calculate" in source sheet
+      const clientInterest = isAdvance && financedSubTotal > 0
+        ? rateNR(months, netRental, -financedSubTotal, balloon, 1) * 12
+        : null;
+
       // Stamp duty (HP/Lease — Excel B41)
       const sd = inputs.facility_type === 'chattel' ? 0 : fmt2(Math.round(netRental * sdRate * 100) / 100);
 
       // GST on rental (Lease only — Excel B43)
-      const subTotal = netRental + sd;
-      const rentalGst = isLease ? fmt2(Math.round(subTotal * (inputs.gst_percent / 100) * 100) / 100) : 0;
+      const rentalSubTotal = netRental + sd;
+      const rentalGst = isLease ? fmt2(Math.round(rentalSubTotal * (inputs.gst_percent / 100) * 100) / 100) : 0;
 
       // Total rental = net + stamp + GST + monthly account fee
-      const totalRental = fmt2(subTotal + rentalGst);
+      const totalRental = fmt2(rentalSubTotal + rentalGst);
       const monthlyRepayment = fmt2(totalRental + inputs.monthly_account_fee);
 
       const weeklyRepayment = fmt2(monthlyRepayment * 12 / 52);
@@ -194,6 +222,7 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
         totalInterest,
         totalAnnual,
         totalOverTerm,
+        clientInterest,
       };
     };
 
@@ -225,6 +254,7 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
     balloon_residual: s.balloonTotal,
     interest_rate: inputs.interest_rate,
     comparison_rate: null,
+    client_interest_rate: s.clientInterest != null ? fmt2(s.clientInterest * 100) : null,
     establishment_fee: inputs.establishment_fee,
     monthly_account_fee: inputs.monthly_account_fee || null,
     application_fee: inputs.ppsr_fee + inputs.origination_fee,
@@ -315,7 +345,7 @@ interface QuoteSheetEditorProps {
 function parseInputParams(quoteSheet?: QuoteSheet): QuoteInputParameters {
   if (quoteSheet?.input_parameters) {
     try {
-      return { ...DEFAULT_INPUTS, ...JSON.parse(quoteSheet.input_parameters) };
+      return { ...DEFAULT_INPUTS, ...JSON.parse(quoteSheet.input_parameters), gst_percent: 10 };
     } catch { /* fall through */ }
   }
   return { ...DEFAULT_INPUTS, balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES } };
@@ -617,19 +647,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <CalcField label="Brokerage Amount" value={fmtCurrency(derived.brokerage)} />
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">GST Rate</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.gst_percent || ''}
-                  onChange={e => updateInput('gst_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] px-4 pr-8 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
-              </div>
-            </div>
+            <CalcField label="GST Rate" value="10%" />
           </div>
         </section>
 
@@ -713,6 +731,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Fortnightly</th>
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Weekly</th>
                     <th className="text-right py-2 px-3 text-muted-foreground font-medium">Total Interest</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">All Up Interest Rate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -729,6 +748,9 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                       <td className="py-2 px-3 text-right">{fmtCurrency(s.fortnightlyRepayment)}</td>
                       <td className="py-2 px-3 text-right">{fmtCurrency(s.weeklyRepayment)}</td>
                       <td className="py-2 px-3 text-right">{fmtCurrency(s.totalInterest)}</td>
+                      <td className="py-2 px-3 text-right font-semibold text-primary">
+                        {s.clientInterest != null ? `${(s.clientInterest * 100).toFixed(2)}%` : '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

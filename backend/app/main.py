@@ -194,6 +194,8 @@ _MIGRATIONS = [
     # Password reset flow
     ("users", "password_reset_token", "VARCHAR(64)"),
     ("users", "password_reset_token_expires_at", "TIMESTAMP"),
+    # Client (all-up) interest rate per quote option
+    ("quote_options", "client_interest_rate", "NUMERIC(8,4)"),
 ]
 
 _logger = logging.getLogger(__name__)

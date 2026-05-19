@@ -577,6 +577,7 @@ export interface QuoteOption {
   balloon_residual: number | null;
   interest_rate: number | null;
   comparison_rate: number | null;
+  client_interest_rate: number | null;
   establishment_fee: number | null;
   monthly_account_fee: number | null;
   application_fee: number | null;

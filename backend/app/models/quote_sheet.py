@@ -83,6 +83,7 @@ class QuoteOption(Base):
     # Rates
     interest_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     comparison_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    client_interest_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
 
     # Fees
     establishment_fee: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)

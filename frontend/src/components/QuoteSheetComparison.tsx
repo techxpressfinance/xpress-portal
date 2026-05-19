@@ -19,6 +19,44 @@ const fmtPercent = (v: number | null) => {
   return `${Number(v).toFixed(2)}%`;
 };
 
+// Newton-Raphson RATE solver — mirrors Excel RATE()
+function rateNR(nper: number, pmt: number, pv: number, fv = 0, type: 0 | 1 = 0, guess = 0.01): number {
+  let r = guess;
+  for (let i = 0; i < 300; i++) {
+    const f = Math.pow(1 + r, nper);
+    const df = nper * Math.pow(1 + r, nper - 1);
+    const yr = type === 0
+      ? pv * f + pmt * (f - 1) / r + fv
+      : pv * f + pmt * (1 + r) * (f - 1) / r + fv;
+    const yr_d = type === 0
+      ? pv * df + pmt * (r * df - (f - 1)) / (r * r)
+      : pv * df + pmt * ((1 + r) * (r * df - (f - 1)) / (r * r) + (f - 1) / r);
+    const rNew = r - yr / yr_d;
+    if (Math.abs(rNew - r) < 1e-10) return rNew;
+    r = rNew;
+  }
+  return r;
+}
+
+// Compute All Up Interest Rate from stored option fields (advance + chattel only; exact for chattel, approx for others)
+function computeAllUpRate(opt: QuoteOption, paymentType: string): number | null {
+  if (paymentType !== 'advance') return null;
+  const months = opt.loan_term_months ?? 0;
+  const loanAmount = opt.loan_amount ?? 0;
+  const brokerage = opt.brokerage ?? 0;
+  const monthlyFee = opt.monthly_account_fee ?? 0;
+  const balloon = opt.balloon_residual ?? 0;
+  const netRental = (opt.repayment_monthly ?? 0) - monthlyFee;
+  const financedSubTotal = loanAmount - brokerage;
+  if (months <= 0 || financedSubTotal <= 0 || netRental <= 0) return null;
+  try {
+    const rate = rateNR(months, netRental, -financedSubTotal, balloon, 1) * 12;
+    return Math.round(rate * 10000) / 100; // stored as % with 2dp
+  } catch {
+    return null;
+  }
+}
+
 type TermGroup = {
   termYears: number;
   termMonths: number;
@@ -60,7 +98,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
 }
 
 // ── On-screen term block (unchanged card style) ──────────────────────
-function TermBlock({ group, isClientView, assetDescription, showInterestRate }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean }) {
+function TermBlock({ group, isClientView, assetDescription, showInterestRate, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -71,6 +109,7 @@ function TermBlock({ group, isClientView, assetDescription, showInterestRate }: 
 
     // Client sees: asset price - deposit + fees (no brokerage commission)
     const clientLoanAmount = (opt.purchase_price ?? 0) - (opt.deposit ?? 0) + (opt.establishment_fee ?? 0) + (opt.application_fee ?? 0);
+    const allUpRate = opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
 
     return (
       <div className="flex-1 w-full min-w-0">
@@ -89,6 +128,9 @@ function TermBlock({ group, isClientView, assetDescription, showInterestRate }: 
           <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold />
           {(!isClientView || showInterestRate) && (
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
+          )}
+          {allUpRate != null && (
+            <Row label="All Up Interest Rate" value={fmtPercent(allUpRate)} />
           )}
           <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} />
           {!isClientView && (
@@ -132,7 +174,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 }
 
 // ── PDF table-based term block ───────────────────────────────────────
-function PdfTermTable({ group, isClientView, assetDescription, showInterestRate }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean }) {
+function PdfTermTable({ group, isClientView, assetDescription, showInterestRate, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -142,6 +184,7 @@ function PdfTermTable({ group, isClientView, assetDescription, showInterestRate 
 
     // Client sees: asset price - deposit + fees (no brokerage commission)
     const clientLoanAmount = (opt.purchase_price ?? 0) - (opt.deposit ?? 0) + (opt.establishment_fee ?? 0) + (opt.application_fee ?? 0);
+    const allUpRate = opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
 
     const rows: { label: string; value: string; highlight?: boolean }[] = [
       { label: `${assetDescription} price`, value: fmtCurrency(opt.purchase_price) },
@@ -154,6 +197,10 @@ function PdfTermTable({ group, isClientView, assetDescription, showInterestRate 
 
     if (!isClientView || showInterestRate) {
       rows.push({ label: 'Rate of Interest', value: fmtPercent(opt.interest_rate) });
+    }
+
+    if (allUpRate != null) {
+      rows.push({ label: 'All Up Interest Rate', value: fmtPercent(allUpRate) });
     }
 
     rows.push({ label: 'Weekly Equivalent', value: fmtCurrency(opt.repayment_weekly) });
@@ -255,6 +302,7 @@ export default function QuoteSheetComparison({
   const feesFinanced = parsedParams?.feesFinanced ?? true;
   const selectedTerms = parsedParams?.selectedTerms;
   const showInterestRate = parsedParams?.showInterestRate ?? false;
+  const paymentType = parsedParams?.paymentType ?? 'advance';
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -336,7 +384,7 @@ export default function QuoteSheetComparison({
             <div key={ri} style={{ display: 'flex', gap: '14px' }} className="break-inside-avoid">
               {row.map(group => (
                 <div key={group.termYears} style={{ flex: '1 1 0', minWidth: 0 }}>
-                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} />
+                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} paymentType={paymentType} />
                 </div>
               ))}
               {row.length === 1 && <div style={{ flex: '1 1 0', minWidth: 0 }} />}
@@ -471,7 +519,7 @@ export default function QuoteSheetComparison({
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-6 break-inside-avoid">
             {row.map(group => (
-              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} />
+              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} paymentType={paymentType} />
             ))}
           </div>
         ))}

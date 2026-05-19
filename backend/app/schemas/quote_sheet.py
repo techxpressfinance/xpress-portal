@@ -18,6 +18,7 @@ class QuoteOptionCreate(BaseModel):
     balloon_residual: Optional[float] = None
     interest_rate: Optional[float] = None
     comparison_rate: Optional[float] = None
+    client_interest_rate: Optional[float] = None
     establishment_fee: Optional[float] = None
     monthly_account_fee: Optional[float] = None
     application_fee: Optional[float] = None
@@ -44,6 +45,7 @@ class QuoteOptionUpdate(BaseModel):
     balloon_residual: Optional[float] = None
     interest_rate: Optional[float] = None
     comparison_rate: Optional[float] = None
+    client_interest_rate: Optional[float] = None
     establishment_fee: Optional[float] = None
     monthly_account_fee: Optional[float] = None
     application_fee: Optional[float] = None
@@ -72,6 +74,7 @@ class QuoteOptionOut(BaseModel):
     balloon_residual: Optional[float]
     interest_rate: Optional[float]
     comparison_rate: Optional[float]
+    client_interest_rate: Optional[float]
     establishment_fee: Optional[float]
     monthly_account_fee: Optional[float]
     application_fee: Optional[float]

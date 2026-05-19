@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, StatCard, Badge, PageHeader, Button } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import type { Invitation, LoanApplication, LoanType, PaginatedResponse, User } from '../../types';
 
@@ -20,7 +20,6 @@ const LOAN_TYPES: { value: LoanType; label: string }[] = [
 ];
 
 const inputClass = 'w-full rounded-lg border border-border bg-secondary px-3 py-2 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30';
-const selectClass = 'rounded-lg bg-secondary px-2.5 py-1.5 text-[13px] font-medium text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 export default function UserManagement() {
   const { user: currentUser } = useAuth();
@@ -88,11 +87,6 @@ export default function UserManagement() {
     } finally {
       setSendingReset(null);
     }
-  };
-
-  const requestRoleChange = (userId: string, userName: string, currentRole: string, newRole: string) => {
-    if (newRole === currentRole) return;
-    setPendingAction({ type: 'role', userId, userName, from: currentRole, to: newRole });
   };
 
   const confirmAction = async () => {
