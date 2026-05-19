@@ -99,8 +99,7 @@ def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str]
     """Send email via Amazon SES. Fails silently with logging."""
     try:
         msg = MIMEMultipart("alternative")
-        msg["From"] = SES_FROM_EMAIL
-        msg["Reply-To"] = "enquiries@xpressfinance.com.au"
+        msg["From"] = f"Xpress Finance <{SES_FROM_EMAIL}>"
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
 
@@ -508,6 +507,38 @@ def send_quote_sheet_email(
         <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">
             Please contact us to discuss these options further.
         </p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
+def send_password_reset_email(to_email: str, name: str, token: str) -> None:
+    """Send password reset link. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping password reset email for %s", to_email)
+        return
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    subject = "Reset Your Password - Xpress Finance Portal"
+    body = (
+        f"Dear {name},\n\n"
+        f"We received a request to reset your password. Click the link below to set a new password:\n\n"
+        f"{reset_url}\n\n"
+        f"This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            We received a request to reset your password. Click the button below to set a new password.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(reset_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Reset Password</a>
+        </div>
+        <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">Or copy and paste this link:</p>
+        <p style="margin: 0 0 24px; font-size: 14px; color: #000000; word-break: break-all;"><a href="{_esc(reset_url)}" style="color: #09090b;">{_esc(reset_url)}</a></p>
+        <p style="margin: 0; font-size: 14px; color: #71717a;">This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>
     """
     html_body = _get_base_html(content)
 

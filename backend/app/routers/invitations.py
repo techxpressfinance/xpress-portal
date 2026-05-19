@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 def list_invitations(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    role: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -35,6 +36,9 @@ def list_invitations(
         .outerjoin(Inviter, User.invited_by_id == Inviter.id)
         .filter(User.invited_by_id.isnot(None), User.tenant_id == tenant_id)
     )
+
+    if role:
+        query = query.filter(User.role == role)
 
     # Brokers see only their own invitations
     if current_user.role.value == "broker":

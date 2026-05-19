@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/applications/{app_id}/quote-sheets", tags=["quot
 
 
 def _get_application(db: Session, app_id: str, tenant_id: str) -> LoanApplication:
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     return app

@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
-import type { User } from '../../types';
+import type { Invitation, PaginatedResponse, User } from '../../types';
 
 interface ReferrerForm {
   full_name: string;
@@ -20,6 +20,8 @@ type PendingAction =
   | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean }
   | { type: 'delete'; userId: string; userName: string };
 
+type SendingReset = string | null;
+
 export default function ReferrerManagement() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -31,6 +33,13 @@ export default function ReferrerManagement() {
   const [referrers, setReferrers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [sendingReset, setSendingReset] = useState<SendingReset>(null);
+
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const perPage = 10;
 
   useEffect(() => {
     api.get('/external-referrers')
@@ -38,6 +47,17 @@ export default function ReferrerManagement() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    setLoadingHistory(true);
+    api.get('/invitations', { params: { page: historyPage, per_page: perPage, role: 'referrer' } })
+      .then(({ data }: { data: PaginatedResponse<Invitation> }) => {
+        setInvitations(data.items);
+        setHistoryTotal(data.total);
+      })
+      .catch(() => toast('Failed to load invitation history', 'error'))
+      .finally(() => setLoadingHistory(false));
+  }, [historyPage]);
 
   const validate = (): boolean => {
     const errs: Partial<Record<keyof ReferrerForm, string>> = {};
@@ -95,6 +115,28 @@ export default function ReferrerManagement() {
     }
   };
 
+  const handleSendPasswordReset = async (userId: string) => {
+    setSendingReset(userId);
+    try {
+      await api.post(`/users/${userId}/send-password-reset`);
+      toast('Password reset link sent', 'success');
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to send reset link'), 'error');
+    } finally {
+      setSendingReset(null);
+    }
+  };
+
+  const handleResendReferrerInvitation = async (inv: Invitation) => {
+    try {
+      await api.post(`/users/${inv.id}/send-password-reset`);
+      toast('Setup link resent to ' + inv.email, 'success');
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to resend'), 'error');
+    }
+  };
+
+  const totalPages = Math.ceil(historyTotal / perPage);
   const activeReferrers = referrers.filter(r => r.is_active);
 
   return (
@@ -181,6 +223,7 @@ export default function ReferrerManagement() {
                           <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
                             {referrer.is_active ? 'Deactivate' : 'Activate'}
                           </Button>
+                          <Button size="sm" variant="secondary" loading={sendingReset === referrer.id} onClick={() => handleSendPasswordReset(referrer.id)}>Reset Password</Button>
                           <Button size="sm" variant="danger" onClick={() => setPendingAction({ type: 'delete', userId: referrer.id, userName: referrer.full_name })}>Delete</Button>
                         </div>
                       )}
@@ -190,6 +233,69 @@ export default function ReferrerManagement() {
               </tbody>
             </table>
           </div>
+        )}
+      </GlassCard>
+
+      {/* Invitation History */}
+      <GlassCard padding="none" className="mt-8">
+        <div className="px-4 sm:px-6 py-4 border-b border-border">
+          <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
+          <p className="text-[13px] text-muted-foreground">{historyTotal} invited referrer{historyTotal !== 1 ? 's' : ''}</p>
+        </div>
+        {loadingHistory ? (
+          <div className="p-6 space-y-4">
+            {[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}
+          </div>
+        ) : invitations.length === 0 ? (
+          <div className="p-6 text-center text-[14px] text-muted-foreground">No referrers invited yet.</div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[14px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-4 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Referrer</th>
+                    <th className="hidden sm:table-cell px-6 py-3 text-[12px] font-medium text-muted-foreground">Invited By</th>
+                    <th className="hidden md:table-cell px-6 py-3 text-[12px] font-medium text-muted-foreground">Date</th>
+                    <th className="px-4 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Status</th>
+                    {isAdmin && <th className="px-4 sm:px-6 py-3 text-[12px] font-medium text-muted-foreground">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {invitations.map(inv => (
+                    <tr key={inv.id} className="transition-colors hover:bg-secondary/50">
+                      <td className="px-4 sm:px-6 py-3">
+                        <p className="text-[14px] font-medium text-foreground">{inv.full_name}</p>
+                        <p className="text-[12px] text-muted-foreground">{inv.email}</p>
+                      </td>
+                      <td className="hidden sm:table-cell px-6 py-3 text-[13px] text-muted-foreground">{inv.invited_by_name || '—'}</td>
+                      <td className="hidden md:table-cell px-6 py-3 text-[13px] text-muted-foreground">{formatDate(inv.created_at)}</td>
+                      <td className="px-4 sm:px-6 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${inv.is_active ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${inv.is_active ? 'bg-success' : 'bg-destructive'}`} />
+                          {inv.is_active ? 'Active' : 'Expired'}
+                        </span>
+                      </td>
+                      {isAdmin && (
+                        <td className="px-4 sm:px-6 py-3">
+                          <Button variant="secondary" size="sm" onClick={() => handleResendReferrerInvitation(inv)}>Resend</Button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-t border-border">
+                <p className="text-[13px] text-muted-foreground">Page {historyPage} of {totalPages}</p>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" disabled={historyPage <= 1} onClick={() => setHistoryPage(p => p - 1)}>Previous</Button>
+                  <Button variant="secondary" size="sm" disabled={historyPage >= totalPages} onClick={() => setHistoryPage(p => p + 1)}>Next</Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </GlassCard>
 

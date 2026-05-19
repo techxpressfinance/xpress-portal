@@ -145,6 +145,10 @@ export interface LoanApplication {
   client_engagement_model: ClientEngagementModel | null;
   // Referrer info (populated from referral data)
   referrer: ReferrerInfo | null;
+  // Soft delete
+  deleted_at: string | null;
+  // Nested user object (returned by serializer)
+  user?: { id: string; full_name: string; email: string } | null;
 }
 
 export interface AnalysisResult {

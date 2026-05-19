@@ -18,7 +18,7 @@ from app.models.user import User
 from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import hash_password
-from app.services.email import send_setup_account_email
+from app.services.email import send_password_reset_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -99,6 +99,29 @@ def create_broker(
     setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
     send_setup_account_email(data.email, data.full_name, setup_url, role="broker")
     return user
+
+
+@router.post("/{user_id}/send-password-reset", status_code=status.HTTP_204_NO_CONTENT)
+def send_password_reset(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Send a password reset link to a broker or referrer. Admin only."""
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role.value not in ("client", "broker", "referrer"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset can only be sent to clients, brokers, and referrers")
+
+    token = secrets.token_urlsafe(32)
+    user.password_reset_token = token
+    user.password_reset_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    log_activity(db, current_user.id, "password_reset_sent", "user", user_id, {"email": user.email}, tenant_id=tenant_id)
+    db.commit()
+
+    send_password_reset_email(user.email, user.full_name, token)
 
 
 @router.get("/{user_id}/referrer")

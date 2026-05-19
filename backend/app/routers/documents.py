@@ -44,7 +44,7 @@ def upload_document(
     tenant_id: str = Depends(get_tenant_id),
 ):
     upload_limiter.check(request)
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -147,7 +147,7 @@ def download_all_documents(
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(
-        LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id
+        LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)
     ).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
@@ -192,7 +192,7 @@ def list_documents(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -210,7 +210,7 @@ def delete_document(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -236,7 +236,7 @@ def download_document(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -271,7 +271,7 @@ def get_ocr_text(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -304,7 +304,7 @@ def create_document_request(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -354,7 +354,7 @@ def list_document_requests(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -373,7 +373,7 @@ def fulfill_document_request(
     if not req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == req.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == req.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -398,7 +398,7 @@ def retry_ocr(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, _current_user, db=db)
@@ -436,7 +436,7 @@ def verify_document(
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == doc.application_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, _current_user, db=db)

@@ -9,10 +9,10 @@ import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
-import { DOC_TYPE_LABELS, LEND_SYNC_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
+import { DOC_TYPE_LABELS, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { useAuth } from '../../hooks/useAuth';
-import type { ClientMessage, Document, DocumentRequest, LendSyncStatus, LoanApplication, QuoteSheet } from '../../types';
+import type { ClientMessage, Document, DocumentRequest, LoanApplication, QuoteSheet } from '../../types';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -204,9 +204,6 @@ export default function ApplicationDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="led-chip led-chip-accent">Application</span>
               <Badge value={application.status} />
-              {application.lend_sync_status && LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus] && (
-                <Badge type="custom" value={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].label} className={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].className} />
-              )}
             </div>
             <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)] capitalize">
               {application.loan_type} Loan Application

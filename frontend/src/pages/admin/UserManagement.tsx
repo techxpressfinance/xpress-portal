@@ -30,6 +30,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [sendingReset, setSendingReset] = useState<string | null>(null);
 
   // Invite new client
   const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', phone: '' });
@@ -68,7 +69,7 @@ export default function UserManagement() {
 
   useEffect(() => {
     setLoadingHistory(true);
-    api.get('/invitations', { params: { page: historyPage, per_page: perPage } })
+    api.get('/invitations', { params: { page: historyPage, per_page: perPage, role: 'client' } })
       .then(({ data }: { data: PaginatedResponse<Invitation> }) => {
         setInvitations(data.items);
         setHistoryTotal(data.total);
@@ -76,6 +77,18 @@ export default function UserManagement() {
       .catch(() => toast('Failed to load invitation history', 'error'))
       .finally(() => setLoadingHistory(false));
   }, [historyPage]);
+
+  const handleSendPasswordReset = async (userId: string) => {
+    setSendingReset(userId);
+    try {
+      await api.post(`/users/${userId}/send-password-reset`);
+      toast('Password reset link sent', 'success');
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to send reset link'), 'error');
+    } finally {
+      setSendingReset(null);
+    }
+  };
 
   const requestRoleChange = (userId: string, userName: string, currentRole: string, newRole: string) => {
     if (newRole === currentRole) return;
@@ -103,15 +116,6 @@ export default function UserManagement() {
       toast(getErrorMessage(err, 'Failed to update user'), 'error');
     } finally {
       setPendingAction(null);
-    }
-  };
-
-  const handleResendCode = async (user: User) => {
-    try {
-      await api.post('/invitations', { email: user.email, full_name: user.full_name, phone: user.phone });
-      toast('New code sent to ' + user.email, 'success');
-    } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to resend code'), 'error');
     }
   };
 
@@ -213,8 +217,6 @@ export default function UserManagement() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Client</th>
-                  <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Auth</th>
-                  <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Role</th>
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Joined</th>
                   <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>
@@ -236,21 +238,6 @@ export default function UserManagement() {
                           </div>
                         </div>
                       </td>
-                      <td className="hidden sm:table-cell px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-medium ${user.auth_method === 'code' ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'bg-secondary text-muted-foreground'}`}>
-                          {user.auth_method === 'code' ? 'Invited' : 'Password'}
-                        </span>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4">
-                        {currentUser?.role === 'admin' && !isSelf ? (
-                          <select value={user.role} onChange={e => requestRoleChange(user.id, user.full_name, user.role, e.target.value)} className={selectClass}>
-                            <option value="client">Client</option>
-                            <option value="broker">Broker</option>
-                          </select>
-                        ) : (
-                          <Badge type="role" value={user.role} />
-                        )}
-                      </td>
                       <td className="px-3 sm:px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${user.is_active ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${user.is_active ? 'bg-success' : 'bg-destructive'}`} />
@@ -260,14 +247,12 @@ export default function UserManagement() {
                       <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(user.created_at)}</td>
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          {user.auth_method === 'code' && !isSelf && (
-                            <Button variant="secondary" size="sm" onClick={() => handleResendCode(user)}>Resend Code</Button>
-                          )}
                           {currentUser?.role === 'admin' && !isSelf && (
                             <>
                               <Button variant={user.is_active ? 'danger' : 'success'} size="sm" onClick={() => setPendingAction({ type: 'toggle_active', userId: user.id, userName: user.full_name, isActive: user.is_active })}>
                                 {user.is_active ? 'Deactivate' : 'Activate'}
                               </Button>
+                              <Button variant="secondary" size="sm" loading={sendingReset === user.id} onClick={() => handleSendPasswordReset(user.id)}>Reset Password</Button>
                               <Button variant="danger" size="sm" onClick={() => setPendingAction({ type: 'delete', userId: user.id, userName: user.full_name })}>Delete</Button>
                             </>
                           )}

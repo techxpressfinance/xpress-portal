@@ -9,6 +9,7 @@ import { TenantProvider } from './contexts/TenantContext';
 import { useAuth } from './hooks/useAuth';
 
 const ActivityLogs = lazy(() => import('./pages/admin/ActivityLogs'));
+const DeletedApplications = lazy(() => import('./pages/admin/DeletedApplications'));
 const AllApplications = lazy(() => import('./pages/admin/AllApplications'));
 const KanbanBoard = lazy(() => import('./pages/admin/KanbanBoard'));
 const CreateApplication = lazy(() => import('./pages/admin/CreateApplication'));
@@ -49,6 +50,8 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const ResendVerification = lazy(() => import('./pages/ResendVerification'));
 const PlatformLogin = lazy(() => import('./pages/PlatformLogin'));
 const SetupAccount = lazy(() => import('./pages/SetupAccount'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicApply = lazy(() => import('./pages/PublicApply'));
 const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'));
 const TenantManagement = lazy(() => import('./pages/platform/TenantManagement'));
@@ -81,6 +84,8 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/resend-verification" element={<ResendVerification />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route element={<Layout />}>
               <Route path="/" element={<HomeRedirect />} />
 
@@ -313,6 +318,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin']}>
                     <ActivityLogs />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/deleted-applications"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <DeletedApplications />
                   </ProtectedRoute>
                 }
               />

@@ -29,7 +29,7 @@ def get_dashboard_stats(
     now = datetime.now(timezone.utc)
 
     def scoped(q):
-        q = q.filter(LoanApplication.tenant_id == tenant_id)
+        q = q.filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
         if current_user.role == UserRole.broker:
             referrer_ids = db.query(User.id).filter(
                 User.role == UserRole.referrer, User.tenant_id == tenant_id

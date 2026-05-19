@@ -51,6 +51,7 @@ def _get_app(app_id: str, current_user: User, db: Session) -> LoanApplication:
         .filter(
             LoanApplication.id == app_id,
             LoanApplication.tenant_id == current_user.tenant_id,
+            LoanApplication.deleted_at.is_(None),
         )
         .first()
     )

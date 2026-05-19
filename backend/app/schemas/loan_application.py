@@ -165,6 +165,7 @@ class LoanApplicationOut(BaseModel):
     notes: Optional[str]
     created_at: datetime
     updated_at: datetime
+    deleted_at: Optional[datetime] = None
     analysis_status: Optional[AnalysisStatus] = None
     analysis_result: Optional[str] = None
     analysis_error: Optional[str] = None

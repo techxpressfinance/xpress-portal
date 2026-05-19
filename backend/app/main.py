@@ -191,6 +191,9 @@ _MIGRATIONS = [
     ("loan_applications", "deleted_at", "TIMESTAMP"),
     # Company name on external referrals (for contact book)
     ("external_referrals", "company_name", "VARCHAR(200)"),
+    # Password reset flow
+    ("users", "password_reset_token", "VARCHAR(64)"),
+    ("users", "password_reset_token_expires_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)

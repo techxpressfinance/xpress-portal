@@ -58,6 +58,10 @@ class User(Base):
     # Referrer-specific fields
     organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Password reset
+    password_reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    password_reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     applications = relationship("LoanApplication", back_populates="user", foreign_keys="LoanApplication.user_id")
     assigned_applications = relationship(
         "LoanApplication", back_populates="assigned_broker", foreign_keys="LoanApplication.assigned_broker_id"

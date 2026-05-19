@@ -36,7 +36,7 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.cookie_auth import clear_refresh_cookie as _clear_refresh_cookie, set_refresh_cookie as _set_refresh_cookie
-from app.services.email import send_login_code_email, send_verification_email
+from app.services.email import send_login_code_email, send_password_reset_email, send_verification_email
 from app.services.login_code import set_login_code
 from app.services.tenant_scope import get_tenant_id
 
@@ -347,6 +347,40 @@ def setup_account(data: SetupAccountRequest, response: Response, db: Session = D
     tenant_id = user.tenant_id or ""
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
     return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+def forgot_password(data: ResendVerificationRequest, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
+    auth_limiter.check(request)
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
+    if user and user.is_active:
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token = token
+        user.password_reset_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        db.commit()
+        send_password_reset_email(user.email, user.full_name, token)
+
+
+class PasswordResetRequest(SetupAccountRequest):
+    pass
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.password_reset_token == data.token).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset link")
+    expires_at = user.password_reset_token_expires_at
+    if expires_at:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset link has expired. Please request a new one.")
+    user.password_hash = hash_password(data.password)
+    user.password_reset_token = None
+    user.password_reset_token_expires_at = None
+    user.tokens_revoked_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 @router.get("/csrf-token")

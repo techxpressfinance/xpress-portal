@@ -251,6 +251,46 @@ def get_application_analytics(
     }
 
 
+@router.get("/deleted", response_model=list[LoanApplicationOut])
+def list_deleted_applications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Admin-only: returns all soft-deleted applications."""
+    apps = (
+        db.query(LoanApplication)
+        .options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by))
+        .filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.isnot(None))
+        .order_by(LoanApplication.deleted_at.desc())
+        .all()
+    )
+    return [_app_with_user(app) for app in apps]
+
+
+@router.post("/{app_id}/restore", response_model=LoanApplicationOut)
+def restore_application(
+    app_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Admin-only: restore a soft-deleted application."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.isnot(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted application not found")
+
+    application.deleted_at = None
+    log_activity(db, current_user.id, "restored", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application)
+    return _app_with_user(application)
+
+
 @router.get("/{app_id}", response_model=LoanApplicationOut)
 def get_application(
     app_id: str,
@@ -373,7 +413,7 @@ def change_status(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -426,7 +466,7 @@ def assign_broker(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """Add a broker to the application's assigned brokers."""
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -465,7 +505,7 @@ def unassign_broker(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """Remove a broker from the application's assigned brokers."""
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -497,7 +537,7 @@ def assign_broker_group(
     """Assign all brokers in a broker group to the application."""
     from app.models.broker_group import BrokerGroup
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
@@ -532,7 +572,7 @@ def trigger_analysis(
     if not LLM_ANALYSIS_ENABLED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="LLM analysis is not configured (missing OPENAI_API_KEY)")
 
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -575,7 +615,7 @@ def get_analysis(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id).first()
+    application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
@@ -630,7 +670,7 @@ def send_client_invite(
     tenant_id: str = Depends(get_tenant_id),
 ):
     application = db.query(LoanApplication).filter(
-        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)
     ).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
