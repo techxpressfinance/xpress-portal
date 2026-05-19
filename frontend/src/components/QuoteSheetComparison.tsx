@@ -98,7 +98,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
 }
 
 // ── On-screen term block (unchanged card style) ──────────────────────
-function TermBlock({ group, isClientView, assetDescription, showInterestRate, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean; paymentType: string }) {
+function TermBlock({ group, isClientView, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -174,7 +174,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 }
 
 // ── PDF table-based term block ───────────────────────────────────────
-function PdfTermTable({ group, isClientView, assetDescription, showInterestRate, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; showInterestRate: boolean; paymentType: string }) {
+function PdfTermTable({ group, isClientView, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -301,7 +301,6 @@ export default function QuoteSheetComparison({
   const assetDescription = parsedParams?.assetDescription || 'Asset';
   const feesFinanced = parsedParams?.feesFinanced ?? true;
   const selectedTerms = parsedParams?.selectedTerms;
-  const showInterestRate = parsedParams?.showInterestRate ?? false;
   const paymentType = parsedParams?.paymentType ?? 'advance';
 
   // Filter terms for client view / PDF if selected_terms is set
@@ -384,7 +383,7 @@ export default function QuoteSheetComparison({
             <div key={ri} style={{ display: 'flex', gap: '14px' }} className="break-inside-avoid">
               {row.map(group => (
                 <div key={group.termYears} style={{ flex: '1 1 0', minWidth: 0 }}>
-                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} paymentType={paymentType} />
+                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} paymentType={paymentType} />
                 </div>
               ))}
               {row.length === 1 && <div style={{ flex: '1 1 0', minWidth: 0 }} />}
@@ -519,7 +518,7 @@ export default function QuoteSheetComparison({
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-6 break-inside-avoid">
             {row.map(group => (
-              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} showInterestRate={showInterestRate} paymentType={paymentType} />
+              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} paymentType={paymentType} />
             ))}
           </div>
         ))}
