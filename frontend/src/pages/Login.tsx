@@ -202,14 +202,6 @@ export default function Login() {
               Create one
             </Link>
           </p>
-          <p className="text-[12px] text-muted-foreground/60 font-medium">
-            <Link
-              to="/platform-login"
-              className="hover:text-muted-foreground transition-colors duration-200"
-            >
-              Platform Admin
-            </Link>
-          </p>
         </div>
       </div>
     </div>
