@@ -9,8 +9,6 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   superAdminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, phone: string, password: string, ref?: string) => Promise<User>;
-  requestCode: (email: string) => Promise<void>;
-  loginWithCode: (email: string, code: string) => Promise<void>;
   setupAccount: (token: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -21,8 +19,6 @@ export const AuthContext = createContext<AuthState>({
   login: async () => {},
   superAdminLogin: async () => {},
   register: async () => ({} as User),
-  requestCode: async () => {},
-  loginWithCode: async () => {},
   setupAccount: async () => {},
   logout: () => {},
 });
@@ -92,16 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data;
   };
 
-  const requestCode = async (email: string) => {
-    await api.post('/auth/request-code', { email });
-  };
-
-  const loginWithCode = async (email: string, code: string) => {
-    const { data } = await api.post('/auth/verify-code', { email, code });
-    setAccessToken(data.access_token);
-    await fetchUser();
-  };
-
   const setupAccount = async (token: string, password: string) => {
     const { data } = await api.post('/auth/setup-account', { token, password });
     setAccessToken(data.access_token);
@@ -118,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, requestCode, loginWithCode, setupAccount, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, setupAccount, logout }}>
       {children}
     </AuthContext.Provider>
   );

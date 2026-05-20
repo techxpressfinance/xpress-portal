@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.orm import Session
 
+from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.external_referral import ExternalReferral, ExternalReferralStatus
-from app.models.loan_application import LoanApplication
-from app.models.user import User
-from app.services.login_code import set_login_code
+from app.models.loan_application import LoanApplication, LoanType
+from app.models.user import User, UserRole
+from app.schemas.common import normalize_email
+from app.services.email import send_complete_application_email, send_new_lead_notification, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
@@ -94,6 +97,8 @@ class NewClientContact(BaseModel):
     mobile: Optional[str] = None
     company_name: Optional[str] = None
 
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
 
 @router.post("/clients", status_code=status.HTTP_201_CREATED)
 def create_referrer_client(
@@ -116,25 +121,33 @@ def create_referrer_client(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A contact with this email already exists")
 
     existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
+    if existing_user and existing_user.role.value != "client":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account exists for this email but is not a client account",
+        )
 
     if not existing_user:
         full_name = f"{data.first_name.strip()} {data.last_name.strip()}".strip()
+        token = secrets.token_urlsafe(32)
         new_user = User(
             email=email,
             full_name=full_name,
-            password_hash="!invited",
-            auth_method="code",
+            password_hash="!",
+            auth_method="password",
             role="client",
             is_active=True,
             email_verified=True,
-            login_code_attempts=0,
             invited_by_id=current_user.id,
             tenant_id=tenant_id,
+            email_verification_token=token,
+            email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
         )
-        set_login_code(new_user)
         db.add(new_user)
         db.flush()
         client_id = new_user.id
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}"
+        send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
     else:
         client_id = existing_user.id
 
@@ -244,3 +257,128 @@ def update_referrer_client(
         "company_name": ref.company_name or "",
         "source": "referred",
     }
+
+
+class DirectReferralCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    mobile: Optional[str] = None
+    company_name: Optional[str] = None
+    loan_type: str
+    amount: float
+    notes: Optional[str] = None
+    business_name: Optional[str] = None
+    business_abn: Optional[str] = None
+    lend_extra_data: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
+
+@router.post("/direct-referral", status_code=status.HTTP_201_CREATED)
+def create_direct_referral(
+    data: DirectReferralCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("referrer")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    email = data.email.lower().strip()
+
+    if email == current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot refer yourself")
+
+    existing_referral = db.query(ExternalReferral).filter(
+        ExternalReferral.referrer_id == current_user.id,
+        ExternalReferral.referred_email == email,
+    ).first()
+    if existing_referral:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already referred this email")
+
+    try:
+        loan_type = LoanType(data.loan_type)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid loan type: {data.loan_type}")
+
+    existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
+    if existing_user and existing_user.role.value != "client":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account exists for this email but is not a client account",
+        )
+
+    full_name = f"{data.first_name.strip()} {data.last_name.strip()}".strip()
+    is_new_user = not existing_user
+
+    if is_new_user:
+        token = secrets.token_urlsafe(32)
+        client = User(
+            email=email,
+            full_name=full_name,
+            phone=data.mobile,
+            password_hash="!",
+            auth_method="password",
+            role="client",
+            is_active=True,
+            email_verified=True,
+            invited_by_id=current_user.id,
+            tenant_id=tenant_id,
+            email_verification_token=token,
+            email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+        )
+        db.add(client)
+        db.flush()
+    else:
+        client = existing_user
+
+    referral = ExternalReferral(
+        referrer_id=current_user.id,
+        referred_email=email,
+        referred_client_id=client.id,
+        status=ExternalReferralStatus.signed_up,
+        converted_at=datetime.now(timezone.utc),
+        company_name=data.company_name.strip() if data.company_name else None,
+        tenant_id=tenant_id,
+    )
+    db.add(referral)
+
+    application = LoanApplication(
+        user_id=client.id,
+        loan_type=loan_type,
+        amount=data.amount,
+        notes=data.notes,
+        business_name=data.business_name,
+        business_abn=data.business_abn,
+        lend_extra_data=data.lend_extra_data,
+        tenant_id=tenant_id,
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+
+    if is_new_user:
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect=/applications/{application.id}"
+        send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
+    else:
+        send_complete_application_email(
+            to_email=email,
+            client_name=client.full_name,
+            inviter_name=current_user.full_name,
+            loan_type=loan_type.value,
+            amount=str(int(data.amount)),
+            application_id=application.id,
+        )
+
+    portal_url = f"{FRONTEND_URL}/admin/applications/{application.id}"
+    admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+    for admin in admins:
+        send_new_lead_notification(
+            admin.email,
+            admin.full_name or "Admin",
+            current_user.full_name or current_user.email,
+            full_name,
+            loan_type.value,
+            str(int(data.amount)),
+            portal_url,
+        )
+
+    return {"application_id": application.id, "client_id": client.id}

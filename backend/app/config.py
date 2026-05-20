@@ -7,11 +7,14 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
+# Resolve ENVIRONMENT first so every other guard agrees on it. Default to development
+# locally; ops must explicitly set ENVIRONMENT=production in deployed envs.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
 _DEFAULT_JWT_SECRET = "dev-secret-change-in-production"
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", _DEFAULT_JWT_SECRET)
-_env = os.getenv("ENVIRONMENT", "production")
 if JWT_SECRET_KEY == _DEFAULT_JWT_SECRET:
-    if _env != "development":
+    if ENVIRONMENT != "development":
         raise RuntimeError(
             "JWT_SECRET_KEY is still the default value. "
             "Set a strong, unique JWT_SECRET_KEY in your .env before running in production."
@@ -20,8 +23,6 @@ if JWT_SECRET_KEY == _DEFAULT_JWT_SECRET:
     warnings.warn("Using default JWT_SECRET_KEY — do NOT use in production", stacklevel=1)
 
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-# Separate secret for login-code HMAC so rotating one doesn't force rotating the other
-LOGIN_CODE_SECRET = os.getenv("LOGIN_CODE_SECRET", JWT_SECRET_KEY)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
@@ -29,6 +30,7 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 # Amazon SES - optional, emails silently skipped if not configured
 SES_REGION = os.getenv("SES_REGION", "ap-southeast-2")
 SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL", "")
+SES_CONFIGURATION_SET = os.getenv("SES_CONFIGURATION_SET", "")
 EMAIL_ENABLED = bool(SES_FROM_EMAIL)
 
 # OpenAI / LLM analysis - optional, analysis feature disabled if no key
@@ -72,9 +74,6 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 SMS_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
-
-# Environment
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 # Field-level encryption for PII data
 # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

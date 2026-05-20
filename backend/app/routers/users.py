@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,17 +8,12 @@ from sqlalchemy.orm import Session
 from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.activity_log import ActivityLog
-from app.models.application_broker import ApplicationBroker
-from app.models.application_note import ApplicationNote
-from app.models.direct_message import DirectMessage
-from app.models.loan_application import LoanApplication
 from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User
 from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
 from app.services.activity_log import log_activity
-from app.services.auth import hash_password
+from app.services.auth import blacklist_all_user_tokens, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
@@ -105,15 +101,23 @@ def create_broker(
 def send_password_reset(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Send a password reset link to a broker or referrer. Admin only."""
+    """Send a password reset link.
+
+    Admins can reset clients, brokers, and referrers in their tenant. Brokers can
+    only reset clients they invited.
+    """
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.role.value not in ("client", "broker", "referrer"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset can only be sent to clients, brokers, and referrers")
+
+    if current_user.role.value == "broker":
+        if user.role.value != "client" or user.invited_by_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only reset clients you invited")
 
     token = secrets.token_urlsafe(32)
     user.password_reset_token = token
@@ -244,7 +248,13 @@ def delete_user(
     current_user: User = Depends(require_role("admin")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Permanently delete a user. Admin only. Blocked if user owns loan applications."""
+    """Soft-delete a user. Admin only.
+
+    The user is deactivated, their PII is scrambled, credentials are wiped, and
+    active sessions are revoked. Historical rows (applications, notes, messages,
+    activity log) remain intact to preserve audit history. The original email
+    address is freed for re-use.
+    """
     if user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
 
@@ -252,41 +262,30 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Block deletion if user owns loan applications
-    app_count = db.query(LoanApplication).filter(LoanApplication.user_id == user_id).count()
-    if app_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot delete user with {app_count} loan application(s). Deactivate instead.",
-        )
+    original_email = user.email
+    original_role = user.role.value
 
-    # Clean up related records
-    db.query(ActivityLog).filter(ActivityLog.user_id == user_id).delete()
-    db.query(ApplicationNote).filter(ApplicationNote.author_id == user_id).delete()
-    db.query(DirectMessage).filter(
-        (DirectMessage.sender_id == user_id) | (DirectMessage.recipient_id == user_id)
-    ).delete(synchronize_session="fetch")
-    db.query(Referral).filter(
-        (Referral.referrer_id == user_id) | (Referral.referred_user_id == user_id)
-    ).delete(synchronize_session="fetch")
-    db.query(ExternalReferral).filter(
-        (ExternalReferral.referrer_id == user_id) | (ExternalReferral.referred_client_id == user_id)
-    ).delete(synchronize_session="fetch")
-    db.query(ApplicationBroker).filter(ApplicationBroker.broker_id == user_id).delete()
+    # Scramble identifying fields so the email/phone can be reused for a fresh signup.
+    user.email = f"deleted-{uuid.uuid4().hex}@deleted.invalid"
+    user.full_name = "Deleted user"
+    user.phone = None
+    user.password_hash = "!"
+    user.auth_method = "password"
+    user.is_active = False
+    user.email_verified = False
+    user.email_verification_token = None
+    user.email_verification_token_expires_at = None
+    user.password_reset_token = None
+    user.password_reset_token_expires_at = None
+    user.login_code = None
+    user.login_code_expires_at = None
+    user.login_code_attempts = 0
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.employee_id = None
+    user.license_number = None
+    user.organization_name = None
 
-    # Nullify assigned_broker_id and completed_by_id references
-    db.query(LoanApplication).filter(LoanApplication.assigned_broker_id == user_id).update(
-        {"assigned_broker_id": None}, synchronize_session="fetch"
-    )
-    db.query(LoanApplication).filter(LoanApplication.completed_by_id == user_id).update(
-        {"completed_by_id": None}, synchronize_session="fetch"
-    )
-
-    # Nullify invited_by_id on other users
-    db.query(User).filter(User.invited_by_id == user_id).update(
-        {"invited_by_id": None}, synchronize_session="fetch"
-    )
-
-    log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": user.email, "role": user.role.value}, tenant_id=tenant_id)
-    db.delete(user)
+    blacklist_all_user_tokens(user.id, db)
+    log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": original_email, "role": original_role}, tenant_id=tenant_id)
     db.commit()

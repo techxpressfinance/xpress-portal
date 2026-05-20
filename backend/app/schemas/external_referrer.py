@@ -5,6 +5,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
+from app.schemas.common import normalize_email
+
 ClientEngagementModel = Literal["self_managed", "direct_engagement"]
 
 
@@ -13,6 +15,8 @@ class ReferrerCreate(BaseModel):
     full_name: str
     phone: Optional[str] = None
     organization_name: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
     @field_validator("full_name")
     @classmethod
@@ -27,12 +31,7 @@ class ExternalReferralInvite(BaseModel):
     full_name: Optional[str] = None
     client_engagement_model: Optional[ClientEngagementModel] = None
 
-    @field_validator("email")
-    @classmethod
-    def email_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("Email cannot be empty")
-        return v.strip()
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
 
 class ExternalReferralOut(BaseModel):

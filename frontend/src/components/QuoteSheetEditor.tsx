@@ -700,6 +700,41 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             })}
           </div>
           <p className="text-[11px] text-muted-foreground">Only selected terms appear in the client PDF.</p>
+          <div className="pt-2 flex items-center gap-4">
+            <label className="text-[13px] font-medium text-foreground whitespace-nowrap">
+              Repayment range (±$)
+            </label>
+            <div className="relative w-32">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">±$</span>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="e.g. 50"
+                value={inputs.repayment_range ?? ''}
+                onChange={e => updateInput('repayment_range', parseFloat(e.target.value) || undefined)}
+                className="w-full h-[44px] pl-9 pr-3 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Client sees a range instead of the exact figure. Leave blank to show exact.
+            </p>
+          </div>
+          <div className="pt-2 flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
+              className={`h-[36px] px-4 rounded-xl text-xs font-medium transition-colors border ${inputs.show_interest_rate
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'bg-muted text-muted-foreground border-transparent'
+              }`}
+            >
+              {inputs.show_interest_rate ? 'Interest rate: visible to client' : 'Interest rate: hidden from client'}
+            </button>
+            <p className="text-[11px] text-muted-foreground">
+              Controls whether the interest rate appears on the client-facing quote.
+            </p>
+          </div>
         </section>
 
         {/* ── Live Preview ─────────────────────────────────────── */}

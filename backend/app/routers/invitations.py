@@ -14,8 +14,7 @@ from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
 from app.models.application_broker import ApplicationBroker
-from app.services.email import send_complete_application_email, send_invitation_email, send_setup_account_email
-from app.services.login_code import set_login_code
+from app.services.email import send_complete_application_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
@@ -53,10 +52,19 @@ def list_invitations(
         .all()
     )
 
+    now = datetime.now(timezone.utc)
     items = []
     for user, inviter_name in rows:
         item = InvitationOut.model_validate(user)
         item.invited_by_name = inviter_name
+        # Pending = invite issued but the user has not set a real password yet.
+        pending = user.password_hash in ("!", "!invited")
+        item.setup_pending = pending
+        expires_at = user.email_verification_token_expires_at
+        if pending and expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            item.setup_expired = expires_at < now
         items.append(item)
 
     return PaginatedInvitations(items=items, total=total, page=page, per_page=per_page)
@@ -80,7 +88,14 @@ def invite_user(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This account has been deactivated. Reactivate it first.",
             )
-        # Re-invite: generate a fresh setup token
+        # Refuse to overwrite an already-set-up account via the invite flow —
+        # an admin who wants the user to reset should send a password reset instead.
+        if existing.password_hash not in ("!", "!invited"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This user has already set up an account. Send a password reset instead.",
+            )
+        # Re-invite an account that hasn't completed setup: refresh the token.
         token = secrets.token_urlsafe(32)
         existing.email_verification_token = token
         existing.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
@@ -102,7 +117,6 @@ def invite_user(
         role="client",
         is_active=True,
         email_verified=True,
-        login_code_attempts=0,
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
         email_verification_token=token,
@@ -135,12 +149,6 @@ def invite_to_complete_application(
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
 
-    # Regenerate login code for code-auth users
-    login_code = None
-    if client.auth_method == "code":
-        login_code = set_login_code(client)
-        db.commit()
-
     send_complete_application_email(
         to_email=client.email,
         client_name=client.full_name,
@@ -148,7 +156,6 @@ def invite_to_complete_application(
         loan_type=application.loan_type.value,
         amount=str(application.amount),
         application_id=application.id,
-        login_code=login_code,
     )
 
     return {"detail": f"Completion invite sent to {client.email}"}
@@ -193,11 +200,6 @@ def start_application_for_client(
         tenant_id=tenant_id,
     ))
 
-    # Regenerate login code for code-auth users
-    login_code = None
-    if client.auth_method == "code":
-        login_code = set_login_code(client)
-
     db.commit()
     db.refresh(application)
 
@@ -208,7 +210,6 @@ def start_application_for_client(
         loan_type=loan_type.value,
         amount=str(data.amount),
         application_id=application.id,
-        login_code=login_code,
     )
 
     return {

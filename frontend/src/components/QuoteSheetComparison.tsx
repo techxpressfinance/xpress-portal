@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { QuoteSheet, QuoteOption } from '../types';
 
 interface QuoteSheetComparisonProps {
@@ -98,7 +99,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
 }
 
 // ── On-screen term block (unchanged card style) ──────────────────────
-function TermBlock({ group, isClientView, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; paymentType: string }) {
+function TermBlock({ group, isClientView, showInterestRate, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; showInterestRate: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -129,8 +130,8 @@ function TermBlock({ group, isClientView, assetDescription, paymentType }: { gro
           {!isClientView && (
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
           )}
-          {allUpRate != null && (
-            <Row label="All Up Interest Rate" value={fmtPercent(allUpRate)} />
+          {allUpRate != null && (!isClientView || showInterestRate) && (
+            <Row label={isClientView ? 'Interest Rate' : 'All Up Interest Rate'} value={fmtPercent(allUpRate)} />
           )}
           <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} />
           {!isClientView && (
@@ -173,91 +174,6 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
   );
 }
 
-// ── PDF table-based term block ───────────────────────────────────────
-function PdfTermTable({ group, isClientView, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; assetDescription: string; paymentType: string }) {
-  const { termYears, noBalloon, withBalloon } = group;
-  const hasTwo = noBalloon && withBalloon;
-
-  const renderRows = (opt: QuoteOption) => {
-    const balloonPct = opt.lender_name.match(/(\d+)%\s*Balloon/);
-    const balloonLabel = balloonPct ? `Balloon ${balloonPct[1]}%` : 'Balloon';
-
-    // Client sees: asset price - deposit + fees (no brokerage commission)
-    const clientLoanAmount = (opt.purchase_price ?? 0) - (opt.deposit ?? 0) + (opt.establishment_fee ?? 0) + (opt.application_fee ?? 0);
-    const allUpRate = opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
-
-    const rows: { label: string; value: string; highlight?: boolean }[] = [
-      { label: `${assetDescription} price`, value: fmtCurrency(opt.purchase_price) },
-      { label: 'Deposit', value: fmtCurrency(opt.deposit) },
-      { label: 'Amount to be Financed', value: isClientView ? fmtCurrency(clientLoanAmount) : fmtCurrency(opt.loan_amount) },
-      { label: 'Term (in years)', value: String(termYears) },
-      { label: (opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon', value: fmtCurrency(opt.balloon_residual ?? 0) },
-      { label: 'Repayments per month', value: fmtCurrency(opt.repayment_monthly), highlight: true },
-    ];
-
-    if (!isClientView) {
-      rows.push({ label: 'Rate of Interest', value: fmtPercent(opt.interest_rate) });
-    }
-
-    if (allUpRate != null) {
-      rows.push({ label: 'All Up Interest Rate', value: fmtPercent(allUpRate) });
-    }
-
-    rows.push({ label: 'Weekly Equivalent', value: fmtCurrency(opt.repayment_weekly) });
-
-    if (!isClientView) {
-      rows.push({ label: 'Total Interest paid over the term', value: fmtCurrency(opt.total_interest) });
-    }
-
-    return rows;
-  };
-
-  const renderCol = (opt: QuoteOption, subtitle?: string) => (
-    <div style={{ flex: '1 1 0', minWidth: 0, borderRight: subtitle === 'No Balloon' && hasTwo ? '1px solid #e2e8f0' : undefined }}>
-      {subtitle && (
-        <div style={{ padding: '6px 14px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: '10px', fontWeight: 700, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
-          {subtitle}
-        </div>
-      )}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
-        <tbody>
-          {renderRows(opt).map((row, i) => (
-            <tr key={i} style={{ background: row.highlight ? '#eff6ff' : i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-              <td style={{ padding: '7px 14px', color: row.highlight ? '#1e40af' : '#4b5563', fontWeight: row.highlight ? 600 : 400, borderBottom: '1px solid #e9edf2', width: '58%' }}>
-                {row.label}
-              </td>
-              <td style={{ padding: '7px 14px', textAlign: 'right', color: row.highlight ? '#1d4ed8' : '#111827', fontWeight: row.highlight ? 800 : 600, borderBottom: '1px solid #e9edf2', whiteSpace: 'nowrap', fontSize: row.highlight ? '13px' : '11.5px' }}>
-                {row.value}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-
-  return (
-    <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-      {/* Term header */}
-      <div style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: 700, letterSpacing: '0.02em' }}>{termYears} Year Term</span>
-        {hasTwo && <span style={{ color: '#bfdbfe', fontSize: '10px', fontWeight: 500 }}>No Balloon &amp; With Balloon</span>}
-      </div>
-      {/* Columns */}
-      <div style={{ display: 'flex' }}>
-        {hasTwo ? (
-          <>
-            {noBalloon && renderCol(noBalloon, 'No Balloon')}
-            {withBalloon && renderCol(withBalloon, 'With Balloon')}
-          </>
-        ) : (
-          renderCol((noBalloon || withBalloon)!)
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Parse input_parameters to get fee details, asset description, and selected terms
 function parseInputParams(quoteSheet: QuoteSheet) {
   if (!quoteSheet.input_parameters) return null;
@@ -276,6 +192,7 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       feesFinanced: params.fees_financed ?? true,
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
+      repaymentRange: (params.repayment_range as number | undefined) ?? null,
     };
   } catch {
     return null;
@@ -302,6 +219,7 @@ export default function QuoteSheetComparison({
   const feesFinanced = parsedParams?.feesFinanced ?? true;
   const selectedTerms = parsedParams?.selectedTerms;
   const paymentType = parsedParams?.paymentType ?? 'advance';
+  const showInterestRate = parsedParams?.showInterestRate ?? false;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -314,116 +232,493 @@ export default function QuoteSheetComparison({
     rows.push(termGroups.slice(i, i + 2));
   }
 
-  // ── PDF Export Layout ────────────────────────────────────────────────
+  // ── PDF Export Layout (Design Language v1) ──────────────────────────
   if (isPdfExport) {
-    const whyItems = [
-      'We specialise in end to end account management.',
-      'We act as one point of contact for all your admin needs for the life of the loan — payout letters, updating account information and changing address on the loan contracts.',
-      'We take the stress away at the end of the financial year. We are just a phone call away for any tax related information such as interest paid on the loan and outstanding balance on the contract.',
-    ];
+    // Design tokens — all hex, no oklch/oklab (html2canvas compat)
+    const ink = '#0F1E3D';
+    const ink2 = '#2A3956';
+    const muted = '#6B7385';
+    const hairline = '#E4DFD3';
+    const hairline2 = '#EFEAE0';
+    const paper = '#FBFAF6';
+    const paper2 = '#F3EFE6';
+    const accent = '#A8743A';
+    const hilight = '#FDF5E6';
+    const serif = "'Instrument Serif', Georgia, serif";
+    const sans = "'Geist', ui-sans-serif, system-ui, sans-serif";
+    const mono = "'Geist Mono', 'JetBrains Mono', ui-monospace, monospace";
+
+    const first = options[0];
+    const clientLoanAmt0 = (first.purchase_price ?? 0) - (first.deposit ?? 0)
+      + (first.establishment_fee ?? 0) + (first.application_fee ?? 0);
+
+    // Primary option per group: no-balloon preferred
+    const prim = (g: TermGroup): QuoteOption => (g.noBalloon ?? g.withBalloon)!;
+
+    // Client interest rate or computed all-up rate
+    const rate = (opt: QuoteOption) => opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
+
+    // Recommended column: use is_recommended flag if set on any option
+    const recommendedYears: number | null = (() => {
+      for (const g of termGroups) {
+        if (prim(g).is_recommended) return g.termYears;
+      }
+      return null;
+    })();
+
+    const hasDualBalloon = termGroups.some(g => g.noBalloon && g.withBalloon);
+    const hasAnyBalloon  = options.some(o => (o.balloon_residual ?? 0) > 0);
+
+    // Featured group for breakdown strip: prefer 5yr, else first
+    const featured = termGroups.find(g => g.termYears === 5) ?? termGroups[0];
+    const featOpt = prim(featured);
+    const featClientAmt = (featOpt.purchase_price ?? 0) - (featOpt.deposit ?? 0)
+      + (featOpt.establishment_fee ?? 0) + (featOpt.application_fee ?? 0);
+
+    // Split a currency amount into dollar string and cents string
+    const splitAmt = (v: number | null): [string, string] => {
+      if (v == null) return ['—', ''];
+      const s = Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const dot = s.lastIndexOf('.');
+      return [`$${s.slice(0, dot)}`, s.slice(dot)];
+    };
+
+    // Repayment range delta (broker-configured ±$ shown to client)
+    const rangeDelta = isClientView ? (parsedParams?.repaymentRange ?? null) : null;
+
+    // Format a repayment for client view: range if delta set, else exact split
+    const fmtRepaymentClient = (v: number | null): { lo: string; hi: string } | null => {
+      if (v == null || rangeDelta == null) return null;
+      const lo = Math.max(0, v - rangeDelta);
+      const hi = v + rangeDelta;
+      const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-AU')}`;
+      return { lo: fmt(lo), hi: fmt(hi) };
+    };
+
+    const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    const colBg = (g: TermGroup): string => g.termYears === recommendedYears ? hilight : 'transparent';
+
+    // Shared td styles for the comparison matrix
+    const lbl: CSSProperties = {
+      textAlign: 'left',
+      fontFamily: mono,
+      fontSize: '10px',
+      letterSpacing: '0.1em',
+      textTransform: 'uppercase',
+      color: muted,
+      padding: '9px 10px 9px 0',
+      borderBottom: `1px solid ${hairline2}`,
+      verticalAlign: 'baseline',
+    };
+    const val: CSSProperties = {
+      textAlign: 'right',
+      padding: '9px 10px',
+      borderBottom: `1px solid ${hairline2}`,
+      fontSize: '11.5px',
+      color: ink,
+      verticalAlign: 'baseline',
+      fontVariantNumeric: 'tabular-nums',
+    };
+    const sublbl: CSSProperties = {
+      textAlign: 'left',
+      fontFamily: serif,
+      fontStyle: 'italic',
+      fontSize: '11px',
+      color: muted,
+      padding: '4px 0 4px 16px',
+      borderBottom: 'none',
+      verticalAlign: 'baseline',
+    };
+    const subval: CSSProperties = {
+      textAlign: 'right',
+      padding: '4px 10px',
+      fontSize: '10.5px',
+      color: muted,
+      borderBottom: 'none',
+      verticalAlign: 'baseline',
+      fontVariantNumeric: 'tabular-nums',
+    };
 
     return (
-      <div id={`quote-sheet-${quoteSheet.id}`} style={{ background: '#ffffff', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1a1a1a', padding: '32px' }}>
+      <div id={`quote-sheet-${quoteSheet.id}`} style={{
+        width: '794px',
+        minHeight: '1123px',
+        background: paper,
+        padding: '56px 56px 80px',
+        color: ink,
+        fontFamily: sans,
+        fontSize: '11.5px',
+        lineHeight: '1.5',
+        fontVariantNumeric: 'tabular-nums',
+        position: 'relative',
+        boxSizing: 'border-box',
+      }}>
 
-        {/* ── Header bar ──────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '20px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0' }}>
-          {/* Brand */}
-          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '80px', objectFit: 'contain' }} />
-          {/* Contact */}
-          <div style={{ textAlign: 'right', fontSize: '11px', color: '#64748b', lineHeight: 1.8 }}>
-            <div style={{ fontWeight: 600, color: '#374151' }}>727 Collins Street, Docklands VIC 3008</div>
-            <div>Ph: (03) 8456 7996</div>
+        {/* ── HEADER ──────────────────────────────────────────── */}
+        <header style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          paddingBottom: '18px', borderBottom: `1px solid ${ink}`, marginBottom: '32px',
+        }}>
+          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '72px', objectFit: 'contain' }} />
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'auto auto',
+            columnGap: '20px', rowGap: '3px',
+            fontFamily: mono, fontSize: '10px', color: muted,
+            textAlign: 'right', letterSpacing: '0.02em',
+          }}>
+            {applicationRef && <>
+              <span>Reference</span>
+              <b style={{ color: ink, fontWeight: 500 }}>{applicationRef}</b>
+            </>}
+            <span>Issued</span>
+            <b style={{ color: ink, fontWeight: 500 }}>{today}</b>
           </div>
-        </div>
+        </header>
 
-        {/* ── Document identity ───────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px' }}>
+        {/* ── HERO ────────────────────────────────────────────── */}
+        <div style={{
+          marginBottom: '28px',
+          display: 'grid',
+          gridTemplateColumns: clientName ? '1fr auto' : '1fr',
+          alignItems: 'end', gap: '24px',
+        }}>
           <div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.4, marginBottom: '8px' }}>Quote Sheet</div>
-            {assetDescription && assetDescription !== 'Asset' && (
-              <div style={{ display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>
-                {assetDescription} Finance
-              </div>
-            )}
-            {quoteSheet.title && (
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>{quoteSheet.title}</div>
-            )}
-          </div>
-          {/* Meta box */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', fontSize: '12px', color: '#374151', minWidth: '180px', textAlign: 'right' }}>
-            {clientName && (
-              <div style={{ marginBottom: '4px' }}>
-                <span style={{ color: '#94a3b8', fontWeight: 500 }}>Prepared for </span>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>{clientName}</span>
-              </div>
-            )}
-            {applicationRef && (
-              <div style={{ marginBottom: '4px' }}>
-                <span style={{ color: '#94a3b8' }}>Ref: </span>
-                <span style={{ fontWeight: 600 }}>{applicationRef}</span>
-              </div>
-            )}
-            <div>
-              <span style={{ color: '#94a3b8' }}>Date: </span>
-              <span style={{ fontWeight: 600 }}>{new Date().toLocaleDateString('en-AU')}</span>
+            <div style={{
+              fontFamily: mono, fontSize: '10px', letterSpacing: '0.16em',
+              textTransform: 'uppercase', color: muted, marginBottom: '12px',
+            }}>
+              Indicative Finance Quote{assetDescription !== 'Asset' ? ` · ${assetDescription}` : ''}
             </div>
+            <h1 style={{
+              fontFamily: serif, fontWeight: 400, fontSize: '48px',
+              lineHeight: 0.95, letterSpacing: '-0.02em', margin: 0, color: ink,
+            }}>
+              Finance <em style={{ fontStyle: 'italic' }}>Quote</em>
+            </h1>
+            {quoteSheet.title && (
+              <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: '13px', color: ink2, marginTop: '8px' }}>
+                {quoteSheet.title}
+              </div>
+            )}
           </div>
+          {clientName && (
+            <div style={{ textAlign: 'right', fontFamily: mono, fontSize: '10.5px', color: muted, letterSpacing: '0.02em' }}>
+              <b style={{ display: 'block', fontFamily: sans, color: ink, fontWeight: 500, fontSize: '14px', letterSpacing: '0', marginBottom: '2px' }}>
+                {clientName}
+              </b>
+              Prepared for
+            </div>
+          )}
         </div>
 
-        {/* ── Divider label ───────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-          <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Finance Scenarios</div>
-          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-        </div>
-
-        {/* ── Term Tables ─────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {rows.map((row, ri) => (
-            <div key={ri} style={{ display: 'flex', gap: '14px' }} className="break-inside-avoid">
-              {row.map(group => (
-                <div key={group.termYears} style={{ flex: '1 1 0', minWidth: 0 }}>
-                  <PdfTermTable group={group} isClientView={isClientView} assetDescription={assetDescription} paymentType={paymentType} />
-                </div>
-              ))}
-              {row.length === 1 && <div style={{ flex: '1 1 0', minWidth: 0 }} />}
+        {/* ── ASSET STRIP ─────────────────────────────────────── */}
+        <div style={{
+          marginBottom: '28px', padding: '14px 16px', background: paper2,
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px',
+        }}>
+          {([
+            { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—' },
+            { label: 'Drive-away price', value: fmtCurrency(first.purchase_price) },
+            { label: 'Deposit', value: fmtCurrency(first.deposit) },
+            { label: 'Amount financed', value: isClientView ? fmtCurrency(clientLoanAmt0) : fmtCurrency(first.loan_amount) },
+          ] as { label: string; value: string }[]).map(({ label, value }) => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontFamily: mono, fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted }}>
+                {label}
+              </span>
+              <span style={{ fontFamily: sans, fontSize: '13px', fontWeight: 500, color: ink, fontVariantNumeric: 'tabular-nums' }}>
+                {value}
+              </span>
             </div>
           ))}
         </div>
 
-        {/* ── Non-Financed Fees ───────────────────────────────── */}
-        {!feesFinanced && parsedParams && (
-          <div style={{ marginTop: '20px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #fde68a' }} className="break-inside-avoid">
-            <div style={{ background: '#fffbeb', padding: '10px 16px', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400e' }}>Fees Payable (Not Financed)</div>
-                <div style={{ fontSize: '10px', color: '#a16207', marginTop: '1px' }}>These fees are charged separately and are not included in the loan amount.</div>
-              </div>
+        {/* ── SECTION HEADING ─────────────────────────────────── */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          marginBottom: '14px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
+        }}>
+          <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '18px', margin: 0, color: ink }}>
+            Scenarios <em style={{ fontStyle: 'italic' }}>at a glance</em>
+          </h3>
+          <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            {termGroups.length} term{termGroups.length !== 1 ? 's' : ''} · AUD
+          </span>
+        </div>
+
+        {/* ── COMPARISON MATRIX ───────────────────────────────── */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
+          <thead>
+            <tr>
+              <th style={{ ...lbl, borderBottom: 'none', width: '130px' }}>&nbsp;</th>
+              {termGroups.map(g => (
+                <th key={g.termYears} style={{
+                  textAlign: 'right', padding: '0 10px 4px',
+                  fontFamily: sans, fontWeight: 500, fontSize: '12px', color: ink,
+                  background: colBg(g), borderBottom: 'none',
+                }}>
+                  {g.termYears === recommendedYears && (
+                    <span style={{ display: 'block', fontFamily: mono, fontSize: '8px', color: accent, letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Recommended
+                    </span>
+                  )}
+                  {g.termYears} yr
+                  <span style={{ display: 'block', fontFamily: mono, fontSize: '9.5px', color: muted, fontWeight: 400, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '4px' }}>
+                    {g.termMonths} months
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Hero row: monthly repayment */}
+            <tr>
+              <td style={{
+                ...lbl,
+                borderTop: `1px solid ${ink}`, borderBottom: `1px solid ${ink}`,
+                padding: '18px 10px 18px 0',
+                fontFamily: serif, fontStyle: 'italic', fontSize: '12px',
+                textTransform: 'none', letterSpacing: '0', color: ink,
+              }}>
+                Monthly <em>repayment</em>
+              </td>
+              {termGroups.map(g => {
+                const rng = fmtRepaymentClient(prim(g).repayment_monthly);
+                const [dol, cts] = splitAmt(prim(g).repayment_monthly);
+                return (
+                  <td key={g.termYears} style={{
+                    textAlign: 'right', padding: '18px 10px',
+                    borderTop: `1px solid ${ink}`, borderBottom: `1px solid ${ink}`,
+                    background: colBg(g), verticalAlign: 'baseline',
+                  }}>
+                    {rng ? (
+                      <span style={{ fontFamily: sans, fontWeight: 500, fontSize: '18px', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                        {rng.lo} – {rng.hi}
+                        <small style={{ display: 'block', fontFamily: mono, fontSize: '9px', fontWeight: 400, color: muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '3px' }}>
+                          per month
+                        </small>
+                      </span>
+                    ) : (
+                      <span style={{ fontFamily: sans, fontWeight: 500, fontSize: '24px', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                        {dol}<small style={{ fontSize: '11px', fontWeight: 400, color: muted, marginLeft: '1px' }}>{cts}</small>
+                      </span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+
+            {/* Sub-row: with-balloon repayment */}
+            {hasDualBalloon && (
+              <tr>
+                <td style={sublbl}>↳ with balloon</td>
+                {termGroups.map(g => {
+                  const hasBoth = !!(g.noBalloon && g.withBalloon);
+                  if (!hasBoth) return <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>—</td>;
+                  const rng = fmtRepaymentClient(g.withBalloon!.repayment_monthly);
+                  const [dol, cts] = splitAmt(g.withBalloon!.repayment_monthly);
+                  return (
+                    <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                      {rng
+                        ? <>{rng.lo} – {rng.hi}</>
+                        : <>{dol}<small style={{ fontSize: '9px', color: muted }}>{cts}</small></>}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
+
+            {/* Weekly equivalent */}
+            <tr>
+              <td style={lbl}>Weekly equivalent</td>
+              {termGroups.map(g => (
+                <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
+                  {fmtCurrency(prim(g).repayment_weekly)}
+                </td>
+              ))}
+            </tr>
+            {hasDualBalloon && (
+              <tr>
+                <td style={sublbl}>↳ with balloon</td>
+                {termGroups.map(g => (
+                  <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                    {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.repayment_weekly) : '—'}
+                  </td>
+                ))}
+              </tr>
+            )}
+
+            {/* Interest rate */}
+            {termGroups.some(g => rate(prim(g)) != null) && (!isClientView || showInterestRate) && (
+              <>
+                <tr>
+                  <td style={lbl}>Interest rate</td>
+                  {termGroups.map(g => (
+                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
+                      {fmtPercent(rate(prim(g)))}
+                    </td>
+                  ))}
+                </tr>
+                {hasDualBalloon && (
+                  <tr>
+                    <td style={sublbl}>↳ with balloon</td>
+                    {termGroups.map(g => (
+                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                        {g.noBalloon && g.withBalloon ? fmtPercent(rate(g.withBalloon)) : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </>
+            )}
+
+            {/* Balloon payment */}
+            {hasAnyBalloon && (
+              <>
+                <tr>
+                  <td style={lbl}>Balloon</td>
+                  {termGroups.map(g => (
+                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
+                      {fmtCurrency(prim(g).balloon_residual ?? 0)}
+                    </td>
+                  ))}
+                </tr>
+                {hasDualBalloon && (
+                  <tr>
+                    <td style={sublbl}>↳ with balloon</td>
+                    {termGroups.map(g => (
+                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                        {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.balloon_residual ?? 0) : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </>
+            )}
+
+            {/* Rate of interest — broker only */}
+            {!isClientView && (
+              <>
+                <tr>
+                  <td style={lbl}>Rate of interest</td>
+                  {termGroups.map(g => (
+                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
+                      {fmtPercent(prim(g).interest_rate)}
+                    </td>
+                  ))}
+                </tr>
+                {hasDualBalloon && (
+                  <tr>
+                    <td style={sublbl}>↳ with balloon</td>
+                    {termGroups.map(g => (
+                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                        {g.noBalloon && g.withBalloon ? fmtPercent(g.withBalloon.interest_rate) : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </>
+            )}
+
+            {/* Total interest — broker only */}
+            {!isClientView && (
+              <>
+                <tr>
+                  <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink2, textTransform: 'none', letterSpacing: '0', paddingTop: '14px' }}>
+                    Total interest
+                  </td>
+                  {termGroups.map(g => (
+                    <td key={g.termYears} style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink2, paddingTop: '14px', background: colBg(g) }}>
+                      {fmtCurrency(prim(g).total_interest)}
+                    </td>
+                  ))}
+                </tr>
+                {hasDualBalloon && (
+                  <tr>
+                    <td style={{ ...sublbl, paddingTop: '2px' }}>↳ with balloon</td>
+                    {termGroups.map(g => (
+                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
+                        {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.total_interest) : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </>
+            )}
+          </tbody>
+        </table>
+
+        {/* ── BREAKDOWN STRIP ─────────────────────────────────── */}
+        <div style={{
+          marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '24px', padding: '18px 0',
+          borderTop: `1px solid ${hairline}`, borderBottom: `1px solid ${hairline}`,
+        }}>
+          {([
+            {
+              label: isClientView ? 'Amount financed' : 'Principal financed',
+              value: fmtCurrency(isClientView ? featClientAmt : featOpt.loan_amount),
+              sub: `${featured.termYears} year term`,
+            },
+            isClientView
+              ? (() => {
+                  const rng = fmtRepaymentClient(featOpt.repayment_monthly);
+                  return rng
+                    ? { label: 'Monthly repayment', value: `${rng.lo} – ${rng.hi}`, sub: 'per month' }
+                    : { label: 'Monthly repayment', value: fmtCurrency(featOpt.repayment_monthly), sub: 'per month' };
+                })()
+              : { label: 'Interest paid over term', value: fmtCurrency(featOpt.total_interest), sub: rate(featOpt) != null ? `Effective rate ${fmtPercent(rate(featOpt))} p.a.` : '' },
+            (() => {
+              const balloonOpt = featured.withBalloon ?? (featOpt.balloon_residual ? featOpt : null);
+              const balloonAmt = balloonOpt?.balloon_residual ?? 0;
+              return balloonAmt > 0
+                ? { label: `Balloon at month ${balloonOpt?.loan_term_months ?? featured.termMonths}`, value: fmtCurrency(balloonAmt), sub: 'refinanceable' }
+                : { label: 'Weekly equivalent', value: fmtCurrency(featOpt.repayment_weekly), sub: 'per week' };
+            })(),
+          ] as { label: string; value: string; sub: string }[]).map(({ label, value, sub }) => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontFamily: mono, fontSize: '9.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted }}>
+                {label}
+              </span>
+              <span style={{ fontFamily: sans, fontSize: '18px', fontWeight: 500, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', color: ink }}>
+                {value}
+              </span>
+              {sub && <span style={{ fontFamily: mono, fontSize: '10px', color: muted }}>{sub}</span>}
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+          ))}
+        </div>
+
+        {/* ── NON-FINANCED FEES ───────────────────────────────── */}
+        {!feesFinanced && parsedParams && (
+          <div style={{ marginTop: '24px' }} className="break-inside-avoid">
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
+            }}>
+              <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '16px', margin: 0, color: ink }}>
+                Fees payable — <em>not financed</em>
+              </h3>
+              <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Charged separately
+              </span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' as const }}>
+              <colgroup><col style={{ width: '70%' }} /><col style={{ width: '30%' }} /></colgroup>
               <tbody>
                 {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#ffffff' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Loan Establishment Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}>{fmtCurrency(parsedParams.establishmentFee)}</td></tr>
                 )}
                 {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#f8fafc' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>PPSR</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>PPSR</td><td style={val}>{fmtCurrency(parsedParams.ppsrFee)}</td></tr>
                 )}
                 {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-                  <tr style={{ borderBottom: '1px solid #fef3c7', background: '#ffffff' }}>
-                    <td style={{ padding: '8px 16px', color: '#374151' }}>Origination Fee</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.originationFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>Origination fee</td><td style={val}>{fmtCurrency(parsedParams.originationFee)}</td></tr>
                 )}
-                <tr style={{ background: '#fffbeb' }}>
-                  <td style={{ padding: '9px 16px', fontWeight: 700, color: '#92400e' }}>Total Fees</td>
-                  <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>
+                <tr>
+                  <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '12px' }}>
+                    Total fees
+                  </td>
+                  <td style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink, borderBottom: 'none', paddingTop: '12px' }}>
                     {fmtCurrency((parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0))}
                   </td>
                 </tr>
@@ -432,48 +727,46 @@ export default function QuoteSheetComparison({
           </div>
         )}
 
-        {/* ── Fee & Rate Summary (broker internal only) ────────── */}
+        {/* ── FEE & RATE SUMMARY — broker internal ────────────── */}
         {parsedParams && !isClientView && (
-          <div style={{ marginTop: '20px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #bfdbfe' }} className="break-inside-avoid">
-            <div style={{ background: '#eff6ff', padding: '10px 16px', borderBottom: '1px solid #bfdbfe' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e40af', letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>Fee &amp; Rate Summary — Internal</div>
+          <div style={{ marginTop: '24px' }} className="break-inside-avoid">
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
+            }}>
+              <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '16px', margin: 0, color: ink }}>
+                Fee &amp; rate summary
+              </h3>
+              <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Internal
+              </span>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' as const }}>
+              <colgroup><col style={{ width: '70%' }} /><col style={{ width: '30%' }} /></colgroup>
               <tbody>
                 {parsedParams.establishmentFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
-                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Loan Establishment Fee</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.establishmentFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}>{fmtCurrency(parsedParams.establishmentFee)}</td></tr>
                 )}
                 {parsedParams.ppsrFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#f8fafc' }}>
-                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>PPSR</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.ppsrFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>PPSR</td><td style={val}>{fmtCurrency(parsedParams.ppsrFee)}</td></tr>
                 )}
                 {parsedParams.originationFee != null && (
-                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
-                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Origination Fee</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtCurrency(parsedParams.originationFee)}</td>
-                  </tr>
+                  <tr><td style={lbl}>Origination fee</td><td style={val}>{fmtCurrency(parsedParams.originationFee)}</td></tr>
                 )}
                 {parsedParams.interestRate != null && (
-                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#f8fafc' }}>
-                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Lender's Rate</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{fmtPercent(parsedParams.interestRate)}</td>
-                  </tr>
+                  <tr><td style={lbl}>Lender's rate</td><td style={val}>{fmtPercent(parsedParams.interestRate)}</td></tr>
                 )}
                 {parsedParams.brokeragePercent != null && (
-                  <tr style={{ borderBottom: '1px solid #e0ecff', background: '#ffffff' }}>
-                    <td style={{ padding: '7px 16px', color: '#4b5563' }}>Brokerage %</td>
-                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 600, color: '#111827' }}>{Number(parsedParams.brokeragePercent).toFixed(2)}%</td>
-                  </tr>
+                  <tr><td style={lbl}>Brokerage %</td><td style={val}>{Number(parsedParams.brokeragePercent).toFixed(2)}%</td></tr>
                 )}
                 {options[0]?.brokerage != null && (
-                  <tr style={{ background: '#eff6ff' }}>
-                    <td style={{ padding: '9px 16px', fontWeight: 700, color: '#1e40af' }}>Brokerage $</td>
-                    <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 800, color: '#1d4ed8' }}>{fmtCurrency(options[0].brokerage)}</td>
+                  <tr>
+                    <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '12px' }}>
+                      Brokerage $
+                    </td>
+                    <td style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink, borderBottom: 'none', paddingTop: '12px' }}>
+                      {fmtCurrency(options[0].brokerage)}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -481,26 +774,19 @@ export default function QuoteSheetComparison({
           </div>
         )}
 
-        {/* ── Why Choose Us ───────────────────────────────────── */}
-        {isClientView && (
-          <div style={{ marginTop: '32px' }} className="break-inside-avoid">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-              <div style={{ fontSize: '12px', fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.08em', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Why Choose Us</div>
-              <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {whyItems.map((text, i) => (
-                <div key={i} style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', borderTop: '3px solid #2563eb' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#2563eb', color: '#ffffff', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}>
-                    {i + 1}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#374151', lineHeight: 1.65 }}>{text}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* ── FOOTER ──────────────────────────────────────────── */}
+        <footer style={{
+          marginTop: '40px', paddingTop: '14px',
+          borderTop: `1px solid ${hairline}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+          fontFamily: mono, fontSize: '9.5px', letterSpacing: '0.04em', color: muted,
+        }}>
+          <p style={{ margin: 0, fontFamily: sans, fontStyle: 'italic', color: muted, fontSize: '10px', maxWidth: '56ch', lineHeight: 1.5 }}>
+            This quote is indicative only and subject to full credit assessment and lender approval. Rates and fees may vary. Xpress Finance Group · ACL 000000 · 727 Collins St, Docklands VIC 3008 · (03) 8456 7996.
+          </p>
+          <span style={{ letterSpacing: '0.16em' }}>1 / 1</span>
+        </footer>
+
       </div>
     );
   }
@@ -518,7 +804,7 @@ export default function QuoteSheetComparison({
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-6 break-inside-avoid">
             {row.map(group => (
-              <TermBlock key={group.termYears} group={group} isClientView={isClientView} assetDescription={assetDescription} paymentType={paymentType} />
+              <TermBlock key={group.termYears} group={group} isClientView={isClientView} showInterestRate={showInterestRate} assetDescription={assetDescription} paymentType={paymentType} />
             ))}
           </div>
         ))}

@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models.user import UserRole
+from app.schemas.common import normalize_email
 
 
 def _validate_password(v: str) -> str:
@@ -24,6 +25,8 @@ class UserRegister(BaseModel):
     full_name: str
     phone: Optional[str] = None
 
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
@@ -41,6 +44,8 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
 
 class UserOut(BaseModel):
     id: str
@@ -56,6 +61,7 @@ class UserOut(BaseModel):
     license_number: Optional[str] = None
     organization_name: Optional[str] = None
     tenant_id: Optional[str] = None
+    invited_by_id: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -63,6 +69,8 @@ class UserOut(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
 
 class TokenResponse(BaseModel):
@@ -98,6 +106,8 @@ class InvitationCreate(BaseModel):
     full_name: str
     phone: Optional[str] = None
 
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
     @field_validator("full_name")
     @classmethod
     def name_not_empty(cls, v: str) -> str:
@@ -113,6 +123,8 @@ class BrokerCreate(BaseModel):
     employee_id: str
     department: Optional[str] = None
     license_number: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
     @field_validator("full_name")
     @classmethod
@@ -143,15 +155,6 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
-class CodeRequest(BaseModel):
-    email: EmailStr
-
-
-class CodeVerify(BaseModel):
-    email: EmailStr
-    code: str
-
-
 class InvitationOut(BaseModel):
     id: str
     email: str
@@ -159,6 +162,8 @@ class InvitationOut(BaseModel):
     phone: Optional[str]
     is_active: bool
     auth_method: str
+    setup_pending: bool = False
+    setup_expired: bool = False
     created_at: datetime
     invited_by_name: Optional[str] = None
 

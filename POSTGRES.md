@@ -2,15 +2,15 @@
 
 ## Credentials
 
-| Thing        | Value                                                        |
-|--------------|--------------------------------------------------------------|
-| Host         | `xpress-db.ca3wk0oewgar.us-east-1.rds.amazonaws.com`        |
-| Port         | `5432`                                                       |
-| Database     | `xpress`                                                     |
-| Admin user   | `xpress_admin`                                               |
-| App user     | `xpress_app`                                                 |
-| Region       | `us-east-1`                                                  |
-| Instance     | `db.t4g.micro`                                               |
+| Thing      | Value                                                |
+| ---------- | ---------------------------------------------------- |
+| Host       | `xpress-db.ca3wk0oewgar.us-east-1.rds.amazonaws.com` |
+| Port       | `5432`                                               |
+| Database   | `xpress`                                             |
+| Admin user | `xpress_admin`                                       |
+| App user   | `xpress_app`                                         |
+| Region     | `us-east-1`                                          |
+| Instance   | `db.t4g.micro`                                       |
 
 ---
 
@@ -139,3 +139,4 @@ DB logs: **RDS Console → your DB → Logs & events**
 - **Deletion protection is on** — you cannot delete the RDS instance without first disabling this in the console.
 - **Password rotation**: if you change `xpress_app`'s password, update `DATABASE_URL` in `/opt/xpress-tech-portal/backend/.env` and restart the backend.
 - **Storage**: currently 20 GB. If it fills up, RDS goes read-only. Monitor free storage in CloudWatch and expand via RDS Console → Storage → Modify if needed.
+nscx4p@#gebXhqLM

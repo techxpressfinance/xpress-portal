@@ -28,6 +28,7 @@ from app.services.serialization import app_with_user as _app_with_user
 from app.services.email import (
     send_direct_engagement_client_invite,
     send_direct_engagement_referrer_thankyou,
+    send_new_lead_notification,
     send_status_notification,
 )
 from app.services.notification_service import create_notification
@@ -92,9 +93,27 @@ def create_application(
         send_direct_engagement_client_invite(
             data.applicant_email.strip(), client_name, referrer_name, direct_engagement_invite_url
         )
+    elif current_user.role == UserRole.referrer and data.client_engagement_model == "self_managed":
+        client_name = " ".join(filter(None, [data.applicant_first_name, data.applicant_last_name])) or "Unknown"
+        referrer_name = current_user.full_name or current_user.email
+        portal_url = f"{FRONTEND_URL}/admin/applications/{app.id}"
+        admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+        for admin in admins:
+            send_new_lead_notification(
+                admin.email,
+                admin.full_name or "Admin",
+                referrer_name,
+                client_name,
+                data.loan_type,
+                str(int(data.amount)),
+                portal_url,
+            )
 
     db.refresh(app, attribute_names=["user"])
     return _app_with_user(app)
+
+
+CLOSED_STATUSES = [ApplicationStatus.settled, ApplicationStatus.rejected, ApplicationStatus.not_proceeding]
 
 
 @router.get("", response_model=PaginatedApplications)
@@ -104,6 +123,7 @@ def list_applications(
     status_filter: Optional[ApplicationStatus] = Query(None, alias="status"),
     loan_type: Optional[LoanType] = None,
     search: Optional[str] = None,
+    closed: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
@@ -144,6 +164,10 @@ def list_applications(
 
     if status_filter:
         query = query.filter(LoanApplication.status == status_filter)
+    elif closed is False:
+        query = query.filter(LoanApplication.status.notin_(CLOSED_STATUSES))
+    elif closed is True:
+        query = query.filter(LoanApplication.status.in_(CLOSED_STATUSES))
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
     if search:

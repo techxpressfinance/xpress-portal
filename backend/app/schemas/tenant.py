@@ -6,6 +6,8 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
+from app.schemas.common import normalize_email
+
 
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$")
 _RESERVED_SLUGS = {"www", "api", "admin", "default", "app", "mail", "ftp", "static", "assets"}
@@ -18,6 +20,8 @@ class TenantSignup(BaseModel):
     admin_password: str
     admin_full_name: str
     admin_phone: Optional[str] = None
+
+    _normalize_email = field_validator("admin_email", mode="before")(normalize_email)
 
     @field_validator("slug")
     @classmethod

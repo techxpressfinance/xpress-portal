@@ -15,8 +15,6 @@ from app.models.user import User
 from app.schemas.user import (
     AccessTokenResponse,
     ChangePasswordRequest,
-    CodeRequest,
-    CodeVerify,
     ResendVerificationRequest,
     SetupAccountRequest,
     UserLogin,
@@ -32,12 +30,10 @@ from app.services.auth import (
     decode_token,
     hash_password,
     is_token_blacklisted,
-    verify_login_code,
     verify_password,
 )
 from app.services.cookie_auth import clear_refresh_cookie as _clear_refresh_cookie, set_refresh_cookie as _set_refresh_cookie
-from app.services.email import send_login_code_email, send_password_reset_email, send_verification_email
-from app.services.login_code import set_login_code
+from app.services.email import send_password_reset_email, send_verification_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -123,15 +119,19 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
         ),
     ).first()
 
-    # Check account lockout before verifying password
-    if user and user.locked_until and user.locked_until.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Account temporarily locked. Try again later.",
-        )
+    # Account lockout: still active → reject; expired → clear so the user gets a fresh window
+    if user and user.locked_until:
+        locked_until = user.locked_until if user.locked_until.tzinfo else user.locked_until.replace(tzinfo=timezone.utc)
+        if locked_until > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Account temporarily locked. Try again later.",
+            )
+        user.failed_login_attempts = 0
+        user.locked_until = None
 
-    # Code-auth users don't have a valid password hash — reject password login
-    if user and user.auth_method == "code":
+    # Users still on the setup-link placeholder hash can't log in by password
+    if user and user.password_hash in ("!", "!invited"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not user or not verify_password(data.password, user.password_hash):
@@ -150,9 +150,16 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     # Reset failed attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
+
+    # Blacklist any prior refresh token from a previous session before issuing a new one
+    prior_refresh = request.cookies.get("refresh_token")
+    if prior_refresh:
+        payload = decode_token(prior_refresh)
+        if payload and payload.get("type") == "refresh":
+            blacklist_token(prior_refresh, db)
+
     db.commit()
 
-    response.delete_cookie(key="refresh_token", path="/")
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
     return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
 
@@ -267,56 +274,16 @@ def me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.post("/request-code")
-def request_code(data: CodeRequest, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
-    auth_limiter.check(request)
-
-    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
-    if user and user.auth_method == "code" and user.is_active:
-        plain = set_login_code(user)
-        db.commit()
-        send_login_code_email(user.email, user.full_name, plain)
-
-    return {"message": "If an account exists with that email, a login code has been sent"}
-
-
-@router.post("/verify-code", response_model=AccessTokenResponse)
-def verify_code(data: CodeVerify, request: Request, response: Response, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
-    auth_limiter.check(request)
-
-    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
-    if not user or user.auth_method != "code":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
-    if not user.login_code or not user.login_code_expires_at:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No active code. Request a new one.")
-    if user.login_code_attempts >= 5:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts. Request a new code.")
-    expires_at = user.login_code_expires_at.replace(tzinfo=timezone.utc) if user.login_code_expires_at.tzinfo is None else user.login_code_expires_at
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Code expired. Request a new one.")
-
-    if not verify_login_code(data.code, user.login_code):
-        user.login_code_attempts += 1
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid code")
-
-    # Success — clear code and return tokens
-    user.login_code = None
-    user.login_code_expires_at = None
-    user.login_code_attempts = 0
-    db.commit()
-
-    _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
-    return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, tenant_id))
+_SETUP_PLACEHOLDER_HASHES = ("!", "!invited")
 
 
 @router.get("/validate-setup-token")
 def validate_setup_token(token: str = Query(...), db: Session = Depends(get_db)):
     """Check if an account setup token is valid. Returns user details if valid."""
     user = db.query(User).filter(User.email_verification_token == token).first()
-    if not user:
+    # Only accept tokens for accounts that haven't completed setup. A self-registered
+    # user's verify-email token must not be usable to reset their password.
+    if not user or user.password_hash not in _SETUP_PLACEHOLDER_HASHES:
         return {"valid": False, "reason": "Invalid or expired link"}
     expires_at = user.email_verification_token_expires_at
     if expires_at:
@@ -331,7 +298,7 @@ def validate_setup_token(token: str = Query(...), db: Session = Depends(get_db))
 def setup_account(data: SetupAccountRequest, response: Response, db: Session = Depends(get_db)):
     """Set password from an invitation token and auto-login."""
     user = db.query(User).filter(User.email_verification_token == data.token).first()
-    if not user:
+    if not user or user.password_hash not in _SETUP_PLACEHOLDER_HASHES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired setup link")
     expires_at = user.email_verification_token_expires_at
     if expires_at:
@@ -343,6 +310,9 @@ def setup_account(data: SetupAccountRequest, response: Response, db: Session = D
     user.auth_method = "password"
     user.email_verification_token = None
     user.email_verification_token_expires_at = None
+    user.password_reset_token = None
+    user.password_reset_token_expires_at = None
+    blacklist_all_user_tokens(user.id, db)
     db.commit()
     tenant_id = user.tenant_id or ""
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))
@@ -377,9 +347,15 @@ def reset_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
         if expires_at < datetime.now(timezone.utc):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset link has expired. Please request a new one.")
     user.password_hash = hash_password(data.password)
+    user.auth_method = "password"
+    user.login_code = None
+    user.login_code_expires_at = None
+    user.login_code_attempts = 0
     user.password_reset_token = None
     user.password_reset_token_expires_at = None
-    user.tokens_revoked_at = datetime.now(timezone.utc)
+    user.email_verification_token = None
+    user.email_verification_token_expires_at = None
+    blacklist_all_user_tokens(user.id, db)
     db.commit()
 
 

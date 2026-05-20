@@ -62,7 +62,7 @@ export default function UserManagement() {
 
     api.get('/applications', { params: { status: 'draft', page: 1, per_page: 100 } })
       .then(({ data }) => { const items = data.items || data; setDraftApps(Array.isArray(items) ? items : []); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingDrafts(false));
   }, []);
 
@@ -143,7 +143,7 @@ export default function UserManagement() {
       setStartAppForm({ client_id: '', loan_type: 'personal', amount: '', notes: '' });
       api.get('/applications', { params: { status: 'draft', page: 1, per_page: 100 } })
         .then(({ data }) => { const items = data.items || data; setDraftApps(Array.isArray(items) ? items : []); })
-        .catch(() => {});
+        .catch(() => { });
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to create application'), 'error');
     } finally {
@@ -250,6 +250,9 @@ export default function UserManagement() {
                               <Button variant="danger" size="sm" onClick={() => setPendingAction({ type: 'delete', userId: user.id, userName: user.full_name })}>Delete</Button>
                             </>
                           )}
+                          {currentUser?.role === 'broker' && !isSelf && user.invited_by_id === currentUser.id && (
+                            <Button variant="secondary" size="sm" loading={sendingReset === user.id} onClick={() => handleSendPasswordReset(user.id)}>Reset Password</Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -266,7 +269,7 @@ export default function UserManagement() {
       <div className="grid gap-6 lg:grid-cols-3 mb-8">
         <GlassCard>
           <h4 className="text-[14px] font-semibold text-foreground mb-1">Invite New Client</h4>
-          <p className="text-[13px] text-muted-foreground mb-4">They'll receive an email with a one-time login code.</p>
+          <p className="text-[13px] text-muted-foreground mb-4">They'll receive an email with a link.</p>
           <form onSubmit={handleInvite} className="space-y-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Full Name *</label>
@@ -378,10 +381,29 @@ export default function UserManagement() {
                       <td className="hidden sm:table-cell px-6 py-3 text-[13px] text-muted-foreground">{inv.invited_by_name || '—'}</td>
                       <td className="hidden md:table-cell px-6 py-3 text-[13px] text-muted-foreground">{formatDate(inv.created_at)}</td>
                       <td className="px-4 sm:px-6 py-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${inv.is_active ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${inv.is_active ? 'bg-success' : 'bg-destructive'}`} />
-                          {inv.is_active ? 'Active' : 'Expired'}
-                        </span>
+                        {(() => {
+                          let label: string;
+                          let tone: string;
+                          if (!inv.is_active) {
+                            label = 'Disabled';
+                            tone = 'bg-destructive/10 text-destructive';
+                          } else if (inv.setup_pending && inv.setup_expired) {
+                            label = 'Setup expired';
+                            tone = 'bg-warning/10 text-warning';
+                          } else if (inv.setup_pending) {
+                            label = 'Pending setup';
+                            tone = 'bg-info/10 text-info';
+                          } else {
+                            label = 'Active';
+                            tone = 'bg-success/10 text-success';
+                          }
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${tone}`}>
+                              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 sm:px-6 py-3">
                         <Button variant="secondary" size="sm" onClick={() => handleResendInvitation(inv)}>Resend</Button>

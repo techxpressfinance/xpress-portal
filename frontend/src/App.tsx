@@ -44,7 +44,6 @@ const Profile = lazy(() => import('./pages/client/Profile'));
 const AdminMessages = lazy(() => import('./pages/admin/Messages'));
 const ClientMessages = lazy(() => import('./pages/client/Messages'));
 const Login = lazy(() => import('./pages/Login'));
-const EnterCode = lazy(() => import('./pages/EnterCode'));
 const Register = lazy(() => import('./pages/Register'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const ResendVerification = lazy(() => import('./pages/ResendVerification'));
@@ -80,7 +79,6 @@ export default function App() {
             <Route path="/apply/:token" element={<PublicApply />} />
             <Route path="/setup-account" element={<SetupAccount />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/enter-code" element={<EnterCode />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/resend-verification" element={<ResendVerification />} />

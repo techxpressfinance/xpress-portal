@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
-import secrets
-import string
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -15,7 +11,6 @@ from app.config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     JWT_ALGORITHM,
     JWT_SECRET_KEY,
-    LOGIN_CODE_SECRET,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
@@ -89,14 +84,3 @@ def blacklist_all_user_tokens(user_id: str, db) -> None:
         user.tokens_revoked_at = datetime.now(timezone.utc)
 
 
-def generate_login_code() -> tuple[str, str]:
-    """Returns (plain_code, hashed_code). Uses 8-char alphanumeric code with HMAC-SHA256."""
-    alphabet = string.ascii_uppercase + string.digits
-    code = "".join(secrets.choice(alphabet) for _ in range(8))
-    hashed = hmac.HMAC(LOGIN_CODE_SECRET.encode(), code.encode(), hashlib.sha256).hexdigest()
-    return code, hashed
-
-
-def verify_login_code(plain_code: str, hashed_code: str) -> bool:
-    candidate = hmac.HMAC(LOGIN_CODE_SECRET.encode(), plain_code.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(candidate, hashed_code)

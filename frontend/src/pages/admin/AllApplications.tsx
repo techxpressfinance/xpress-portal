@@ -116,6 +116,7 @@ export default function AllApplications() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<'active' | 'closed'>('active');
   const [statusFilter, setStatusFilter] = useState('');
   const [loanTypeFilter, setLoanTypeFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
@@ -125,12 +126,16 @@ export default function AllApplications() {
   const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const perPage = 15;
 
+  const ACTIVE_STATUSES: ApplicationStatus[] = ['draft', 'application_received', 'application_assessed', 'submitted', 'approval'];
+  const CLOSED_STATUSES: ApplicationStatus[] = ['settled', 'rejected', 'not_proceeding'];
+
   const fetchData = () => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('per_page', String(perPage));
     if (statusFilter) params.set('status', statusFilter);
+    else params.set('closed', view === 'closed' ? 'true' : 'false');
     if (loanTypeFilter) params.set('loan_type', loanTypeFilter);
     if (search) params.set('search', search);
 
@@ -146,7 +151,7 @@ export default function AllApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, statusFilter, loanTypeFilter, search]);
+  }, [page, view, statusFilter, loanTypeFilter, search]);
 
   useEffect(() => {
     api.get('/users')
@@ -189,6 +194,7 @@ export default function AllApplications() {
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const activeFilterCount = [statusFilter, loanTypeFilter, brokerFilter, search].filter(Boolean).length;
+  const viewStatuses = view === 'active' ? ACTIVE_STATUSES : CLOSED_STATUSES;
 
   const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
 
@@ -231,14 +237,28 @@ export default function AllApplications() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              type="button"
-              className="led-btn led-btn-primary led-btn-sm"
-              onClick={() => navigate('/admin/applications/new')}
-              style={{ gap: 6 }}
-            >
-              <Icon name="plus" size={12} /> New Application
-            </button>
+            <div className="led-segment">
+              <button
+                type="button"
+                className={view === 'active' ? 'led-active' : ''}
+                onClick={() => { setView('active'); setStatusFilter(''); setPage(1); }}
+              >Active</button>
+              <button
+                type="button"
+                className={view === 'closed' ? 'led-active' : ''}
+                onClick={() => { setView('closed'); setStatusFilter(''); setPage(1); }}
+              >Closed</button>
+            </div>
+            {view === 'active' && (
+              <button
+                type="button"
+                className="led-btn led-btn-primary led-btn-sm"
+                onClick={() => navigate('/admin/applications/new')}
+                style={{ gap: 6 }}
+              >
+                <Icon name="plus" size={12} /> New Application
+              </button>
+            )}
             <div className="led-segment">
               <button type="button" className="led-active"><Icon name="list" size={12} /> Table</button>
               <Link to="/admin/board" style={{ textDecoration: 'none' }}>
@@ -268,8 +288,8 @@ export default function AllApplications() {
         <FilterPill label="Status" value={statusPill} active={!!statusFilter} icon="filter">
           {(close) => (
             <>
-              <button type="button" className={`led-popover-item ${!statusFilter ? 'led-active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); close(); }}>All statuses</button>
-              {(['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected', 'not_proceeding'] as ApplicationStatus[]).map((s) => (
+              <button type="button" className={`led-popover-item ${!statusFilter ? 'led-active' : ''}`} onClick={() => { setStatusFilter(''); setPage(1); close(); }}>All {view}</button>
+              {viewStatuses.map((s) => (
                 <button
                   key={s}
                   type="button"

@@ -10,7 +10,7 @@ from typing import Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.config import EMAIL_ENABLED, FRONTEND_URL, SES_FROM_EMAIL, SES_REGION
+from app.config import EMAIL_ENABLED, FRONTEND_URL, SES_CONFIGURATION_SET, SES_FROM_EMAIL, SES_REGION
 
 
 def _esc(value: str) -> str:
@@ -82,8 +82,7 @@ def _get_base_html(content: str) -> str:
                         <tr>
                             <td style="padding: 24px 40px 32px; background-color: #fafafa; border-top: 1px solid #e4e4e7; text-align: center;">
                                 <p style="margin: 0; font-size: 13px; color: #71717a; line-height: 1.5;">
-                                    This is an automated message from Xpress Finance.<br>
-                                    To get in touch, reply to this email or contact us at enquiries@xpressfinance.com.au
+                                    This is an automated message from Xpress Finance.
                                 </p>
                             </td>
                         </tr>
@@ -102,7 +101,6 @@ def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str]
         msg["From"] = f"Xpress Finance <{SES_FROM_EMAIL}>"
         msg["To"] = _sanitize_header(to_email)
         msg["Subject"] = _sanitize_header(subject)
-
         if cc_emails:
             msg["Cc"] = ", ".join(_sanitize_header(e) for e in cc_emails)
 
@@ -113,11 +111,14 @@ def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str]
 
         destinations = [to_email] + (cc_emails or [])
         client = boto3.client("ses", region_name=SES_REGION)
-        client.send_raw_email(
-            Source=SES_FROM_EMAIL,
-            Destinations=destinations,
-            RawMessage={"Data": msg.as_string()},
-        )
+        kwargs: dict = {
+            "Source": SES_FROM_EMAIL,
+            "Destinations": destinations,
+            "RawMessage": {"Data": msg.as_string()},
+        }
+        if SES_CONFIGURATION_SET:
+            kwargs["ConfigurationSetName"] = SES_CONFIGURATION_SET
+        client.send_raw_email(**kwargs)
 
         logger.info("Email sent to %s: %s", to_email, subject)
     except (BotoCoreError, ClientError) as e:
@@ -175,45 +176,6 @@ def send_verification_email(to_email: str, name: str, token: str) -> None:
     _send_async(to_email, subject, body, html_body)
 
 
-def _code_html(code: str, intro_lines: list[str]) -> str:
-    """Shared HTML template for code-based emails."""
-    intro_html = "".join(f'<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{_esc(line)}</p>' for line in intro_lines)
-    digits = "".join(
-        f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{_esc(d)}</span>'
-        for d in code
-    )
-    content = f"""
-        {intro_html}
-        <div style="text-align: center; margin: 36px 0;">{digits}</div>
-        <p style="margin: 0; font-size: 14px; color: #71717a; text-align: center;">This code expires in 10 minutes.</p>
-    """
-    return _get_base_html(content)
-
-
-def send_invitation_email(to_email: str, name: str, code: str, inviter_name: str) -> None:
-    """Send an invitation with a one-time login code. Non-blocking."""
-    if not EMAIL_ENABLED:
-        logger.debug("Email not configured, skipping invitation email for %s", to_email)
-        return
-
-    subject = "You've been invited to Xpress Finance Portal"
-    body = (
-        f"Dear {name},\n\n"
-        f"{inviter_name} has invited you to Xpress Finance Portal.\n\n"
-        f"Your one-time login code is: {code}\n\n"
-        f"This code expires in 10 minutes.\n\n"
-        f"Go to {FRONTEND_URL}/enter-code?email={to_email} to sign in.\n\n"
-        f"Best regards,\nXpress Finance Team"
-    )
-    html_body = _code_html(code, [
-        f"Dear {name},",
-        f"<strong>{inviter_name}</strong> has invited you to Xpress Finance Portal. "
-        f"Use the code below to access your account:",
-    ])
-
-    _send_async(to_email, subject, body, html_body)
-
-
 def send_complete_application_email(
     to_email: str,
     client_name: str,
@@ -221,7 +183,6 @@ def send_complete_application_email(
     loan_type: str,
     amount: str,
     application_id: str,
-    login_code: Optional[str] = None,
 ) -> None:
     """Send email asking client to complete a draft application. Non-blocking."""
     if not EMAIL_ENABLED:
@@ -230,30 +191,14 @@ def send_complete_application_email(
 
     app_url = f"{FRONTEND_URL}/applications/{application_id}"
     subject = "Complete Your Loan Application - Xpress Finance Portal"
-    code_line = f"\n\nYour one-time login code is: {login_code}\nThis code expires in 10 minutes." if login_code else ""
     body = (
         f"Dear {client_name},\n\n"
         f"{inviter_name} has invited you to complete your loan application.\n\n"
         f"Loan Type: {loan_type.capitalize()}\n"
         f"Amount: ${amount}\n\n"
-        f"Click here to view your application: {app_url}"
-        f"{code_line}\n\n"
+        f"Click here to view your application: {app_url}\n\n"
         f"Best regards,\nXpress Finance Team"
     )
-
-    code_section = ""
-    if login_code:
-        digits = "".join(
-            f'<span style="display: inline-block; width: 48px; height: 56px; line-height: 56px; text-align: center; font-size: 28px; font-weight: 700; color: #09090b; background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 4px;">{_esc(d)}</span>'
-            for d in login_code
-        )
-        code_section = f"""
-            <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid #e4e4e7;">
-                <p style="margin: 0 0 16px; font-size: 16px; font-weight: 600; color: #09090b; text-align: center;">Your one-time login code</p>
-                <div style="text-align: center; margin: 0 0 16px;">{digits}</div>
-                <p style="margin: 0; font-size: 14px; color: #71717a; text-align: center;">This code expires in 10 minutes.</p>
-            </div>
-        """
 
     content = f"""
         <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(client_name)},</p>
@@ -271,7 +216,6 @@ def send_complete_application_email(
         <div style="text-align: center; margin: 32px 0;">
             <a href="{_esc(app_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View Application</a>
         </div>
-        {code_section}
     """
     html_body = _get_base_html(content)
 
@@ -545,27 +489,6 @@ def send_password_reset_email(to_email: str, name: str, token: str) -> None:
     _send_async(to_email, subject, body, html_body)
 
 
-def send_login_code_email(to_email: str, name: str, code: str) -> None:
-    """Send a login code for code-based auth. Non-blocking."""
-    if not EMAIL_ENABLED:
-        logger.debug("Email not configured, skipping login code email for %s", to_email)
-        return
-
-    subject = "Your login code - Xpress Finance Portal"
-    body = (
-        f"Dear {name},\n\n"
-        f"Your one-time login code is: {code}\n\n"
-        f"This code expires in 10 minutes.\n\n"
-        f"Best regards,\nXpress Finance Team"
-    )
-    html_body = _code_html(code, [
-        f"Dear {name},",
-        "Here is your one-time login code:",
-    ])
-
-    _send_async(to_email, subject, body, html_body)
-
-
 def send_document_request_email(
     to_email: str,
     client_name: str,
@@ -734,6 +657,53 @@ def send_service_request_notification(
             </tr>
         </table>
         <p style="margin: 0; font-size: 15px; color: #3f3f46;">Please log in to the portal to review and respond to this request.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
+def send_new_lead_notification(
+    to_email: str,
+    admin_name: str,
+    referrer_name: str,
+    client_name: str,
+    loan_type: str,
+    amount: str,
+    portal_url: str,
+) -> None:
+    """Notify admins of a new self-managed lead submitted by a referrer. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping new lead notification for %s", to_email)
+        return
+
+    subject = f"New Lead: {client_name} — Xpress Finance Portal"
+    body = (
+        f"Dear {admin_name},\n\n"
+        f"{referrer_name} has submitted a new lead.\n\n"
+        f"Client: {client_name}\n"
+        f"Loan Type: {loan_type.replace('_', ' ').title()}\n"
+        f"Amount: ${amount}\n\n"
+        f"Log in to the portal to review: {portal_url}\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(admin_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{_esc(referrer_name)}</strong> has submitted a new lead.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Client:</strong> {_esc(client_name)}</p>
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Loan Type:</strong> {_esc(loan_type.replace('_', ' ').title())}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Amount:</strong> ${_esc(amount)}</p>
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(portal_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Review Application</a>
+        </div>
     """
     html_body = _get_base_html(content)
 

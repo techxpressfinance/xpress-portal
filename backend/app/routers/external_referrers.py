@@ -18,9 +18,7 @@ from app.schemas.external_referrer import (
     ReferrerCreate,
 )
 from app.schemas.user import UserOut
-from app.services.auth import hash_password
-from app.services.email import send_invitation_email, send_setup_account_email
-from app.services.login_code import set_login_code
+from app.services.email import send_referral_notification_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/external-referrers", tags=["external-referrers"])
@@ -133,6 +131,11 @@ def refer_client(
 
     # Check if client exists
     existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
+    if existing_user and existing_user.role.value != "client":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account exists for this email but is not a client account",
+        )
 
     engagement = ClientEngagementModel(data.client_engagement_model) if data.client_engagement_model else None
     referral = ExternalReferral(
@@ -146,41 +149,39 @@ def refer_client(
     )
     db.add(referral)
 
-    # Send invitation email
     if existing_user:
-        # Existing user — send them an invitation/login code if code-auth
-        if existing_user.auth_method == "code":
-            plain = set_login_code(existing_user)
-            db.commit()
-            send_invitation_email(email, existing_user.full_name, plain, current_user.full_name)
-        else:
-            db.commit()
-            # For password-auth users, send a simpler notification
-            from app.services.email import send_referral_notification_email
-            send_referral_notification_email(email, existing_user.full_name, current_user.full_name, current_user.organization_name)
+        db.commit()
+        send_referral_notification_email(
+            email,
+            existing_user.full_name,
+            current_user.full_name,
+            current_user.organization_name,
+        )
     else:
-        # New user — create invited client account
+        # New user — create invited client account with a setup link
         name = data.full_name or email.split("@")[0]
+        setup_token = secrets.token_urlsafe(32)
         new_user = User(
             email=email,
             full_name=name,
-            password_hash="!invited",
-            auth_method="code",
+            password_hash="!",
+            auth_method="password",
             role="client",
             is_active=True,
             email_verified=True,
-            login_code_attempts=0,
             invited_by_id=current_user.id,
             tenant_id=tenant_id,
+            email_verification_token=setup_token,
+            email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
         )
-        plain = set_login_code(new_user)
         db.add(new_user)
         db.flush()
         referral.referred_client_id = new_user.id
         referral.status = ExternalReferralStatus.signed_up
         referral.converted_at = datetime.now(timezone.utc)
         db.commit()
-        send_invitation_email(email, name, plain, current_user.full_name)
+        setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
+        send_setup_account_email(email, name, setup_url, current_user.full_name, role="client")
 
     db.refresh(referral)
     return _serialize_referral(referral, db)

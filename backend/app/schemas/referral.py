@@ -3,14 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models.referral import ReferralStatus
+from app.schemas.common import normalize_email
 
 
 class ReferralInvite(BaseModel):
     email: EmailStr
     name: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
 
 class ReferralCodeOut(BaseModel):

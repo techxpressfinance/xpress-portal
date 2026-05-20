@@ -339,88 +339,110 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
     setSubmitting(true);
     try {
-      const extraPayload = isSelfManaged ? {
-        applicant_title: extra.applicant_title || null,
-        applicant_middle_name: extra.applicant_middle_name || null,
-        applicant_dob: extra.applicant_dob || null,
-        applicant_gender: extra.applicant_gender || null,
-        applicant_marital_status: extra.applicant_marital_status || null,
-        applicant_address: extra.applicant_address || null,
-        applicant_suburb: extra.applicant_suburb || null,
-        applicant_state: extra.applicant_state || null,
-        applicant_postcode: extra.applicant_postcode || null,
-        preferred_contact_method: extra.preferred_contact_method || null,
-        id_expiry_date: extra.id_expiry_date || null,
-        applicant_residency_status: extra.applicant_residency_status || null,
-        residential_status: extra.residential_status || null,
-        time_at_address: extra.time_at_address || null,
-        applicant_num_dependants: extra.applicant_num_dependants ? parseInt(extra.applicant_num_dependants) : null,
-        has_partner: extra.has_partner,
-        partner_working: extra.partner_working,
-        employment_category: extra.employment_category || null,
-        employer_name: extra.employer_name || null,
-        employer_industry: extra.employer_industry || null,
-        job_title: extra.job_title || null,
-        income_frequency: extra.income_frequency || null,
-        gross_income: extra.gross_income ? parseFloat(extra.gross_income) : null,
-        business_name: extra.business_name || null,
-        business_abn: extra.business_abn || null,
-        trading_name: extra.trading_name || null,
-        business_structure: extra.business_structure || null,
-        gst_registered: extra.gst_registered,
-        num_directors: extra.num_directors ? parseInt(extra.num_directors) : null,
-        time_trading: extra.time_trading || null,
-        emergency_contact_name: extra.emergency_contact_name || null,
-        emergency_contact_relationship: extra.emergency_contact_relationship || null,
-        emergency_contact_phone: extra.emergency_contact_phone || null,
-        previously_declined: extra.previously_declined,
-        change_of_circumstances: extra.change_of_circumstances || null,
-        signature_name: extra.signature_name || null,
-        lend_extra_data: JSON.stringify({
-          identification: extra.id_number ? [{
-            type: extra.id_type === 'license' ? 'Drivers Licence' : 'Passport',
-            number: extra.id_number,
-            [extra.id_type === 'license' ? 'state' : 'country']: extra.id_issuing_state_country,
-            expiry_date: extra.id_expiry_date,
-          }] : [],
-          employments: [{
-            employment_type: extra.employment_type_detail || null,
-            start_date: extra.employment_start_date || null,
-            contact_details: extra.employer_contact_details || null,
-          }],
-          incomes: [
-            ...(extra.primary_income_amount ? [{ income_type: extra.primary_income_type || 'Salary', amount: parseFloat(extra.primary_income_amount) || 0, frequency: extra.primary_income_frequency || extra.income_frequency }] : []),
-            ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency })),
-          ].filter(i => i.amount > 0),
-          expenses: {
-            monthly_living: parseFloat(extra.monthly_living_expenses) || 0,
-            rent_mortgage: parseFloat(extra.rent_mortgage_payments) || 0,
-            child_support: parseFloat(extra.child_support) || 0,
-            other_commitments: parseFloat(extra.other_commitments) || 0,
-          },
-          assets: { real_estate: realEstateAssets, other: otherAssets },
-          liabilities,
-          loan_type_details: buildLoanTypeDetails(extra, tab, subLoanType),
-        }),
-      } : {};
+      let appId: string;
 
-      // Create draft
-      const { data: app } = await api.post('/applications', {
-        loan_type: effectiveLoanType,
-        amount: parseFloat(amount),
-        ...(engagementModel && { client_engagement_model: engagementModel }),
-        applicant_first_name: firstName.trim(),
-        applicant_last_name: lastName.trim(),
-        applicant_email: email.trim(),
-        applicant_mobile: mobile.trim() || null,
-        notes: notes.trim() || null,
-        status: 'application_received',
-        ...(tab === 'commercial' ? {
-          business_name: comBusinessName.trim() || null,
-          business_abn: comAbn.trim() || null,
-        } : {}),
-        ...extraPayload,
-      });
+      if (engagementModel === 'direct_engagement') {
+        // Create a real client account + draft application owned by the client
+        const { data: result } = await api.post('/referrer/direct-referral', {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email: email.trim(),
+          mobile: mobile.trim() || null,
+          company_name: tab === 'commercial' ? comBusinessName.trim() || null : null,
+          loan_type: effectiveLoanType,
+          amount: parseFloat(amount),
+          notes: notes.trim() || null,
+          business_name: tab === 'commercial' ? comBusinessName.trim() || null : null,
+          business_abn: tab === 'commercial' ? comAbn.trim() || null : null,
+          lend_extra_data: JSON.stringify({
+            loan_type_details: buildLoanTypeDetails(extra, tab, subLoanType),
+          }),
+        });
+        appId = result.application_id;
+      } else {
+        const extraPayload = isSelfManaged ? {
+          applicant_title: extra.applicant_title || null,
+          applicant_middle_name: extra.applicant_middle_name || null,
+          applicant_dob: extra.applicant_dob || null,
+          applicant_gender: extra.applicant_gender || null,
+          applicant_marital_status: extra.applicant_marital_status || null,
+          applicant_address: extra.applicant_address || null,
+          applicant_suburb: extra.applicant_suburb || null,
+          applicant_state: extra.applicant_state || null,
+          applicant_postcode: extra.applicant_postcode || null,
+          preferred_contact_method: extra.preferred_contact_method || null,
+          id_expiry_date: extra.id_expiry_date || null,
+          applicant_residency_status: extra.applicant_residency_status || null,
+          residential_status: extra.residential_status || null,
+          time_at_address: extra.time_at_address || null,
+          applicant_num_dependants: extra.applicant_num_dependants ? parseInt(extra.applicant_num_dependants) : null,
+          has_partner: extra.has_partner,
+          partner_working: extra.partner_working,
+          employment_category: extra.employment_category || null,
+          employer_name: extra.employer_name || null,
+          employer_industry: extra.employer_industry || null,
+          job_title: extra.job_title || null,
+          income_frequency: extra.income_frequency || null,
+          gross_income: extra.gross_income ? parseFloat(extra.gross_income) : null,
+          business_name: extra.business_name || null,
+          business_abn: extra.business_abn || null,
+          trading_name: extra.trading_name || null,
+          business_structure: extra.business_structure || null,
+          gst_registered: extra.gst_registered,
+          num_directors: extra.num_directors ? parseInt(extra.num_directors) : null,
+          time_trading: extra.time_trading || null,
+          emergency_contact_name: extra.emergency_contact_name || null,
+          emergency_contact_relationship: extra.emergency_contact_relationship || null,
+          emergency_contact_phone: extra.emergency_contact_phone || null,
+          previously_declined: extra.previously_declined,
+          change_of_circumstances: extra.change_of_circumstances || null,
+          signature_name: extra.signature_name || null,
+          lend_extra_data: JSON.stringify({
+            identification: extra.id_number ? [{
+              type: extra.id_type === 'license' ? 'Drivers Licence' : 'Passport',
+              number: extra.id_number,
+              [extra.id_type === 'license' ? 'state' : 'country']: extra.id_issuing_state_country,
+              expiry_date: extra.id_expiry_date,
+            }] : [],
+            employments: [{
+              employment_type: extra.employment_type_detail || null,
+              start_date: extra.employment_start_date || null,
+              contact_details: extra.employer_contact_details || null,
+            }],
+            incomes: [
+              ...(extra.primary_income_amount ? [{ income_type: extra.primary_income_type || 'Salary', amount: parseFloat(extra.primary_income_amount) || 0, frequency: extra.primary_income_frequency || extra.income_frequency }] : []),
+              ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency })),
+            ].filter(i => i.amount > 0),
+            expenses: {
+              monthly_living: parseFloat(extra.monthly_living_expenses) || 0,
+              rent_mortgage: parseFloat(extra.rent_mortgage_payments) || 0,
+              child_support: parseFloat(extra.child_support) || 0,
+              other_commitments: parseFloat(extra.other_commitments) || 0,
+            },
+            assets: { real_estate: realEstateAssets, other: otherAssets },
+            liabilities,
+            loan_type_details: buildLoanTypeDetails(extra, tab, subLoanType),
+          }),
+        } : {};
+
+        const { data: app } = await api.post('/applications', {
+          loan_type: effectiveLoanType,
+          amount: parseFloat(amount),
+          ...(engagementModel && { client_engagement_model: engagementModel }),
+          applicant_first_name: firstName.trim(),
+          applicant_last_name: lastName.trim(),
+          applicant_email: email.trim(),
+          applicant_mobile: mobile.trim() || null,
+          notes: notes.trim() || null,
+          status: 'application_received',
+          ...(tab === 'commercial' ? {
+            business_name: comBusinessName.trim() || null,
+            business_abn: comAbn.trim() || null,
+          } : {}),
+          ...extraPayload,
+        });
+        appId = app.id;
+      }
 
       // Upload files
       await Promise.allSettled(
@@ -428,7 +450,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           const form = new FormData();
           form.append('file', file);
           form.append('doc_type', 'other');
-          return api.post(`/documents/upload/${app.id}`, form, {
+          return api.post(`/documents/upload/${appId}`, form, {
             headers: { 'Content-Type': 'multipart/form-data' },
           });
         })
@@ -468,7 +490,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               <p className="text-[18px] font-semibold text-foreground">Lead submitted!</p>
               <p className="text-[14px] text-muted-foreground mt-1.5">
                 {engagementModel === 'direct_engagement'
-                  ? `An email has been sent to ${firstName} to complete their application. Our team will follow up with them directly.`
+                  ? `${firstName} has been invited to set up their account and complete their application. Our team has been notified.`
                   : `Your broker will review and follow up with ${firstName}.`}
               </p>
             </div>

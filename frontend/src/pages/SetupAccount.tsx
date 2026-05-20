@@ -138,7 +138,8 @@ export default function SetupAccount() {
   }, [token]);
 
   if (user) {
-    const target = user.role === 'super_admin' ? '/platform' : user.role === 'client' ? '/dashboard' : user.role === 'referrer' ? '/referrer/applications' : '/admin';
+    const redirect = searchParams.get('redirect');
+    const target = redirect || (user.role === 'super_admin' ? '/platform' : user.role === 'client' ? '/dashboard' : user.role === 'referrer' ? '/referrer/applications' : '/admin');
     return <Navigate to={target} replace />;
   }
 
@@ -154,7 +155,8 @@ export default function SetupAccount() {
     try {
       await setupAccount(token, password);
       setDone(true);
-      setTimeout(() => navigate('/'), 1200);
+      const redirectTarget = searchParams.get('redirect') || '/';
+      setTimeout(() => navigate(redirectTarget), 1200);
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to set up account. The link may have expired.'));
       setSubmitting(false);

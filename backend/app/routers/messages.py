@@ -365,23 +365,25 @@ def list_message_recipients(
             if client.id not in seen_ids:
                 recipients.append(client)
                 seen_ids.add(client.id)
+    elif role == "admin":
+        recipients = db.query(User).filter(
+            User.tenant_id == tenant_id,
+            User.id != current_user.id,
+        ).all()
     else:
         all_recipients = db.query(User).filter(
             User.role.in_([UserRole.client, UserRole.referrer, UserRole.broker]),
             User.tenant_id == tenant_id,
             User.id != current_user.id,
         ).all()
-        if current_user.role.value == "broker":
-            blocked = {
-                r.referred_client_id
-                for r in db.query(ExternalReferral).filter(
-                    ExternalReferral.client_engagement_model == ClientEngagementModel.direct_engagement,
-                    ExternalReferral.referred_client_id.isnot(None),
-                ).all()
-            }
-            recipients = [u for u in all_recipients if not (u.role == UserRole.client and u.id in blocked)]
-        else:
-            recipients = all_recipients
+        blocked = {
+            r.referred_client_id
+            for r in db.query(ExternalReferral).filter(
+                ExternalReferral.client_engagement_model == ClientEngagementModel.direct_engagement,
+                ExternalReferral.referred_client_id.isnot(None),
+            ).all()
+        }
+        recipients = [u for u in all_recipients if not (u.role == UserRole.client and u.id in blocked)]
     return recipients
 
 
@@ -610,8 +612,8 @@ def send_message(
                 )
         else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers can only message brokers, admins, or clients they referred")
-    if sender_role in {"broker", "admin"} and recipient_role not in {"client", "referrer"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers and admins can only message clients or referrers")
+    if sender_role == "broker" and recipient_role not in {"client", "referrer"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers can only message clients or referrers")
 
     msg = DirectMessage(
         sender_id=current_user.id,

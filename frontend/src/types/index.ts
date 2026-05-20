@@ -1,8 +1,7 @@
 export const USER_ROLES = ['client', 'broker', 'admin', 'referrer', 'super_admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-export const AUTH_METHODS = ['password', 'code'] as const;
-export type AuthMethod = (typeof AUTH_METHODS)[number];
+export type AuthMethod = string;
 
 export const LOAN_TYPES = ['personal', 'home', 'business', 'vehicle', 'equipment_finance', 'business_loan', 'commercial_property', 'home_loan'] as const;
 export type LoanType = (typeof LOAN_TYPES)[number];
@@ -39,6 +38,7 @@ export interface User {
   license_number: string | null;
   organization_name: string | null;
   tenant_id: string;
+  invited_by_id: string | null;
   created_at: string;
 }
 
@@ -325,6 +325,8 @@ export interface Invitation {
   phone: string | null;
   is_active: boolean;
   auth_method: AuthMethod;
+  setup_pending: boolean;
+  setup_expired: boolean;
   created_at: string;
   invited_by_name: string | null;
 }
@@ -623,6 +625,7 @@ export interface QuoteInputParameters {
   fees_financed: boolean;              // true = fees added to loan amount, false = charged separately
   selected_terms?: number[];           // e.g. [5, 4, 3] — which terms to show client
   show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
+  repayment_range?: number;            // show client a ±$ range instead of exact repayment
 }
 
 export interface QuoteSheet {

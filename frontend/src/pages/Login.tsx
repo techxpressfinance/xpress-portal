@@ -55,6 +55,8 @@ export default function Login() {
         setShowResend(true);
       } else if (detail === 'Account temporarily locked. Try again later.') {
         setError('Account temporarily locked due to too many failed attempts. Try again later.');
+      } else if (detail === 'Account disabled') {
+        setError('This account is disabled. Contact your administrator for help.');
       } else {
         setError('Invalid email or password.');
       }

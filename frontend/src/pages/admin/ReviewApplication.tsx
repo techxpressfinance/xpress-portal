@@ -1,4 +1,5 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
@@ -105,6 +106,9 @@ export default function ReviewApplication() {
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [reasonModalStatus, setReasonModalStatus] = useState<string | null>(null);
+  const [reasonText, setReasonText] = useState('');
+  const [savingWithReason, setSavingWithReason] = useState(false);
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingApp, setDeletingApp] = useState(false);
@@ -245,7 +249,12 @@ export default function ReviewApplication() {
 
   const handleStatusChange = (newStatus: string) => {
     if (!id) return;
-    setPendingStatus(newStatus);
+    if (newStatus === 'rejected' || newStatus === 'not_proceeding') {
+      setReasonText('');
+      setReasonModalStatus(newStatus);
+    } else {
+      setPendingStatus(newStatus);
+    }
   };
 
   const confirmStatusChange = async () => {
@@ -260,6 +269,28 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to change status'), 'error');
     } finally {
       setChangingStatus(false);
+    }
+  };
+
+  const confirmStatusWithReason = async () => {
+    if (!id || !reasonModalStatus || !reasonText.trim()) return;
+    setSavingWithReason(true);
+    try {
+      const { data } = await api.patch(`/applications/${id}/status?status=${reasonModalStatus}`);
+      setApplication(data);
+      const label = reasonModalStatus === 'rejected' ? 'Rejected' : 'Not Proceeding';
+      const { data: note } = await api.post(`/applications/${id}/notes`, {
+        content: `**${label}** — ${reasonText.trim()}`,
+        visibility: ['broker'],
+      });
+      setAppNotes(prev => [...prev, note]);
+      toast(`Status changed to ${reasonModalStatus}`, 'success');
+      setReasonModalStatus(null);
+      setReasonText('');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to change status'), 'error');
+    } finally {
+      setSavingWithReason(false);
     }
   };
 
@@ -3407,6 +3438,48 @@ export default function ReviewApplication() {
           filename={previewDoc.filename}
           ocrStatus={previewDoc.ocrStatus}
         />
+      )}
+
+      {reasonModalStatus && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!savingWithReason) { setReasonModalStatus(null); setReasonText(''); } }} />
+          <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
+            <h3 className="text-[17px] font-semibold text-foreground mb-1">
+              {reasonModalStatus === 'rejected' ? 'Reject Application' : 'Mark as Not Proceeding'}
+            </h3>
+            <p className="text-[13px] text-muted-foreground mb-4">
+              Record the reason — it will be saved to the application's deal notes.
+            </p>
+            <textarea
+              autoFocus
+              rows={4}
+              placeholder={reasonModalStatus === 'rejected' ? 'e.g. Insufficient income, credit history issues...' : 'e.g. Client changed their mind, found alternative financing...'}
+              value={reasonText}
+              onChange={e => setReasonText(e.target.value)}
+              className="w-full rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="secondary"
+                size="md"
+                disabled={savingWithReason}
+                onClick={() => { if (!savingWithReason) { setReasonModalStatus(null); setReasonText(''); } }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                loading={savingWithReason}
+                disabled={!reasonText.trim()}
+                onClick={confirmStatusWithReason}
+              >
+                {reasonModalStatus === 'rejected' ? 'Reject' : 'Mark Not Proceeding'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       <ConfirmDialog
