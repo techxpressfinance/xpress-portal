@@ -287,13 +287,6 @@ def create_direct_referral(
     if email == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot refer yourself")
 
-    existing_referral = db.query(ExternalReferral).filter(
-        ExternalReferral.referrer_id == current_user.id,
-        ExternalReferral.referred_email == email,
-    ).first()
-    if existing_referral:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already referred this email")
-
     try:
         loan_type = LoanType(data.loan_type)
     except ValueError:
@@ -327,19 +320,34 @@ def create_direct_referral(
         )
         db.add(client)
         db.flush()
+
+        referral = ExternalReferral(
+            referrer_id=current_user.id,
+            referred_email=email,
+            referred_client_id=client.id,
+            status=ExternalReferralStatus.signed_up,
+            converted_at=datetime.now(timezone.utc),
+            company_name=data.company_name.strip() if data.company_name else None,
+            tenant_id=tenant_id,
+        )
+        db.add(referral)
     else:
         client = existing_user
-
-    referral = ExternalReferral(
-        referrer_id=current_user.id,
-        referred_email=email,
-        referred_client_id=client.id,
-        status=ExternalReferralStatus.signed_up,
-        converted_at=datetime.now(timezone.utc),
-        company_name=data.company_name.strip() if data.company_name else None,
-        tenant_id=tenant_id,
-    )
-    db.add(referral)
+        # Ensure a referral link exists for visibility; don't duplicate if already present
+        existing_referral = db.query(ExternalReferral).filter(
+            ExternalReferral.referrer_id == current_user.id,
+            ExternalReferral.referred_client_id == client.id,
+        ).first()
+        if not existing_referral:
+            db.add(ExternalReferral(
+                referrer_id=current_user.id,
+                referred_email=email,
+                referred_client_id=client.id,
+                status=ExternalReferralStatus.signed_up,
+                converted_at=datetime.now(timezone.utc),
+                company_name=data.company_name.strip() if data.company_name else None,
+                tenant_id=tenant_id,
+            ))
 
     application = LoanApplication(
         user_id=client.id,

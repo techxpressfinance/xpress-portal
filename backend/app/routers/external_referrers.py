@@ -114,21 +114,6 @@ def refer_client(
     if email == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot refer yourself")
 
-    # Check if this referrer already referred this email
-    existing_referral = (
-        db.query(ExternalReferral)
-        .filter(
-            ExternalReferral.referrer_id == current_user.id,
-            ExternalReferral.referred_email == email,
-        )
-        .first()
-    )
-    if existing_referral:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You have already referred this email",
-        )
-
     # Check if client exists
     existing_user = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
     if existing_user and existing_user.role.value != "client":
