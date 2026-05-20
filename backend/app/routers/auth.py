@@ -312,7 +312,11 @@ def setup_account(data: SetupAccountRequest, response: Response, db: Session = D
     user.email_verification_token_expires_at = None
     user.password_reset_token = None
     user.password_reset_token_expires_at = None
-    blacklist_all_user_tokens(user.id, db)
+    # NOTE: Do NOT blacklist tokens here. This is a first-time account setup
+    # (the user has never had a valid session before) and we immediately issue
+    # new tokens. Blacklisting would set tokens_revoked_at with microsecond
+    # precision, but python-jose encodes JWT iat as whole seconds, causing
+    # the brand-new token to be rejected as "revoked".
     db.commit()
     tenant_id = user.tenant_id or ""
     _set_refresh_cookie(response, create_refresh_token(user.id, tenant_id))

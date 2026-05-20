@@ -16,24 +16,25 @@ interface AuthState {
 export const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
-  login: async () => {},
-  superAdminLogin: async () => {},
+  login: async () => { },
+  superAdminLogin: async () => { },
   register: async () => ({} as User),
-  setupAccount: async () => {},
-  logout: () => {},
+  setupAccount: async () => { },
+  logout: () => { },
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = useCallback(async () => {
+  const fetchUser = useCallback(async (throwOnError = false) => {
     try {
       const { data } = await api.get('/auth/me');
       setUser(data);
-    } catch {
+    } catch (err) {
       setUser(null);
       setAccessToken(null);
+      if (throwOnError) throw err;
     } finally {
       setLoading(false);
     }
@@ -62,7 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<void> => {
     const { data } = await api.post('/auth/login', { email, password });
     setAccessToken(data.access_token);
-    await fetchUser();
+    try {
+      await fetchUser(true);
+    } catch {
+      throw new Error('Login succeeded but failed to load your account. Please try again.');
+    }
   };
 
   const superAdminLogin = async (email: string, password: string) => {
@@ -74,7 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers,
     });
     setAccessToken(data.access_token);
-    await fetchUser();
+    try {
+      await fetchUser(true);
+    } catch {
+      throw new Error('Login succeeded but failed to load your account. Please try again.');
+    }
   };
 
   const register = async (name: string, email: string, phone: string, password: string, ref?: string): Promise<User> => {
@@ -91,13 +100,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setupAccount = async (token: string, password: string) => {
     const { data } = await api.post('/auth/setup-account', { token, password });
     setAccessToken(data.access_token);
-    await fetchUser();
+    try {
+      await fetchUser(true);
+    } catch {
+      throw new Error('Account created but failed to sign in. Please log in manually.');
+    }
   };
 
   const logout = () => {
     // Await the server blacklisting the refresh token before clearing local state,
     // but still clear state on failure to avoid trapping the user in a logged-in state.
-    api.post('/auth/logout').catch(() => {}).finally(() => {
+    api.post('/auth/logout').catch(() => { }).finally(() => {
       setAccessToken(null);
       setUser(null);
     });

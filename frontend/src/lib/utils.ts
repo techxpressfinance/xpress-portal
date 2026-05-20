@@ -2,6 +2,9 @@
  * Extract a user-friendly error message from an API error.
  */
 export function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    return err.message || fallback;
+  }
   if (err && typeof err === 'object' && 'response' in err) {
     const detail = (err as any).response?.data?.detail;
     if (!detail) return fallback;
