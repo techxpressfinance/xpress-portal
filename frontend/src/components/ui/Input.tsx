@@ -17,7 +17,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           <div className="relative">
             <input
               ref={ref}
-              className={`led-input !h-10 !text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
+              className={`led-input !h-10 sm:!text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
               {...props}
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--led-muted)] text-sm">{suffix}</span>
@@ -25,7 +25,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         ) : (
           <input
             ref={ref}
-            className={`led-input !h-10 !text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
+            className={`led-input !h-10 sm:!text-[14px] ${error ? '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]' : ''} ${className}`}
             {...props}
           />
         )}

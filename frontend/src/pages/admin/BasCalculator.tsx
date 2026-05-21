@@ -1066,7 +1066,7 @@ export function PayCalculator({ initialState, onStateChange }: {
                 sub={`Effective tax rate: ${((1 - result.netAnnual / result.taxableIncome) * 100).toFixed(1)}%`}
               />
               <ResultDivider />
-              <div className="grid grid-cols-3 gap-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 {[
                   { label: 'Monthly', divisor: 12 },
                   { label: 'Fortnightly', divisor: 26 },
@@ -1298,7 +1298,7 @@ export default function Calculators() {
         <div className="flex items-center gap-2">
           <span className="led-chip led-chip-accent">Tools</span>
         </div>
-        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Calculators</h1>
+        <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Calculators</h1>
         <p className="text-[14px] leading-6 text-[var(--led-muted)]">
           Financial calculators for BAS analysis, income tax assessment, and credit ratio analysis.
         </p>

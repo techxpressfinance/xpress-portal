@@ -81,7 +81,7 @@ export default function ClientServiceRequests() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="led-chip led-chip-accent">Service Requests</span>
           </div>
-          <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Service Requests</h1>
+          <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Service Requests</h1>
           <p className="text-[14px] leading-6 text-[var(--led-muted)]">Raise a request and your broker will follow up</p>
         </div>
         <Button size="lg" onClick={openModal}>+ New Request</Button>

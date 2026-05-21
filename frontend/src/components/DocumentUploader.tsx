@@ -91,7 +91,7 @@ export default function DocumentUploader({
 
       {/* Drag-and-drop zone */}
       <div
-        className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-6 text-center transition-colors ${uploading ? 'opacity-50 pointer-events-none' : isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/40'}`}
+        className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 sm:py-6 text-center transition-colors ${uploading ? 'opacity-50 pointer-events-none' : isDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/40'}`}
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
@@ -123,13 +123,20 @@ export default function DocumentUploader({
           </>
         ) : (
           <>
-            <div className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
-              <svg className={`h-4 w-4 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+            <div className={`flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
+              <svg className={`h-5 w-5 sm:h-4 sm:w-4 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
               </svg>
             </div>
             <div>
-              <p className="text-[13px] font-medium text-foreground">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
+              <p className="text-[14px] sm:text-[13px] font-medium text-foreground">
+                {isDragOver ? 'Drop to upload' : (
+                  <>
+                    <span className="sm:hidden">Tap to upload a file</span>
+                    <span className="hidden sm:inline">Drop a file or click to browse</span>
+                  </>
+                )}
+              </p>
               <p className="text-[12px] text-muted-foreground mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
             </div>
           </>

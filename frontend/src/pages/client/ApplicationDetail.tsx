@@ -205,7 +205,7 @@ export default function ApplicationDetail() {
               <span className="led-chip led-chip-accent">Application</span>
               <Badge value={application.status} />
             </div>
-            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)] capitalize">
+            <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)] capitalize">
               {application.loan_type} Loan Application
             </h1>
           </div>

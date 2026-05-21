@@ -70,13 +70,13 @@ export default function ResetPassword() {
         className="relative z-10 w-full max-w-[420px]"
         style={{ animation: `fadeInUp 0.8s ${easing} both` }}
       >
-        <GlassCard padding="none" className="p-8 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
+        <GlassCard padding="none" className="p-6 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center mb-6">
               <img
                 src={tenant?.logo_url || defaultLogo}
                 alt={brandName}
-                className="h-24 w-auto max-w-[300px] object-contain drop-shadow-sm"
+                className="h-16 sm:h-24 w-auto max-w-[300px] object-contain drop-shadow-sm"
                 onError={(e) => { (e.target as HTMLImageElement).src = defaultLogo; }}
               />
             </div>

@@ -54,7 +54,7 @@ const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 const labelClass = 'block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1';
 const inputClass =
-  'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-[14px] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 sm:py-2 text-[16px] sm:text-[14px] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
 
 function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
@@ -299,7 +299,7 @@ export default function PublicApply() {
                   <input {...register('applicant_address')} className={inputClass} placeholder="123 Example St" />
                 </Field>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="col-span-1">
                     <Field label="Suburb">
                       <input {...register('applicant_suburb')} className={inputClass} placeholder="Suburb" />

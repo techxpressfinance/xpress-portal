@@ -386,14 +386,14 @@ export default function Layout() {
       </div>
       <GlobalSearch />
       {showLogoutConfirm && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
           <div
             className="fixed inset-0 bg-black/40 backdrop-blur-sm"
             style={{ animation: 'fadeIn 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
             onClick={() => setShowLogoutConfirm(false)}
           />
           <div
-            className="relative w-full max-w-[360px] rounded-2xl bg-background border border-border p-6 shadow-xl"
+            className="relative w-full max-w-[360px] rounded-t-2xl sm:rounded-2xl bg-background border border-border p-6 pb-8 sm:pb-6 shadow-xl"
             style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
           >
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-chart-4/10">

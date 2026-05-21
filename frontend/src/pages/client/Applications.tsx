@@ -79,7 +79,7 @@ export default function Applications() {
             )}
           </div>
           <div>
-            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">My Applications</h1>
+            <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">My Applications</h1>
             <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Track and manage all your loan applications</p>
           </div>
         </div>

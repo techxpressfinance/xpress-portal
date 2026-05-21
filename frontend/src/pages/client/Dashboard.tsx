@@ -43,7 +43,7 @@ export default function ClientDashboard() {
             <span className="text-[12px] text-[var(--led-muted)]">{todayLabel}</span>
           </div>
           <div>
-            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+            <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
               {greeting}, {user?.full_name?.split(' ')[0]}
             </h1>
             <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[var(--led-muted)]">

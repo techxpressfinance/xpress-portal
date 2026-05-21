@@ -947,7 +947,7 @@ export default function NewApplication() {
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="led-chip led-chip-accent">Disclosure</span>
           </div>
-          <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Important Information</h1>
+          <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Important Information</h1>
           <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Please read the following information carefully before proceeding</p>
         </div>
         <GlassCard>
@@ -985,7 +985,7 @@ export default function NewApplication() {
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="led-chip led-chip-accent">{completeId ? 'Complete Application' : 'New Application'}</span>
         </div>
-        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+        <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
           {completeId ? 'Complete Your Loan Application' : 'New Loan Application'}
         </h1>
         <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">

@@ -125,7 +125,7 @@ export default function ClientMessages() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="led-chip led-chip-accent">Messages</span>
           </div>
-          <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Messages</h1>
+          <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Messages</h1>
           <p className="text-[14px] leading-6 text-[var(--led-muted)]">Chat with your broker or referrer</p>
         </div>
         {allStaff.length > 0 && (

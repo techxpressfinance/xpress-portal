@@ -89,7 +89,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
       >
         <h3 className="text-[17px] font-semibold text-foreground mb-5">Edit Contact</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={LABEL}>First Name *</label>
               <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />
@@ -131,7 +131,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
             <Input placeholder="123 Example St" {...field('address')} />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={LABEL}>Suburb</label>
               <Input placeholder="Suburb" {...field('suburb')} />

@@ -65,7 +65,7 @@ export default function Profile() {
     }
   };
 
-  const inputClass = "w-full rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-2.5 text-[14px] text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--led-accent)]/30 transition-all";
+  const inputClass = "w-full rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3 sm:py-2.5 text-[16px] sm:text-[14px] text-[var(--led-ink)] placeholder:text-[var(--led-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--led-accent)]/30 transition-all";
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
@@ -73,7 +73,7 @@ export default function Profile() {
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="led-chip led-chip-accent">Profile</span>
         </div>
-        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">My Profile</h1>
+        <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">My Profile</h1>
         <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Manage your account information</p>
       </div>
 

@@ -80,6 +80,7 @@ export default function TenantManagement() {
             </Link>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border text-[13px] text-muted-foreground">
@@ -126,6 +127,7 @@ export default function TenantManagement() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

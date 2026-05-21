@@ -645,6 +645,15 @@ table {
   font-family: inherit;
 }
 
+/* Mobile: bump height + font-size to 16px to prevent iOS auto-zoom on focus */
+@media (max-width: 639px) {
+  .led-input {
+    height: 40px;
+    font-size: 16px;
+    padding: 0 12px;
+  }
+}
+
 .led-input:focus {
   border-color: var(--led-accent);
   box-shadow: 0 0 0 3px var(--led-accent-tint);

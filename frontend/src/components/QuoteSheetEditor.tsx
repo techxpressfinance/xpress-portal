@@ -661,7 +661,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
 
           <div>
             <p className="text-[13px] font-medium text-foreground mb-3">Balloon % per Term</p>
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {TERMS.map(t => (
                 <Input
                   key={t}

@@ -176,7 +176,7 @@ export default function ReferrerDashboard() {
             <span className="text-[12px] text-[var(--led-muted)]">{todayLabel}</span>
           </div>
           <div>
-            <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+            <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
               {greeting}, {user?.full_name?.split(' ')[0] || 'Partner'}
             </h1>
             <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[var(--led-muted)]">
@@ -247,7 +247,7 @@ export default function ReferrerDashboard() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Referral Pipeline</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Funnel Overview</h2>
             </div>
-            <div className="grid grid-cols-3 divide-x divide-[var(--led-line)]">
+            <div className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x divide-[var(--led-line)]">
               {[
                 { label: 'Total Referred', value: stats.total_referred, detail: 'Clients you have introduced' },
                 { label: 'Signed Up', value: stats.signed_up, detail: 'Completed registration' },
