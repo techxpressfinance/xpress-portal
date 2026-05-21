@@ -291,7 +291,7 @@ export default function QuoteSheetComparison({
       if (v == null || rangeDelta == null) return null;
       const lo = Math.max(0, v - rangeDelta);
       const hi = v + rangeDelta;
-      const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-AU')}`;
+      const fmt = (n: number) => `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       return { lo: fmt(lo), hi: fmt(hi) };
     };
 
