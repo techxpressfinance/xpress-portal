@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
@@ -6,6 +7,74 @@ import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import type { Invitation, PaginatedResponse, User } from '../../types';
+
+const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
+
+function EditReferrerModal({ referrer, onClose, onSaved }: { referrer: User; onClose: () => void; onSaved: (u: User) => void }) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    full_name: referrer.full_name ?? '',
+    phone: referrer.phone ?? '',
+    organization_name: referrer.organization_name ?? '',
+  });
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.full_name.trim()) return;
+    setSaving(true);
+    try {
+      const { data } = await api.patch<User>(`/users/${referrer.id}`, {
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim() || null,
+        organization_name: form.organization_name.trim() || null,
+      });
+      toast('Referrer updated', 'success');
+      onSaved(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update referrer'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
+        <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Referrer</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">{referrer.email}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className={LABEL}>Full Name *</label>
+            <Input ref={ref} placeholder="Full name" required value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LABEL}>Phone</label>
+            <Input type="tel" placeholder="+61 400 000 000" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LABEL}>Organization</label>
+            <Input placeholder="Company or institution" value={form.organization_name} onChange={e => setForm(f => ({ ...f, organization_name: e.target.value }))} />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 interface ReferrerForm {
   full_name: string;
@@ -34,6 +103,7 @@ export default function ReferrerManagement() {
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
+  const [editingReferrer, setEditingReferrer] = useState<User | null>(null);
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -220,6 +290,7 @@ export default function ReferrerManagement() {
                     <td className="px-6 py-4">
                       {isAdmin && (
                         <div className="flex gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
                           <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
                             {referrer.is_active ? 'Deactivate' : 'Activate'}
                           </Button>
@@ -298,6 +369,14 @@ export default function ReferrerManagement() {
           </>
         )}
       </GlassCard>
+
+      {editingReferrer && (
+        <EditReferrerModal
+          referrer={editingReferrer}
+          onClose={() => setEditingReferrer(null)}
+          onSaved={updated => { setReferrers(prev => prev.map(r => r.id === updated.id ? updated : r)); setEditingReferrer(null); }}
+        />
+      )}
 
       {/* Confirmation modal */}
       {pendingAction && (

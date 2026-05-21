@@ -151,6 +151,7 @@ interface AddLeadProps {
 function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, tab: string, subLoanType: string): Record<string, unknown> {
   const details: Record<string, unknown> = {};
   if (tab === 'consumer') {
+    details.consumer_loan_type = { type: subLoanType };
     if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType)) {
       details.vehicle_details = {
         type: extra.vehicle_type,

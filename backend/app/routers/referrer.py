@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, field_validator
@@ -364,7 +365,8 @@ def create_direct_referral(
     db.refresh(application)
 
     if is_new_user:
-        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect=/applications/{application.id}"
+        redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
         send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
     else:
         send_complete_application_email(

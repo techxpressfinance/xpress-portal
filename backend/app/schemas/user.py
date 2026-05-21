@@ -89,6 +89,16 @@ class UserProfileUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+class UserUpdate(BaseModel):
+    """Admin/broker update of any user's profile fields."""
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    employee_id: Optional[str] = None
+    department: Optional[str] = None
+    license_number: Optional[str] = None
+    organization_name: Optional[str] = None
+
+
 class UserRoleUpdate(BaseModel):
     role: UserRole
 

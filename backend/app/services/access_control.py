@@ -18,6 +18,9 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         return
     if current_user.role == UserRole.broker:
+        # All drafts are visible to every broker in the tenant
+        if app.status.value == "draft":
+            return
         # Broker-created leads (submitted directly without a client)
         if app.user_id == current_user.id:
             return

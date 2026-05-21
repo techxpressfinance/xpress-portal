@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
@@ -267,10 +267,19 @@ export default function NewApplication() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const completeId = searchParams.get('completeId') || '';
 
   const [lendEnabled, setLendEnabled] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [completeLoading, setCompleteLoading] = useState(!!completeId);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [autosaveReady, setAutosaveReady] = useState(!completeId);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const performAutosaveRef = useRef<() => void>(() => {});
+  const draftStorageKey = user?.id ? `application-draft-${user.id}` : null;
 
   const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
   const [loanTypeError, setLoanTypeError] = useState('');
@@ -316,6 +325,7 @@ export default function NewApplication() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     defaultValues: {
@@ -368,16 +378,190 @@ export default function NewApplication() {
   useEffect(() => {
     if (user?.full_name) {
       const parts = user.full_name.split(' ');
-      setValue('applicant_first_name', parts[0] || '');
+      if (!getValues('applicant_first_name')) setValue('applicant_first_name', parts[0] || '');
       if (parts.length > 2) {
-        setValue('applicant_middle_name', parts.slice(1, -1).join(' '));
-        setValue('applicant_last_name', parts[parts.length - 1]);
+        if (!getValues('applicant_middle_name')) setValue('applicant_middle_name', parts.slice(1, -1).join(' '));
+        if (!getValues('applicant_last_name')) setValue('applicant_last_name', parts[parts.length - 1]);
       } else if (parts.length === 2) {
-        setValue('applicant_last_name', parts[1]);
+        if (!getValues('applicant_last_name')) setValue('applicant_last_name', parts[1]);
       }
     }
-    if (user?.email) setValue('applicant_email', user.email);
-  }, [user, setValue]);
+    if (user?.email && !getValues('applicant_email')) setValue('applicant_email', user.email);
+  }, [user, setValue, getValues]);
+
+  // Prefill from an existing draft application when completing a direct referral.
+  useEffect(() => {
+    if (!completeId) return;
+    let cancelled = false;
+    api.get(`/applications/${completeId}`)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const lendData = (() => {
+          if (!data.lend_extra_data) return {} as Record<string, unknown>;
+          try { return JSON.parse(data.lend_extra_data) as Record<string, unknown>; }
+          catch { return {} as Record<string, unknown>; }
+        })();
+        const loanTypeDetails = (lendData.loan_type_details ?? {}) as Record<string, { type?: string } | undefined>;
+
+        const lt = data.loan_type as string | undefined;
+        const COMMERCIAL_LTS = new Set(['equipment_finance', 'business_loan', 'commercial_property', 'business']);
+        const isCommercial = lt ? COMMERCIAL_LTS.has(lt) : false;
+        setTab(isCommercial ? 'commercial' : 'consumer');
+
+        if (isCommercial) {
+          const cType = loanTypeDetails.commercial_loan_type?.type;
+          if (cType) setSelectedCommercialLoanType(cType);
+        } else {
+          const cType = loanTypeDetails.consumer_loan_type?.type;
+          if (cType) setSelectedConsumerLoanType(cType);
+          else if (lt === 'personal') setSelectedConsumerLoanType('personal');
+        }
+
+        if (lt) setSelectedLoanTypes([lt]);
+
+        if (data.amount != null) setValue('amount', String(data.amount));
+        if (data.notes) setValue('notes', data.notes);
+        if (data.business_name) {
+          setComBusinessName(data.business_name);
+          setValue('business_name', data.business_name);
+        }
+        if (data.business_abn) {
+          setComAbn(data.business_abn);
+          setValue('business_abn', data.business_abn);
+        }
+      })
+      .catch(() => toast('Could not load your application. You can still fill the form below.', 'error'))
+      .finally(() => {
+        if (cancelled) return;
+        setCompleteLoading(false);
+        setAutosaveReady(true);
+      });
+    return () => { cancelled = true; };
+  }, [completeId, setValue, toast]);
+
+  // Restore an in-progress draft from localStorage (only for fresh /applications/new — not the completeId flow).
+  useEffect(() => {
+    if (completeId) return;
+    if (!draftStorageKey) return;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(draftStorageKey); } catch { return; }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        formData?: Partial<FormData>;
+        tab?: 'consumer' | 'commercial';
+        comBusinessName?: string;
+        comAbn?: string;
+        parentIndustryId?: number | '';
+        subIndustryId?: number | '';
+        comPostcode?: string;
+        comMonthlySales?: string;
+        selectedLoanTypes?: string[];
+        selectedConsumerLoanType?: string;
+        selectedCommercialLoanType?: string;
+        additionalIncomes?: AdditionalIncome[];
+        realEstateAssets?: RealEstateAsset[];
+        otherAssets?: OtherAsset[];
+        liabilities?: Liability[];
+        acknowledged?: boolean;
+        savedAt?: string;
+      };
+      if (parsed.formData) {
+        Object.entries(parsed.formData).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) setValue(k as keyof FormData, v as never);
+        });
+      }
+      if (parsed.tab) setTab(parsed.tab);
+      if (parsed.comBusinessName) setComBusinessName(parsed.comBusinessName);
+      if (parsed.comAbn) setComAbn(parsed.comAbn);
+      if (parsed.parentIndustryId !== undefined) setParentIndustryId(parsed.parentIndustryId);
+      if (parsed.subIndustryId !== undefined) setSubIndustryId(parsed.subIndustryId);
+      if (parsed.comPostcode) setComPostcode(parsed.comPostcode);
+      if (parsed.comMonthlySales) setComMonthlySales(parsed.comMonthlySales);
+      if (parsed.selectedLoanTypes) setSelectedLoanTypes(parsed.selectedLoanTypes);
+      if (parsed.selectedConsumerLoanType) setSelectedConsumerLoanType(parsed.selectedConsumerLoanType);
+      if (parsed.selectedCommercialLoanType) setSelectedCommercialLoanType(parsed.selectedCommercialLoanType);
+      if (parsed.additionalIncomes) setAdditionalIncomes(parsed.additionalIncomes);
+      if (parsed.realEstateAssets) setRealEstateAssets(parsed.realEstateAssets);
+      if (parsed.otherAssets) setOtherAssets(parsed.otherAssets);
+      if (parsed.liabilities) setLiabilities(parsed.liabilities);
+      if (parsed.acknowledged) {
+        setAcknowledged(true);
+        setChecked(true);
+      }
+      if (parsed.savedAt) setLastSavedAt(new Date(parsed.savedAt));
+    } catch { /* ignore malformed draft */ }
+  // Run once on mount per user.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftStorageKey, completeId]);
+
+  // Keep the autosave routine current with the latest state via a ref so the
+  // scheduling effect doesn't have to re-subscribe on every keystroke.
+  performAutosaveRef.current = () => {
+    if (!acknowledged) return;
+    const data = getValues();
+    if (completeId) {
+      const payload = buildPayload(data);
+      setSaveStatus('saving');
+      api.patch(`/applications/${completeId}`, payload)
+        .then(() => { setSaveStatus('saved'); setLastSavedAt(new Date()); })
+        .catch(() => setSaveStatus('error'));
+    } else {
+      if (!draftStorageKey) return;
+      try {
+        localStorage.setItem(draftStorageKey, JSON.stringify({
+          formData: data,
+          tab,
+          comBusinessName,
+          comAbn,
+          parentIndustryId,
+          subIndustryId,
+          comPostcode,
+          comMonthlySales,
+          selectedLoanTypes,
+          selectedConsumerLoanType,
+          selectedCommercialLoanType,
+          additionalIncomes,
+          realEstateAssets,
+          otherAssets,
+          liabilities,
+          acknowledged,
+          savedAt: new Date().toISOString(),
+        }));
+        setSaveStatus('saved');
+        setLastSavedAt(new Date());
+      } catch {
+        setSaveStatus('error');
+      }
+    }
+  };
+
+  const scheduleAutosave = () => {
+    if (!autosaveReady) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => performAutosaveRef.current(), 1500);
+  };
+
+  // Trigger autosave on any react-hook-form field change.
+  useEffect(() => {
+    const sub = watch(() => scheduleAutosave());
+    return () => sub.unsubscribe();
+  // scheduleAutosave intentionally not in deps — performAutosaveRef carries fresh state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watch, autosaveReady]);
+
+  // Trigger autosave on local-state changes (tab, sub-loan type, lists, etc.).
+  useEffect(() => {
+    scheduleAutosave();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autosaveReady,
+    tab, comBusinessName, comAbn,
+    parentIndustryId, subIndustryId, comPostcode, comMonthlySales,
+    selectedLoanTypes, selectedConsumerLoanType, selectedCommercialLoanType,
+    additionalIncomes, realEstateAssets, otherAssets, liabilities,
+    acknowledged,
+  ]);
 
 
   const toggleLoanType = (type: string) => {
@@ -426,7 +610,7 @@ export default function NewApplication() {
   };
 
 
-  const onSubmit = async (data: FormData) => {
+  const buildPayload = (data: FormData): Record<string, unknown> => {
     const extraData: Record<string, unknown> = {};
 
     if (lendEnabled) {
@@ -661,12 +845,11 @@ export default function NewApplication() {
       }
     }
 
-    try {
-      const payload: Record<string, unknown> = {
-        loan_type: lendEnabled ? (selectedLoanTypes[0] || 'equipment_finance') : (tab === 'consumer' ? 'personal' : 'business_loan'),
-        amount: mainAmount,
-        notes: data.notes || null,
-      };
+    const payload: Record<string, unknown> = {
+      loan_type: lendEnabled ? (selectedLoanTypes[0] || 'equipment_finance') : (tab === 'consumer' ? 'personal' : 'business_loan'),
+      amount: mainAmount,
+      notes: data.notes || null,
+    };
 
       if (!lendEnabled) {
         if (tab === 'consumer') {
@@ -729,11 +912,30 @@ export default function NewApplication() {
       payload.emergency_contact_phone = data.emergency_contact_phone;
       payload.lend_extra_data = JSON.stringify(extraData);
 
-      const res = await api.post('/applications', payload);
-      toast('Application created successfully!', 'success');
-      navigate(`/applications/${res.data.id}`);
+    return payload;
+  };
+
+  const clearLocalDraft = () => {
+    if (!draftStorageKey) return;
+    try { localStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
+  };
+
+  const onSubmit = async (data: FormData) => {
+    const payload = buildPayload(data);
+    try {
+      if (completeId) {
+        const res = await api.patch(`/applications/${completeId}`, payload);
+        toast('Application updated successfully!', 'success');
+        clearLocalDraft();
+        navigate(`/applications/${res.data.id}`);
+      } else {
+        const res = await api.post('/applications', payload);
+        toast('Application created successfully!', 'success');
+        clearLocalDraft();
+        navigate(`/applications/${res.data.id}`);
+      }
     } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to create application'), 'error');
+      toast(getErrorMessage(err, completeId ? 'Failed to update application' : 'Failed to create application'), 'error');
     }
   };
 
@@ -781,10 +983,36 @@ export default function NewApplication() {
     <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
       <div className="mb-8 mt-2">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="led-chip led-chip-accent">New Application</span>
+          <span className="led-chip led-chip-accent">{completeId ? 'Complete Application' : 'New Application'}</span>
         </div>
-        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">New Loan Application</h1>
-        <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Complete all sections below to submit your application</p>
+        <h1 className="text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
+          {completeId ? 'Complete Your Loan Application' : 'New Loan Application'}
+        </h1>
+        <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">
+          {completeId
+            ? 'A referrer has started this application for you. Please fill in the remaining details below.'
+            : 'Complete all sections below to submit your application'}
+        </p>
+        {completeLoading && (
+          <p className="mt-2 text-[13px] text-[var(--led-muted)]">Loading your application…</p>
+        )}
+        <div className="mt-3 flex items-center gap-2 text-[12px] text-[var(--led-muted)] min-h-[18px]" aria-live="polite">
+          {saveStatus === 'saving' && (
+            <>
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--led-accent)]" />
+              <span>Saving…</span>
+            </>
+          )}
+          {saveStatus === 'saved' && lastSavedAt && (
+            <>
+              <svg className="h-3.5 w-3.5 text-[var(--led-success,#22c55e)]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+              <span>{completeId ? 'Saved' : 'Draft saved locally'} · {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </>
+          )}
+          {saveStatus === 'error' && (
+            <span className="text-[var(--led-danger,#ef4444)]">Couldn't save — your changes are still on this page.</span>
+          )}
+        </div>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">

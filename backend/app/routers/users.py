@@ -11,7 +11,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
 from app.models.user import User
-from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate
+from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
@@ -188,6 +188,35 @@ def get_user(
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@router.patch("/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: str,
+    data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if data.full_name is not None:
+        user.full_name = data.full_name.strip()
+    if data.phone is not None:
+        user.phone = data.phone.strip() or None
+    if data.employee_id is not None:
+        user.employee_id = data.employee_id.strip() or None
+    if data.department is not None:
+        user.department = data.department.strip() or None
+    if data.license_number is not None:
+        user.license_number = data.license_number.strip() or None
+    if data.organization_name is not None:
+        user.organization_name = data.organization_name.strip() or None
+    log_activity(db, current_user.id, "user_updated", "user", user_id, {"fields": list(data.model_dump(exclude_unset=True).keys())}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(user)
     return user
 
 

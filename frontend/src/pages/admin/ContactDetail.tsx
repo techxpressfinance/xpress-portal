@@ -1,16 +1,180 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge } from '../../components/ui';
-import { formatDate } from '../../lib/utils';
+import { GlassCard, PageHeader, Button, Badge, Input, Select } from '../../components/ui';
+import { formatDate, getErrorMessage } from '../../lib/utils';
 import type { ContactDetail as ContactDetailType } from '../../types';
+
+const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
+const LABEL = 'block text-sm font-medium text-foreground mb-1';
+
+interface EditForm {
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  email: string;
+  phone: string;
+  date_of_birth: string;
+  drivers_license_number: string;
+  address: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+  notes: string;
+}
+
+function EditContactModal({ contact, onClose, onSaved }: {
+  contact: ContactDetailType;
+  onClose: () => void;
+  onSaved: (c: ContactDetailType) => void;
+}) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const firstRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState<EditForm>({
+    first_name: contact.first_name ?? '',
+    last_name: contact.last_name ?? '',
+    middle_name: contact.middle_name ?? '',
+    email: contact.email ?? '',
+    phone: contact.phone ?? '',
+    date_of_birth: contact.date_of_birth ?? '',
+    drivers_license_number: contact.drivers_license_number ?? '',
+    address: contact.address ?? '',
+    suburb: contact.suburb ?? '',
+    state: contact.state ?? '',
+    postcode: contact.postcode ?? '',
+    notes: contact.notes ?? '',
+  });
+
+  useEffect(() => {
+    firstRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const field = (key: keyof EditForm) => ({
+    value: form[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [key]: e.target.value })),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.first_name.trim() || !form.last_name.trim()) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, string | null> = {};
+      (Object.keys(form) as (keyof EditForm)[]).forEach(k => {
+        payload[k] = form[k].trim() || null;
+      });
+      const { data } = await api.patch<ContactDetailType>(`/contacts/${contact.id}`, payload);
+      toast('Contact updated', 'success');
+      onSaved({ ...contact, ...data });
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update contact'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-background border border-border p-6 shadow-xl"
+        style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
+      >
+        <h3 className="text-[17px] font-semibold text-foreground mb-5">Edit Contact</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={LABEL}>First Name *</label>
+              <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />
+            </div>
+            <div>
+              <label className={LABEL}>Middle Name</label>
+              <Input placeholder="Middle name" {...field('middle_name')} />
+            </div>
+            <div>
+              <label className={LABEL}>Last Name *</label>
+              <Input placeholder="Last name" required {...field('last_name')} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Email</label>
+              <Input type="email" placeholder="email@example.com" {...field('email')} />
+            </div>
+            <div>
+              <label className={LABEL}>Phone</label>
+              <Input type="tel" placeholder="04XX XXX XXX" {...field('phone')} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Date of Birth</label>
+              <Input type="date" {...field('date_of_birth')} />
+            </div>
+            <div>
+              <label className={LABEL}>Driver's License</label>
+              <Input placeholder="License number" {...field('drivers_license_number')} />
+            </div>
+          </div>
+
+          <div>
+            <label className={LABEL}>Street Address</label>
+            <Input placeholder="123 Example St" {...field('address')} />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={LABEL}>Suburb</label>
+              <Input placeholder="Suburb" {...field('suburb')} />
+            </div>
+            <div>
+              <label className={LABEL}>State</label>
+              <Select {...field('state')}>
+                <option value="">— Select —</option>
+                {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </div>
+            <div>
+              <label className={LABEL}>Postcode</label>
+              <Input placeholder="0000" {...field('postcode')} />
+            </div>
+          </div>
+
+          <div>
+            <label className={LABEL}>Notes</label>
+            <textarea
+              className="led-input w-full min-h-[80px] resize-y text-sm"
+              placeholder="Internal notes..."
+              {...field('notes')}
+            />
+          </div>
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [contact, setContact] = useState<ContactDetailType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     api.get<ContactDetailType>(`/contacts/${id}`)
@@ -37,9 +201,12 @@ export default function ContactDetail() {
         title={`${contact.first_name} ${contact.last_name}`}
         subtitle="Contact Details"
         action={
-          <Link to="/admin/contacts">
-            <Button variant="secondary" size="sm">Back to Contacts</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={() => setEditing(true)}>Edit Contact</Button>
+            <Link to="/admin/contacts">
+              <Button variant="secondary" size="sm">Back to Contacts</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -185,6 +352,14 @@ export default function ContactDetail() {
           </div>
         )}
       </GlassCard>
+
+      {editing && (
+        <EditContactModal
+          contact={contact}
+          onClose={() => setEditing(false)}
+          onSaved={updated => { setContact(updated); setEditing(false); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,98 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import type { BrokerGroup, Invitation, PaginatedResponse, User } from '../../types';
+
+const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
+
+function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: () => void; onSaved: (u: User) => void }) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    full_name: broker.full_name ?? '',
+    phone: broker.phone ?? '',
+    employee_id: broker.employee_id ?? '',
+    department: broker.department ?? '',
+    license_number: broker.license_number ?? '',
+  });
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const f = (key: keyof typeof form) => ({
+    value: form[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [key]: e.target.value })),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.full_name.trim()) return;
+    setSaving(true);
+    try {
+      const { data } = await api.patch<User>(`/users/${broker.id}`, {
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim() || null,
+        employee_id: form.employee_id.trim() || null,
+        department: form.department.trim() || null,
+        license_number: form.license_number.trim() || null,
+      });
+      toast('Broker updated', 'success');
+      onSaved(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update broker'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
+        <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Broker</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">{broker.email}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={LABEL}>Full Name *</label>
+              <Input ref={ref} placeholder="Full name" required {...f('full_name')} />
+            </div>
+            <div>
+              <label className={LABEL}>Phone</label>
+              <Input type="tel" placeholder="+61 400 000 000" {...f('phone')} />
+            </div>
+            <div>
+              <label className={LABEL}>Employee ID</label>
+              <Input placeholder="EMP-001" {...f('employee_id')} />
+            </div>
+            <div>
+              <label className={LABEL}>Department</label>
+              <Input placeholder="Lending" {...f('department')} />
+            </div>
+            <div>
+              <label className={LABEL}>License Number</label>
+              <Input placeholder="ACR-123456" {...f('license_number')} />
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 interface BrokerForm {
   full_name: string;
@@ -31,6 +119,7 @@ export default function BrokerManagement() {
   const [errors, setErrors] = useState<Partial<Record<keyof BrokerForm, string>>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
+  const [editingBroker, setEditingBroker] = useState<User | null>(null);
 
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loadingBrokers, setLoadingBrokers] = useState(true);
@@ -300,6 +389,7 @@ export default function BrokerManagement() {
                     <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(broker.created_at)}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => setEditingBroker(broker)}>Edit</Button>
                         <Button size="sm" variant={broker.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: broker.id, userName: broker.full_name, isActive: broker.is_active })}>
                           {broker.is_active ? 'Deactivate' : 'Activate'}
                         </Button>
@@ -504,6 +594,14 @@ export default function BrokerManagement() {
           </>
         )}
       </GlassCard>
+
+      {editingBroker && (
+        <EditBrokerModal
+          broker={editingBroker}
+          onClose={() => setEditingBroker(null)}
+          onSaved={updated => { setBrokers(prev => prev.map(b => b.id === updated.id ? updated : b)); setEditingBroker(null); }}
+        />
+      )}
 
       {/* Confirmation modal */}
       {pendingAction && (

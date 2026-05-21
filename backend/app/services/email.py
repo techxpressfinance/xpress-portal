@@ -189,7 +189,7 @@ def send_complete_application_email(
         logger.debug("Email not configured, skipping complete-application email for %s", to_email)
         return
 
-    app_url = f"{FRONTEND_URL}/applications/{application_id}"
+    app_url = f"{FRONTEND_URL}/applications/new?completeId={application_id}"
     subject = "Complete Your Loan Application - Xpress Finance Portal"
     body = (
         f"Dear {client_name},\n\n"

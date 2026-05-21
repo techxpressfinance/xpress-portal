@@ -133,7 +133,7 @@ def list_applications(
     if current_user.role == UserRole.client:
         query = query.filter(LoanApplication.user_id == current_user.id)
     elif current_user.role == UserRole.broker:
-        # Brokers see: applications assigned to them + referrer-submitted leads + their own created leads
+        # Brokers see: applications assigned to them + referrer-submitted leads + their own created leads + all drafts (tenant-wide)
         from sqlalchemy import or_
         referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
@@ -143,6 +143,7 @@ def list_applications(
                 ),
                 LoanApplication.user_id.in_(referrer_ids),
                 LoanApplication.user_id == current_user.id,
+                LoanApplication.status == ApplicationStatus.draft,
             )
         )
     elif current_user.role == UserRole.referrer:
@@ -202,6 +203,7 @@ def get_application_analytics(
                     db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
                 ),
                 LoanApplication.user_id.in_(referrer_ids),
+                LoanApplication.status == ApplicationStatus.draft,
             )
         )
     elif current_user.role == UserRole.referrer:

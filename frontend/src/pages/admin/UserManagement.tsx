@@ -1,11 +1,71 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import type { Invitation, LoanApplication, LoanType, PaginatedResponse, User } from '../../types';
+
+const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
+
+function EditClientModal({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: (u: User) => void }) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ full_name: user.full_name ?? '', phone: user.phone ?? '' });
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.full_name.trim()) return;
+    setSaving(true);
+    try {
+      const { data } = await api.patch<User>(`/users/${user.id}`, {
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim() || null,
+      });
+      toast('Client updated', 'success');
+      onSaved(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update client'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
+        <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Client</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">{user.email}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className={LABEL}>Full Name *</label>
+            <Input ref={ref} placeholder="Full name" required value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LABEL}>Phone</label>
+            <Input type="tel" placeholder="04XX XXX XXX" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 type PendingAction =
   | { type: 'role'; userId: string; userName: string; from: string; to: string }
@@ -30,6 +90,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Invite new client
   const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', phone: '' });
@@ -241,6 +302,7 @@ export default function UserManagement() {
                       <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(user.created_at)}</td>
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => setEditingUser(user)}>Edit</Button>
                           {currentUser?.role === 'admin' && !isSelf && (
                             <>
                               <Button variant={user.is_active ? 'danger' : 'success'} size="sm" onClick={() => setPendingAction({ type: 'toggle_active', userId: user.id, userName: user.full_name, isActive: user.is_active })}>
@@ -425,6 +487,14 @@ export default function UserManagement() {
           </>
         )}
       </GlassCard>
+
+      {editingUser && (
+        <EditClientModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={updated => { setUsers(prev => prev.map(u => u.id === updated.id ? updated : u)); setEditingUser(null); }}
+        />
+      )}
 
       {/* Confirmation modal */}
       {pendingAction && (
