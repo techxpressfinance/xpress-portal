@@ -532,22 +532,40 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
         {clientMode === 'existing' && (
           <div className="space-y-2">
-            <Input placeholder="Search by name or email..." value={prevClientSearch} onChange={e => setPrevClientSearch(e.target.value)} />
-            <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-              {prevClientsLoading && <p className="text-[13px] text-muted-foreground text-center py-3">Loading...</p>}
-              {!prevClientsLoading && filtered.length === 0 && (
-                <p className="text-[13px] text-muted-foreground text-center py-3">No Existing clients found</p>
-              )}
-              {filtered.map((c, i) => (
-                <button key={i} type="button"
-                  onClick={() => { setSelectedPrevClient(c); setFirstName(c.firstName); setLastName(c.lastName); setEmail(c.email); setMobile(c.mobile ?? ''); }}
-                  className={`w-full text-left rounded-xl border px-4 py-3 transition-colors ${selectedPrevClient?.email === c.email ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}
+            {selectedPrevClient ? (
+              <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
+                <div>
+                  <p className="text-[14px] font-medium text-foreground">{selectedPrevClient.name}</p>
+                  <p className="text-[12px] text-muted-foreground">{selectedPrevClient.email}{selectedPrevClient.mobile ? ` · ${selectedPrevClient.mobile}` : ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedPrevClient(null); setPrevClientSearch(''); }}
+                  className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
                 >
-                  <p className="text-[14px] font-medium text-foreground">{c.name}</p>
-                  <p className="text-[12px] text-muted-foreground">{c.email}{c.mobile ? ` · ${c.mobile}` : ''}</p>
+                  Change
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <>
+                <Input placeholder="Search by name or email..." value={prevClientSearch} onChange={e => setPrevClientSearch(e.target.value)} />
+                <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                  {prevClientsLoading && <p className="text-[13px] text-muted-foreground text-center py-3">Loading...</p>}
+                  {!prevClientsLoading && filtered.length === 0 && (
+                    <p className="text-[13px] text-muted-foreground text-center py-3">No Existing clients found</p>
+                  )}
+                  {filtered.map((c, i) => (
+                    <button key={i} type="button"
+                      onClick={() => { setSelectedPrevClient(c); setFirstName(c.firstName); setLastName(c.lastName); setEmail(c.email); setMobile(c.mobile ?? ''); }}
+                      className="w-full text-left rounded-xl border border-border px-4 py-3 transition-colors hover:border-primary/30"
+                    >
+                      <p className="text-[14px] font-medium text-foreground">{c.name}</p>
+                      <p className="text-[12px] text-muted-foreground">{c.email}{c.mobile ? ` · ${c.mobile}` : ''}</p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 

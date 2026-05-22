@@ -216,6 +216,7 @@ export interface ActivityLog {
   entity_type: string;
   entity_id: string;
   details: string | null;
+  link: string | null;
   created_at: string;
 }
 

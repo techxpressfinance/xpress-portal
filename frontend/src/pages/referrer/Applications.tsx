@@ -61,7 +61,7 @@ export default function ReferrerApplications() {
       />
 
       {/* Add Lead CTA */}
-      <Link to="/referrer/add-lead" className="block mb-6">
+      <Link to="/referrer/add-lead" data-tour="add-lead" className="block mb-6">
         <div className="group rounded-2xl border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary/60 transition-all duration-200 px-6 py-7 text-center cursor-pointer">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
             <svg className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

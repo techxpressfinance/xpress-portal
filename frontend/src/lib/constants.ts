@@ -112,11 +112,17 @@ export const LOAN_TYPE_LABELS: Record<string, string> = {
 
 export const ACTION_LABELS: Record<string, string> = {
   created: 'Created application',
+  submitted: 'Submitted application',
+  updated: 'Updated application',
   status_changed: 'Changed status',
   broker_assigned: 'Assigned broker',
   broker_unassigned: 'Removed broker',
-  document_verified: 'Verified document',
   broker_completed: 'Completed on behalf of client',
+  broker_group_assigned: 'Assigned broker group',
+  document_verified: 'Verified document',
+  analysis_triggered: 'Analysis triggered',
+  lead_submitted: 'Submitted lead',
+  client_referred: 'Added client contact',
 };
 
 export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactNode }> = {
@@ -139,6 +145,21 @@ export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactN
     bg: 'bg-[#34c759] text-white',
     icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
       React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'm4.5 12.75 6 6 9-13.5' })),
+  },
+  lead_submitted: {
+    bg: 'bg-[#ff9500] text-white',
+    icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
+      React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5' })),
+  },
+  client_referred: {
+    bg: 'bg-[#5856d6] text-white',
+    icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
+      React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z' })),
+  },
+  submitted: {
+    bg: 'bg-[#30b0c7] text-white',
+    icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
+      React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5' })),
   },
 };
 

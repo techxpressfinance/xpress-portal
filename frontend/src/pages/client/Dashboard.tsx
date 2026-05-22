@@ -51,7 +51,7 @@ export default function ClientDashboard() {
             </p>
           </div>
         </div>
-        <Link to="/applications/new">
+        <Link to="/applications/new" data-tour="new-application">
           <Button size="lg" className="h-11 px-5">+ New Application</Button>
         </Link>
       </div>

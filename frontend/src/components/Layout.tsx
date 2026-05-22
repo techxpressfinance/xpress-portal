@@ -7,7 +7,13 @@ import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import GlobalSearch from './GlobalSearch';
 import NotificationCenter from './NotificationCenter';
+import OnboardingTour from './OnboardingTour';
 import PageTransition from './PageTransition';
+import {
+  getTourSteps,
+  isTourCompleted,
+  markTourCompleted,
+} from '../lib/tourSteps';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
   `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border ${isActive
@@ -26,7 +32,36 @@ export default function Layout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [tourOpen, setTourOpen] = useState(false);
   const unreadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const tourSteps = getTourSteps(user?.role);
+
+  // Auto-launch tour on first login for client/referrer users
+  useEffect(() => {
+    if (!user || !tourSteps) return;
+    if (!isTourCompleted(user.id)) {
+      // Defer to next tick so the layout finishes mounting and nav links are in the DOM
+      const id = setTimeout(() => setTourOpen(true), 400);
+      return () => clearTimeout(id);
+    }
+  }, [user, tourSteps]);
+
+  const startTour = () => {
+    setSidebarOpen(true);
+    setTourOpen(true);
+  };
+
+  const handleTourClose = () => {
+    setTourOpen(false);
+    setSidebarOpen(false);
+    if (user) markTourCompleted(user.id);
+  };
+
+  // Keep mobile sidebar open while tour runs so nav-link targets are visible
+  useEffect(() => {
+    if (tourOpen) setSidebarOpen(true);
+  }, [tourOpen]);
 
   const fetchUnreadCount = useCallback(() => {
     if (user && user.role !== 'super_admin') {
@@ -111,15 +146,15 @@ export default function Layout() {
             </>
           ) : isReferrer ? (
             <>
-              <NavLink to="/referrer/applications" className={linkClass} title="Applications">
+              <NavLink to="/referrer/applications" data-tour="nav-applications" className={linkClass} title="Applications">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
                 {!collapsed && 'Applications'}
               </NavLink>
-              <NavLink to="/referrer/clients" className={linkClass} title="Clients">
+              <NavLink to="/referrer/clients" data-tour="nav-clients" className={linkClass} title="Clients">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
                 {!collapsed && 'Clients'}
               </NavLink>
-              <NavLink to="/referrer/messages" className={linkClass} title="Messages">
+              <NavLink to="/referrer/messages" data-tour="nav-messages" className={linkClass} title="Messages">
                 <div className="relative shrink-0">
                   <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
                   {unreadCount > 0 && (
@@ -130,22 +165,22 @@ export default function Layout() {
                 </div>
                 {!collapsed && 'Messages'}
               </NavLink>
-              <NavLink to="/referrer/service-requests" className={linkClass} title="Service Requests">
+              <NavLink to="/referrer/service-requests" data-tour="nav-service-requests" className={linkClass} title="Service Requests">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
                 {!collapsed && 'Service Requests'}
               </NavLink>
             </>
           ) : !isAdmin ? (
             <>
-              <NavLink to="/dashboard" className={linkClass} title="Dashboard">
+              <NavLink to="/dashboard" data-tour="nav-dashboard" className={linkClass} title="Dashboard">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" /></svg>
                 {!collapsed && 'Dashboard'}
               </NavLink>
-              <NavLink to="/applications" className={linkClass} title="Applications">
+              <NavLink to="/applications" data-tour="nav-applications" className={linkClass} title="Applications">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
                 {!collapsed && 'Applications'}
               </NavLink>
-              <NavLink to="/messages" className={linkClass} title="Messages">
+              <NavLink to="/messages" data-tour="nav-messages" className={linkClass} title="Messages">
                 <div className="relative shrink-0">
                   <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
                   {unreadCount > 0 && (
@@ -156,7 +191,7 @@ export default function Layout() {
                 </div>
                 {!collapsed && 'Messages'}
               </NavLink>
-              <NavLink to="/service-requests" className={linkClass} title="Service Requests">
+              <NavLink to="/service-requests" data-tour="nav-service-requests" className={linkClass} title="Service Requests">
                 <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
                 {!collapsed && 'Service Requests'}
               </NavLink>
@@ -178,7 +213,7 @@ export default function Layout() {
               </button>
 
               <div className="led-nav-group">
-                {!collapsed && <p className="led-nav-title">Live Book</p>}
+                {!collapsed && <p className="led-nav-title"></p>}
                 <NavLink to="/admin" end className={linkClass} title="Dashboard">
                   <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" /></svg>
                   {!collapsed && 'Dashboard'}
@@ -279,11 +314,28 @@ export default function Layout() {
           )}
 
           <div className="!mt-5 !pt-4 border-t border-border">
-            {!isSuperAdmin && <NotificationCenter collapsed={collapsed} />}
-            <NavLink to="/profile" className={linkClass} title="Profile">
+            {!isSuperAdmin && (
+              <div data-tour="nav-notifications">
+                <NotificationCenter collapsed={collapsed} />
+              </div>
+            )}
+            <NavLink to="/profile" data-tour="nav-profile" className={linkClass} title="Profile">
               <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
               {!collapsed && 'Profile'}
             </NavLink>
+            {tourSteps && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); startTour(); }}
+                className={`mt-0.5 flex w-full items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border border-transparent text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)]`}
+                title="Take the tour"
+              >
+                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+                </svg>
+                {!collapsed && 'Take the tour'}
+              </button>
+            )}
           </div>
         </nav>
 
@@ -385,6 +437,14 @@ export default function Layout() {
         </main>
       </div>
       <GlobalSearch />
+      {tourSteps && (
+        <OnboardingTour
+          steps={tourSteps}
+          open={tourOpen}
+          onClose={handleTourClose}
+          onFinish={() => user && markTourCompleted(user.id)}
+        />
+      )}
       {showLogoutConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
           <div

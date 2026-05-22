@@ -822,27 +822,7 @@ export default function NewApplication() {
       else if (primary === 'commercial_property') mainAmount = parseFloat(data.cp_estimated_value) || 0;
       else if (primary === 'home_loan') mainAmount = parseFloat(data.hl_property_value) || 0;
     } else {
-      // Calculate amount based on selected loan type
-      if (tab === 'consumer') {
-        if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType)) {
-          mainAmount = parseFloat(data.vehicle_price) || 0;
-        } else if (['purchase', 'refinance'].includes(selectedConsumerLoanType)) {
-          mainAmount = parseFloat(data.property_value) || 0;
-        } else {
-          mainAmount = parseFloat(data.amount) || 0;
-        }
-      } else {
-        // Commercial loans
-        if (['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType)) {
-          mainAmount = parseFloat(data.vehicle_price) || 0;
-        } else if (['property', 'development_construction', 'new_fit_out', 'renovation'].includes(selectedCommercialLoanType)) {
-          mainAmount = parseFloat(data.property_value) || 0;
-        } else if (['new_business', 'purchase_business'].includes(selectedCommercialLoanType)) {
-          mainAmount = parseFloat(data.amount) || parseFloat(data.startup_costs) || parseFloat(data.purchase_price) || 0;
-        } else {
-          mainAmount = parseFloat(data.amount) || 0;
-        }
-      }
+      mainAmount = parseFloat(data.amount) || 0;
     }
 
     const payload: Record<string, unknown> = {
@@ -1019,7 +999,7 @@ export default function NewApplication() {
 
         {/* ── Loan Type & Details ── */}
             {lendEnabled && (
-              <div className="contents">
+              <>
                 <GlassCard>
                   <label className={LABEL_CLS}>Select Loan Type(s)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1047,13 +1027,13 @@ export default function NewApplication() {
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏗️ Equipment Finance Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className={LABEL_CLS}>Asset Type</label>
+                        <label className={LABEL_CLS}>Asset Type <span className="font-normal">(Optional)</span></label>
                         <select {...register('eq_asset_type')} className={SELECT_CLS}>
                           {['Truck', 'Car', 'Machinery', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>New or Used</label>
+                        <label className={LABEL_CLS}>New or Used <span className="font-normal">(Optional)</span></label>
                         <select {...register('eq_new_or_used')} className={SELECT_CLS}>
                           <option value="New">New</option>
                           <option value="Used">Used</option>
@@ -1072,20 +1052,20 @@ export default function NewApplication() {
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className={LABEL_CLS}>Vendor Type</label>
+                        <label className={LABEL_CLS}>Vendor Type <span className="font-normal">(Optional)</span></label>
                         <select {...register('eq_vendor_type')} className={SELECT_CLS}>
                           <option value="Dealer">Dealer</option>
                           <option value="Private">Private</option>
                         </select>
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>Loan Term (Years)</label>
+                        <label className={LABEL_CLS}>Loan Term (Years) <span className="font-normal">(Optional)</span></label>
                         <Input type="number" min="1" max="10" placeholder="5" {...register('eq_loan_term')} />
                       </div>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className={LABEL_CLS}>Estimated Repayment Budget ($/month)</label>
+                        <label className={LABEL_CLS}>Estimated Repayment Budget ($/month) <span className="font-normal">(Optional)</span></label>
                         <Input type="number" step="0.01" min="0" placeholder="3,000" {...register('eq_estimated_repayment')} />
                       </div>
                       <div>
@@ -1100,7 +1080,7 @@ export default function NewApplication() {
                   <GlassCard className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">💼 Business Loan Details</h3>
                     <div>
-                      <label className={LABEL_CLS}>Loan Purpose</label>
+                      <label className={LABEL_CLS}>Loan Purpose <span className="font-normal">(Optional)</span></label>
                       <textarea {...register('bl_loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -1109,12 +1089,12 @@ export default function NewApplication() {
                         <Input type="number" step="0.01" min="0" placeholder="50,000" {...register('bl_loan_amount')} />
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>Preferred Loan Term</label>
+                        <label className={LABEL_CLS}>Preferred Loan Term <span className="font-normal">(Optional)</span></label>
                         <Input placeholder="e.g. 3 years" {...register('bl_loan_term')} />
                       </div>
                     </div>
                     <div>
-                      <label className={LABEL_CLS}>Purpose Type</label>
+                      <label className={LABEL_CLS}>Purpose Type <span className="font-normal">(Optional)</span></label>
                       <select {...register('bl_purpose_type')} className={SELECT_CLS}>
                         {['Working Capital', 'Growth', 'Refinance', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -1126,7 +1106,7 @@ export default function NewApplication() {
                   <GlassCard className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏢 Commercial Property Details</h3>
                     <div>
-                      <label className={LABEL_CLS}>Purchase or Refinance?</label>
+                      <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
                       <div className="flex gap-3">
                         {['Purchase', 'Refinance'].map(v => (
                           <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('cp_purchase_or_refinance') === v ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
@@ -1137,7 +1117,7 @@ export default function NewApplication() {
                       </div>
                     </div>
                     <div>
-                      <label className={LABEL_CLS}>Security Address</label>
+                      <label className={LABEL_CLS}>Security Address <span className="font-normal">(Optional)</span></label>
                       <Input placeholder="123 Main St, Sydney NSW 2000" {...register('cp_security_address')} />
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -1160,7 +1140,7 @@ export default function NewApplication() {
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏠 Home Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className={LABEL_CLS}>Purchase or Refinance?</label>
+                        <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
                         <div className="flex gap-3">
                           {['Purchase', 'Refinance'].map(v => (
                             <label key={v} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${watch('hl_purchase_or_refinance') === v ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
@@ -1171,7 +1151,7 @@ export default function NewApplication() {
                         </div>
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>Owner Occupied or Investment?</label>
+                        <label className={LABEL_CLS}>Owner Occupied or Investment? <span className="font-normal">(Optional)</span></label>
                         <select {...register('hl_owner_or_investment')} className={SELECT_CLS}>
                           <option value="Owner Occupied">Owner Occupied</option>
                           <option value="Investment">Investment</option>
@@ -1185,7 +1165,7 @@ export default function NewApplication() {
                       </div>
                       {watch('hl_purchase_or_refinance') === 'Refinance' && (
                         <div>
-                          <label className={LABEL_CLS}>Existing Lender</label>
+                          <label className={LABEL_CLS}>Existing Lender <span className="font-normal">(Optional)</span></label>
                           <Input placeholder="e.g. ANZ" {...register('hl_existing_lender')} />
                         </div>
                       )}
@@ -1264,11 +1244,11 @@ export default function NewApplication() {
                     </div>
                   )}
                 </GlassCard>
-              </div>
+              </>
             )}
 
             {!lendEnabled && (
-              <div className="contents">
+              <>
                 {/* Consumer / Commercial Tab Switcher */}
                 <div className="flex rounded-xl bg-secondary p-1 gap-1">
                   {(['consumer', 'commercial'] as const).map(t => (
@@ -1311,7 +1291,7 @@ export default function NewApplication() {
                         <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Vehicle Details</h4>
                         {selectedConsumerLoanType === 'other_vehicle' && (
                           <div>
-                            <label className={LABEL_CLS}>Vehicle Type</label>
+                            <label className={LABEL_CLS}>Vehicle Type <span className="font-normal">(Optional)</span></label>
                             <select {...register('vehicle_type')} className={SELECT_CLS}>
                               {['Boat', 'Jet Ski', 'Trailer', 'Camper', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -1319,24 +1299,24 @@ export default function NewApplication() {
                         )}
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className={LABEL_CLS}>Make</label>
+                            <label className={LABEL_CLS}>Make <span className="font-normal">(Optional)</span></label>
                             <select {...register('vehicle_make')} className={SELECT_CLS}>
                               <option value="">Select make...</option>
                               {VEHICLE_MAKES.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Model</label>
+                            <label className={LABEL_CLS}>Model <span className="font-normal">(Optional)</span></label>
                             <Input placeholder="e.g. Corolla" {...register('vehicle_model')} />
                           </div>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div>
-                            <label className={LABEL_CLS}>Year</label>
+                            <label className={LABEL_CLS}>Year <span className="font-normal">(Optional)</span></label>
                             <Input type="number" min="1900" max={new Date().getFullYear() + 1} placeholder="2024" {...register('vehicle_year')} />
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Condition</label>
+                            <label className={LABEL_CLS}>Condition <span className="font-normal">(Optional)</span></label>
                             <select {...register('vehicle_condition')} className={SELECT_CLS}>
                               {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -1357,7 +1337,7 @@ export default function NewApplication() {
                           </div>
                         </div>
                         <div>
-                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <label className={LABEL_CLS}>Preferred Loan Term <span className="font-normal">(Optional)</span></label>
                           <select {...register('loan_term')} className={SELECT_CLS}>
                             {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
@@ -1373,17 +1353,11 @@ export default function NewApplication() {
                           <label className={LABEL_CLS}>Loan Purpose</label>
                           <textarea {...register('loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe what the loan is for..." />
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <label className={LABEL_CLS}>Loan Amount ($)</label>
-                            <Input type="number" step="0.01" min="0" placeholder="25,000" {...register('amount')} />
-                          </div>
-                          <div>
-                            <label className={LABEL_CLS}>Preferred Term</label>
-                            <select {...register('loan_term')} className={SELECT_CLS}>
-                              {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </div>
+                        <div>
+                          <label className={LABEL_CLS}>Preferred Term <span className="font-normal">(Optional)</span></label>
+                          <select {...register('loan_term')} className={SELECT_CLS}>
+                            {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
                         </div>
                       </div>
                     )}
@@ -1412,11 +1386,11 @@ export default function NewApplication() {
                           <>
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div>
-                                <label className={LABEL_CLS}>Deposit ($)</label>
+                                <label className={LABEL_CLS}>Deposit ($) <span className="font-normal">(Optional)</span></label>
                                 <Input type="number" step="0.01" min="0" placeholder="80,000" {...register('deposit_amount')} />
                               </div>
                               <div>
-                                <label className={LABEL_CLS}>First Home Buyer?</label>
+                                <label className={LABEL_CLS}>First Home Buyer? <span className="font-normal">(Optional)</span></label>
                                 <select {...register('first_home_buyer')} className={SELECT_CLS}>
                                   <option value="yes">Yes</option>
                                   <option value="no">No</option>
@@ -1498,20 +1472,20 @@ export default function NewApplication() {
                         <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Asset Details</h4>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className={LABEL_CLS}>Asset Type</label>
+                            <label className={LABEL_CLS}>Asset Type <span className="font-normal">(Optional)</span></label>
                             <select {...register('equipment_type')} className={SELECT_CLS}>
                               {EQUIPMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Condition</label>
+                            <label className={LABEL_CLS}>Condition <span className="font-normal">(Optional)</span></label>
                             <select {...register('vehicle_condition')} className={SELECT_CLS}>
                               {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
                         </div>
                         <div>
-                          <label className={LABEL_CLS}>Description</label>
+                          <label className={LABEL_CLS}>Description <span className="font-normal">(Optional)</span></label>
                           <Input placeholder="e.g. 2023 Isuzu NPR 65-190 Tray Truck" {...register('equipment_description')} />
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -1520,13 +1494,13 @@ export default function NewApplication() {
                             <Input type="number" step="0.01" min="0" placeholder="80,000" {...register('vehicle_price')} />
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Deposit / Trade-in ($)</label>
+                            <label className={LABEL_CLS}>Deposit / Trade-in ($) <span className="font-normal">(Optional)</span></label>
                             <Input type="number" step="0.01" min="0" placeholder="10,000" {...register('deposit_amount')} />
                           </div>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className={LABEL_CLS}>Vendor Type</label>
+                            <label className={LABEL_CLS}>Vendor Type <span className="font-normal">(Optional)</span></label>
                             <select {...register('vendor_type')} className={SELECT_CLS}>
                               <option value="Dealer">Dealer</option>
                               <option value="Private">Private</option>
@@ -1534,12 +1508,12 @@ export default function NewApplication() {
                             </select>
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Business Use %</label>
+                            <label className={LABEL_CLS}>Business Use % <span className="font-normal">(Optional)</span></label>
                             <Input type="number" min="0" max="100" placeholder="80" {...register('eq_business_use_pct')} />
                           </div>
                         </div>
                         <div>
-                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <label className={LABEL_CLS}>Preferred Loan Term <span className="font-normal">(Optional)</span></label>
                           <select {...register('loan_term')} className={SELECT_CLS}>
                             {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
@@ -1552,18 +1526,18 @@ export default function NewApplication() {
                       <div className="space-y-4 pt-4 border-t border-[var(--led-line)]">
                         <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Property Details</h4>
                         <div>
-                          <label className={LABEL_CLS}>Property Address</label>
+                          <label className={LABEL_CLS}>Property Address <span className="font-normal">(Optional)</span></label>
                           <Input placeholder="123 Main St, Sydney NSW 2000" {...register('property_address')} />
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className={LABEL_CLS}>Property Type</label>
+                            <label className={LABEL_CLS}>Property Type <span className="font-normal">(Optional)</span></label>
                             <select {...register('property_type')} className={SELECT_CLS}>
                               {PROPERTY_TYPES.slice(6).map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Property Use</label>
+                            <label className={LABEL_CLS}>Property Use <span className="font-normal">(Optional)</span></label>
                             <select {...register('property_use')} className={SELECT_CLS}>
                               <option value="Owner Occupied">Owner Occupied</option>
                               <option value="Investment">Investment</option>
@@ -1573,19 +1547,19 @@ export default function NewApplication() {
                         </div>
                         {selectedCommercialLoanType === 'development_construction' && (
                           <div>
-                            <label className={LABEL_CLS}>Project Description</label>
+                            <label className={LABEL_CLS}>Project Description <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('project_description')} rows={3} className={TEXTAREA_CLS} placeholder="Describe the development project..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'new_fit_out' && (
                           <div>
-                            <label className={LABEL_CLS}>Fit-out Description</label>
+                            <label className={LABEL_CLS}>Fit-out Description <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('fit_out_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the fit-out requirements..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'renovation' && (
                           <div>
-                            <label className={LABEL_CLS}>Renovation Details</label>
+                            <label className={LABEL_CLS}>Renovation Details <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('renovation_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the renovation works..." />
                           </div>
                         )}
@@ -1600,7 +1574,7 @@ export default function NewApplication() {
                           </div>
                         </div>
                         <div>
-                          <label className={LABEL_CLS}>Preferred Loan Term</label>
+                          <label className={LABEL_CLS}>Preferred Loan Term <span className="font-normal">(Optional)</span></label>
                           <select {...register('loan_term')} className={SELECT_CLS}>
                             {LOAN_TERM_OPTIONS.slice(4).map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
@@ -1615,7 +1589,7 @@ export default function NewApplication() {
                         {selectedCommercialLoanType === 'new_business' ? (
                           <>
                             <div>
-                              <label className={LABEL_CLS}>Business Plan Summary</label>
+                              <label className={LABEL_CLS}>Business Plan Summary <span className="font-normal">(Optional)</span></label>
                               <textarea {...register('business_plan')} rows={3} className={TEXTAREA_CLS} placeholder="Briefly describe your business plan..." />
                             </div>
                             <div className="grid gap-4 sm:grid-cols-2">
@@ -1624,7 +1598,7 @@ export default function NewApplication() {
                                 <Input type="number" step="0.01" min="0" placeholder="150,000" {...register('startup_costs')} />
                               </div>
                               <div>
-                                <label className={LABEL_CLS}>Industry</label>
+                                <label className={LABEL_CLS}>Industry <span className="font-normal">(Optional)</span></label>
                                 <Input placeholder="e.g. Retail, Hospitality" {...register('business_purpose')} />
                               </div>
                             </div>
@@ -1632,7 +1606,7 @@ export default function NewApplication() {
                         ) : (
                           <>
                             <div>
-                              <label className={LABEL_CLS}>Business Details</label>
+                              <label className={LABEL_CLS}>Business Details <span className="font-normal">(Optional)</span></label>
                               <textarea {...register('business_details')} rows={2} className={TEXTAREA_CLS} placeholder="Business name, type, and brief description..." />
                             </div>
                             <div className="grid gap-4 sm:grid-cols-2">
@@ -1641,7 +1615,7 @@ export default function NewApplication() {
                                 <Input type="number" step="0.01" min="0" placeholder="500,000" {...register('purchase_price')} />
                               </div>
                               <div>
-                                <label className={LABEL_CLS}>Business Type</label>
+                                <label className={LABEL_CLS}>Business Type <span className="font-normal">(Optional)</span></label>
                                 <Input placeholder="e.g. Cafe, Franchise" {...register('business_type')} />
                               </div>
                             </div>
@@ -1653,7 +1627,7 @@ export default function NewApplication() {
                             <Input type="number" step="0.01" min="0" placeholder="400,000" {...register('amount')} />
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Preferred Term</label>
+                            <label className={LABEL_CLS}>Preferred Term <span className="font-normal">(Optional)</span></label>
                             <select {...register('loan_term')} className={SELECT_CLS}>
                               {LOAN_TERM_OPTIONS.slice(2, 8).map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -1668,31 +1642,31 @@ export default function NewApplication() {
                         <h4 className="text-[13px] font-semibold text-[var(--led-ink)]">Loan Details</h4>
                         {selectedCommercialLoanType === 'staff_recruitment' && (
                           <div>
-                            <label className={LABEL_CLS}>Recruitment Details</label>
+                            <label className={LABEL_CLS}>Recruitment Details <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('recruitment_details')} rows={2} className={TEXTAREA_CLS} placeholder="Number of staff, roles, training costs..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'expansion' && (
                           <div>
-                            <label className={LABEL_CLS}>Expansion Description</label>
+                            <label className={LABEL_CLS}>Expansion Description <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('expansion_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe your expansion plans..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'pay_suppliers' && (
                           <div>
-                            <label className={LABEL_CLS}>Supplier Details</label>
+                            <label className={LABEL_CLS}>Supplier Details <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('supplier_details')} rows={2} className={TEXTAREA_CLS} placeholder="Supplier names, invoice details..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'waiting_for_invoices' && (
                           <div>
-                            <label className={LABEL_CLS}>Outstanding Invoices</label>
+                            <label className={LABEL_CLS}>Outstanding Invoices <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('outstanding_invoices')} rows={2} className={TEXTAREA_CLS} placeholder="Debtor details, amounts, due dates..." />
                           </div>
                         )}
                         {selectedCommercialLoanType === 'other' && (
                           <div>
-                            <label className={LABEL_CLS}>Purpose Description</label>
+                            <label className={LABEL_CLS}>Purpose Description <span className="font-normal">(Optional)</span></label>
                             <textarea {...register('purpose_description')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
                           </div>
                         )}
@@ -1702,7 +1676,7 @@ export default function NewApplication() {
                             <Input type="number" step="0.01" min="0" placeholder="100,000" {...register('amount')} />
                           </div>
                           <div>
-                            <label className={LABEL_CLS}>Preferred Term</label>
+                            <label className={LABEL_CLS}>Preferred Term <span className="font-normal">(Optional)</span></label>
                             <select {...register('loan_term')} className={SELECT_CLS}>
                               {LOAN_TERM_OPTIONS.slice(0, 7).map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -1728,7 +1702,27 @@ export default function NewApplication() {
                     </div>
             </GlassCard>
             )}
-            </div>
+
+            {/* ── Loan Amount ── */}
+            <GlassCard className="space-y-4">
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Loan Amount</h3>
+              <div>
+                <label className={LABEL_CLS}>Loan Amount ($) *</label>
+                <div className="flex h-10 overflow-hidden rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)] transition-all focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line)] bg-secondary/60 px-3.5 text-[13px] font-medium text-muted-foreground">AUD $</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0"
+                    className="flex-1 bg-transparent px-3.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
+                    {...register('amount', { required: 'Required' })}
+                  />
+                </div>
+                {errors.amount && <p className="mt-1 text-[12px] text-destructive">{errors.amount.message}</p>}
+              </div>
+            </GlassCard>
+            </>
           )}
 
         {/* ── Identification ── */}

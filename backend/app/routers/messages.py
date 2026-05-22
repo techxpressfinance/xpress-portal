@@ -112,30 +112,6 @@ def get_notifications(
             "link": link,
         })
 
-    # Client alerts (for clients)
-    if current_user.role == UserRole.client:
-        alerts = (
-            db.query(ClientAlert)
-            .filter(
-                ClientAlert.client_id == current_user.id,
-                ClientAlert.is_read == False,  # noqa: E712
-                ClientAlert.tenant_id == tenant_id,
-            )
-            .order_by(ClientAlert.created_at.desc())
-            .limit(10)
-            .all()
-        )
-        for alert in alerts:
-            items.append({
-                "id": alert.id,
-                "type": "alert",
-                "title": "Update from your broker",
-                "body": alert.content[:100] + ("..." if len(alert.content) > 100 else ""),
-                "is_read": alert.is_read,
-                "created_at": alert.created_at.isoformat(),
-                "link": "/applications",
-            })
-
     # Dedicated notification records (status changes, document requests, etc.)
     db_notifs = (
         db.query(Notification)
