@@ -92,10 +92,6 @@ export default function UserManagement() {
   const [sendingReset, setSendingReset] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
-  // Invite new client
-  const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', phone: '' });
-  const [inviting, setInviting] = useState(false);
-
   // Start application for client
   const [startAppForm, setStartAppForm] = useState<{ client_id: string; loan_type: LoanType; amount: string; notes: string }>({
     client_id: '', loan_type: 'personal', amount: '', notes: '',
@@ -171,21 +167,6 @@ export default function UserManagement() {
       toast(getErrorMessage(err, 'Failed to update user'), 'error');
     } finally {
       setPendingAction(null);
-    }
-  };
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setInviting(true);
-    try {
-      await api.post('/invitations', { email: inviteForm.email, full_name: inviteForm.full_name, phone: inviteForm.phone || null });
-      toast('Invitation sent to ' + inviteForm.email, 'success');
-      setInviteForm({ full_name: '', email: '', phone: '' });
-      setHistoryPage(1);
-    } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to send invitation'), 'error');
-    } finally {
-      setInviting(false);
     }
   };
 
@@ -328,27 +309,7 @@ export default function UserManagement() {
 
       {/* Invite & Onboarding */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Invite & Onboarding</h3>
-      <div className="grid gap-6 lg:grid-cols-3 mb-8">
-        <GlassCard>
-          <h4 className="text-[14px] font-semibold text-foreground mb-1">Invite New Client</h4>
-          <p className="text-[13px] text-muted-foreground mb-4">They'll receive an email with a link.</p>
-          <form onSubmit={handleInvite} className="space-y-3">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Full Name *</label>
-              <input type="text" required value={inviteForm.full_name} onChange={e => setInviteForm(f => ({ ...f, full_name: e.target.value }))} className={inputClass} placeholder="John Smith" />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Email *</label>
-              <input type="email" required value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} className={inputClass} placeholder="john@example.com" />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Phone</label>
-              <input type="tel" value={inviteForm.phone} onChange={e => setInviteForm(f => ({ ...f, phone: e.target.value }))} className={inputClass} placeholder="0412 345 678" />
-            </div>
-            <Button type="submit" size="sm" loading={inviting} className="w-full">Send Invitation</Button>
-          </form>
-        </GlassCard>
-
+      <div className="grid gap-6 lg:grid-cols-2 mb-8">
         <GlassCard>
           <h4 className="text-[14px] font-semibold text-foreground mb-1">Start Application for Client</h4>
           <p className="text-[13px] text-muted-foreground mb-4">Create a draft and send the client a link to complete it.</p>
@@ -356,7 +317,7 @@ export default function UserManagement() {
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Client *</label>
               {users.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground py-2">No clients yet. Invite one first.</p>
+                <p className="text-[13px] text-muted-foreground py-2">No clients yet.</p>
               ) : (
                 <select required value={startAppForm.client_id} onChange={e => setStartAppForm(f => ({ ...f, client_id: e.target.value }))} className={inputClass}>
                   <option value="">Select a client...</option>
