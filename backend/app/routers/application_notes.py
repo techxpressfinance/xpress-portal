@@ -11,6 +11,7 @@ from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.schemas.application_note import ApplicationNoteCreate, ApplicationNoteOut
 from app.services.access_control import check_application_access
+from app.services.activity_log import log_activity
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications", tags=["application-notes"])
@@ -100,6 +101,8 @@ def create_note(
         tenant_id=tenant_id,
     )
     db.add(note)
+    db.flush()
+    log_activity(db, current_user.id, "note_added", "application", app_id, {"visibility": note.visibility}, tenant_id=tenant_id)
     db.commit()
     db.refresh(note)
     return _note_to_out(note)
@@ -121,5 +124,6 @@ def delete_note(
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
+    log_activity(db, current_user.id, "note_deleted", "application", app_id, {"note_id": note_id}, tenant_id=tenant_id)
     db.delete(note)
     db.commit()

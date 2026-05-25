@@ -8,6 +8,7 @@ from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.client_alert import ClientAlert
 from app.models.user import User
+from app.services.activity_log import log_activity
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/clients", tags=["client-alerts"])
@@ -62,6 +63,8 @@ def create_client_alert(
         tenant_id=tenant_id,
     )
     db.add(alert)
+    db.flush()
+    log_activity(db, current_user.id, "alert_created", "client_alert", alert.id, {"client_id": client_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(alert)
     return _alert_out(alert)
@@ -82,5 +85,6 @@ def delete_client_alert(
     ).first()
     if not alert:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    log_activity(db, current_user.id, "alert_deleted", "client_alert", alert_id, {"client_id": client_id}, tenant_id=tenant_id)
     db.delete(alert)
     db.commit()

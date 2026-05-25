@@ -666,7 +666,9 @@ def delete_application(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
     if current_user.role not in (UserRole.admin, UserRole.broker):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and brokers can delete applications")
+        # Allow owners to delete their own drafts (e.g. referrer cleaning up an auto-saved draft)
+        if application.user_id != current_user.id or application.status.value != "draft":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and brokers can delete applications")
 
     application.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     log_activity(db, current_user.id, "deleted", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)

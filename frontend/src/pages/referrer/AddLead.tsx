@@ -148,6 +148,17 @@ interface AddLeadProps {
   showFullDetails?: boolean;
 }
 
+function computeEffectiveLoanType(tab: string, subLoanType: string): string {
+  if (tab === 'consumer') {
+    if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType)) return 'vehicle';
+    if (['purchase', 'refinance'].includes(subLoanType)) return 'home_loan';
+    return 'personal';
+  }
+  if (['vehicles_or_transport', 'machinery_or_equipment', 'new_fit_out', 'renovation', 'pay_suppliers'].includes(subLoanType)) return 'equipment_finance';
+  if (['property', 'development_construction'].includes(subLoanType)) return 'commercial_property';
+  return 'business_loan';
+}
+
 function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, tab: string, subLoanType: string): Record<string, unknown> {
   const details: Record<string, unknown> = {};
   if (tab === 'consumer') {
@@ -281,6 +292,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Auto-save draft to backend so brokers/admins can see it before submission
+  const [draftAppId, setDraftAppId] = useState<string | null>(null);
+  const draftCreatingRef = useRef(false);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
   const isBusinessLoan = loanType === 'business_loan';
 
@@ -311,6 +327,88 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       .finally(() => setPrevClientsLoading(false));
   }, [clientMode, skipEngagement]);
 
+  const deleteDraft = async (id: string) => {
+    try { await api.delete(`/applications/${id}`); } catch { /* ignore */ }
+  };
+
+  // Create a draft in the backend once we have the minimum required fields.
+  // Intentionally excludes client_engagement_model to avoid triggering the admin
+  // notification email, which should only fire on explicit submission.
+  useEffect(() => {
+    if (engagementModel === 'direct_engagement') return;
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
+    if (!subLoanType || !amount || parseFloat(amount) <= 0) return;
+    if (draftAppId || draftCreatingRef.current) return;
+
+    const effectiveLoanType = computeEffectiveLoanType(tab, subLoanType);
+    const timer = setTimeout(async () => {
+      if (draftAppId || draftCreatingRef.current) return;
+      draftCreatingRef.current = true;
+      try {
+        const { data: app } = await api.post('/applications', {
+          loan_type: effectiveLoanType,
+          amount: parseFloat(amount),
+          applicant_first_name: firstName.trim(),
+          applicant_last_name: lastName.trim(),
+          applicant_email: email.trim(),
+          ...(mobile.trim() && { applicant_mobile: mobile.trim() }),
+          ...(notes.trim() && { notes: notes.trim() }),
+          ...(tab === 'commercial' && {
+            business_name: comBusinessName.trim() || null,
+            business_abn: comAbn.trim() || null,
+          }),
+        });
+        setDraftAppId(app.id);
+      } catch {
+        // silently fail — user can still submit normally
+      } finally {
+        draftCreatingRef.current = false;
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, lastName, email, subLoanType, tab, amount, engagementModel]);
+
+  // Delete draft when referrer switches to direct_engagement (which creates its own application).
+  useEffect(() => {
+    if (engagementModel === 'direct_engagement' && draftAppId) {
+      const id = draftAppId;
+      setDraftAppId(null);
+      deleteDraft(id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engagementModel]);
+
+  // Patch the draft as the referrer keeps filling in details.
+  useEffect(() => {
+    if (!draftAppId) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(async () => {
+      const effectiveLoanType = subLoanType ? computeEffectiveLoanType(tab, subLoanType) : null;
+      const patch: Record<string, unknown> = {
+        applicant_first_name: firstName.trim() || null,
+        applicant_last_name: lastName.trim() || null,
+        applicant_email: email.trim() || null,
+        applicant_mobile: mobile.trim() || null,
+        notes: notes.trim() || null,
+        ...(effectiveLoanType && { loan_type: effectiveLoanType }),
+        ...(parseFloat(amount) > 0 && { amount: parseFloat(amount) }),
+        ...(tab === 'commercial' && {
+          business_name: comBusinessName.trim() || null,
+          business_abn: comAbn.trim() || null,
+        }),
+      };
+      try {
+        await api.patch(`/applications/${draftAppId}`, patch);
+      } catch {
+        // silently fail
+      }
+    }, 1500);
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, tab, subLoanType, comBusinessName, comAbn]);
+
   const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -326,17 +424,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (tab === 'consumer' && !subLoanType) { toast('Please select a loan type', 'error'); return; }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) { toast('Please enter a valid amount', 'error'); return; }
 
-    // Map sub-type to loan_type for API
-    let effectiveLoanType = loanType;
-    if (tab === 'consumer') {
-      if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType)) effectiveLoanType = 'vehicle';
-      else if (['purchase', 'refinance'].includes(subLoanType)) effectiveLoanType = 'home_loan';
-      else effectiveLoanType = 'personal';
-    } else {
-      if (['vehicles_or_transport', 'machinery_or_equipment', 'new_fit_out', 'renovation', 'pay_suppliers'].includes(subLoanType)) effectiveLoanType = 'equipment_finance';
-      else if (['property', 'development_construction'].includes(subLoanType)) effectiveLoanType = 'commercial_property';
-      else effectiveLoanType = 'business_loan';
-    }
+    const effectiveLoanType = computeEffectiveLoanType(tab, subLoanType);
 
     setSubmitting(true);
     try {
@@ -457,6 +545,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         })
       );
 
+      // Clean up the auto-saved draft now that the real application exists
+      if (draftAppId && engagementModel !== 'direct_engagement') {
+        const id = draftAppId;
+        setDraftAppId(null);
+        deleteDraft(id);
+      }
+
       setDone(true);
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to submit lead'), 'error');
@@ -466,6 +561,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   const reset = () => {
+    if (draftAppId) {
+      const id = draftAppId;
+      setDraftAppId(null);
+      deleteDraft(id);
+    }
     setClientMode('new'); setSelectedPrevClient(null); setPrevClientSearch('');
     setFirstName(''); setLastName(''); setEmail(''); setMobile('');
     setEngagementModel(''); setEngagementError('');
