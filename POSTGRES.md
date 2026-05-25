@@ -140,3 +140,4 @@ DB logs: **RDS Console → your DB → Logs & events**
 - **Password rotation**: if you change `xpress_app`'s password, update `DATABASE_URL` in `/opt/xpress-tech-portal/backend/.env` and restart the backend.
 - **Storage**: currently 20 GB. If it fills up, RDS goes read-only. Monitor free storage in CloudWatch and expand via RDS Console → Storage → Modify if needed.
 nscx4p@#gebXhqLM
+psql -h xpress-db.ca3wk0oewgar.us-east-1.rds.amazonaws.com -U xpress_app -d xpress
