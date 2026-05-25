@@ -1,7 +1,7 @@
 import type { TourStep } from '../components/OnboardingTour';
 import type { UserRole } from '../types';
 
-export const TOUR_STORAGE_KEY = 'xpress-tour-completed-v1';
+export const TOUR_STORAGE_KEY = 'xpress-tour-completed-v2';
 
 export const clientTourSteps: TourStep[] = [
   {
