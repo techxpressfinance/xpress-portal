@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useToast } from './Toast';
+import { useToast } from '../Toast';
 
 interface CopyButtonProps {
   text: string;
