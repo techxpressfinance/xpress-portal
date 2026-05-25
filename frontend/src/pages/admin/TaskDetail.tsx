@@ -186,6 +186,7 @@ export default function TaskDetail() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Select label="Status" value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
                 <option value="todo">To Do</option>
+                <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
               </Select>
               <div>

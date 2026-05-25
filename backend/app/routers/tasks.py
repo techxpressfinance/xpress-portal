@@ -233,7 +233,7 @@ def create_task(
     log_activity(db, current_user.id, "task_created", "task", task.id, {"title": task.title}, tenant_id=tenant_id)
     db.commit()
 
-    task = _get_task(db, task.id)
+    task = _get_task(db, task.id, tenant_id)
     return _task_to_out(task)
 
 

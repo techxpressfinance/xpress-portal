@@ -10,7 +10,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.external_referral import ExternalReferral
 from app.models.referral import Referral
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, hash_password
@@ -22,11 +22,18 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 @router.get("", response_model=list[UserOut])
 def list_users(
+    role: str | None = Query(None),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    return db.query(User).filter(User.tenant_id == tenant_id).order_by(User.created_at.desc()).limit(500).all()
+    query = db.query(User).filter(User.tenant_id == tenant_id)
+    if role:
+        try:
+            query = query.filter(User.role == UserRole(role))
+        except ValueError:
+            pass
+    return query.order_by(User.created_at.desc()).limit(500).all()
 
 
 @router.get("/me", response_model=UserOut)

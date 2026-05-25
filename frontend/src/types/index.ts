@@ -410,7 +410,7 @@ export interface BrokerGroup {
   members: BrokerGroupMember[];
 }
 
-export const NOTIFICATION_TYPES = ['message', 'alert', 'status_change'] as const;
+export const NOTIFICATION_TYPES = ['message', 'status_change'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface AppNotification {

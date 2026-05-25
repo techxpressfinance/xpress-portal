@@ -42,7 +42,7 @@ export const clientTourSteps: TourStep[] = [
   {
     target: 'nav-notifications',
     title: 'Notifications',
-    body: 'Status changes, new messages, and alerts will appear here.',
+    body: 'Status changes and new messages will appear here.',
     placement: 'right',
   },
   {

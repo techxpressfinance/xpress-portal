@@ -10,7 +10,6 @@ from app.config import EMAIL_ENABLED
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.application_note import ApplicationNote
-from app.models.client_alert import ClientAlert
 from app.models.client_message import ClientMessage
 from app.models.direct_message import DirectMessage
 from app.models.notification import Notification
@@ -184,17 +183,6 @@ def mark_notification_read(
     ).first()
     if client_msg:
         client_msg.is_read = True
-        db.commit()
-        return {"ok": True}
-
-    # Try ClientAlert
-    alert = db.query(ClientAlert).filter(
-        ClientAlert.id == notification_id,
-        ClientAlert.client_id == current_user.id,
-        ClientAlert.tenant_id == tenant_id,
-    ).first()
-    if alert:
-        alert.is_read = True
         db.commit()
         return {"ok": True}
 
