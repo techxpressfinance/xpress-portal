@@ -234,7 +234,8 @@ def change_password(
 
 
 @router.get("/verify-email")
-def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
+def verify_email(request: Request, token: str = Query(...), db: Session = Depends(get_db)):
+    auth_limiter.check(request)
     user = db.query(User).filter(User.email_verification_token == token).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification token")
@@ -295,8 +296,9 @@ def validate_setup_token(token: str = Query(...), db: Session = Depends(get_db))
 
 
 @router.post("/setup-account", response_model=AccessTokenResponse)
-def setup_account(data: SetupAccountRequest, response: Response, db: Session = Depends(get_db)):
+def setup_account(data: SetupAccountRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Set password from an invitation token and auto-login."""
+    auth_limiter.check(request)
     user = db.query(User).filter(User.email_verification_token == data.token).first()
     if not user or user.password_hash not in _SETUP_PLACEHOLDER_HASHES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired setup link")
@@ -326,6 +328,7 @@ def setup_account(data: SetupAccountRequest, response: Response, db: Session = D
 @router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
 def forgot_password(data: ResendVerificationRequest, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_tenant_id)):
     auth_limiter.check(request)
+    auth_limiter.check_key(data.email)
     user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if user and user.is_active:
         token = secrets.token_urlsafe(32)
@@ -340,7 +343,8 @@ class PasswordResetRequest(SetupAccountRequest):
 
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
-def reset_password(data: PasswordResetRequest, db: Session = Depends(get_db)):
+def reset_password(data: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+    auth_limiter.check(request)
     user = db.query(User).filter(User.password_reset_token == data.token).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset link")

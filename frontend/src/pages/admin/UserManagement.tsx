@@ -92,9 +92,9 @@ export default function UserManagement() {
   const [sendingReset, setSendingReset] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
-  // Start application for client
-  const [startAppForm, setStartAppForm] = useState<{ client_id: string; loan_type: LoanType; amount: string; notes: string }>({
-    client_id: '', loan_type: 'personal', amount: '', notes: '',
+  // Invite new client + start application
+  const [inviteForm, setInviteForm] = useState<{ full_name: string; email: string; phone: string; loan_type: LoanType; amount: string; notes: string }>({
+    full_name: '', email: '', phone: '', loan_type: 'personal', amount: '', notes: '',
   });
   const [startingApp, setStartingApp] = useState(false);
 
@@ -113,7 +113,7 @@ export default function UserManagement() {
 
   useEffect(() => {
     api.get('/users')
-      .then(({ data }) => setUsers(data.filter((u: User) => u.role === 'client')))
+      .then(({ data }) => setUsers(data.filter((u: User) => u.role === 'client' && !u.email.endsWith('@deleted.invalid'))))
       .catch(() => toast('Failed to load clients', 'error'))
       .finally(() => setLoading(false));
 
@@ -172,22 +172,31 @@ export default function UserManagement() {
 
   const handleStartApp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!startAppForm.client_id || !startAppForm.amount) return;
+    const [firstName, ...rest] = inviteForm.full_name.trim().split(' ');
+    const lastName = rest.join(' ');
+    if (!firstName || !inviteForm.email.trim() || !inviteForm.amount) return;
     setStartingApp(true);
     try {
-      const { data } = await api.post('/invitations/start-application', {
-        client_id: startAppForm.client_id,
-        loan_type: startAppForm.loan_type,
-        amount: parseFloat(startAppForm.amount),
-        notes: startAppForm.notes || null,
+      const { data } = await api.post('/invitations/invite-new-client', {
+        first_name: firstName,
+        last_name: lastName || '',
+        email: inviteForm.email.trim(),
+        phone: inviteForm.phone.trim() || null,
+        loan_type: inviteForm.loan_type,
+        amount: parseFloat(inviteForm.amount),
+        notes: inviteForm.notes.trim() || null,
       });
-      toast(data.detail || 'Application created and invite sent', 'success');
-      setStartAppForm({ client_id: '', loan_type: 'personal', amount: '', notes: '' });
-      api.get('/applications', { params: { status: 'draft', page: 1, per_page: 100 } })
-        .then(({ data }) => { const items = data.items || data; setDraftApps(Array.isArray(items) ? items : []); })
+      toast(data.detail || 'Client invited and application created', 'success');
+      setInviteForm({ full_name: '', email: '', phone: '', loan_type: 'personal', amount: '', notes: '' });
+      api.get('/users')
+        .then(({ data: ud }) => setUsers(ud.filter((u: User) => u.role === 'client')))
         .catch(() => { });
+      api.get('/applications', { params: { status: 'draft', page: 1, per_page: 100 } })
+        .then(({ data: ad }) => { const items = ad.items || ad; setDraftApps(Array.isArray(items) ? items : []); })
+        .catch(() => { });
+      setHistoryPage(1);
     } catch (err: any) {
-      toast(getErrorMessage(err, 'Failed to create application'), 'error');
+      toast(getErrorMessage(err, 'Failed to invite client'), 'error');
     } finally {
       setStartingApp(false);
     }
@@ -311,35 +320,36 @@ export default function UserManagement() {
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Invite & Onboarding</h3>
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
         <GlassCard>
-          <h4 className="text-[14px] font-semibold text-foreground mb-1">Start Application for Client</h4>
-          <p className="text-[13px] text-muted-foreground mb-4">Create a draft and send the client a link to complete it.</p>
+          <h4 className="text-[14px] font-semibold text-foreground mb-1">Invite New Client</h4>
+          <p className="text-[13px] text-muted-foreground mb-4">Invite a new client and create a draft application for them to complete.</p>
           <form onSubmit={handleStartApp} className="space-y-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Client *</label>
-              {users.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground py-2">No clients yet.</p>
-              ) : (
-                <select required value={startAppForm.client_id} onChange={e => setStartAppForm(f => ({ ...f, client_id: e.target.value }))} className={inputClass}>
-                  <option value="">Select a client...</option>
-                  {users.map(c => <option key={c.id} value={c.id}>{c.full_name} ({c.email})</option>)}
-                </select>
-              )}
+              <label className="block text-[13px] font-medium text-foreground mb-1">Full Name *</label>
+              <input required type="text" value={inviteForm.full_name} onChange={e => setInviteForm(f => ({ ...f, full_name: e.target.value }))} className={inputClass} placeholder="Jane Smith" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1">Email *</label>
+              <input required type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} className={inputClass} placeholder="jane@example.com" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1">Phone</label>
+              <input type="tel" value={inviteForm.phone} onChange={e => setInviteForm(f => ({ ...f, phone: e.target.value }))} className={inputClass} placeholder="04XX XXX XXX" />
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Loan Type *</label>
-              <select required value={startAppForm.loan_type} onChange={e => setStartAppForm(f => ({ ...f, loan_type: e.target.value as LoanType }))} className={inputClass}>
+              <select required value={inviteForm.loan_type} onChange={e => setInviteForm(f => ({ ...f, loan_type: e.target.value as LoanType }))} className={inputClass}>
                 {LOAN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Amount *</label>
-              <input type="number" required min="1" step="any" value={startAppForm.amount} onChange={e => setStartAppForm(f => ({ ...f, amount: e.target.value }))} className={inputClass} placeholder="50000" />
+              <input type="number" required min="1" step="any" value={inviteForm.amount} onChange={e => setInviteForm(f => ({ ...f, amount: e.target.value }))} className={inputClass} placeholder="50000" />
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Notes</label>
-              <input type="text" value={startAppForm.notes} onChange={e => setStartAppForm(f => ({ ...f, notes: e.target.value }))} className={inputClass} placeholder="Optional notes" />
+              <input type="text" value={inviteForm.notes} onChange={e => setInviteForm(f => ({ ...f, notes: e.target.value }))} className={inputClass} placeholder="Optional notes" />
             </div>
-            <Button type="submit" size="sm" loading={startingApp} disabled={!startAppForm.client_id || !startAppForm.amount} className="w-full">Create & Send Invite</Button>
+            <Button type="submit" size="sm" loading={startingApp} disabled={!inviteForm.full_name.trim() || !inviteForm.email.trim() || !inviteForm.amount} className="w-full">Invite & Create Application</Button>
           </form>
         </GlassCard>
 
@@ -458,9 +468,10 @@ export default function UserManagement() {
       )}
 
       {/* Confirmation modal */}
-      {pendingAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
+      {pendingAction && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPendingAction(null)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
             <h3 className="text-[16px] font-semibold text-foreground mb-2">Confirm Action</h3>
             <p className="text-[14px] text-muted-foreground mb-6">
               {pendingAction.type === 'role' ? (
@@ -476,7 +487,8 @@ export default function UserManagement() {
               <Button variant={pendingAction.type === 'delete' || (pendingAction.type === 'toggle_active' && pendingAction.isActive) ? 'danger' : 'primary'} size="sm" onClick={confirmAction}>Confirm</Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

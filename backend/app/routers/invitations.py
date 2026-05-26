@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
 from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.loan_application import LoanApplication
+from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
 from app.models.application_broker import ApplicationBroker
+from app.schemas.common import normalize_email
 from app.services.email import send_complete_application_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
@@ -215,4 +219,115 @@ def start_application_for_client(
     return {
         "detail": f"Draft application created and invite sent to {client.email}",
         "application_id": application.id,
+    }
+
+
+class InviteNewClientCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    loan_type: str
+    amount: float
+    notes: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
+
+@router.post("/invite-new-client", status_code=status.HTTP_201_CREATED)
+def invite_new_client_with_application(
+    data: InviteNewClientCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Invite a brand-new client and create a draft application in one step.
+
+    If the email is already registered and pending setup, refreshes their token.
+    If fully set up, sends a complete-application email instead.
+    """
+    email = data.email.lower().strip()
+
+    if email == current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot invite yourself")
+
+    try:
+        loan_type = LoanType(data.loan_type)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid loan type: {data.loan_type}")
+
+    full_name = f"{data.first_name.strip()} {data.last_name.strip()}".strip()
+    existing = db.query(User).filter(User.email == email, User.tenant_id == tenant_id).first()
+
+    if existing and not existing.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This account has been deactivated. Reactivate it first.")
+
+    is_new_user = existing is None or existing.password_hash in ("!", "!invited")
+
+    if existing is None:
+        token = secrets.token_urlsafe(32)
+        client = User(
+            email=email,
+            full_name=full_name,
+            phone=data.phone,
+            password_hash="!",
+            auth_method="password",
+            role="client",
+            is_active=True,
+            email_verified=True,
+            invited_by_id=current_user.id,
+            tenant_id=tenant_id,
+            email_verification_token=token,
+            email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+        )
+        db.add(client)
+        db.flush()
+    else:
+        client = existing
+        if is_new_user:
+            token = secrets.token_urlsafe(32)
+            client.email_verification_token = token
+            client.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+            db.flush()
+
+    application = LoanApplication(
+        user_id=client.id,
+        loan_type=loan_type,
+        amount=data.amount,
+        notes=data.notes,
+        tenant_id=tenant_id,
+        assigned_broker_id=current_user.id,
+    )
+    db.add(application)
+    db.flush()
+
+    db.add(ApplicationBroker(
+        application_id=application.id,
+        broker_id=current_user.id,
+        tenant_id=tenant_id,
+    ))
+
+    db.commit()
+    db.refresh(client)
+    db.refresh(application)
+
+    if is_new_user:
+        redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
+        send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
+    else:
+        send_complete_application_email(
+            to_email=email,
+            client_name=client.full_name,
+            inviter_name=current_user.full_name,
+            loan_type=loan_type.value,
+            amount=str(int(data.amount)),
+            application_id=application.id,
+        )
+
+    return {
+        "detail": f"Client invited and application created for {email}",
+        "application_id": application.id,
+        "client_id": client.id,
+        "is_new_user": is_new_user,
     }

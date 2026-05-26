@@ -12,11 +12,28 @@ from app.config import ENVIRONMENT
 
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
+# Unauthenticated auth endpoints — no session cookie to protect against CSRF
+_CSRF_SKIP_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/setup-account",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/resend-verification",
+    "/api/auth/verify-email",
+}
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Safe methods: skip validation, ensure cookie exists
         if request.method in _SAFE_METHODS:
+            response = await call_next(request)
+            _ensure_csrf_cookie(request, response)
+            return response
+
+        # Unauthenticated auth endpoints have no session cookie to protect
+        if request.url.path in _CSRF_SKIP_PATHS:
             response = await call_next(request)
             _ensure_csrf_cookie(request, response)
             return response

@@ -98,7 +98,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
   return result;
 }
 
-// ── On-screen term block (unchanged card style) ──────────────────────
+// ── On-screen term block ────────────────────────────────────────────
 function TermBlock({ group, isClientView, showInterestRate, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; showInterestRate: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
@@ -143,20 +143,20 @@ function TermBlock({ group, isClientView, showInterestRate, assetDescription, pa
   };
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
-      <div className="bg-muted/50 px-4 py-2.5 border-b border-border">
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
+      <div className="bg-muted/40 px-4 py-2 border-b border-border">
         <h4 className="text-sm font-semibold text-foreground">{termYears} Year Term</h4>
       </div>
       <div className={`grid ${hasTwo ? 'grid-cols-2 divide-x divide-border' : 'grid-cols-1'}`}>
         {noBalloon && (
-          <div className="p-5">
-            {hasTwo && <p className="text-[11px] font-bold text-primary uppercase tracking-wider mb-4 border-b border-border/50 pb-2">No Balloon</p>}
+          <div className="p-4">
+            {hasTwo && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">No Balloon</p>}
             {renderColumn(noBalloon)}
           </div>
         )}
         {withBalloon && (
-          <div className="p-5 bg-secondary/5">
-            {hasTwo && <p className="text-[11px] font-bold text-primary uppercase tracking-wider mb-4 border-b border-border/50 pb-2">With Balloon</p>}
+          <div className="p-4 bg-muted/20">
+            {hasTwo && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">With Balloon</p>}
             {renderColumn(withBalloon)}
           </div>
         )}
@@ -167,9 +167,9 @@ function TermBlock({ group, isClientView, showInterestRate, assetDescription, pa
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
-    <div className="flex w-full items-start justify-between py-2 border-b border-border/40 last:border-0 group hover:bg-muted/20 rounded-md -mx-1 px-1 transition-colors">
+    <div className="flex w-full items-start justify-between py-1.5 border-b border-border/30 last:border-0">
       <div className={`text-[12px] leading-tight w-[60%] pr-2 break-words ${bold ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{label}</div>
-      <div className={`text-[12.5px] tabular-nums whitespace-nowrap text-right w-[40%] pl-2 ${bold ? 'font-bold text-primary' : 'font-medium text-foreground'}`}>{value}</div>
+      <div className={`text-[12.5px] tabular-nums whitespace-nowrap text-right w-[40%] pl-2 ${bold ? 'font-semibold text-foreground' : 'font-medium text-foreground'}`}>{value}</div>
     </div>
   );
 }
@@ -232,21 +232,17 @@ export default function QuoteSheetComparison({
     rows.push(termGroups.slice(i, i + 2));
   }
 
-  // ── PDF Export Layout (Design Language v1) ──────────────────────────
+  // ── PDF Export Layout (Professional Finance Styling) ────────────────
   if (isPdfExport) {
-    // Design tokens — all hex, no oklch/oklab (html2canvas compat)
-    const ink = '#0F1E3D';
-    const ink2 = '#2A3956';
-    const muted = '#6B7385';
-    const hairline = '#E4DFD3';
-    const hairline2 = '#EFEAE0';
-    const paper = '#FBFAF6';
-    const paper2 = '#F3EFE6';
-    const accent = '#A8743A';
-    const hilight = '#FDF5E6';
-    const serif = "'Instrument Serif', Georgia, serif";
-    const sans = "'Geist', ui-sans-serif, system-ui, sans-serif";
-    const mono = "'Geist Mono', 'JetBrains Mono', ui-monospace, monospace";
+    // Professional palette — all hex for html2canvas compat
+    const ink = '#1a1a2e';
+    const inkLight = '#3a3a4e';
+    const muted = '#6b7280';
+    const hairline = '#d1d5db';
+    const hairlineLight = '#e5e7eb';
+    const paper = '#ffffff';
+    const subtleBg = '#f8f9fa';
+    const sans = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
     const first = options[0];
     const clientLoanAmt0 = (first.purchase_price ?? 0) - (first.deposit ?? 0)
@@ -296,46 +292,56 @@ export default function QuoteSheetComparison({
     };
 
     const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
-    const colBg = (g: TermGroup): string => g.termYears === recommendedYears ? hilight : 'transparent';
+    const colBg = (g: TermGroup): string => g.termYears === recommendedYears ? subtleBg : 'transparent';
 
-    // Shared td styles for the comparison matrix
+    // Shared table cell styles
+    const thBase: CSSProperties = {
+      textAlign: 'right',
+      padding: '10px 12px',
+      fontFamily: sans,
+      fontWeight: 600,
+      fontSize: '11px',
+      color: ink,
+      borderBottom: `2px solid ${ink}`,
+      verticalAlign: 'bottom',
+    };
     const lbl: CSSProperties = {
       textAlign: 'left',
-      fontFamily: mono,
+      fontFamily: sans,
       fontSize: '10px',
-      letterSpacing: '0.1em',
+      fontWeight: 500,
       textTransform: 'uppercase',
+      letterSpacing: '0.06em',
       color: muted,
-      padding: '9px 10px 9px 0',
-      borderBottom: `1px solid ${hairline2}`,
-      verticalAlign: 'baseline',
+      padding: '8px 12px',
+      borderBottom: `1px solid ${hairlineLight}`,
+      verticalAlign: 'middle',
     };
     const val: CSSProperties = {
       textAlign: 'right',
-      padding: '9px 10px',
-      borderBottom: `1px solid ${hairline2}`,
-      fontSize: '11.5px',
+      padding: '8px 12px',
+      borderBottom: `1px solid ${hairlineLight}`,
+      fontSize: '11px',
       color: ink,
-      verticalAlign: 'baseline',
+      verticalAlign: 'middle',
       fontVariantNumeric: 'tabular-nums',
     };
     const sublbl: CSSProperties = {
       textAlign: 'left',
-      fontFamily: serif,
-      fontStyle: 'italic',
-      fontSize: '11px',
+      fontFamily: sans,
+      fontSize: '10px',
       color: muted,
-      padding: '4px 0 4px 16px',
+      padding: '4px 12px 4px 24px',
       borderBottom: 'none',
-      verticalAlign: 'baseline',
+      verticalAlign: 'middle',
     };
     const subval: CSSProperties = {
       textAlign: 'right',
-      padding: '4px 10px',
-      fontSize: '10.5px',
+      padding: '4px 12px',
+      fontSize: '10px',
       color: muted,
       borderBottom: 'none',
-      verticalAlign: 'baseline',
+      verticalAlign: 'middle',
       fontVariantNumeric: 'tabular-nums',
     };
 
@@ -344,11 +350,11 @@ export default function QuoteSheetComparison({
         width: '794px',
         minHeight: '1123px',
         background: paper,
-        padding: '56px 56px 80px',
+        padding: '48px 56px 64px',
         color: ink,
         fontFamily: sans,
-        fontSize: '11.5px',
-        lineHeight: '1.5',
+        fontSize: '11px',
+        lineHeight: '1.45',
         fontVariantNumeric: 'tabular-nums',
         position: 'relative',
         boxSizing: 'border-box',
@@ -356,65 +362,87 @@ export default function QuoteSheetComparison({
 
         {/* ── HEADER ──────────────────────────────────────────── */}
         <header style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          paddingBottom: '18px', borderBottom: `1px solid ${ink}`, marginBottom: '32px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          paddingBottom: '16px',
+          borderBottom: `1px solid ${hairline}`,
+          marginBottom: '28px',
         }}>
-          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '72px', objectFit: 'contain' }} />
+          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '44px', objectFit: 'contain' }} />
           <div style={{
-            display: 'grid', gridTemplateColumns: 'auto auto',
-            columnGap: '20px', rowGap: '3px',
-            fontFamily: mono, fontSize: '10px', color: muted,
-            textAlign: 'right', letterSpacing: '0.02em',
+            display: 'grid',
+            gridTemplateColumns: 'auto auto',
+            columnGap: '16px',
+            rowGap: '2px',
+            fontSize: '10px',
+            color: muted,
+            textAlign: 'right',
           }}>
             {applicationRef && <>
-              <span>Reference</span>
-              <b style={{ color: ink, fontWeight: 500 }}>{applicationRef}</b>
+              <span style={{ fontWeight: 500 }}>Reference</span>
+              <span style={{ color: ink }}>{applicationRef}</span>
             </>}
-            <span>Issued</span>
-            <b style={{ color: ink, fontWeight: 500 }}>{today}</b>
+            <span style={{ fontWeight: 500 }}>Date</span>
+            <span style={{ color: ink }}>{today}</span>
           </div>
         </header>
 
-        {/* ── HERO ────────────────────────────────────────────── */}
+        {/* ── TITLE BLOCK ─────────────────────────────────────── */}
         <div style={{
-          marginBottom: '28px',
-          display: 'grid',
-          gridTemplateColumns: clientName ? '1fr auto' : '1fr',
-          alignItems: 'end', gap: '24px',
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          gap: '24px',
         }}>
           <div>
             <div style={{
-              fontFamily: mono, fontSize: '10px', letterSpacing: '0.16em',
-              textTransform: 'uppercase', color: muted, marginBottom: '12px',
+              fontSize: '10px',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: muted,
+              marginBottom: '6px',
             }}>
-              Indicative Finance Quote{assetDescription !== 'Asset' ? ` · ${assetDescription}` : ''}
+              Indicative Finance Quote{assetDescription !== 'Asset' ? ` — ${assetDescription}` : ''}
             </div>
             <h1 style={{
-              fontFamily: serif, fontWeight: 400, fontSize: '48px',
-              lineHeight: 0.95, letterSpacing: '-0.02em', margin: 0, color: ink,
+              fontFamily: sans,
+              fontWeight: 700,
+              fontSize: '22px',
+              lineHeight: 1.2,
+              margin: 0,
+              color: ink,
+              letterSpacing: '-0.01em',
             }}>
-              Finance <em style={{ fontStyle: 'italic' }}>Quote</em>
+              Finance Quote
             </h1>
             {quoteSheet.title && (
-              <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: '13px', color: ink2, marginTop: '8px' }}>
+              <div style={{ fontSize: '12px', color: inkLight, marginTop: '4px', fontWeight: 500 }}>
                 {quoteSheet.title}
               </div>
             )}
           </div>
           {clientName && (
-            <div style={{ textAlign: 'right', fontFamily: mono, fontSize: '10.5px', color: muted, letterSpacing: '0.02em' }}>
-              <b style={{ display: 'block', fontFamily: sans, color: ink, fontWeight: 500, fontSize: '14px', letterSpacing: '0', marginBottom: '2px' }}>
+            <div style={{ textAlign: 'right', fontSize: '10px', color: muted }}>
+              <div style={{ color: ink, fontWeight: 600, fontSize: '12px', marginBottom: '2px' }}>
                 {clientName}
-              </b>
+              </div>
               Prepared for
             </div>
           )}
         </div>
 
-        {/* ── ASSET STRIP ─────────────────────────────────────── */}
+        {/* ── ASSET SUMMARY ───────────────────────────────────── */}
         <div style={{
-          marginBottom: '28px', padding: '14px 16px', background: paper2,
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px',
+          marginBottom: '24px',
+          padding: '14px 16px',
+          background: subtleBg,
+          border: `1px solid ${hairlineLight}`,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '8px',
         }}>
           {([
             { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—' },
@@ -423,47 +451,49 @@ export default function QuoteSheetComparison({
             { label: 'Amount financed', value: isClientView ? fmtCurrency(clientLoanAmt0) : fmtCurrency(first.loan_amount) },
           ] as { label: string; value: string }[]).map(({ label, value }) => (
             <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <span style={{ fontFamily: mono, fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted }}>
+              <span style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: muted }}>
                 {label}
               </span>
-              <span style={{ fontFamily: sans, fontSize: '13px', fontWeight: 500, color: ink, fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: ink, fontVariantNumeric: 'tabular-nums' }}>
                 {value}
               </span>
             </div>
           ))}
         </div>
 
-        {/* ── SECTION HEADING ─────────────────────────────────── */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-          marginBottom: '14px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
-        }}>
-          <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '18px', margin: 0, color: ink }}>
-            Scenarios <em style={{ fontStyle: 'italic' }}>at a glance</em>
-          </h3>
-          <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            {termGroups.length} term{termGroups.length !== 1 ? 's' : ''} · AUD
-          </span>
+        {/* ── COMPARISON MATRIX ───────────────────────────────── */}
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginBottom: '10px',
+          }}>
+            <h2 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: 0, color: ink }}>
+              Scenarios at a glance
+            </h2>
+            <span style={{ fontSize: '10px', color: muted, fontWeight: 500 }}>
+              {termGroups.length} term{termGroups.length !== 1 ? 's' : ''} · AUD
+            </span>
+          </div>
         </div>
 
-        {/* ── COMPARISON MATRIX ───────────────────────────────── */}
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
           <thead>
             <tr>
-              <th style={{ ...lbl, borderBottom: 'none', width: '130px' }}>&nbsp;</th>
+              <th style={{ ...thBase, textAlign: 'left', width: '140px', paddingLeft: '12px' }}>&nbsp;</th>
               {termGroups.map(g => (
                 <th key={g.termYears} style={{
-                  textAlign: 'right', padding: '0 10px 4px',
-                  fontFamily: sans, fontWeight: 500, fontSize: '12px', color: ink,
-                  background: colBg(g), borderBottom: 'none',
+                  ...thBase,
+                  background: colBg(g),
                 }}>
                   {g.termYears === recommendedYears && (
-                    <span style={{ display: 'block', fontFamily: mono, fontSize: '8px', color: accent, letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '4px' }}>
+                    <span style={{ display: 'block', fontSize: '8px', color: ink, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '3px' }}>
                       Recommended
                     </span>
                   )}
-                  {g.termYears} yr
-                  <span style={{ display: 'block', fontFamily: mono, fontSize: '9.5px', color: muted, fontWeight: 400, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '4px' }}>
+                  {g.termYears} Year{g.termYears !== 1 ? 's' : ''}
+                  <span style={{ display: 'block', fontSize: '9px', color: muted, fontWeight: 400, marginTop: '2px' }}>
                     {g.termMonths} months
                   </span>
                 </th>
@@ -475,32 +505,39 @@ export default function QuoteSheetComparison({
             <tr>
               <td style={{
                 ...lbl,
-                borderTop: `1px solid ${ink}`, borderBottom: `1px solid ${ink}`,
-                padding: '18px 10px 18px 0',
-                fontFamily: serif, fontStyle: 'italic', fontSize: '12px',
-                textTransform: 'none', letterSpacing: '0', color: ink,
+                borderTop: `1px solid ${ink}`,
+                borderBottom: `1px solid ${ink}`,
+                padding: '14px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: ink,
+                textTransform: 'none',
+                letterSpacing: '0',
               }}>
-                Monthly <em>repayment</em>
+                Monthly repayment
               </td>
               {termGroups.map(g => {
                 const rng = fmtRepaymentClient(prim(g).repayment_monthly);
                 const [dol, cts] = splitAmt(prim(g).repayment_monthly);
                 return (
                   <td key={g.termYears} style={{
-                    textAlign: 'right', padding: '18px 10px',
-                    borderTop: `1px solid ${ink}`, borderBottom: `1px solid ${ink}`,
-                    background: colBg(g), verticalAlign: 'baseline',
+                    textAlign: 'right',
+                    padding: '14px 12px',
+                    borderTop: `1px solid ${ink}`,
+                    borderBottom: `1px solid ${ink}`,
+                    background: colBg(g),
+                    verticalAlign: 'middle',
                   }}>
                     {rng ? (
-                      <span style={{ fontFamily: sans, fontWeight: 500, fontSize: '18px', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                      <span style={{ fontWeight: 600, fontSize: '15px', letterSpacing: '-0.01em' }}>
                         {rng.lo} – {rng.hi}
-                        <small style={{ display: 'block', fontFamily: mono, fontSize: '9px', fontWeight: 400, color: muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '3px' }}>
+                        <small style={{ display: 'block', fontSize: '9px', fontWeight: 400, color: muted, marginTop: '2px' }}>
                           per month
                         </small>
                       </span>
                     ) : (
-                      <span style={{ fontFamily: sans, fontWeight: 500, fontSize: '24px', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                        {dol}<small style={{ fontSize: '11px', fontWeight: 400, color: muted, marginLeft: '1px' }}>{cts}</small>
+                      <span style={{ fontWeight: 600, fontSize: '18px', letterSpacing: '-0.01em' }}>
+                        {dol}<small style={{ fontSize: '10px', fontWeight: 400, color: muted, marginLeft: '1px' }}>{cts}</small>
                       </span>
                     )}
                   </td>
@@ -511,7 +548,7 @@ export default function QuoteSheetComparison({
             {/* Sub-row: with-balloon repayment */}
             {hasDualBalloon && (
               <tr>
-                <td style={sublbl}>↳ with balloon</td>
+                <td style={sublbl}>With balloon</td>
                 {termGroups.map(g => {
                   const hasBoth = !!(g.noBalloon && g.withBalloon);
                   if (!hasBoth) return <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>—</td>;
@@ -539,7 +576,7 @@ export default function QuoteSheetComparison({
             </tr>
             {hasDualBalloon && (
               <tr>
-                <td style={sublbl}>↳ with balloon</td>
+                <td style={sublbl}>With balloon</td>
                 {termGroups.map(g => (
                   <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
                     {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.repayment_weekly) : '—'}
@@ -561,7 +598,7 @@ export default function QuoteSheetComparison({
                 </tr>
                 {hasDualBalloon && (
                   <tr>
-                    <td style={sublbl}>↳ with balloon</td>
+                    <td style={sublbl}>With balloon</td>
                     {termGroups.map(g => (
                       <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
                         {g.noBalloon && g.withBalloon ? fmtPercent(rate(g.withBalloon)) : '—'}
@@ -585,7 +622,7 @@ export default function QuoteSheetComparison({
                 </tr>
                 {hasDualBalloon && (
                   <tr>
-                    <td style={sublbl}>↳ with balloon</td>
+                    <td style={sublbl}>With balloon</td>
                     {termGroups.map(g => (
                       <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
                         {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.balloon_residual ?? 0) : '—'}
@@ -609,7 +646,7 @@ export default function QuoteSheetComparison({
                 </tr>
                 {hasDualBalloon && (
                   <tr>
-                    <td style={sublbl}>↳ with balloon</td>
+                    <td style={sublbl}>With balloon</td>
                     {termGroups.map(g => (
                       <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
                         {g.noBalloon && g.withBalloon ? fmtPercent(g.withBalloon.interest_rate) : '—'}
@@ -624,18 +661,18 @@ export default function QuoteSheetComparison({
             {!isClientView && (
               <>
                 <tr>
-                  <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink2, textTransform: 'none', letterSpacing: '0', paddingTop: '14px' }}>
+                  <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', paddingTop: '10px' }}>
                     Total interest
                   </td>
                   {termGroups.map(g => (
-                    <td key={g.termYears} style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink2, paddingTop: '14px', background: colBg(g) }}>
+                    <td key={g.termYears} style={{ ...val, fontWeight: 600, color: ink, paddingTop: '10px', background: colBg(g) }}>
                       {fmtCurrency(prim(g).total_interest)}
                     </td>
                   ))}
                 </tr>
                 {hasDualBalloon && (
                   <tr>
-                    <td style={{ ...sublbl, paddingTop: '2px' }}>↳ with balloon</td>
+                    <td style={{ ...sublbl, paddingTop: '2px' }}>With balloon</td>
                     {termGroups.map(g => (
                       <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
                         {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.total_interest) : '—'}
@@ -650,9 +687,13 @@ export default function QuoteSheetComparison({
 
         {/* ── BREAKDOWN STRIP ─────────────────────────────────── */}
         <div style={{
-          marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '24px', padding: '18px 0',
-          borderTop: `1px solid ${hairline}`, borderBottom: `1px solid ${hairline}`,
+          marginTop: '20px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '16px',
+          padding: '16px',
+          background: subtleBg,
+          border: `1px solid ${hairlineLight}`,
         }}>
           {([
             {
@@ -676,29 +717,31 @@ export default function QuoteSheetComparison({
                 : { label: 'Weekly equivalent', value: fmtCurrency(featOpt.repayment_weekly), sub: 'per week' };
             })(),
           ] as { label: string; value: string; sub: string }[]).map(({ label, value, sub }) => (
-            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontFamily: mono, fontSize: '9.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted }}>
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <span style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: muted }}>
                 {label}
               </span>
-              <span style={{ fontFamily: sans, fontSize: '18px', fontWeight: 500, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', color: ink }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', color: ink }}>
                 {value}
               </span>
-              {sub && <span style={{ fontFamily: mono, fontSize: '10px', color: muted }}>{sub}</span>}
+              {sub && <span style={{ fontSize: '9px', color: muted }}>{sub}</span>}
             </div>
           ))}
         </div>
 
         {/* ── NON-FINANCED FEES ───────────────────────────────── */}
         {!feesFinanced && parsedParams && (
-          <div style={{ marginTop: '24px' }} className="break-inside-avoid">
+          <div style={{ marginTop: '20px' }} className="break-inside-avoid">
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-              marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              marginBottom: '10px',
             }}>
-              <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '16px', margin: 0, color: ink }}>
-                Fees payable — <em>not financed</em>
+              <h3 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: 0, color: ink }}>
+                Fees payable — not financed
               </h3>
-              <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '10px', color: muted, fontWeight: 500 }}>
                 Charged separately
               </span>
             </div>
@@ -715,10 +758,10 @@ export default function QuoteSheetComparison({
                   <tr><td style={lbl}>Origination fee</td><td style={val}>{fmtCurrency(parsedParams.originationFee)}</td></tr>
                 )}
                 <tr>
-                  <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '12px' }}>
+                  <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '10px' }}>
                     Total fees
                   </td>
-                  <td style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink, borderBottom: 'none', paddingTop: '12px' }}>
+                  <td style={{ ...val, fontWeight: 600, color: ink, borderBottom: 'none', paddingTop: '10px' }}>
                     {fmtCurrency((parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0))}
                   </td>
                 </tr>
@@ -729,15 +772,17 @@ export default function QuoteSheetComparison({
 
         {/* ── FEE & RATE SUMMARY — broker internal ────────────── */}
         {parsedParams && !isClientView && (
-          <div style={{ marginTop: '24px' }} className="break-inside-avoid">
+          <div style={{ marginTop: '20px' }} className="break-inside-avoid">
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-              marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${hairline}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              marginBottom: '10px',
             }}>
-              <h3 style={{ fontFamily: serif, fontWeight: 400, fontStyle: 'italic', fontSize: '16px', margin: 0, color: ink }}>
+              <h3 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: 0, color: ink }}>
                 Fee &amp; rate summary
               </h3>
-              <span style={{ fontFamily: mono, fontSize: '10px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '10px', color: muted, fontWeight: 500 }}>
                 Internal
               </span>
             </div>
@@ -761,10 +806,10 @@ export default function QuoteSheetComparison({
                 )}
                 {options[0]?.brokerage != null && (
                   <tr>
-                    <td style={{ ...lbl, fontFamily: sans, fontWeight: 500, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '12px' }}>
+                    <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '10px' }}>
                       Brokerage $
                     </td>
-                    <td style={{ ...val, fontFamily: sans, fontWeight: 500, color: ink, borderBottom: 'none', paddingTop: '12px' }}>
+                    <td style={{ ...val, fontWeight: 600, color: ink, borderBottom: 'none', paddingTop: '10px' }}>
                       {fmtCurrency(options[0].brokerage)}
                     </td>
                   </tr>
@@ -776,33 +821,38 @@ export default function QuoteSheetComparison({
 
         {/* ── FOOTER ──────────────────────────────────────────── */}
         <footer style={{
-          marginTop: '40px', paddingTop: '14px',
+          marginTop: '32px',
+          paddingTop: '12px',
           borderTop: `1px solid ${hairline}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
-          fontFamily: mono, fontSize: '9.5px', letterSpacing: '0.04em', color: muted,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          fontSize: '9px',
+          color: muted,
+          lineHeight: 1.5,
         }}>
-          <p style={{ margin: 0, fontFamily: sans, fontStyle: 'italic', color: muted, fontSize: '10px', maxWidth: '56ch', lineHeight: 1.5 }}>
+          <p style={{ margin: 0, maxWidth: '52ch' }}>
             This quote is indicative only and subject to full credit assessment and lender approval. Rates and fees may vary. Xpress Finance Group · ACL 000000 · 727 Collins St, Docklands VIC 3008 · (03) 8456 7996.
           </p>
-          <span style={{ letterSpacing: '0.16em' }}>1 / 1</span>
+          <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>Page 1 of 1</span>
         </footer>
 
       </div>
     );
   }
 
-  // ── On-screen Layout (unchanged) ─────────────────────────────────────
+  // ── On-screen Layout ────────────────────────────────────────────────
   return (
-    <div id={`quote-sheet-${quoteSheet.id}`} className="bg-card rounded-xl space-y-6">
+    <div id={`quote-sheet-${quoteSheet.id}`} className="bg-card rounded-lg border border-border space-y-5 p-5">
 
       {quoteSheet.title && (
-        <h3 className="text-xl font-bold text-foreground tracking-tight">{quoteSheet.title}</h3>
+        <h3 className="text-lg font-bold text-foreground tracking-tight">{quoteSheet.title}</h3>
       )}
 
       {/* Term scenario grid */}
-      <div className="space-y-6">
+      <div className="space-y-5">
         {rows.map((row, ri) => (
-          <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-6 break-inside-avoid">
+          <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-5 break-inside-avoid">
             {row.map(group => (
               <TermBlock key={group.termYears} group={group} isClientView={isClientView} showInterestRate={showInterestRate} assetDescription={assetDescription} paymentType={paymentType} />
             ))}
@@ -812,8 +862,8 @@ export default function QuoteSheetComparison({
 
       {/* Non-financed fees notice (on-screen, client view) */}
       {!feesFinanced && isClientView && parsedParams && (
-        <div className="border border-warning/30 bg-warning/5 rounded-xl p-5 space-y-2 break-inside-avoid mt-4">
-          <p className="text-[12px] font-bold text-warning uppercase tracking-wider mb-2">Fees Payable (Not Financed)</p>
+        <div className="border border-warning/30 bg-warning/5 rounded-lg p-4 space-y-2 break-inside-avoid mt-4">
+          <p className="text-[12px] font-semibold text-warning uppercase tracking-wide mb-2">Fees Payable (Not Financed)</p>
           <p className="text-[11px] text-muted-foreground mb-3">These fees are charged separately and are not included in the loan amount.</p>
           {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
             <Row label="Loan Establishment Fee" value={fmtCurrency(parsedParams.establishmentFee)} />
@@ -830,8 +880,8 @@ export default function QuoteSheetComparison({
 
       {/* Fee summary (broker view only) */}
       {parsedParams && !isClientView && (
-        <div className="border border-border/60 bg-secondary/10 rounded-xl p-5 space-y-2 break-inside-avoid mt-6">
-          <p className="text-[12px] font-bold text-primary uppercase tracking-wider mb-3">
+        <div className="border border-border bg-muted/30 rounded-lg p-4 space-y-2 break-inside-avoid mt-4">
+          <p className="text-[12px] font-semibold text-foreground uppercase tracking-wide mb-3">
             Fee Summary
             {!feesFinanced && <span className="ml-2 text-warning">(Fees Not Financed)</span>}
           </p>
@@ -857,9 +907,9 @@ export default function QuoteSheetComparison({
       )}
 
       {showBrokerNotes && quoteSheet.broker_notes && (
-        <div className="p-3 bg-muted/50 rounded-lg">
+        <div className="p-3 bg-muted/40 rounded-lg border border-border">
           <p className="text-xs font-medium text-muted-foreground mb-1">Broker Notes (internal)</p>
-          <p className="text-sm">{quoteSheet.broker_notes}</p>
+          <p className="text-sm text-foreground">{quoteSheet.broker_notes}</p>
         </div>
       )}
     </div>

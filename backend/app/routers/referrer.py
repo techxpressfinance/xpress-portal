@@ -365,6 +365,7 @@ def create_direct_referral(
         tenant_id=tenant_id,
     )
     db.add(application)
+    db.flush()
     log_activity(db, current_user.id, "lead_submitted", "application", application.id,
                 {"loan_type": loan_type.value, "amount": str(data.amount), "client_name": full_name},
                 tenant_id=tenant_id)

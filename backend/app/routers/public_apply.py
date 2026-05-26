@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -10,7 +11,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.rate_limit import RateLimiter
 from app.models.loan_application import ApplicationStatus, LoanApplication
+from app.services.activity_log import log_activity
 from app.services.tenant_scope import get_tenant_id
+
+_INVITE_TOKEN_TTL_DAYS = 7
 
 router = APIRouter(prefix="/api/public/apply", tags=["public-apply"])
 
@@ -62,6 +66,12 @@ def _get_draft_by_token(token: str, tenant_id: str, db: Session) -> LoanApplicat
     ).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired link")
+    if app.client_invite_sent_at:
+        sent_at = app.client_invite_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - sent_at > timedelta(days=_INVITE_TOKEN_TTL_DAYS):
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="This invite link has expired. Please request a new one.")
     return app
 
 
@@ -105,5 +115,6 @@ def submit_public_application(
     for key, value in data.model_dump(exclude_none=True).items():
         setattr(app, key, value)
     app.status = ApplicationStatus.application_received
+    log_activity(db, app.user_id, "submitted_public_form", "application", app.id, tenant_id=tenant_id)
     db.commit()
     return {"success": True}

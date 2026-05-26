@@ -332,8 +332,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   // Create a draft in the backend once we have the minimum required fields.
-  // Intentionally excludes client_engagement_model to avoid triggering the admin
-  // notification email, which should only fire on explicit submission.
+  // Intentionally excludes client_engagement_model and applicant_email so the
+  // backend does not create a client account or send invitation emails — those
+  // should only happen on explicit submission.
   useEffect(() => {
     if (engagementModel === 'direct_engagement') return;
     if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
@@ -350,7 +351,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           amount: parseFloat(amount),
           applicant_first_name: firstName.trim(),
           applicant_last_name: lastName.trim(),
-          applicant_email: email.trim(),
           ...(mobile.trim() && { applicant_mobile: mobile.trim() }),
           ...(notes.trim() && { notes: notes.trim() }),
           ...(tab === 'commercial' && {
@@ -389,7 +389,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       const patch: Record<string, unknown> = {
         applicant_first_name: firstName.trim() || null,
         applicant_last_name: lastName.trim() || null,
-        applicant_email: email.trim() || null,
         applicant_mobile: mobile.trim() || null,
         notes: notes.trim() || null,
         ...(effectiveLoanType && { loan_type: effectiveLoanType }),

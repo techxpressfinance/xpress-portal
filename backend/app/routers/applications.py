@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
@@ -26,9 +27,11 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.serialization import app_with_user as _app_with_user
 from app.services.email import (
+    send_complete_application_email,
     send_direct_engagement_client_invite,
     send_direct_engagement_referrer_thankyou,
     send_new_lead_notification,
+    send_setup_account_email,
     send_status_notification,
 )
 from app.services.notification_service import create_notification
@@ -50,7 +53,52 @@ def create_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = LoanApplication(user_id=current_user.id, tenant_id=tenant_id, **data.model_dump())
+    # When staff (broker/admin) create an application on a client's behalf, mirror the
+    # referrer direct-referral flow: the client owns the application and is emailed a
+    # setup/complete link. (Direct engagement has its own token flow below.)
+    staff_lead = (
+        current_user.role in (UserRole.admin, UserRole.broker)
+        and bool(data.applicant_email)
+        and data.client_engagement_model != "direct_engagement"
+    )
+    lead_client: Optional[User] = None
+    lead_is_new = False
+    lead_setup_token: Optional[str] = None
+    owner_id = current_user.id
+
+    if staff_lead:
+        lead_email = data.applicant_email.strip().lower()
+        full_name = " ".join(filter(None, [data.applicant_first_name, data.applicant_last_name])).strip() or lead_email
+        existing = db.query(User).filter(User.email == lead_email, User.tenant_id == tenant_id).first()
+        if existing and existing.role != UserRole.client:
+            staff_lead = False  # don't repurpose a non-client account — fall back to a staff-owned app
+        elif existing:
+            lead_client = existing
+            owner_id = existing.id
+        else:
+            lead_setup_token = secrets.token_urlsafe(32)
+            lead_client = User(
+                email=lead_email,
+                full_name=full_name,
+                phone=data.applicant_mobile,
+                password_hash="!",
+                auth_method="password",
+                role="client",
+                is_active=True,
+                email_verified=True,
+                invited_by_id=current_user.id,
+                tenant_id=tenant_id,
+                email_verification_token=lead_setup_token,
+                email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+            )
+            db.add(lead_client)
+            db.flush()
+            lead_is_new = True
+            owner_id = lead_client.id
+
+    app = LoanApplication(user_id=owner_id, tenant_id=tenant_id, **data.model_dump())
+    if staff_lead and current_user.role == UserRole.broker:
+        app.assigned_broker_id = current_user.id
     db.add(app)
     db.flush()
     log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
@@ -76,6 +124,8 @@ def create_application(
     # For direct engagement, generate invite token so client can complete the form
     direct_engagement_invite_url = None
     if data.client_engagement_model == "direct_engagement" and data.applicant_email:
+        if current_user.role not in (UserRole.admin, UserRole.broker):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only brokers and admins can initiate direct engagement")
         token = secrets.token_urlsafe(32)
         app.client_invite_token = token
         app.client_invite_email = data.applicant_email.strip()
@@ -93,6 +143,33 @@ def create_application(
         send_direct_engagement_client_invite(
             data.applicant_email.strip(), client_name, referrer_name, direct_engagement_invite_url
         )
+    elif staff_lead and lead_client:
+        client_name = lead_client.full_name or "there"
+        if lead_is_new:
+            redirect_target = quote(f"/applications/new?completeId={app.id}", safe="")
+            setup_url = f"{FRONTEND_URL}/setup-account?token={lead_setup_token}&redirect={redirect_target}"
+            send_setup_account_email(lead_client.email, client_name, setup_url, current_user.full_name, role="client")
+        else:
+            send_complete_application_email(
+                to_email=lead_client.email,
+                client_name=client_name,
+                inviter_name=current_user.full_name,
+                loan_type=data.loan_type,
+                amount=str(int(data.amount)),
+                application_id=app.id,
+            )
+        portal_url = f"{FRONTEND_URL}/admin/applications/{app.id}"
+        admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+        for admin in admins:
+            send_new_lead_notification(
+                admin.email,
+                admin.full_name or "Admin",
+                current_user.full_name or current_user.email,
+                client_name,
+                data.loan_type,
+                str(int(data.amount)),
+                portal_url,
+            )
     elif current_user.role == UserRole.referrer and data.client_engagement_model == "self_managed":
         client_name = " ".join(filter(None, [data.applicant_first_name, data.applicant_last_name])) or "Unknown"
         referrer_name = current_user.full_name or current_user.email
@@ -370,7 +447,6 @@ def update_application(
             "trading_name", "business_structure", "gst_registered", "num_directors", "time_trading",
             "previously_declined", "change_of_circumstances", "signature_name",
             "emergency_contact_name", "emergency_contact_relationship", "emergency_contact_phone",
-            "client_engagement_model",
         }
         disallowed = set(field_updates.keys()) - _BROKER_ALLOWED_FIELDS
         if disallowed:
@@ -535,7 +611,7 @@ def unassign_broker(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker).first()
+    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker, User.tenant_id == tenant_id).first()
     if not broker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
 
@@ -665,8 +741,11 @@ def delete_application(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    if current_user.role not in (UserRole.admin, UserRole.broker):
-        # Allow owners to delete their own drafts (e.g. referrer cleaning up an auto-saved draft)
+    if current_user.role == UserRole.broker:
+        if application.status.value != "draft":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers can only delete draft applications")
+    elif current_user.role != UserRole.admin:
+        # Non-admin, non-broker: only own drafts (e.g. referrer cleaning up an auto-saved draft)
         if application.user_id != current_user.id or application.status.value != "draft":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and brokers can delete applications")
 
@@ -705,6 +784,13 @@ def send_client_invite(
     check_application_access(application, current_user, db=db)
     if application.status.value != "draft":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only invite for draft applications")
+
+    if application.client_invite_sent_at:
+        sent_at = application.client_invite_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - sent_at).total_seconds() < 120:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Please wait at least 2 minutes before resending the invite")
 
     token = secrets.token_urlsafe(32)
     application.client_invite_token = token
