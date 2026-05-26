@@ -113,7 +113,7 @@ export default function ReferrerManagement() {
 
   useEffect(() => {
     api.get('/external-referrers')
-      .then(({ data }) => setReferrers(data))
+      .then(({ data }) => setReferrers(data.filter((u: User) => !u.email.endsWith('@deleted.invalid'))))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -379,9 +379,10 @@ export default function ReferrerManagement() {
       )}
 
       {/* Confirmation modal */}
-      {pendingAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
+      {pendingAction && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPendingAction(null)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
             <h3 className="text-[16px] font-semibold text-foreground mb-2">Confirm Action</h3>
             <p className="text-[14px] text-muted-foreground mb-6">
               {pendingAction.type === 'delete' ? (
@@ -395,7 +396,8 @@ export default function ReferrerManagement() {
               <Button variant={pendingAction.type === 'delete' || (pendingAction.type === 'toggle_active' && pendingAction.isActive) ? 'danger' : 'primary'} size="sm" onClick={confirmAction}>Confirm</Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
