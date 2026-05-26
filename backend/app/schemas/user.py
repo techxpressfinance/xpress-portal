@@ -198,6 +198,16 @@ class StartApplicationForClient(BaseModel):
     notes: Optional[str] = None
 
 
+class DeletedClientOut(BaseModel):
+    id: str
+    original_email: str
+    original_name: str
+    deleted_at: datetime
+    application_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
 class SetupAccountRequest(BaseModel):
     token: str
     password: str

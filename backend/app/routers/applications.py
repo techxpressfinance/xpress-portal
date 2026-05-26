@@ -472,7 +472,7 @@ def update_application(
 
             # Notify the client
             client_user = db.query(User).filter(User.id == application.user_id).first()
-            if client_user and client_user.role == UserRole.client:
+            if client_user and client_user.role == UserRole.client and not client_user.email.endswith('@deleted.invalid'):
                 send_status_notification(client_user.email, client_user.full_name, application.loan_type.value, "application_received")
                 create_notification(
                     db,
@@ -536,7 +536,7 @@ def change_status(
 
     # Notify client via email and SMS
     client = db.query(User).filter(User.id == application.user_id).first()
-    if client and client.role == UserRole.client:
+    if client and client.role == UserRole.client and not client.email.endswith('@deleted.invalid'):
         send_status_notification(client.email, client.full_name, application.loan_type.value, new_status.value)
         if client.phone:
             from app.services.sms import send_status_sms

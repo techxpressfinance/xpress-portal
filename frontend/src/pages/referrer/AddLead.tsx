@@ -309,7 +309,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw: any[] = Array.isArray(data) ? data : (data.items || data.data || []);
         const list = skipEngagement
-          ? raw.filter((u: { role: string }) => u.role === 'client')
+          ? raw.filter((u: { role: string; email: string }) => u.role === 'client' && !u.email.endsWith('@deleted.invalid'))
           : raw;
         setPrevClients(list.map(c => {
           const fName = c.first_name || c.full_name?.split(' ')[0] || '';

@@ -74,6 +74,8 @@ def list_referrer_clients(
         client = ref.referred_client
         if not client:
             continue
+        if client.email.endswith('@deleted.invalid'):
+            continue
         key = client.email
         if key in seen:
             continue

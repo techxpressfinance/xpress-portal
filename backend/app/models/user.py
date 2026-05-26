@@ -62,6 +62,11 @@ class User(Base):
     password_reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     password_reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Soft-delete tracking (admin deleted clients)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_original_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    deleted_original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     applications = relationship("LoanApplication", back_populates="user", foreign_keys="LoanApplication.user_id")
     assigned_applications = relationship(
         "LoanApplication", back_populates="assigned_broker", foreign_keys="LoanApplication.assigned_broker_id"

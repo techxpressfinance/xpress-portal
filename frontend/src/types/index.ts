@@ -332,6 +332,14 @@ export interface Invitation {
   invited_by_name: string | null;
 }
 
+export interface DeletedClient {
+  id: string;
+  original_email: string;
+  original_name: string;
+  deleted_at: string;
+  application_count: number;
+}
+
 export interface ReferralStats {
   total_referred: number;
   signed_up: number;

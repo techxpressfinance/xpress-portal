@@ -152,6 +152,8 @@ def invite_to_complete_application(
     client = db.query(User).filter(User.id == application.user_id).first()
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    if client.email.endswith('@deleted.invalid'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client has been deleted")
 
     send_complete_application_email(
         to_email=client.email,
@@ -180,6 +182,8 @@ def start_application_for_client(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     if client.role.value != "client":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is not a client")
+    if client.email.endswith('@deleted.invalid'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client has been deleted")
 
     # Validate loan type
     try:

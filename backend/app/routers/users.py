@@ -3,15 +3,17 @@ import uuid
 
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.external_referral import ExternalReferral
+from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
-from app.schemas.user import BrokerCreate, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
+from app.schemas.user import BrokerCreate, DeletedClientOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
@@ -27,13 +29,51 @@ def list_users(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(User).filter(User.tenant_id == tenant_id)
+    query = db.query(User).filter(
+        User.tenant_id == tenant_id,
+        ~User.email.like('%@deleted.invalid'),
+        User.deleted_at.is_(None),
+    )
     if role:
         try:
             query = query.filter(User.role == UserRole(role))
         except ValueError:
             pass
     return query.order_by(User.created_at.desc()).limit(500).all()
+
+
+@router.get("/deleted", response_model=list[DeletedClientOut])
+def list_deleted_clients(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Admin-only: returns all soft-deleted clients with application counts."""
+    rows = (
+        db.query(
+            User,
+            func.count(LoanApplication.id).label("application_count"),
+        )
+        .outerjoin(LoanApplication, LoanApplication.user_id == User.id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.role == UserRole.client,
+            User.deleted_at.isnot(None),
+        )
+        .group_by(User.id)
+        .order_by(User.deleted_at.desc())
+        .all()
+    )
+    return [
+        DeletedClientOut(
+            id=user.id,
+            original_email=user.deleted_original_email or user.email,
+            original_name=user.deleted_original_name or user.full_name,
+            deleted_at=user.deleted_at,
+            application_count=count,
+        )
+        for user, count in rows
+    ]
 
 
 @router.get("/me", response_model=UserOut)
@@ -299,7 +339,13 @@ def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     original_email = user.email
+    original_name = user.full_name
     original_role = user.role.value
+
+    # Preserve original info for deleted-clients retrieval before scrambling.
+    user.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.deleted_original_email = original_email
+    user.deleted_original_name = original_name
 
     # Scramble identifying fields so the email/phone can be reused for a fresh signup.
     user.email = f"deleted-{uuid.uuid4().hex}@deleted.invalid"

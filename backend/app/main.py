@@ -194,6 +194,10 @@ _MIGRATIONS = [
     # Password reset flow
     ("users", "password_reset_token", "VARCHAR(64)"),
     ("users", "password_reset_token_expires_at", "TIMESTAMP"),
+    # Soft-delete tracking for users (admin deleted clients)
+    ("users", "deleted_at", "TIMESTAMP"),
+    ("users", "deleted_original_email", "VARCHAR(255)"),
+    ("users", "deleted_original_name", "VARCHAR(255)"),
     # Client (all-up) interest rate per quote option
     ("quote_options", "client_interest_rate", "NUMERIC(8,4)"),
 ]
