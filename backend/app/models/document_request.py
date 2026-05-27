@@ -19,7 +19,9 @@ class DocumentRequest(Base):
     requested_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    document_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("documents.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     fulfilled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     requested_by = relationship("User")
+    document = relationship("Document")

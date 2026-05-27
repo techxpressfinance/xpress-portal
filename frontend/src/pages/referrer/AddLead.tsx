@@ -590,7 +590,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               <p className="text-[18px] font-semibold text-foreground">Lead submitted!</p>
               <p className="text-[14px] text-muted-foreground mt-1.5">
                 {engagementModel === 'direct_engagement'
-                  ? `${firstName} has been invited to set up their account and complete their application. Our team has been notified.`
+                  ? `Your broker has been notified and will review the lead. They'll invite ${firstName} once they've set up the form.`
                   : `Your broker will review and follow up with ${firstName}.`}
               </p>
             </div>

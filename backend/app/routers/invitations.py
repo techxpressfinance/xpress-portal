@@ -155,16 +155,30 @@ def invite_to_complete_application(
     if client.email.endswith('@deleted.invalid'):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client has been deleted")
 
-    send_complete_application_email(
-        to_email=client.email,
-        client_name=client.full_name,
-        inviter_name=current_user.full_name,
-        loan_type=application.loan_type.value,
-        amount=str(application.amount),
-        application_id=application.id,
-    )
+    if client.password_hash in ("!", "!invited"):
+        # Placeholder client — hasn't been invited yet. Refresh setup token and send
+        # an account-setup email that redirects them straight to this application.
+        token = secrets.token_urlsafe(32)
+        client.email_verification_token = token
+        client.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+        application.client_invite_sent_at = datetime.now(timezone.utc)
+        db.commit()
+        redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
+        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
+        send_setup_account_email(client.email, client.full_name, setup_url, current_user.full_name, role="client")
+    else:
+        application.client_invite_sent_at = datetime.now(timezone.utc)
+        db.commit()
+        send_complete_application_email(
+            to_email=client.email,
+            client_name=client.full_name,
+            inviter_name=current_user.full_name,
+            loan_type=application.loan_type.value,
+            amount=str(application.amount),
+            application_id=application.id,
+        )
 
-    return {"detail": f"Completion invite sent to {client.email}"}
+    return {"detail": f"Invite sent to {client.email}", "client_invite_sent_at": application.client_invite_sent_at.isoformat()}
 
 
 @router.post("/start-application", status_code=status.HTTP_201_CREATED)

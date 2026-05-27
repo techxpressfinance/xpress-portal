@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Uni
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.encrypted_type import EncryptedString
 
 
 class UserRole(str, enum.Enum):
@@ -61,6 +62,10 @@ class User(Base):
     # Password reset
     password_reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     password_reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Saved client profile — encrypted JSON blob of constant personal details used to
+    # autofill new applications (title, name, DOB, contact, ID, residency, emergency contact).
+    client_profile: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     # Soft-delete tracking (admin deleted clients)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

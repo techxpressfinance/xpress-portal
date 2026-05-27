@@ -15,7 +15,7 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
+import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
@@ -63,7 +63,7 @@ export default function ReviewApplication() {
   // Document requests state
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [showDocRequestForm, setShowDocRequestForm] = useState(false);
-  const [docRequestDescription, setDocRequestDescription] = useState('');
+  const [docRequestItems, setDocRequestItems] = useState<string[]>(['']);
   const [submittingDocRequest, setSubmittingDocRequest] = useState(false);
 
   // Quote sheets state
@@ -112,6 +112,11 @@ export default function ReviewApplication() {
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingApp, setDeletingApp] = useState(false);
+  const [togglingLock, setTogglingLock] = useState(false);
+  const [invitingClient, setInvitingClient] = useState(false);
+  const [showSections, setShowSections] = useState(false);
+  const [savingSections, setSavingSections] = useState(false);
+  const [sectionDraft, setSectionDraft] = useState<string[]>([]);
   const [docType, setDocType] = useState<DocType>('id_proof');
   const [uploading, setUploading] = useState(false);
   const [fileLabel, setFileLabel] = useState('');
@@ -368,14 +373,16 @@ export default function ReviewApplication() {
   };
 
   const handleSubmitDocRequest = async () => {
-    if (!id || !docRequestDescription.trim()) return;
+    if (!id) return;
+    const items = docRequestItems.map((s) => s.trim()).filter(Boolean);
+    if (items.length === 0) return;
     setSubmittingDocRequest(true);
     try {
-      const { data } = await api.post(`/documents/requests/${id}`, { description: docRequestDescription.trim() });
-      setDocRequests((prev) => [...prev, data]);
-      setDocRequestDescription('');
+      const { data } = await api.post(`/documents/requests/${id}`, { items });
+      setDocRequests((prev) => [...prev, ...data]);
+      setDocRequestItems(['']);
       setShowDocRequestForm(false);
-      toast('Document request sent to client', 'success');
+      toast(`Requested ${items.length} document${items.length !== 1 ? 's' : ''} from client`, 'success');
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to send request'), 'error');
     } finally {
@@ -486,6 +493,75 @@ export default function ReviewApplication() {
     }
   };
 
+  const handleToggleLock = async () => {
+    if (!id || !application) return;
+    setTogglingLock(true);
+    const newLocked = !application.is_locked;
+    try {
+      const { data } = await api.patch(`/applications/${id}/lock?locked=${newLocked}`);
+      setApplication(data);
+      toast(newLocked ? 'Application locked — client cannot edit it' : 'Application unlocked — client can edit again', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update lock'), 'error');
+    } finally {
+      setTogglingLock(false);
+    }
+  };
+
+  const parseClientSections = (raw?: string | null): string[] | null => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const openSectionsModal = () => {
+    if (!application) return;
+    const current = parseClientSections(application.client_sections);
+    // null (not yet configured) means all sections are visible by default.
+    setSectionDraft(current ?? APPLICATION_SECTIONS.map(s => s.key));
+    setShowSections(true);
+  };
+
+  const toggleSectionDraft = (key: string) => {
+    setSectionDraft(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  };
+
+  const handleSaveSections = async () => {
+    if (!id) return;
+    setSavingSections(true);
+    try {
+      const { data } = await api.patch(`/applications/${id}/client-sections`, { sections: sectionDraft });
+      setApplication(data);
+      toast('Client sections updated', 'success');
+      setShowSections(false);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update sections'), 'error');
+    } finally {
+      setSavingSections(false);
+    }
+  };
+
+  const handleInviteClient = async () => {
+    if (!id) return;
+    setInvitingClient(true);
+    try {
+      await api.post('/invitations/complete-application', { application_id: id });
+      const isResend = !!application?.client_invite_sent_at;
+      toast(isResend ? 'Invite resent to client' : 'Invite sent to client', 'success');
+      // Refresh application so client_invite_sent_at and client_account_pending update
+      const { data } = await api.get(`/applications/${id}`);
+      setApplication(data);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to send invite'), 'error');
+    } finally {
+      setInvitingClient(false);
+    }
+  };
+
   const handleUploadFile = async (file: File) => {
     if (!id) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -572,6 +648,34 @@ export default function ReviewApplication() {
             <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             Download PDF
           </Button>
+          {isDraft && (
+            <Button variant="secondary" size="sm" onClick={openSectionsModal}>
+              <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" /></svg>
+              Sections
+            </Button>
+          )}
+          {isDraft && (
+            <Button
+              variant={application.is_locked ? 'secondary' : 'secondary'}
+              size="sm"
+              onClick={handleToggleLock}
+              loading={togglingLock}
+              disabled={togglingLock}
+              className={application.is_locked ? 'text-amber-600 border-amber-500/40 hover:bg-amber-50' : ''}
+            >
+              {application.is_locked ? (
+                <>
+                  <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  Unlock
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  Lock
+                </>
+              )}
+            </Button>
+          )}
           <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
             <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
             Delete
@@ -584,6 +688,33 @@ export default function ReviewApplication() {
         <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
         <StatusTimeline currentStatus={application.status} />
       </GlassCard>
+
+      {/* Client not yet invited / awaiting account setup — top-level banner so it's always visible */}
+      {application.client_account_pending && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
+        <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 px-5 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <svg className="h-5 w-5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+            </svg>
+            <div>
+              {application.client_invite_sent_at ? (
+                <>
+                  <p className="text-[13px] font-semibold text-foreground">Waiting for client to set up their account</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">Invite sent {formatDate(application.client_invite_sent_at)}. Resend if the client hasn't received it.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[13px] font-semibold text-foreground">Client hasn't been invited yet</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">Configure the form sections if needed, then send the invite to the client.</p>
+                </>
+              )}
+            </div>
+          </div>
+          <Button size="sm" onClick={handleInviteClient} loading={invitingClient}>
+            {application.client_invite_sent_at ? 'Resend Invite' : 'Invite Client'}
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
@@ -628,6 +759,12 @@ export default function ReviewApplication() {
                     </h1>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge value={application.status} />
+                      {application.is_locked && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-500/20">
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                          Client Locked
+                        </span>
+                      )}
                       {!editing && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
                           <span className="flex items-center gap-1.5">
@@ -1877,6 +2014,16 @@ export default function ReviewApplication() {
                               Requested by {req.requested_by_name} &middot; {formatDate(req.created_at)}
                               {req.status === 'fulfilled' && req.fulfilled_at && ` · Fulfilled ${formatDate(req.fulfilled_at)}`}
                             </p>
+                            {req.document_id && (
+                              <button
+                                type="button"
+                                onClick={() => downloadFile(req.document_id!, req.document_filename || 'document')}
+                                className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                              >
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                                {req.document_filename || 'Download'}
+                              </button>
+                            )}
                           </div>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${req.status === 'fulfilled' ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
                             {req.status === 'fulfilled' ? 'Fulfilled' : 'Pending'}
@@ -1951,19 +2098,45 @@ export default function ReviewApplication() {
 
                   {showDocRequestForm && (
                     <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                      <p className="text-[13px] font-medium text-foreground mb-2">Specify which documents you need from the client</p>
-                      <textarea
-                        value={docRequestDescription}
-                        onChange={(e) => setDocRequestDescription(e.target.value)}
-                        placeholder="e.g. Last 3 months of bank statements, most recent payslip..."
-                        rows={3}
-                        className="w-full rounded-xl bg-background px-3.5 py-2.5 text-[13px] text-foreground border border-border/50 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
-                      />
+                      <p className="text-[13px] font-medium text-foreground mb-1">Specify which documents you need from the client</p>
+                      <p className="text-[12px] text-muted-foreground mb-3">Each becomes its own upload field on the client's view.</p>
+                      <div className="space-y-2">
+                        {docRequestItems.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={item}
+                              onChange={(e) => setDocRequestItems((prev) => prev.map((v, i) => (i === idx ? e.target.value : v)))}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setDocRequestItems((prev) => [...prev, '']); } }}
+                              placeholder={`Document ${idx + 1} — e.g. Last 3 months of bank statements`}
+                              className="flex-1 rounded-lg bg-background px-3 py-2 text-[13px] text-foreground border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground"
+                            />
+                            {docRequestItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setDocRequestItems((prev) => prev.filter((_, i) => i !== idx))}
+                                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                                title="Remove"
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDocRequestItems((prev) => [...prev, ''])}
+                        className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        Add document
+                      </button>
                       <div className="flex items-center gap-2 mt-3">
-                        <Button size="sm" variant="primary" onClick={handleSubmitDocRequest} disabled={!docRequestDescription.trim() || submittingDocRequest} loading={submittingDocRequest}>
+                        <Button size="sm" variant="primary" onClick={handleSubmitDocRequest} disabled={!docRequestItems.some((s) => s.trim()) || submittingDocRequest} loading={submittingDocRequest}>
                           Send Request
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => { setShowDocRequestForm(false); setDocRequestDescription(''); }}>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowDocRequestForm(false); setDocRequestItems(['']); }}>
                           Cancel
                         </Button>
                       </div>
@@ -3438,6 +3611,52 @@ export default function ReviewApplication() {
           filename={previewDoc.filename}
           ocrStatus={previewDoc.ocrStatus}
         />
+      )}
+
+      {showSections && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!savingSections) setShowSections(false); }} />
+          <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
+            <h3 className="text-[17px] font-semibold text-foreground mb-1">Client Sections</h3>
+            <p className="text-[13px] text-muted-foreground mb-4">
+              Choose which sections the client can see and complete. Unticked sections are hidden from the client's form.
+            </p>
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                className="text-[12px] font-medium text-primary hover:underline"
+                onClick={() => setSectionDraft(APPLICATION_SECTIONS.map(s => s.key))}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                className="text-[12px] font-medium text-muted-foreground hover:underline"
+                onClick={() => setSectionDraft([])}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-1 mb-4">
+              {APPLICATION_SECTIONS.map(s => (
+                <label key={s.key} className="flex items-center gap-3 rounded-xl px-3 py-2 cursor-pointer hover:bg-secondary transition-colors">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={sectionDraft.includes(s.key)}
+                    onChange={() => toggleSectionDraft(s.key)}
+                  />
+                  <span className="text-[14px] text-foreground">{s.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" size="md" disabled={savingSections} onClick={() => setShowSections(false)}>Cancel</Button>
+              <Button variant="primary" size="md" loading={savingSections} onClick={handleSaveSections}>Save</Button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {reasonModalStatus && createPortal(

@@ -180,21 +180,31 @@ export default function OnboardingTour({ steps, open, onClose, onFinish }: Props
   // Compute tooltip position
   let tooltipStyle: React.CSSProperties = {};
   const isCenter = !rect;
+  // When true, the tooltip is centered via translate(-50%, -50%) instead of
+  // pixel math, so it stays centered on any viewport size.
+  let centerTransform = false;
 
   if (isMobile) {
+    // Bottom sheet by default, but flip to the top of the screen when the
+    // highlighted target sits in the lower half — otherwise the sheet would
+    // cover the very element the step is pointing at.
+    const targetInLowerHalf = rect ? rect.top + rect.height / 2 > vh / 2 : false;
     tooltipStyle = {
       left: 12,
       right: 12,
-      bottom: 12,
+      [targetInLowerHalf ? 'top' : 'bottom']: 12,
       width: 'auto',
       maxWidth: 'calc(100vw - 24px)',
+      maxHeight: 'calc(100vh - 24px)',
+      overflowY: 'auto',
     };
   } else if (isCenter) {
     tooltipStyle = {
-      left: vw / 2 - TOOLTIP_W / 2,
-      top: vh / 2 - 100,
+      left: '50%',
+      top: '50%',
       width: TOOLTIP_W,
     };
+    centerTransform = true;
   } else {
     const placements: Array<NonNullable<TourStep['placement']>> =
       step.placement && step.placement !== 'auto'
@@ -249,13 +259,19 @@ export default function OnboardingTour({ steps, open, onClose, onFinish }: Props
       left: Math.max(8, Math.min(chosen.left, vw - TOOLTIP_W - 8)),
       top: Math.max(8, Math.min(chosen.top, vh - TOOLTIP_H_ESTIMATE - 8)),
       width: TOOLTIP_W,
+      maxHeight: 'calc(100vh - 16px)',
+      overflowY: 'auto',
     };
   }
 
   const showSpotlight = !!rect;
 
-  // Tooltip enter transform: subtle scale-up on mount
-  const tooltipTransform = visible ? 'scale(1)' : 'scale(0.96)';
+  // Tooltip enter transform: subtle scale-up on mount, plus centering offset
+  // for the no-target (welcome/finish) modal so it stays centered on any screen.
+  const scalePart = visible ? 'scale(1)' : 'scale(0.96)';
+  const tooltipTransform = centerTransform
+    ? `translate(-50%, -50%) ${scalePart}`
+    : scalePart;
 
   return createPortal(
     <div

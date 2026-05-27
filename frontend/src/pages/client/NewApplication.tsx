@@ -273,6 +273,7 @@ export default function NewApplication() {
   const [lendEnabled, setLendEnabled] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [isOwnDraftEdit, setIsOwnDraftEdit] = useState(false);
   const [completeLoading, setCompleteLoading] = useState(!!completeId);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -281,8 +282,16 @@ export default function NewApplication() {
   const performAutosaveRef = useRef<() => void>(() => {});
   const draftStorageKey = user?.id ? `application-draft-${user.id}` : null;
 
+  // Fields prefilled from the client's saved profile, for the "review" hint.
+  const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set());
+  const [showPrefillHint, setShowPrefillHint] = useState(false);
+
   const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
   const [loanTypeError, setLoanTypeError] = useState('');
+
+  // Broker-selected sections the client may complete. null = all visible.
+  const [enabledSections, setEnabledSections] = useState<Set<string> | null>(null);
+  const isSectionVisible = (key: string) => !enabledSections || enabledSections.has(key);
 
   const [additionalIncomes, setAdditionalIncomes] = useState<AdditionalIncome[]>([]);
   const [realEstateAssets, setRealEstateAssets] = useState<RealEstateAsset[]>([]);
@@ -389,19 +398,33 @@ export default function NewApplication() {
     if (user?.email && !getValues('applicant_email')) setValue('applicant_email', user.email);
   }, [user, setValue, getValues]);
 
-  // Prefill from an existing draft application when completing a direct referral.
+  // Prefill from an existing draft application when completing a direct referral or editing own draft.
   useEffect(() => {
     if (!completeId) return;
     let cancelled = false;
     api.get(`/applications/${completeId}`)
       .then(({ data }) => {
         if (cancelled || !data) return;
+
+        // Detect if the client is editing their own draft
+        if (user?.id && data.user_id === user.id) {
+          setIsOwnDraftEdit(true);
+        }
+
+        // Broker-selected sections (null/absent = all visible).
+        if (data.client_sections) {
+          try {
+            const parsed = JSON.parse(data.client_sections);
+            if (Array.isArray(parsed)) setEnabledSections(new Set(parsed.filter((s: unknown): s is string => typeof s === 'string')));
+          } catch { /* ignore malformed — leave all visible */ }
+        }
+
         const lendData = (() => {
           if (!data.lend_extra_data) return {} as Record<string, unknown>;
           try { return JSON.parse(data.lend_extra_data) as Record<string, unknown>; }
           catch { return {} as Record<string, unknown>; }
         })();
-        const loanTypeDetails = (lendData.loan_type_details ?? {}) as Record<string, { type?: string } | undefined>;
+        const loanTypeDetails = (lendData.loan_type_details ?? {}) as Record<string, Record<string, unknown> | undefined>;
 
         const lt = data.loan_type as string | undefined;
         const COMMERCIAL_LTS = new Set(['equipment_finance', 'business_loan', 'commercial_property', 'business']);
@@ -409,18 +432,61 @@ export default function NewApplication() {
         setTab(isCommercial ? 'commercial' : 'consumer');
 
         if (isCommercial) {
-          const cType = loanTypeDetails.commercial_loan_type?.type;
+          const cType = (loanTypeDetails.commercial_loan_type as { type?: string } | undefined)?.type;
           if (cType) setSelectedCommercialLoanType(cType);
         } else {
-          const cType = loanTypeDetails.consumer_loan_type?.type;
+          const cType = (loanTypeDetails.consumer_loan_type as { type?: string } | undefined)?.type;
           if (cType) setSelectedConsumerLoanType(cType);
           else if (lt === 'personal') setSelectedConsumerLoanType('personal');
         }
 
         if (lt) setSelectedLoanTypes([lt]);
 
+        // Core loan fields
         if (data.amount != null) setValue('amount', String(data.amount));
         if (data.notes) setValue('notes', data.notes);
+
+        // Personal details
+        if (data.applicant_title) setValue('applicant_title', data.applicant_title);
+        if (data.applicant_first_name) setValue('applicant_first_name', data.applicant_first_name);
+        if (data.applicant_middle_name) setValue('applicant_middle_name', data.applicant_middle_name);
+        if (data.applicant_last_name) setValue('applicant_last_name', data.applicant_last_name);
+        if (data.applicant_dob) setValue('applicant_dob', data.applicant_dob);
+        if (data.applicant_gender) setValue('applicant_gender', data.applicant_gender);
+        if (data.applicant_marital_status) setValue('applicant_marital_status', data.applicant_marital_status);
+        if (data.applicant_num_dependants != null) setValue('num_dependants', String(data.applicant_num_dependants));
+
+        // Contact
+        if (data.applicant_email) setValue('applicant_email', data.applicant_email);
+        if (data.applicant_mobile) setValue('applicant_mobile', data.applicant_mobile);
+        if (data.preferred_contact_method) setValue('preferred_contact_method', data.preferred_contact_method);
+
+        // Residency / ID
+        if (data.applicant_residency_status) setValue('residency_status', data.applicant_residency_status);
+        if (data.id_expiry_date) setValue('id_expiry_date', data.id_expiry_date);
+
+        // Address
+        if (data.applicant_address) setValue('applicant_address', data.applicant_address);
+        if (data.applicant_suburb) setValue('applicant_suburb', data.applicant_suburb);
+        if (data.applicant_state) setValue('applicant_state', data.applicant_state);
+        if (data.applicant_postcode) {
+          setValue('applicant_postcode', data.applicant_postcode);
+          if (isCommercial) setComPostcode(data.applicant_postcode);
+        }
+        if (data.residential_status) setValue('residential_status', data.residential_status);
+        if (data.time_at_address) setValue('time_at_address', data.time_at_address);
+        if (data.has_partner != null) setValue('has_partner', data.has_partner ? 'yes' : 'no');
+        if (data.partner_working != null) setValue('partner_working', data.partner_working ? 'yes' : 'no');
+
+        // Employment
+        if (data.employment_category) setValue('employment_category', data.employment_category);
+        if (data.employer_name) setValue('employer_name', data.employer_name);
+        if (data.employer_industry) setValue('employer_industry', data.employer_industry);
+        if (data.job_title) setValue('job_title', data.job_title);
+        if (data.income_frequency) setValue('income_frequency', data.income_frequency);
+        if (data.gross_income != null) setValue('gross_income', String(data.gross_income));
+
+        // Self-employed / business
         if (data.business_name) {
           setComBusinessName(data.business_name);
           setValue('business_name', data.business_name);
@@ -428,6 +494,80 @@ export default function NewApplication() {
         if (data.business_abn) {
           setComAbn(data.business_abn);
           setValue('business_abn', data.business_abn);
+        }
+        if (data.trading_name) setValue('trading_name', data.trading_name);
+        if (data.business_structure) setValue('business_structure', data.business_structure);
+        if (data.time_trading) setValue('time_trading', data.time_trading);
+        if (data.gst_registered != null) setValue('gst_registered', data.gst_registered ? 'yes' : 'no');
+        if (data.num_directors != null) setValue('num_directors', String(data.num_directors));
+        if (data.business_monthly_sales != null) setComMonthlySales(String(data.business_monthly_sales));
+
+        // Emergency contact
+        if (data.emergency_contact_name) setValue('emergency_contact_name', data.emergency_contact_name);
+        if (data.emergency_contact_relationship) setValue('emergency_contact_relationship', data.emergency_contact_relationship);
+        if (data.emergency_contact_phone) setValue('emergency_contact_phone', data.emergency_contact_phone);
+
+        // Declarations
+        if (data.previously_declined != null) setValue('previously_declined', data.previously_declined ? 'yes' : 'no');
+        if (data.change_of_circumstances != null) setValue('change_of_circumstances', data.change_of_circumstances ? 'yes' : 'no');
+        if (data.signature_name) setValue('signature_name', data.signature_name);
+
+        // Loan type-specific fields from lend_extra_data
+        const vehicleDetails = loanTypeDetails.vehicle_details as Record<string, unknown> | undefined;
+        if (vehicleDetails) {
+          if (vehicleDetails.make) setValue('vehicle_make', vehicleDetails.make as string);
+          if (vehicleDetails.model) setValue('vehicle_model', vehicleDetails.model as string);
+          if (vehicleDetails.year) setValue('vehicle_year', vehicleDetails.year as string);
+          if (vehicleDetails.vin) setValue('vehicle_vin', vehicleDetails.vin as string);
+          if (vehicleDetails.condition) setValue('vehicle_condition', vehicleDetails.condition as string);
+          if (vehicleDetails.price) setValue('vehicle_price', String(vehicleDetails.price));
+          if (vehicleDetails.deposit) setValue('deposit_amount', String(vehicleDetails.deposit));
+        }
+
+        const propertyDetails = loanTypeDetails.property_details as Record<string, unknown> | undefined;
+        if (propertyDetails) {
+          if (propertyDetails.address) setValue('property_address', propertyDetails.address as string);
+          if (propertyDetails.property_type) setValue('property_type', propertyDetails.property_type as string);
+          if (propertyDetails.value) setValue('property_value', String(propertyDetails.value));
+          if (propertyDetails.first_home_buyer != null) setValue('first_home_buyer', propertyDetails.first_home_buyer ? 'yes' : 'no');
+          if (propertyDetails.current_lender) setValue('current_lender', propertyDetails.current_lender as string);
+          if (propertyDetails.refinance_reason) setValue('refinance_reason', propertyDetails.refinance_reason as string);
+          if (propertyDetails.property_use) setValue('property_use', propertyDetails.property_use as string);
+        }
+
+        const personalLoan = loanTypeDetails.personal_loan as Record<string, unknown> | undefined;
+        if (personalLoan) {
+          if (personalLoan.purpose) setValue('loan_purpose', personalLoan.purpose as string);
+          if (personalLoan.term) setValue('loan_term', personalLoan.term as string);
+        }
+
+        const assetDetails = loanTypeDetails.asset_details as Record<string, unknown> | undefined;
+        if (assetDetails) {
+          if (assetDetails.equipment_type) setValue('equipment_type', assetDetails.equipment_type as string);
+          if (assetDetails.description) setValue('equipment_description', assetDetails.description as string);
+          if (assetDetails.condition) setValue('vehicle_condition', assetDetails.condition as string);
+          if (assetDetails.price) setValue('vehicle_price', String(assetDetails.price));
+          if (assetDetails.deposit) setValue('deposit_amount', String(assetDetails.deposit));
+          if (assetDetails.vendor_type) setValue('vendor_type', assetDetails.vendor_type as string);
+          if (assetDetails.business_use_pct) setValue('eq_business_use_pct', String(assetDetails.business_use_pct));
+        }
+
+        const workingCapital = loanTypeDetails.working_capital as Record<string, unknown> | undefined;
+        if (workingCapital) {
+          if (workingCapital.recruitment_details) setValue('recruitment_details', workingCapital.recruitment_details as string);
+          if (workingCapital.expansion_description) setValue('expansion_description', workingCapital.expansion_description as string);
+          if (workingCapital.supplier_details) setValue('supplier_details', workingCapital.supplier_details as string);
+          if (workingCapital.outstanding_invoices) setValue('outstanding_invoices', workingCapital.outstanding_invoices as string);
+          if (workingCapital.purpose_description) setValue('purpose_description', workingCapital.purpose_description as string);
+        }
+
+        const businessDetails = loanTypeDetails.business_details as Record<string, unknown> | undefined;
+        if (businessDetails) {
+          if (businessDetails.business_plan) setValue('business_plan', businessDetails.business_plan as string);
+          if (businessDetails.startup_costs) setValue('startup_costs', String(businessDetails.startup_costs));
+          if (businessDetails.business_details) setValue('business_details', businessDetails.business_details as string);
+          if (businessDetails.purchase_price) setValue('purchase_price', String(businessDetails.purchase_price));
+          if (businessDetails.business_type) setValue('business_type', businessDetails.business_type as string);
         }
       })
       .catch(() => toast('Could not load your application. You can still fill the form below.', 'error'))
@@ -437,7 +577,7 @@ export default function NewApplication() {
         setAutosaveReady(true);
       });
     return () => { cancelled = true; };
-  }, [completeId, setValue, toast]);
+  }, [completeId, user?.id, setValue, toast]);
 
   // Restore an in-progress draft from localStorage (only for fresh /applications/new — not the completeId flow).
   useEffect(() => {
@@ -494,6 +634,46 @@ export default function NewApplication() {
   // Run once on mount per user.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftStorageKey, completeId]);
+
+  // Prefill constant personal details from the client's saved profile on a fresh
+  // new application. Skipped when completing/editing an existing app, and when an
+  // in-progress local draft already exists (that draft takes precedence).
+  useEffect(() => {
+    if (completeId) return;
+    if (!user?.id) return;
+    if (draftStorageKey) {
+      try {
+        if (localStorage.getItem(draftStorageKey)) return;
+      } catch { /* ignore */ }
+    }
+    let cancelled = false;
+    const NAME_FIELDS = new Set(['applicant_first_name', 'applicant_middle_name', 'applicant_last_name']);
+    const PROFILE_FIELDS: (keyof FormData)[] = [
+      'applicant_title', 'applicant_first_name', 'applicant_middle_name', 'applicant_last_name',
+      'applicant_dob', 'applicant_gender', 'applicant_mobile', 'preferred_contact_method',
+      'id_type', 'id_number', 'id_issuing_state_country', 'id_expiry_date', 'residency_status',
+      'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
+    ];
+    api.get('/users/me/profile')
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const filled = new Set<string>();
+        PROFILE_FIELDS.forEach((f) => {
+          const v = (data as Record<string, unknown>)[f];
+          if (v == null || v === '') return;
+          // Defer name fields to the account-derived values populated above.
+          if (NAME_FIELDS.has(f) && getValues(f)) return;
+          setValue(f, v as never);
+          filled.add(f);
+        });
+        if (filled.size > 0) {
+          setPrefilledFields(filled);
+          setShowPrefillHint(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [completeId, user?.id, draftStorageKey, getValues, setValue]);
 
   // Keep the autosave routine current with the latest state via a ref so the
   // scheduling effect doesn't have to re-subscribe on every keystroke.
@@ -905,14 +1085,14 @@ export default function NewApplication() {
     try {
       if (completeId) {
         const res = await api.patch(`/applications/${completeId}`, payload);
-        toast('Application updated successfully!', 'success');
+        toast('Application saved! Please upload your supporting documents.', 'success');
         clearLocalDraft();
-        navigate(`/applications/${res.data.id}`);
+        navigate(`/applications/${res.data.id}?tab=documents`);
       } else {
         const res = await api.post('/applications', payload);
-        toast('Application created successfully!', 'success');
+        toast('Application saved! Please upload your supporting documents.', 'success');
         clearLocalDraft();
-        navigate(`/applications/${res.data.id}`);
+        navigate(`/applications/${res.data.id}?tab=documents`);
       }
     } catch (err: unknown) {
       toast(getErrorMessage(err, completeId ? 'Failed to update application' : 'Failed to create application'), 'error');
@@ -959,18 +1139,29 @@ export default function NewApplication() {
     ? CONSUMER_PURPOSES.find(p => p.id === purposeId)?.label
     : COMMERCIAL_PURPOSES.find(p => p.id === commercialPurposeId)?.label;
 
+  const prefillTag = (field: string) =>
+    prefilledFields.has(field) ? (
+      <span className="ml-2 inline-flex items-center rounded-full bg-[var(--led-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--led-accent)] align-middle">from profile</span>
+    ) : null;
+
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
       <div className="mb-8 mt-2">
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="led-chip led-chip-accent">{completeId ? 'Complete Application' : 'New Application'}</span>
+          <span className="led-chip led-chip-accent">
+            {completeId ? (isOwnDraftEdit ? 'Edit Application' : 'Complete Application') : 'New Application'}
+          </span>
         </div>
         <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">
-          {completeId ? 'Complete Your Loan Application' : 'New Loan Application'}
+          {completeId
+            ? (isOwnDraftEdit ? 'Edit Your Application' : 'Complete Your Loan Application')
+            : 'New Loan Application'}
         </h1>
         <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">
           {completeId
-            ? 'A referrer has started this application for you. Please fill in the remaining details below.'
+            ? (isOwnDraftEdit
+              ? 'Update your draft application below. Your changes are saved automatically.'
+              : 'A referrer has started this application for you. Please fill in the remaining details below.')
             : 'Complete all sections below to submit your application'}
         </p>
         {completeLoading && (
@@ -997,9 +1188,21 @@ export default function NewApplication() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
+        {showPrefillHint && (
+          <div className="flex items-start gap-3 rounded-xl border border-[var(--led-accent)]/30 bg-[var(--led-accent)]/5 px-4 py-3">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+            <div className="flex-1">
+              <p className="text-[13px] font-medium text-[var(--led-ink)]">We filled in some details from your saved profile.</p>
+              <p className="mt-0.5 text-[12px] leading-5 text-[var(--led-muted)]">Please review the highlighted fields before submitting — you can edit any of them here.</p>
+            </div>
+            <button type="button" onClick={() => setShowPrefillHint(false)} className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-[var(--led-muted)] hover:text-[var(--led-ink)]">Dismiss</button>
+          </div>
+        )}
+
         {/* ── Loan Type & Details ── */}
             {lendEnabled && (
               <>
+                {isSectionVisible('loan_details') && (<>
                 <GlassCard>
                   <label className={LABEL_CLS}>Select Loan Type(s)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1173,7 +1376,10 @@ export default function NewApplication() {
                   </GlassCard>
                 )}
 
+                </>)}
+
                 {/* Document upload */}
+                {isSectionVisible('documents') && (
                 <GlassCard className="space-y-4">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
@@ -1244,10 +1450,11 @@ export default function NewApplication() {
                     </div>
                   )}
                 </GlassCard>
+                )}
               </>
             )}
 
-            {!lendEnabled && (
+            {!lendEnabled && isSectionVisible('loan_details') && (
               <>
                 {/* Consumer / Commercial Tab Switcher */}
                 <div className="flex rounded-xl bg-secondary p-1 gap-1">
@@ -1716,7 +1923,7 @@ export default function NewApplication() {
                     min="0"
                     placeholder="0"
                     className="flex-1 bg-transparent px-3.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
-                    {...register('amount', { required: 'Required' })}
+                    {...register('amount', { required: isSectionVisible('loan_details') && 'Required' })}
                   />
                 </div>
                 {errors.amount && <p className="mt-1 text-[12px] text-destructive">{errors.amount.message}</p>}
@@ -1726,17 +1933,18 @@ export default function NewApplication() {
           )}
 
         {/* ── Identification ── */}
+          {isSectionVisible('personal') && (
           <GlassCard className="space-y-4">
             <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Personal Details</h3>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <label className={LABEL_CLS}>Title</label>
+                <label className={LABEL_CLS}>Title{prefillTag('applicant_title')}</label>
                 <select {...register('applicant_title')} className={SELECT_CLS}>
                   {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className={LABEL_CLS}>Gender <span className="font-normal">(optional)</span></label>
+                <label className={LABEL_CLS}>Gender <span className="font-normal">(optional)</span>{prefillTag('applicant_gender')}</label>
                 <select {...register('applicant_gender')} className={SELECT_CLS}>
                     {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
@@ -1750,34 +1958,35 @@ export default function NewApplication() {
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS}>First Name *</label>
-                  <Input placeholder="First name" error={errors.applicant_first_name?.message} {...register('applicant_first_name', { required: 'Required' })} />
+                  <label className={LABEL_CLS}>First Name *{prefillTag('applicant_first_name')}</label>
+                  <Input placeholder="First name" error={errors.applicant_first_name?.message} {...register('applicant_first_name', { required: isSectionVisible('personal') && 'Required' })} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Middle Name <span className="font-normal">(optional)</span></label>
+                  <label className={LABEL_CLS}>Middle Name <span className="font-normal">(optional)</span>{prefillTag('applicant_middle_name')}</label>
                   <Input placeholder="Middle name" {...register('applicant_middle_name')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Last Name *</label>
-                  <Input placeholder="Last name" error={errors.applicant_last_name?.message} {...register('applicant_last_name', { required: 'Required' })} />
+                  <label className={LABEL_CLS}>Last Name *{prefillTag('applicant_last_name')}</label>
+                  <Input placeholder="Last name" error={errors.applicant_last_name?.message} {...register('applicant_last_name', { required: isSectionVisible('personal') && 'Required' })} />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={LABEL_CLS}>Date of Birth *</label>
-                  <Input type="date" error={errors.applicant_dob?.message} {...register('applicant_dob', { required: 'Required' })} />
+                  <label className={LABEL_CLS}>Date of Birth *{prefillTag('applicant_dob')}</label>
+                  <Input type="date" error={errors.applicant_dob?.message} {...register('applicant_dob', { required: isSectionVisible('personal') && 'Required' })} />
                 </div>
                 <div>
                   <label className={LABEL_CLS}>Number of Dependants</label>
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
                 </div>
               </div>
-            </GlassCard>
+            </GlassCard>)}
 
+            {isSectionVisible('identification') && (<>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Identification</h3>
               <div>
-                <label className={LABEL_CLS}>ID Type</label>
+                <label className={LABEL_CLS}>ID Type{prefillTag('id_type')}</label>
                 <div className="flex gap-3">
                   {(['license', 'passport'] as const).map(t => (
                     <label key={t} className={`flex-1 cursor-pointer rounded-xl p-3 text-center text-[13px] font-medium transition-all ${idType === t ? 'bg-[var(--led-accent)]/10 text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)] hover:bg-[var(--led-surface-2)]/80'}`}>
@@ -1789,11 +1998,11 @@ export default function NewApplication() {
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS}>ID Number *</label>
+                  <label className={LABEL_CLS}>ID Number *{prefillTag('id_number')}</label>
                   <Input placeholder={idType === 'license' ? '12345678' : 'PA1234567'} {...register('id_number')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>{idType === 'license' ? 'Issuing State' : 'Issuing Country'}</label>
+                  <label className={LABEL_CLS}>{idType === 'license' ? 'Issuing State' : 'Issuing Country'}{prefillTag('id_issuing_state_country')}</label>
                   {idType === 'license' ? (
                     <select {...register('id_issuing_state_country')} className={SELECT_CLS}>
                       {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1803,14 +2012,14 @@ export default function NewApplication() {
                   )}
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Expiry Date *</label>
+                  <label className={LABEL_CLS}>Expiry Date *{prefillTag('id_expiry_date')}</label>
                   <Input type="date" {...register('id_expiry_date')} />
                 </div>
               </div>
             </GlassCard>
 
             <GlassCard className="space-y-4">
-              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status{prefillTag('residency_status')}</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'].map(r => (
                   <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${residencyStatus === r ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`}>
@@ -1823,8 +2032,9 @@ export default function NewApplication() {
                 <Input placeholder="Please specify..." {...register('residency_other')} />
               )}
             </GlassCard>
+            </>)}
 
-            {!lendEnabled && tab === 'commercial' && (
+            {!lendEnabled && tab === 'commercial' && isSectionVisible('business') && (
               <GlassCard className="space-y-4">
                 <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>
@@ -1859,6 +2069,7 @@ export default function NewApplication() {
             </GlassCard>
             )}
 
+            {isSectionVisible('contact') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Contact Details</h3>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1867,21 +2078,22 @@ export default function NewApplication() {
                   <Input type="email" placeholder="you@example.com" {...register('applicant_email')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Mobile Number *</label>
-                  <Input type="tel" placeholder="04XX XXX XXX" error={errors.applicant_mobile?.message} {...register('applicant_mobile', { required: 'Required' })} />
+                  <label className={LABEL_CLS}>Mobile Number *{prefillTag('applicant_mobile')}</label>
+                  <Input type="tel" placeholder="04XX XXX XXX" error={errors.applicant_mobile?.message} {...register('applicant_mobile', { required: isSectionVisible('contact') && 'Required' })} />
                 </div>
               </div>
               <div>
-                <label className={LABEL_CLS}>Preferred Contact Method</label>
+                <label className={LABEL_CLS}>Preferred Contact Method{prefillTag('preferred_contact_method')}</label>
                 <select {...register('preferred_contact_method')} className={SELECT_CLS}>
                   {['Email', 'Mobile', 'Either'].map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-            </GlassCard>
+            </GlassCard>)}
 
         {/* ── Living & Employment ── */}
         {(tab === 'consumer' || lendEnabled) && (
           <>
+            {isSectionVisible('living') && (<>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Living Situation</h3>
               <div>
@@ -1946,7 +2158,9 @@ export default function NewApplication() {
                 )}
               </div>
             </GlassCard>
+            </>)}
 
+            {isSectionVisible('employment') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Employment</h3>
               <div>
@@ -2063,8 +2277,9 @@ export default function NewApplication() {
                   </div>
                 </>
               )}
-            </GlassCard>
+            </GlassCard>)}
 
+            {isSectionVisible('income') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Income</h3>
               <div className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
@@ -2121,13 +2336,14 @@ export default function NewApplication() {
                 </div>
               )}
               <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, blankIncome()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Additional Income</button>
-            </GlassCard>
+            </GlassCard>)}
           </>
         )}
 
         {/* ── Financial Position ── */}
         {(tab === 'consumer' || lendEnabled) && (
           <>
+            {isSectionVisible('assets') && (<>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Real Estate Assets</h3>
               {realEstateAssets.map((asset, idx) => (
@@ -2214,7 +2430,9 @@ export default function NewApplication() {
               ))}
               <button type="button" onClick={() => setOtherAssets(prev => [...prev, blankOtherAsset()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Asset</button>
             </GlassCard>
+            </>)}
 
+            {isSectionVisible('liabilities') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Liabilities</h3>
               {liabilities.map((liability, idx) => (
@@ -2252,8 +2470,9 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setLiabilities(prev => [...prev, blankLiability()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Liability</button>
-            </GlassCard>
+            </GlassCard>)}
 
+            {isSectionVisible('expenses') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Monthly Expenses</h3>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -2274,11 +2493,12 @@ export default function NewApplication() {
                   <Input type="number" step="0.01" min="0" placeholder="500" {...register('other_commitments')} />
                 </div>
               </div>
-            </GlassCard>
+            </GlassCard>)}
           </>
         )}
 
         {/* ── Declarations ── */}
+            {isSectionVisible('declarations') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Credit History</h3>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -2297,26 +2517,28 @@ export default function NewApplication() {
                   </select>
                 </div>
               </div>
-            </GlassCard>
+            </GlassCard>)}
 
+            {isSectionVisible('emergency') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Emergency Contact</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS}>Name</label>
+                  <label className={LABEL_CLS}>Name{prefillTag('emergency_contact_name')}</label>
                   <Input placeholder="Jane Smith" {...register('emergency_contact_name')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Relationship</label>
+                  <label className={LABEL_CLS}>Relationship{prefillTag('emergency_contact_relationship')}</label>
                   <Input placeholder="Spouse, Parent, etc." {...register('emergency_contact_relationship')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Phone Number</label>
+                  <label className={LABEL_CLS}>Phone Number{prefillTag('emergency_contact_phone')}</label>
                   <Input type="tel" placeholder="04XX XXX XXX" {...register('emergency_contact_phone')} />
                 </div>
               </div>
-            </GlassCard>
+            </GlassCard>)}
 
+            {isSectionVisible('declarations') && (
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Signature</h3>
               <div>
@@ -2324,7 +2546,7 @@ export default function NewApplication() {
                 <Input placeholder="Your full legal name" {...register('signature_name')} />
               </div>
               <p className="text-[12px] text-[var(--led-muted)]">Date: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            </GlassCard>
+            </GlassCard>)}
 
         {/* ── Review ── */}
           <GlassCard className="space-y-4">
@@ -2383,9 +2605,11 @@ export default function NewApplication() {
         {/* ── Submit ── */}
         <div className="flex flex-wrap gap-3">
             <Button type="submit" loading={isSubmitting} size="lg">
-              {isSubmitting ? 'Submitting...' : 'Submit Application'}
+              {isSubmitting
+                ? (completeId ? 'Saving...' : 'Submitting...')
+                : (completeId ? 'Save Changes' : 'Submit Application')}
             </Button>
-          <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>Cancel</Button>
+          <Button type="button" variant="secondary" size="lg" onClick={() => completeId ? navigate(`/applications/${completeId}`) : navigate('/dashboard')}>Cancel</Button>
         </div>
       </form>
     </div>

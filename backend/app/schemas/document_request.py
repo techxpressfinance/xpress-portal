@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class DocumentRequestCreate(BaseModel):
-    description: str
+    items: list[str]
 
 
 class DocumentRequestOut(BaseModel):
@@ -17,6 +17,8 @@ class DocumentRequestOut(BaseModel):
     requested_by_name: Optional[str] = None
     description: str
     status: str
+    document_id: Optional[str] = None
+    document_filename: Optional[str] = None
     created_at: datetime
     fulfilled_at: Optional[datetime] = None
 

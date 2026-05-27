@@ -39,6 +39,9 @@ export default function AdminServiceRequests() {
   const [editCustom, setEditCustom] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editBrokerNotes, setEditBrokerNotes] = useState('');
+  const [editStatus, setEditStatus] = useState<ServiceRequestStatus>('pending');
+  const [editClientId, setEditClientId] = useState('');
+  const [editBrokerId, setEditBrokerId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [confirmCompleteReq, setConfirmCompleteReq] = useState<ServiceRequest | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -136,6 +139,9 @@ export default function AdminServiceRequests() {
     setEditCustom(req.custom_request ?? '');
     setEditDesc(req.description ?? '');
     setEditBrokerNotes(req.broker_notes ?? '');
+    setEditStatus(req.status);
+    setEditClientId(req.client_id);
+    setEditBrokerId(req.assigned_broker_id ?? '');
     setEditingReq(req);
   };
 
@@ -148,6 +154,9 @@ export default function AdminServiceRequests() {
     setEditSaving(true);
     try {
       const { data } = await api.patch(`/service-requests/${editingReq.id}`, {
+        status: editStatus,
+        client_id: editClientId || null,
+        assigned_broker_id: editBrokerId,
         request_type: editType,
         custom_request: editType === 'Other' ? editCustom.trim() : null,
         description: editDesc.trim() || null,
@@ -202,7 +211,11 @@ export default function AdminServiceRequests() {
         </button>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
+        <div
+          className={`flex-1 min-w-0 ${!isDone ? 'cursor-pointer' : ''}`}
+          onClick={!isDone ? () => openEdit(req) : undefined}
+          title={!isDone ? 'Click to edit' : undefined}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[14px] font-semibold ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
               {label}
@@ -474,6 +487,50 @@ export default function AdminServiceRequests() {
             </div>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1.5">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as ServiceRequestStatus)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    {(Object.keys(STATUS_LABEL) as ServiceRequestStatus[]).map((s) => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1.5">Assigned broker</label>
+                  <select
+                    value={editBrokerId}
+                    onChange={(e) => setEditBrokerId(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Unassigned</option>
+                    {brokers.map((b) => (
+                      <option key={b.id} value={b.id}>{b.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Client</label>
+                <select
+                  value={editClientId}
+                  onChange={(e) => setEditClientId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {!clients.some((c) => c.id === editClientId) && editingReq?.client_name && (
+                    <option value={editClientId}>{editingReq.client_name}{editingReq.client_email ? ` (${editingReq.client_email})` : ''}</option>
+                  )}
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name}{c.email ? ` (${c.email})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-[13px] font-medium text-foreground mb-1.5">Request type</label>
                 <select

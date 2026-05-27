@@ -167,6 +167,13 @@ class LoanApplication(Base):
     lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
+    # Broker lock — prevents client from editing the draft
+    is_locked: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+    # Broker-selected sections the client may complete (JSON array of section keys).
+    # null = all sections visible.
+    client_sections: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
+
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])

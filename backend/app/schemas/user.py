@@ -89,6 +89,26 @@ class UserProfileUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+class ClientProfile(BaseModel):
+    """Saved constant personal details a client reuses to autofill new applications."""
+    applicant_title: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_middle_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    applicant_dob: Optional[str] = None
+    applicant_gender: Optional[str] = None
+    applicant_mobile: Optional[str] = None
+    preferred_contact_method: Optional[str] = None
+    id_type: Optional[str] = None
+    id_number: Optional[str] = None
+    id_issuing_state_country: Optional[str] = None
+    id_expiry_date: Optional[str] = None
+    residency_status: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+
+
 class UserUpdate(BaseModel):
     """Admin/broker update of any user's profile fields."""
     full_name: Optional[str] = None
@@ -148,6 +168,21 @@ class BrokerCreate(BaseModel):
     def employee_id_not_empty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Employee ID cannot be empty")
+        return v.strip()
+
+
+class AdminCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: Optional[str] = None
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
+    @field_validator("full_name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
         return v.strip()
 
 

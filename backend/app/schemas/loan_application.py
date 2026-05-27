@@ -237,6 +237,10 @@ class LoanApplicationOut(BaseModel):
     emergency_contact_phone: Optional[str] = None
     client_engagement_model: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
+    is_locked: bool = False
+    client_sections: Optional[str] = None
+    client_account_pending: bool = False
+    client_invite_sent_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

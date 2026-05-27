@@ -31,23 +31,19 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 upload_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
 
-@router.post("/upload/{application_id}", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
-def upload_document(
-    application_id: str,
+def _process_upload(
+    application: LoanApplication,
     doc_type: DocType,
     file: UploadFile,
     request: Request,
     background_tasks: BackgroundTasks,
-    label: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
+    label: Optional[str],
+    db: Session,
+    current_user: User,
+    tenant_id: str,
+) -> Document:
+    """Validate, store, and persist an uploaded file. Caller handles auth/access."""
     upload_limiter.check(request)
-    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
-    if not application:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    check_application_access(application, current_user, db=db)
 
     # Validate file extension
     allowed_types = {".pdf", ".jpg", ".jpeg", ".png"}
@@ -100,7 +96,7 @@ def upload_document(
         display_name = safe_filename
 
     doc = Document(
-        application_id=application_id,
+        application_id=application.id,
         doc_type=doc_type,
         file_path=file_path,
         original_filename=display_name,
@@ -108,7 +104,7 @@ def upload_document(
     )
     db.add(doc)
     db.flush()
-    log_activity(db, current_user.id, "document_uploaded", "document", doc.id, {"filename": display_name, "doc_type": doc_type.value, "application_id": application_id}, tenant_id=tenant_id)
+    log_activity(db, current_user.id, "document_uploaded", "document", doc.id, {"filename": display_name, "doc_type": doc_type.value, "application_id": application.id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(doc)
 
@@ -122,7 +118,7 @@ def upload_document(
             document_id=doc.id,
             file_path=file_path,
             customer_full_name=customer_name,
-            application_id=application_id,
+            application_id=application.id,
             original_filename=doc.original_filename,
             session_factory=SessionLocal,
         )
@@ -137,6 +133,25 @@ def upload_document(
     )
 
     return doc
+
+
+@router.post("/upload/{application_id}", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
+def upload_document(
+    application_id: str,
+    doc_type: DocType,
+    file: UploadFile,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    label: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = db.query(LoanApplication).filter(LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+    return _process_upload(application, doc_type, file, request, background_tasks, label, db, current_user, tenant_id)
 
 
 @router.get("/application/{application_id}/download-all")
@@ -291,12 +306,14 @@ def _serialize_request(req: DocumentRequest) -> dict:
         "requested_by_name": req.requested_by.full_name if req.requested_by else None,
         "description": req.description,
         "status": req.status,
+        "document_id": req.document_id,
+        "document_filename": req.document.original_filename if req.document else None,
         "created_at": req.created_at,
         "fulfilled_at": req.fulfilled_at,
     }
 
 
-@router.post("/requests/{application_id}", response_model=DocumentRequestOut, status_code=status.HTTP_201_CREATED)
+@router.post("/requests/{application_id}", response_model=list[DocumentRequestOut], status_code=status.HTTP_201_CREATED)
 def create_document_request(
     application_id: str,
     body: DocumentRequestCreate,
@@ -309,27 +326,33 @@ def create_document_request(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    if not body.description.strip():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Description is required")
+    items = [i.strip() for i in body.items if i and i.strip()]
+    if not items:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one document is required")
 
-    req = DocumentRequest(
-        application_id=application_id,
-        requested_by_id=current_user.id,
-        description=body.description.strip(),
-        tenant_id=tenant_id,
-    )
-    db.add(req)
+    reqs = [
+        DocumentRequest(
+            application_id=application_id,
+            requested_by_id=current_user.id,
+            description=item,
+            tenant_id=tenant_id,
+        )
+        for item in items
+    ]
+    db.add_all(reqs)
+    log_activity(db, current_user.id, "document_requested", "application", application_id, {"items": items}, tenant_id=tenant_id)
     db.commit()
-    db.refresh(req)
-    log_activity(db, current_user.id, "document_requested", "application", application_id, {"description": req.description}, tenant_id=tenant_id)
+    for req in reqs:
+        db.refresh(req)
 
     client = db.query(User).filter(User.id == application.user_id).first()
     if client:
+        summary = "\n".join(f"• {item}" for item in items)
         send_document_request_email(
             to_email=client.email,
             client_name=client.full_name,
             broker_name=current_user.full_name,
-            description=req.description,
+            description=summary,
             application_id=application_id,
             loan_type=application.loan_type.value,
         )
@@ -337,13 +360,43 @@ def create_document_request(
             db,
             user_id=client.id,
             type="status_change",
-            title="Document requested",
-            body=f"{current_user.full_name} has requested documents for your {application.loan_type.value} application.",
+            title="Documents requested",
+            body=f"{current_user.full_name} has requested {len(items)} document{'s' if len(items) != 1 else ''} for your {application.loan_type.value} application.",
             link=f"/applications/{application_id}",
             tenant_id=tenant_id,
         )
         db.commit()
 
+    return [_serialize_request(r) for r in reqs]
+
+
+@router.post("/requests/{request_id}/upload", response_model=DocumentRequestOut, status_code=status.HTTP_201_CREATED)
+def upload_for_request(
+    request_id: str,
+    file: UploadFile,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    req = db.query(DocumentRequest).filter(DocumentRequest.id == request_id, DocumentRequest.tenant_id == tenant_id).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
+
+    application = db.query(LoanApplication).filter(LoanApplication.id == req.application_id, LoanApplication.deleted_at.is_(None)).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    doc = _process_upload(application, DocType.other, file, request, background_tasks, req.description, db, current_user, tenant_id)
+
+    req.document_id = doc.id
+    req.status = "fulfilled"
+    req.fulfilled_at = datetime.now(timezone.utc)
+    log_activity(db, current_user.id, "document_request_fulfilled", "application", req.application_id, {"request_id": request_id, "description": req.description, "document_id": doc.id}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(req)
     return _serialize_request(req)
 
 

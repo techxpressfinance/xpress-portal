@@ -37,9 +37,10 @@ def create_referrer(
     """Create a new external referrer account. Admin or broker."""
     existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
     if existing:
+        role_label = existing.role.value.capitalize()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+            detail=f"A {role_label} account already exists with this email",
         )
 
     setup_token = secrets.token_urlsafe(32)

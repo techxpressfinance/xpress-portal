@@ -2,9 +2,10 @@ import type { ApplicationStatus } from '../types';
 
 interface Props {
   currentStatus: ApplicationStatus;
+  clientView?: boolean;
 }
 
-const steps: { key: ApplicationStatus; label: string }[] = [
+const brokerSteps: { key: ApplicationStatus; label: string }[] = [
   { key: 'draft', label: 'Draft' },
   { key: 'application_received', label: 'Received' },
   { key: 'application_assessed', label: 'Assessed' },
@@ -13,7 +14,7 @@ const steps: { key: ApplicationStatus; label: string }[] = [
   { key: 'settled', label: 'Settled' },
 ];
 
-const statusOrder: Record<string, number> = {
+const brokerStatusOrder: Record<string, number> = {
   draft: 0,
   application_received: 1,
   application_assessed: 2,
@@ -23,7 +24,28 @@ const statusOrder: Record<string, number> = {
   rejected: -1,
 };
 
-export default function StatusTimeline({ currentStatus }: Props) {
+// Client timeline hides the internal "submitted to lender" step
+const clientSteps: { key: ApplicationStatus; label: string }[] = [
+  { key: 'draft', label: 'Draft' },
+  { key: 'application_received', label: 'Submitted' },
+  { key: 'application_assessed', label: 'Under Review' },
+  { key: 'approval', label: 'Approved' },
+  { key: 'settled', label: 'Settled' },
+];
+
+const clientStatusOrder: Record<string, number> = {
+  draft: 0,
+  application_received: 1,
+  application_assessed: 2,
+  submitted: 2,   // treat same as "under review" from client's perspective
+  approval: 3,
+  settled: 4,
+  rejected: -1,
+};
+
+export default function StatusTimeline({ currentStatus, clientView = false }: Props) {
+  const steps = clientView ? clientSteps : brokerSteps;
+  const statusOrder = clientView ? clientStatusOrder : brokerStatusOrder;
   const currentIndex = statusOrder[currentStatus];
   const isRejected = currentStatus === 'rejected';
 

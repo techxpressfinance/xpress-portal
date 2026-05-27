@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -21,6 +22,15 @@ from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
 
 REQUIRED_DOC_TYPES = {DocType.id_proof, DocType.address_proof, DocType.bank_statement, DocType.payslip, DocType.tax_return}
+
+# Canonical client-form section keys a broker can toggle, in display order.
+# Must mirror APPLICATION_SECTIONS in frontend/src/lib/constants.ts.
+SECTION_KEYS = (
+    "loan_details", "personal", "identification", "contact", "business",
+    "living", "employment", "income", "assets", "liabilities", "expenses",
+    "declarations", "emergency", "documents",
+)
+ALLOWED_SECTIONS = set(SECTION_KEYS)
 from app.constants import VALID_TRANSITIONS
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
@@ -174,17 +184,36 @@ def create_application(
         client_name = " ".join(filter(None, [data.applicant_first_name, data.applicant_last_name])) or "Unknown"
         referrer_name = current_user.full_name or current_user.email
         portal_url = f"{FRONTEND_URL}/admin/applications/{app.id}"
-        admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
-        for admin in admins:
+
+        notified_ids: set[str] = set()
+        broker = (
+            db.query(User).filter(User.id == current_user.invited_by_id).first()
+            if current_user.invited_by_id else None
+        )
+        if broker and broker.role.value in ("broker", "admin"):
             send_new_lead_notification(
-                admin.email,
-                admin.full_name or "Admin",
+                broker.email,
+                broker.full_name or "Broker",
                 referrer_name,
                 client_name,
                 data.loan_type,
                 str(int(data.amount)),
                 portal_url,
             )
+            notified_ids.add(broker.id)
+
+        admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+        for admin in admins:
+            if admin.id not in notified_ids:
+                send_new_lead_notification(
+                    admin.email,
+                    admin.full_name or "Admin",
+                    referrer_name,
+                    client_name,
+                    data.loan_type,
+                    str(int(data.amount)),
+                    portal_url,
+                )
 
     db.refresh(app, attribute_names=["user"])
     return _app_with_user(app)
@@ -429,6 +458,10 @@ def update_application(
     if current_user.role == UserRole.client and not is_draft:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit submitted application")
 
+    # Clients cannot edit locked applications (broker has locked it)
+    if current_user.role == UserRole.client and getattr(application, "is_locked", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This application has been locked by your broker and cannot be edited")
+
     # Brokers/admins can only edit field values on drafts (notes always allowed)
     if current_user.role != UserRole.client and not is_draft:
         field_updates = data.model_dump(exclude_unset=True)
@@ -559,6 +592,72 @@ def change_status(
     return _app_with_user(application)
 
 
+@router.patch("/{app_id}/lock", response_model=LoanApplicationOut)
+def set_application_lock(
+    app_id: str,
+    locked: bool = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Lock or unlock a draft application to prevent/allow client edits."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if application.status.value != "draft":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be locked")
+    check_application_access(application, current_user, db=db)
+
+    application.is_locked = locked
+    action = "locked" if locked else "unlocked"
+    log_activity(db, current_user.id, action, "application", app_id, {}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application)
+
+
+class ClientSectionsUpdate(BaseModel):
+    sections: list[str]
+
+
+@router.patch("/{app_id}/client-sections", response_model=LoanApplicationOut)
+def set_client_sections(
+    app_id: str,
+    data: ClientSectionsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Set which form sections the client may complete (broker/admin, draft only)."""
+    invalid = set(data.sections) - ALLOWED_SECTIONS
+    if invalid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown sections: {sorted(invalid)}")
+
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if application.status.value != "draft":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft applications can be configured")
+    check_application_access(application, current_user, db=db)
+
+    # Dedupe and keep canonical order for stable storage.
+    chosen = set(data.sections)
+    selected = [s for s in SECTION_KEYS if s in chosen]
+    application.client_sections = json.dumps(selected)
+    log_activity(db, current_user.id, "client_sections_set", "application", app_id, {"sections": selected}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application)
+
+
 @router.post("/{app_id}/assign", response_model=LoanApplicationOut)
 def assign_broker(
     app_id: str,
@@ -606,14 +705,20 @@ def unassign_broker(
     current_user: User = Depends(require_role("admin")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Remove a broker from the application's assigned brokers."""
+    """Remove a broker (or admin) from the application's assigned brokers."""
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
-    broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker, User.tenant_id == tenant_id).first()
+    # Allow removing both broker-role and admin-role users — legacy data may have
+    # stored an admin's ID in assigned_broker_id which then got backfilled here.
+    broker = db.query(User).filter(
+        User.id == broker_id,
+        User.role.in_([UserRole.broker, UserRole.admin]),
+        User.tenant_id == tenant_id,
+    ).first()
     if not broker:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned user not found")
 
     if not any(b.id == broker_id for b in application.brokers):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broker is not assigned to this application")

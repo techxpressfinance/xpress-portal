@@ -314,7 +314,7 @@ def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_n
         logger.debug("Email not configured, skipping setup account email for %s", to_email)
         return
 
-    role_label = {"broker": "broker", "referrer": "referrer"}.get(role, "client")
+    role_label = {"broker": "broker", "referrer": "referrer", "admin": "administrator"}.get(role, "client")
     inviter_line = f"<strong>{_esc(inviter_name)}</strong> has invited you" if inviter_name else "You have been invited"
     subject = "Set up your Xpress Finance account"
     body = (

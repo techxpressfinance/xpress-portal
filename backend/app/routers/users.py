@@ -1,3 +1,4 @@
+import json
 import secrets
 import uuid
 
@@ -13,7 +14,7 @@ from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
-from app.schemas.user import BrokerCreate, DeletedClientOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
+from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
@@ -99,6 +100,30 @@ def update_profile(
     return current_user
 
 
+@router.get("/me/profile", response_model=ClientProfile)
+def get_client_profile(current_user: User = Depends(get_current_user)):
+    """Returns the caller's saved application-autofill details (empty if none set)."""
+    if not current_user.client_profile:
+        return ClientProfile()
+    try:
+        return ClientProfile(**json.loads(current_user.client_profile))
+    except (ValueError, TypeError):
+        return ClientProfile()
+
+
+@router.put("/me/profile", response_model=ClientProfile)
+def update_client_profile(
+    data: ClientProfile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Saves the caller's constant personal details used to autofill new applications."""
+    current_user.client_profile = json.dumps(data.model_dump())
+    log_activity(db, current_user.id, "profile_details_updated", "user", current_user.id, None, tenant_id=current_user.tenant_id)
+    db.commit()
+    return data
+
+
 @router.post("/brokers", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_broker(
     data: BrokerCreate,
@@ -144,6 +169,48 @@ def create_broker(
     return user
 
 
+@router.post("/admins", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def create_admin(
+    data: AdminCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Create a new admin account. Admin only. Sends an account-setup link via email."""
+    existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists",
+        )
+
+    setup_token = secrets.token_urlsafe(32)
+
+    user = User(
+        email=data.email,
+        full_name=data.full_name,
+        phone=data.phone,
+        password_hash="!",
+        auth_method="password",
+        role="admin",
+        is_active=True,
+        email_verified=True,
+        invited_by_id=current_user.id,
+        tenant_id=tenant_id,
+        email_verification_token=setup_token,
+        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+    )
+    db.add(user)
+    db.flush()
+    log_activity(db, current_user.id, "admin_created", "user", user.id, {"email": data.email, "full_name": data.full_name}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(user)
+
+    setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
+    send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="admin")
+    return user
+
+
 @router.post("/{user_id}/send-password-reset", status_code=status.HTTP_204_NO_CONTENT)
 def send_password_reset(
     user_id: str,
@@ -159,8 +226,8 @@ def send_password_reset(
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if user.role.value not in ("client", "broker", "referrer"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset can only be sent to clients, brokers, and referrers")
+    if user.role.value not in ("client", "broker", "referrer", "admin"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset can only be sent to clients, brokers, referrers, and admins")
 
     if current_user.role.value == "broker":
         if user.role.value != "client" or user.invited_by_id != current_user.id:

@@ -158,6 +158,15 @@ def update_service_request(
         sr.status = data.status
     if data.assigned_broker_id is not None:
         sr.assigned_broker_id = data.assigned_broker_id or None
+    if data.client_id:
+        client = (
+            db.query(User)
+            .filter(User.id == data.client_id, User.tenant_id == tenant_id)
+            .first()
+        )
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        sr.client_id = data.client_id
     content_edit = data.request_type is not None or data.custom_request is not None or data.description is not None
     if content_edit and is_completed:
         raise HTTPException(status_code=422, detail="Cannot edit a completed service request")

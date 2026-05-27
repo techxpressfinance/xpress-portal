@@ -13,6 +13,11 @@ def app_with_user(app: LoanApplication) -> dict:
         data["user_name"] = app.user.full_name
         data["user_email"] = app.user.email
         data["user_role"] = app.user.role.value
+        # True when a placeholder client account exists but hasn't been invited yet
+        data["client_account_pending"] = (
+            app.user.role.value == "client"
+            and app.user.password_hash in ("!", "!invited")
+        )
     # Backward compat: first assigned broker populates the legacy fields
     if app.brokers:
         data["assigned_broker_id"] = app.brokers[0].id

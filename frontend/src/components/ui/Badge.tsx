@@ -5,10 +5,11 @@ type BadgeType = 'status' | 'role' | 'custom';
 interface BadgeProps {
   type?: BadgeType;
   value: string;
+  label?: string;
   className?: string;
 }
 
-export default function Badge({ type = 'status', value, className = '' }: BadgeProps) {
+export default function Badge({ type = 'status', value, label, className = '' }: BadgeProps) {
   let colorClass = 'bg-muted text-muted-foreground';
 
   if (type === 'status') {
@@ -18,9 +19,10 @@ export default function Badge({ type = 'status', value, className = '' }: BadgeP
   }
 
   const display =
-    type === 'status'
+    label ??
+    (type === 'status'
         ? STATUS_LABEL[value as keyof typeof STATUS_LABEL] || value
-        : value;
+        : value);
 
   return (
     <span className={`led-chip ${colorClass} ${className}`}>

@@ -200,6 +200,14 @@ _MIGRATIONS = [
     ("users", "deleted_original_name", "VARCHAR(255)"),
     # Client (all-up) interest rate per quote option
     ("quote_options", "client_interest_rate", "NUMERIC(8,4)"),
+    # Broker lock — prevents client from editing the draft
+    ("loan_applications", "is_locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Broker-selected sections the client may complete (JSON array; null = all)
+    ("loan_applications", "client_sections", "TEXT"),
+    # Links a fulfilled document request to the document that satisfied it
+    ("document_requests", "document_id", "VARCHAR(36)"),
+    # Saved client profile (encrypted JSON) for autofilling new applications
+    ("users", "client_profile", "TEXT"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -284,23 +292,41 @@ if _dialect == "sqlite":
             )
 
 # Backfill: migrate existing assigned_broker_id rows into application_brokers
+# Only migrate rows where the assigned user is actually a broker (not an admin).
 if "application_brokers" in {t for t in _inspector.get_table_names()}:
     with engine.begin() as conn:
         if _dialect == "sqlite":
             conn.execute(text(
                 "INSERT OR IGNORE INTO application_brokers (application_id, broker_id, assigned_at) "
-                "SELECT id, assigned_broker_id, updated_at FROM loan_applications "
-                "WHERE assigned_broker_id IS NOT NULL "
-                "AND id NOT IN (SELECT application_id FROM application_brokers)"
+                "SELECT la.id, la.assigned_broker_id, la.updated_at FROM loan_applications la "
+                "JOIN users u ON u.id = la.assigned_broker_id AND u.role = 'broker' "
+                "WHERE la.assigned_broker_id IS NOT NULL "
+                "AND la.id NOT IN (SELECT application_id FROM application_brokers)"
             ))
         else:
             conn.execute(text(
                 "INSERT INTO application_brokers (application_id, broker_id, assigned_at) "
-                "SELECT id, assigned_broker_id, updated_at FROM loan_applications "
-                "WHERE assigned_broker_id IS NOT NULL "
-                "AND id NOT IN (SELECT application_id FROM application_brokers) "
+                "SELECT la.id, la.assigned_broker_id, la.updated_at FROM loan_applications la "
+                "JOIN users u ON u.id = la.assigned_broker_id AND u.role = 'broker' "
+                "WHERE la.assigned_broker_id IS NOT NULL "
+                "AND la.id NOT IN (SELECT application_id FROM application_brokers) "
                 "ON CONFLICT DO NOTHING"
             ))
+
+# Cleanup: remove any admin-role users that were previously backfilled into
+# application_brokers (the old backfill had no role filter). Admins should not
+# appear as assigned brokers.
+if "application_brokers" in {t for t in _inspector.get_table_names()}:
+    with engine.begin() as conn:
+        conn.execute(text(
+            "DELETE FROM application_brokers "
+            "WHERE broker_id IN (SELECT id FROM users WHERE role = 'admin')"
+        ))
+        # Also clear the legacy column where it points at an admin.
+        conn.execute(text(
+            "UPDATE loan_applications SET assigned_broker_id = NULL "
+            "WHERE assigned_broker_id IN (SELECT id FROM users WHERE role = 'admin')"
+        ))
 
 # Backfill: migrate is_internal → visibility for application_notes
 if "application_notes" in {t for t in _inspector.get_table_names()}:

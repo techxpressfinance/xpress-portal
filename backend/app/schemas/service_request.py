@@ -52,6 +52,7 @@ class ServiceRequestCreate(BaseModel):
 class ServiceRequestUpdate(BaseModel):
     status: Optional[str] = None
     assigned_broker_id: Optional[str] = None
+    client_id: Optional[str] = None
     request_type: Optional[str] = None
     custom_request: Optional[str] = None
     description: Optional[str] = None

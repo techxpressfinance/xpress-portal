@@ -147,6 +147,14 @@ export interface LoanApplication {
   referrer: ReferrerInfo | null;
   // Soft delete
   deleted_at: string | null;
+  // Broker lock — prevents client from editing the draft
+  is_locked: boolean;
+  // Broker-selected sections the client may complete (JSON array string; null = all)
+  client_sections?: string | null;
+  // True when the client user record exists but hasn't been invited yet
+  client_account_pending?: boolean;
+  // Set when broker has sent the client their setup/invite email
+  client_invite_sent_at?: string | null;
   // Nested user object (returned by serializer)
   user?: { id: string; full_name: string; email: string } | null;
 }
@@ -204,6 +212,8 @@ export interface DocumentRequest {
   requested_by_name: string | null;
   description: string;
   status: DocumentRequestStatus;
+  document_id: string | null;
+  document_filename: string | null;
   created_at: string;
   fulfilled_at: string | null;
 }

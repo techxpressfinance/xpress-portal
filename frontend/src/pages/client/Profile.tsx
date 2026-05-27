@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { GlassCard, Button } from '../../components/ui';
+import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
 
 interface FormData {
   full_name: string;
@@ -15,6 +17,28 @@ interface PasswordFormData {
   new_password: string;
   confirm_password: string;
 }
+
+interface ClientProfileData {
+  applicant_title: string;
+  applicant_first_name: string;
+  applicant_middle_name: string;
+  applicant_last_name: string;
+  applicant_dob: string;
+  applicant_gender: string;
+  applicant_mobile: string;
+  preferred_contact_method: string;
+  id_type: string;
+  id_number: string;
+  id_issuing_state_country: string;
+  id_expiry_date: string;
+  residency_status: string;
+  emergency_contact_name: string;
+  emergency_contact_relationship: string;
+  emergency_contact_phone: string;
+}
+
+const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'];
+const CONTACT_METHOD_OPTIONS = ['Email', 'Mobile', 'Either'];
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -38,6 +62,34 @@ export default function Profile() {
     reset: resetPw,
     watch,
   } = useForm<PasswordFormData>();
+
+  const {
+    register: registerDetails,
+    handleSubmit: handleSubmitDetails,
+    reset: resetDetails,
+    formState: { isSubmitting: detailsSubmitting, isDirty: detailsDirty },
+  } = useForm<ClientProfileData>();
+
+  useEffect(() => {
+    api.get('/users/me/profile')
+      .then(({ data }) => {
+        const cleaned = Object.fromEntries(
+          Object.entries(data ?? {}).map(([k, v]) => [k, v ?? '']),
+        );
+        resetDetails(cleaned as ClientProfileData);
+      })
+      .catch(() => {});
+  }, [resetDetails]);
+
+  const onSaveDetails = async (data: ClientProfileData) => {
+    try {
+      await api.put('/users/me/profile', data);
+      resetDetails(data);
+      toast('Saved. New applications will use these details.', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save details'), 'error');
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -137,6 +189,114 @@ export default function Profile() {
               </div>
               <Button type="submit" loading={isSubmitting} disabled={!isDirty} size="lg">
                 {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        </GlassCard>
+
+        <GlassCard padding="none">
+          <div className="border-b border-[var(--led-line)] px-6 py-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Autofill</p>
+            <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Details</h2>
+            <p className="mt-1.5 text-[13px] leading-5 text-[var(--led-muted)]">Saved once and used to prefill these fields on every new application. You can always edit them per application.</p>
+          </div>
+          <form onSubmit={handleSubmitDetails(onSaveDetails)}>
+            <div className="p-6 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Title</label>
+                  <select className={inputClass} {...registerDetails('applicant_title')}>
+                    <option value="">Select...</option>
+                    {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Gender</label>
+                  <select className={inputClass} {...registerDetails('applicant_gender')}>
+                    <option value="">Select...</option>
+                    {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Date of Birth</label>
+                  <input type="date" className={inputClass} {...registerDetails('applicant_dob')} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">First Name</label>
+                  <input className={inputClass} {...registerDetails('applicant_first_name')} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Middle Name</label>
+                  <input className={inputClass} {...registerDetails('applicant_middle_name')} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Last Name</label>
+                  <input className={inputClass} {...registerDetails('applicant_last_name')} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Mobile Number</label>
+                  <input type="tel" placeholder="04XX XXX XXX" className={inputClass} {...registerDetails('applicant_mobile')} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Preferred Contact Method</label>
+                  <select className={inputClass} {...registerDetails('preferred_contact_method')}>
+                    <option value="">Select...</option>
+                    {CONTACT_METHOD_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">ID Type</label>
+                  <select className={inputClass} {...registerDetails('id_type')}>
+                    <option value="">Select...</option>
+                    <option value="license">Driver Licence</option>
+                    <option value="passport">Passport</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">ID Number</label>
+                  <input className={inputClass} {...registerDetails('id_number')} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Issuing State / Country</label>
+                  <input placeholder="NSW or Australia" className={inputClass} {...registerDetails('id_issuing_state_country')} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">ID Expiry Date</label>
+                  <input type="date" className={inputClass} {...registerDetails('id_expiry_date')} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Residency Status</label>
+                <select className={inputClass} {...registerDetails('residency_status')}>
+                  <option value="">Select...</option>
+                  {RESIDENCY_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="border-t border-[var(--led-line)] pt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)] mb-3">Emergency Contact</p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Name</label>
+                    <input className={inputClass} {...registerDetails('emergency_contact_name')} />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Relationship</label>
+                    <input className={inputClass} {...registerDetails('emergency_contact_relationship')} />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Phone</label>
+                    <input type="tel" className={inputClass} {...registerDetails('emergency_contact_phone')} />
+                  </div>
+                </div>
+              </div>
+              <Button type="submit" loading={detailsSubmitting} disabled={!detailsDirty} size="lg">
+                {detailsSubmitting ? 'Saving...' : 'Save Details'}
               </Button>
             </div>
           </form>

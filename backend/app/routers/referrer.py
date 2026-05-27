@@ -3,7 +3,6 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, field_validator
@@ -17,7 +16,7 @@ from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User, UserRole
 from app.schemas.common import normalize_email
 from app.services.activity_log import log_activity
-from app.services.email import send_complete_application_email, send_new_lead_notification, send_setup_account_email
+from app.services.email import send_new_lead_notification
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
@@ -374,31 +373,40 @@ def create_direct_referral(
     db.commit()
     db.refresh(application)
 
-    if is_new_user:
-        redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
-        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
-        send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
-    else:
-        send_complete_application_email(
-            to_email=email,
-            client_name=client.full_name,
-            inviter_name=current_user.full_name,
-            loan_type=loan_type.value,
-            amount=str(int(data.amount)),
-            application_id=application.id,
-        )
-
+    # Notify broker (the one who created this referrer) and all admins.
+    # The client is NOT emailed yet — broker reviews first, configures sections,
+    # then manually invites the client from the portal.
     portal_url = f"{FRONTEND_URL}/admin/applications/{application.id}"
-    admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
-    for admin in admins:
+    referrer_name = current_user.full_name or current_user.email
+
+    broker = (
+        db.query(User).filter(User.id == current_user.invited_by_id).first()
+        if current_user.invited_by_id else None
+    )
+    notified_ids: set[str] = set()
+    if broker and broker.role.value in ("broker", "admin"):
         send_new_lead_notification(
-            admin.email,
-            admin.full_name or "Admin",
-            current_user.full_name or current_user.email,
+            broker.email,
+            broker.full_name or "Broker",
+            referrer_name,
             full_name,
             loan_type.value,
             str(int(data.amount)),
             portal_url,
         )
+        notified_ids.add(broker.id)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+    for admin in admins:
+        if admin.id not in notified_ids:
+            send_new_lead_notification(
+                admin.email,
+                admin.full_name or "Admin",
+                referrer_name,
+                full_name,
+                loan_type.value,
+                str(int(data.amount)),
+                portal_url,
+            )
 
     return {"application_id": application.id, "client_id": client.id}

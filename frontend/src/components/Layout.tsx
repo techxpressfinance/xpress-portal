@@ -42,7 +42,12 @@ export default function Layout() {
     if (!user || !tourSteps) return;
     if (!isTourCompleted(user.id)) {
       // Defer to next tick so the layout finishes mounting and nav links are in the DOM
-      const id = setTimeout(() => setTourOpen(true), 400);
+      const id = setTimeout(() => {
+        setTourOpen(true);
+        // Mark as seen as soon as it auto-opens so it only ever auto-launches once,
+        // even if the user dismisses it by refreshing instead of finishing/skipping.
+        markTourCompleted(user.id);
+      }, 400);
       return () => clearTimeout(id);
     }
   }, [user, tourSteps]);

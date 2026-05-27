@@ -270,4 +270,25 @@ export const LOAN_TERM_OPTIONS = ['1 year', '2 years', '3 years', '4 years', '5 
 
 export const VEHICLE_CONDITION_OPTIONS = ['New', 'Used - Excellent', 'Used - Good', 'Used - Fair', 'Demo'] as const;
 
+// Client-form sections a broker can choose to show/hide for the client.
+// Keys must mirror SECTION_KEYS in backend/app/routers/applications.py.
+export const APPLICATION_SECTIONS = [
+  { key: 'loan_details', label: 'Loan Details' },
+  { key: 'personal', label: 'Personal Details' },
+  { key: 'identification', label: 'Identification' },
+  { key: 'contact', label: 'Contact Details' },
+  { key: 'business', label: 'Business Details' },
+  { key: 'living', label: 'Living Situation' },
+  { key: 'employment', label: 'Employment' },
+  { key: 'income', label: 'Income' },
+  { key: 'assets', label: 'Assets' },
+  { key: 'liabilities', label: 'Liabilities' },
+  { key: 'expenses', label: 'Monthly Expenses' },
+  { key: 'declarations', label: 'Declarations' },
+  { key: 'emergency', label: 'Emergency Contact' },
+  { key: 'documents', label: 'Supporting Documents' },
+] as const;
+
+export type ApplicationSectionKey = (typeof APPLICATION_SECTIONS)[number]['key'];
+
 
