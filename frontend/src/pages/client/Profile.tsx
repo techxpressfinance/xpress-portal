@@ -76,7 +76,7 @@ export default function Profile() {
         const cleaned = Object.fromEntries(
           Object.entries(data ?? {}).map(([k, v]) => [k, v ?? '']),
         );
-        resetDetails(cleaned as ClientProfileData);
+        resetDetails(cleaned as unknown as ClientProfileData);
       })
       .catch(() => {});
   }, [resetDetails]);
