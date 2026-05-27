@@ -5,7 +5,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, Select } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import type { ContactDetail as ContactDetailType } from '../../types';
+import { LOAN_TYPES, APPLICATION_STATUSES } from '../../types';
+import type { ContactDetail as ContactDetailType, ContactApplication } from '../../types';
 
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 const LABEL = 'block text-sm font-medium text-foreground mb-1';
@@ -169,12 +170,141 @@ function EditContactModal({ contact, onClose, onSaved }: {
   );
 }
 
+interface EditLendingForm {
+  loan_type: string;
+  amount: string;
+  status: string;
+  business_name: string;
+  business_abn: string;
+}
+
+function EditLendingEntryModal({ app, onClose, onSaved }: {
+  app: ContactApplication;
+  onClose: () => void;
+  onSaved: (updated: ContactApplication) => void;
+}) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<EditLendingForm>({
+    loan_type: app.loan_type,
+    amount: String(app.amount),
+    status: app.status,
+    business_name: app.business_name ?? '',
+    business_abn: app.business_abn ?? '',
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (form.status !== app.status) {
+        await api.patch(`/applications/${app.id}/status`, null, { params: { status: form.status } });
+      }
+      await api.patch(`/applications/${app.id}`, {
+        loan_type: form.loan_type,
+        amount: parseFloat(form.amount),
+        business_name: form.business_name.trim() || null,
+        business_abn: form.business_abn.trim() || null,
+      });
+      toast('Application updated', 'success');
+      onSaved({
+        ...app,
+        loan_type: form.loan_type as ContactApplication['loan_type'],
+        amount: parseFloat(form.amount),
+        status: form.status as ContactApplication['status'],
+        business_name: form.business_name.trim() || null,
+        business_abn: form.business_abn.trim() || null,
+      });
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update application'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl"
+        style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
+      >
+        <h3 className="text-[17px] font-semibold text-foreground mb-5">Edit Lending Entry</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Loan Type</label>
+              <Select value={form.loan_type} onChange={e => setForm(f => ({ ...f, loan_type: e.target.value }))}>
+                {LOAN_TYPES.map(t => (
+                  <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className={LABEL}>Amount ($)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={form.amount}
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={LABEL}>Status</label>
+            <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              {APPLICATION_STATUSES.map(s => (
+                <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Business Name</label>
+              <Input
+                placeholder="Business name"
+                value={form.business_name}
+                onChange={e => setForm(f => ({ ...f, business_name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Business ABN</label>
+              <Input
+                placeholder="ABN"
+                value={form.business_abn}
+                onChange={e => setForm(f => ({ ...f, business_abn: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [contact, setContact] = useState<ContactDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [editingApp, setEditingApp] = useState<ContactApplication | null>(null);
 
   useEffect(() => {
     api.get<ContactDetailType>(`/contacts/${id}`)
@@ -341,9 +471,12 @@ export default function ContactDetail() {
                     </td>
                     <td className="py-3 text-muted-foreground">{formatDate(app.created_at)}</td>
                     <td className="py-3">
-                      <Link to={`/admin/applications/${app.id}`}>
-                        <Button variant="ghost" size="sm">Review</Button>
-                      </Link>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingApp(app)}>Edit</Button>
+                        <Link to={`/admin/applications/${app.id}`}>
+                          <Button variant="ghost" size="sm">Review</Button>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -358,6 +491,20 @@ export default function ContactDetail() {
           contact={contact}
           onClose={() => setEditing(false)}
           onSaved={updated => { setContact(updated); setEditing(false); }}
+        />
+      )}
+
+      {editingApp && (
+        <EditLendingEntryModal
+          app={editingApp}
+          onClose={() => setEditingApp(null)}
+          onSaved={updated => {
+            setContact(prev => prev ? {
+              ...prev,
+              applications: prev.applications.map(a => a.id === updated.id ? updated : a),
+            } : prev);
+            setEditingApp(null);
+          }}
         />
       )}
     </div>
