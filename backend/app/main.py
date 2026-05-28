@@ -33,12 +33,13 @@ from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables 
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
+from app.models.lending_history_entry import LendingHistoryEntry  # noqa: F401 — ensure table is created
 from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
 from app.models.application_calculator import ApplicationCalculator  # noqa: F401 — ensure table is created
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lend, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -208,6 +209,10 @@ _MIGRATIONS = [
     ("document_requests", "document_id", "VARCHAR(36)"),
     # Saved client profile (encrypted JSON) for autofilling new applications
     ("users", "client_profile", "TEXT"),
+    # FK to organizations — set when application's business ABN matches a Company
+    ("loan_applications", "business_organization_id", "VARCHAR(36) REFERENCES organizations(id)"),
+    # Separates messages composed inside a specific application from "outside" (global) conversations
+    ("client_messages", "application_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -534,6 +539,7 @@ app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
 app.include_router(contacts.router)
+app.include_router(organizations.router)
 app.include_router(service_requests.router)
 app.include_router(application_calculators.router)
 app.include_router(public_apply.router)

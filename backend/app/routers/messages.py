@@ -95,7 +95,16 @@ def get_notifications(
     for msg in client_msgs:
         sender_name = msg.author.full_name if msg.author else "Your broker"
         preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
-        if current_user.role == UserRole.client:
+        # App-scoped messages link to the application's Messages tab; outside
+        # messages go to the role's global inbox.
+        if msg.application_id:
+            if current_user.role == UserRole.client:
+                link = f"/applications/{msg.application_id}"
+            elif current_user.role == UserRole.referrer:
+                link = f"/referrer/applications/{msg.application_id}"
+            else:
+                link = f"/admin/applications/{msg.application_id}"
+        elif current_user.role == UserRole.client:
             link = "/messages"
         elif current_user.role == UserRole.referrer:
             link = "/referrer/messages"
@@ -352,7 +361,11 @@ def list_message_recipients(
 
 
 def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
-    """Build per-peer conversation summaries. Each pair is (client_id, peer_id, client_name, peer_name)."""
+    """Build per-peer conversation summaries. Each pair is (client_id, peer_id, client_name, peer_name).
+
+    Only counts "outside" messages (application_id IS NULL). App-scoped messages
+    belong on the per-application Messages tab, not the global inbox.
+    """
     from datetime import datetime, timezone
     from sqlalchemy import or_
     conversations = []
@@ -362,6 +375,7 @@ def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
             .filter(
                 ClientMessage.client_id == client_id,
                 ClientMessage.tenant_id == tenant_id,
+                ClientMessage.application_id.is_(None),
                 or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id),
             )
             .order_by(ClientMessage.created_at.desc())
@@ -372,6 +386,7 @@ def _build_conversations(pairs: list, db: Session, tenant_id: str) -> list:
             .filter(
                 ClientMessage.client_id == client_id,
                 ClientMessage.tenant_id == tenant_id,
+                ClientMessage.application_id.is_(None),
                 or_(ClientMessage.author_id == peer_id, ClientMessage.recipient_id == peer_id),
             )
             .count()
@@ -422,12 +437,14 @@ def list_client_inbox(
                 if client:
                     pairs.append((r.referred_user_id, current_user.id, client.full_name, current_user.full_name))
                     seen.add(r.referred_user_id)
-        # Surface direct staff (admin/broker) conversations: client_id = referrer.id
+        # Surface direct staff (admin/broker) conversations: client_id = referrer.id.
+        # Only outside (non-app) messages — app-scoped chats live on the per-app tab.
         staff_rows = (
             db.query(ClientMessage.author_id, ClientMessage.recipient_id)
             .filter(
                 ClientMessage.client_id == current_user.id,
                 ClientMessage.tenant_id == tenant_id,
+                ClientMessage.application_id.is_(None),
             )
             .all()
         )
@@ -457,6 +474,7 @@ def list_client_inbox(
             for r in db.query(ClientMessage.client_id)
             .filter(
                 ClientMessage.tenant_id == tenant_id,
+                ClientMessage.application_id.is_(None),
                 or_(ClientMessage.author_id == current_user.id, ClientMessage.recipient_id == current_user.id),
             )
             .all()
@@ -473,6 +491,7 @@ def list_client_inbox(
             .filter(
                 ClientMessage.client_id == current_user.id,
                 ClientMessage.tenant_id == tenant_id,
+                ClientMessage.application_id.is_(None),
             )
             .all()
         )

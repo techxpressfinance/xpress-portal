@@ -221,7 +221,7 @@ def send_password_reset(
     """Send a password reset link.
 
     Admins can reset clients, brokers, and referrers in their tenant. Brokers can
-    only reset clients they invited.
+    reset any client or referrer in their tenant.
     """
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
@@ -230,8 +230,8 @@ def send_password_reset(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password reset can only be sent to clients, brokers, referrers, and admins")
 
     if current_user.role.value == "broker":
-        if user.role.value != "client" or user.invited_by_id != current_user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only reset clients you invited")
+        if user.role.value not in ("client", "referrer"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers can only reset clients and referrers")
 
     token = secrets.token_urlsafe(32)
     user.password_reset_token = token

@@ -11,6 +11,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.client_message import ClientMessage
 from app.models.external_referral import ClientEngagementModel, ExternalReferral
+from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
 from app.services.tenant_scope import get_tenant_id
@@ -25,6 +26,7 @@ class ClientMessageCreate(BaseModel):
     content: str
     recipient_id: str
     visibility: str = "all"
+    application_id: Optional[str] = None
 
 
 def _check_access(client_id: str, current_user: User, tenant_id: str, db: Session) -> None:
@@ -70,6 +72,7 @@ def _msg_out(msg: ClientMessage) -> dict:
         "author_name": msg.author.full_name if msg.author else None,
         "author_role": msg.author.role.value if msg.author else None,
         "recipient_id": msg.recipient_id,
+        "application_id": msg.application_id,
         "content": msg.content,
         "is_read": msg.is_read,
         "visibility": msg.visibility,
@@ -81,6 +84,7 @@ def _msg_out(msg: ClientMessage) -> dict:
 def list_client_messages(
     client_id: str,
     peer_id: Optional[str] = Query(None),
+    application_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
@@ -90,6 +94,13 @@ def list_client_messages(
         ClientMessage.client_id == client_id,
         ClientMessage.tenant_id == tenant_id,
     )
+    # "outside" = global inbox view (no application context). Default behaviour
+    # when no application_id is supplied so the global Messages page never picks
+    # up app-scoped conversations.
+    if application_id is None or application_id == "outside":
+        q = q.filter(ClientMessage.application_id.is_(None))
+    else:
+        q = q.filter(ClientMessage.application_id == application_id)
     if current_user.role == UserRole.client:
         q = q.filter(ClientMessage.visibility.in_(["all", "client"]))
     elif current_user.role == UserRole.referrer:
@@ -147,10 +158,19 @@ def create_client_message(
         ).first()
         if direct and recipient.role in (UserRole.broker, UserRole.admin):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is managed by your referrer")
+    # If this message is being composed inside an application, validate the FK
+    if data.application_id:
+        app = db.query(LoanApplication).filter(
+            LoanApplication.id == data.application_id,
+            LoanApplication.tenant_id == tenant_id,
+        ).first()
+        if not app:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     msg = ClientMessage(
         client_id=client_id,
         author_id=current_user.id,
         recipient_id=data.recipient_id,
+        application_id=data.application_id,
         content=data.content.strip(),
         visibility=data.visibility,
         tenant_id=tenant_id,

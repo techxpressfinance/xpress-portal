@@ -27,6 +27,8 @@ const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
 const Contacts = lazy(() => import('./pages/admin/Contacts'));
 const ContactDetail = lazy(() => import('./pages/admin/ContactDetail'));
+const Companies = lazy(() => import('./pages/admin/Companies'));
+const CompanyDetail = lazy(() => import('./pages/admin/CompanyDetail'));
 const QuoteSheets = lazy(() => import('./pages/admin/QuoteSheets'));
 const BasCalculator = lazy(() => import('./pages/admin/BasCalculator'));
 const AdminServiceRequests = lazy(() => import('./pages/admin/ServiceRequests'));
@@ -309,6 +311,22 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <ContactDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/companies"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <Companies />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/companies/:id"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <CompanyDetail />
                   </ProtectedRoute>
                 }
               />

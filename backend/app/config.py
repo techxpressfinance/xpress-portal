@@ -75,6 +75,11 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 SMS_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
 
+# Australian Business Register lookup — free, requires a registered GUID
+# https://abr.business.gov.au/Tools/WebServices
+ABR_GUID = os.getenv("ABR_GUID", "")
+ABR_ENABLED = bool(ABR_GUID)
+
 # Field-level encryption for PII data
 # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")

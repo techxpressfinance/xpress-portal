@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Button } from '../../components/ui';
+import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements } from '../../components/ui';
 import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
 
 interface FormData {
@@ -323,9 +323,13 @@ export default function Profile() {
                 <input
                   type="password"
                   className={inputClass}
-                  {...registerPw('new_password', { required: 'New password is required', minLength: { value: 8, message: 'Must be at least 8 characters' } })}
+                  {...registerPw('new_password', {
+                    required: 'New password is required',
+                    validate: (v) => passwordMeetsRequirements(v) || 'Password does not meet the requirements below',
+                  })}
                 />
                 {pwErrors.new_password && <p className="mt-1 text-[12px] text-red-500">{pwErrors.new_password.message}</p>}
+                <PasswordRequirements password={watch('new_password') || ''} alwaysShow />
               </div>
               <div>
                 <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Confirm New Password</label>

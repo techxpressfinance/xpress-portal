@@ -99,10 +99,10 @@ export default function ApplicationDetail() {
 
   useEffect(() => {
     if (!user?.id) return;
-    api.get(`/clients/${user.id}/messages`)
+    api.get(`/clients/${user.id}/messages`, { params: { application_id: id } })
       .then(({ data }) => setClientMessages(data))
       .catch(() => { });
-  }, [user?.id]);
+  }, [user?.id, id]);
 
   const handleUploadFile = async (file: File, label?: string) => {
     if (!id) return;
@@ -1751,7 +1751,7 @@ export default function ApplicationDetail() {
                       if (!user?.id || !newClientMsgContent.trim() || !brokerRecipientId) return;
                       setSendingClientMsg(true);
                       try {
-                        const { data } = await api.post(`/clients/${user.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: brokerRecipientId });
+                        const { data } = await api.post(`/clients/${user.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: brokerRecipientId, application_id: id });
                         setClientMessages((prev) => [...prev, data]);
                         setNewClientMsgContent('');
                         toast('Message sent', 'success');

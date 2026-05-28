@@ -395,15 +395,7 @@ export default function LenderManagement() {
                       {lender.contacts.length === 0 ? (
                         <span className="text-muted-foreground/50">-</span>
                       ) : (
-                        <div>
-                          <span className="text-foreground">{lender.contacts[0].name}</span>
-                          {lender.contacts[0].designation && (
-                            <span className="ml-1.5 text-[12px] text-muted-foreground">({lender.contacts[0].designation})</span>
-                          )}
-                          {lender.contacts.length > 1 && (
-                            <span className="ml-1.5 text-[12px] text-primary">+{lender.contacts.length - 1} more</span>
-                          )}
-                        </div>
+                        <span className="text-foreground">{lender.contacts.length} {lender.contacts.length === 1 ? 'contact' : 'contacts'}</span>
                       )}
                     </td>
                     <td className="px-5 py-3 text-[13px] text-muted-foreground max-w-[200px] truncate">{lender.notes || '-'}</td>

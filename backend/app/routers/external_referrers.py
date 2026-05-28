@@ -72,14 +72,16 @@ def create_referrer(
 @router.get("", response_model=list[UserOut])
 def list_referrers(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """List external referrers. Brokers see only referrers they invited."""
-    query = db.query(User).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
-    if current_user.role.value == "broker":
-        query = query.filter(User.invited_by_id == current_user.id)
-    return query.order_by(User.created_at.desc()).all()
+    """List external referrers across the tenant. Admins and brokers."""
+    return (
+        db.query(User)
+        .filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
+        .order_by(User.created_at.desc())
+        .all()
+    )
 
 
 @router.get("/admin/all-referrals", response_model=list[ExternalReferralOut])

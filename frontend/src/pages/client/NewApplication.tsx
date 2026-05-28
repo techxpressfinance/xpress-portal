@@ -5,7 +5,8 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, Button, Input } from '../../components/ui';
+import { GlassCard, Button, Input, AbrResultCard } from '../../components/ui';
+import { useAbrLookup } from '../../hooks/useAbrLookup';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
   CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES, VEHICLE_MAKES, PROPERTY_TYPES,
@@ -16,6 +17,48 @@ import type { DocType } from '../../types';
 const SELECT_CLS = 'led-input';
 const TEXTAREA_CLS = 'w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent resize-none';
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
+
+interface AbnCompanyMatch {
+  id: string;
+  name: string;
+  industry: string | null;
+}
+
+function useAbnCompanyLookup(abn: string): AbnCompanyMatch | null {
+  const [match, setMatch] = useState<AbnCompanyMatch | null>(null);
+  useEffect(() => {
+    const digits = (abn || '').replace(/\D/g, '');
+    if (digits.length < 4) { setMatch(null); return; }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      api.get('/organizations/lookup', { params: { abn: digits } })
+        .then(({ data }) => { if (!cancelled) setMatch(data.organization || null); })
+        .catch(() => { if (!cancelled) setMatch(null); });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [abn]);
+  return match;
+}
+
+function AbnHint({ match, onUseName }: { match: AbnCompanyMatch | null; onUseName?: (name: string) => void }) {
+  if (!match) return null;
+  return (
+    <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg bg-success/10 px-3 py-2 text-[12px] text-success">
+      <span>
+        Found existing company: <strong>{match.name}</strong>{match.industry ? ` · ${match.industry}` : ''}
+      </span>
+      {onUseName && (
+        <button
+          type="button"
+          className="text-[12px] font-medium underline hover:opacity-80"
+          onClick={() => onUseName(match.name)}
+        >
+          Use this name
+        </button>
+      )}
+    </div>
+  );
+}
 
 
 interface FormData {
@@ -374,6 +417,13 @@ export default function NewApplication() {
       equipment_type: 'Truck',
     },
   });
+
+  const watchedBusinessAbn = watch('business_abn') || '';
+  const commercialAbnMatch = useAbnCompanyLookup(comAbn);
+  const selfEmployedAbnMatch = useAbnCompanyLookup(watchedBusinessAbn);
+  // ABR fallback — only fired when there's no local Company match
+  const commercialAbr = useAbrLookup(commercialAbnMatch ? '' : comAbn);
+  const selfEmployedAbr = useAbrLookup(selfEmployedAbnMatch ? '' : watchedBusinessAbn);
 
   const idType = watch('id_type');
   const residencyStatus = watch('residency_status');
@@ -1651,6 +1701,14 @@ export default function NewApplication() {
                       <div>
                         <label className={LABEL_CLS}>ACN / ABN</label>
                         <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
+                        <AbnHint match={commercialAbnMatch} onUseName={(n) => setComBusinessName(n)} />
+                        {!commercialAbnMatch && commercialAbr.enabled && (
+                          <AbrResultCard
+                            record={commercialAbr.record}
+                            loading={commercialAbr.loading}
+                            onApply={(r) => setComBusinessName(r.name)}
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -2230,6 +2288,14 @@ export default function NewApplication() {
                     <div>
                       <label className={LABEL_CLS}>ABN *</label>
                       <Input placeholder="12 345 678 901" {...register('business_abn')} />
+                      <AbnHint match={selfEmployedAbnMatch} onUseName={(n) => setValue('business_name', n)} />
+                      {!selfEmployedAbnMatch && selfEmployedAbr.enabled && (
+                        <AbrResultCard
+                          record={selfEmployedAbr.record}
+                          loading={selfEmployedAbr.loading}
+                          onApply={(r) => setValue('business_name', r.name)}
+                        />
+                      )}
                     </div>
                     <div>
                       <label className={LABEL_CLS}>Business Name *</label>

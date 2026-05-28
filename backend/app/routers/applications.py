@@ -45,6 +45,7 @@ from app.services.email import (
     send_status_notification,
 )
 from app.services.notification_service import create_notification
+from app.services.organizations import find_or_create_organization_by_abn, normalize_abn
 from app.schemas.loan_application import (
     LoanApplicationCreate,
     LoanApplicationOut,
@@ -106,9 +107,24 @@ def create_application(
             lead_is_new = True
             owner_id = lead_client.id
 
-    app = LoanApplication(user_id=owner_id, tenant_id=tenant_id, **data.model_dump())
+    app_kwargs = data.model_dump()
+    # Normalize ABN before storing
+    if app_kwargs.get("business_abn"):
+        app_kwargs["business_abn"] = normalize_abn(app_kwargs["business_abn"])
+
+    app = LoanApplication(user_id=owner_id, tenant_id=tenant_id, **app_kwargs)
     if staff_lead and current_user.role == UserRole.broker:
         app.assigned_broker_id = current_user.id
+
+    # Link to a Company by ABN, creating a stub if necessary
+    if app.business_abn or app.business_name:
+        org = find_or_create_organization_by_abn(db, tenant_id, app.business_abn, app.business_name)
+        if org:
+            app.business_organization_id = org.id
+            # Sync denormalized business_name from the Org if it has a real name
+            if org.name and org.name != "Unnamed Company":
+                app.business_name = org.name
+
     db.add(app)
     db.flush()
     log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
@@ -520,8 +536,24 @@ def update_application(
                 applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
                 send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, "application_received")
 
+    # Normalize ABN and re-link to a Company whenever business_abn changes
+    if "business_abn" in updates:
+        updates["business_abn"] = normalize_abn(updates["business_abn"])
+
     for key, value in updates.items():
         setattr(application, key, value)
+
+    if "business_abn" in updates or "business_name" in updates:
+        if application.business_abn or application.business_name:
+            org = find_or_create_organization_by_abn(
+                db, tenant_id, application.business_abn, application.business_name
+            )
+            if org:
+                application.business_organization_id = org.id
+                if org.name and org.name != "Unnamed Company":
+                    application.business_name = org.name
+        else:
+            application.business_organization_id = None
 
     if updates:
         log_activity(db, current_user.id, "updated", "application", app_id, {"fields": list(updates.keys())}, tenant_id=tenant_id)

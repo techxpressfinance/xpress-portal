@@ -129,7 +129,7 @@ export default function ReferrerApplicationDetail() {
           api.get(`/users/${d.user_id}`).then(({ data }) => setClient(data)).catch(() => { });
         }
         if (d.assigned_brokers?.length > 0 && currentUser?.id) {
-          api.get(`/clients/${currentUser.id}/messages`, { params: { peer_id: d.assigned_brokers[0].id } })
+          api.get(`/clients/${currentUser.id}/messages`, { params: { peer_id: d.assigned_brokers[0].id, application_id: id } })
             .then(({ data }) => setClientMessages(data)).catch(() => { });
         }
       })
@@ -769,7 +769,7 @@ export default function ReferrerApplicationDetail() {
                             if (!currentUser?.id || !newClientMsgContent.trim() || !brokerRecipientId) return;
                             setSendingClientMsg(true);
                             try {
-                              const { data } = await api.post(`/clients/${currentUser.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: brokerRecipientId });
+                              const { data } = await api.post(`/clients/${currentUser.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: brokerRecipientId, application_id: id });
                               setClientMessages((prev) => [...prev, data]);
                               setNewClientMsgContent('');
                               toast('Message sent', 'success');
@@ -1965,7 +1965,7 @@ export default function ReferrerApplicationDetail() {
                                   e.preventDefault();
                                   if (canChat && newClientMsgContent.trim()) {
                                     setSendingClientMsg(true);
-                                    api.post(`/clients/${currentUser!.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: broker.id })
+                                    api.post(`/clients/${currentUser!.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: broker.id, application_id: id })
                                       .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
                                       .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
                                       .finally(() => setSendingClientMsg(false));
@@ -1987,7 +1987,7 @@ export default function ReferrerApplicationDetail() {
                                   if (!canChat || !newClientMsgContent.trim()) return;
                                   setSendingClientMsg(true);
                                   try {
-                                    const { data } = await api.post(`/clients/${currentUser!.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: broker.id });
+                                    const { data } = await api.post(`/clients/${currentUser!.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: broker.id, application_id: id });
                                     setClientMessages((prev) => [...prev, data]);
                                     setNewClientMsgContent('');
                                     toast('Message sent', 'success');

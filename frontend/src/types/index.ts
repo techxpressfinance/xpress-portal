@@ -290,6 +290,7 @@ export interface ClientMessage {
   author_name: string | null;
   author_role: string | null;
   recipient_id: string | null;
+  application_id: string | null;
   content: string;
   is_read: boolean;
   visibility: string;
@@ -708,9 +709,77 @@ export interface Contact {
   updated_at: string;
 }
 
+export type RepaymentFrequency = 'weekly' | 'fortnightly' | 'monthly';
+
+export interface LendingHistoryEntry {
+  id: string;
+  contact_id: string;
+  lender_name: string;
+  amount: number;
+  balloon: number | null;
+  other_broker_name: string | null;
+  repayment_amount: number | null;
+  repayment_frequency: RepaymentFrequency | null;
+  start_date: string | null;
+  identifier: string | null;
+  guaranteed_by_contact_id: string | null;
+  guaranteed_by_name: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AbrRecord {
+  abn: string;
+  name: string;
+  trading_names: string[];
+  status: string | null;
+  entity_type: string | null;
+  gst_registered: boolean | null;
+  state: string | null;
+  postcode: string | null;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  abn: string | null;
+  industry: string | null;
+  address: string | null;
+  notes: string | null;
+  contact_count: number;
+  application_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationContactLite {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+}
+
+export interface OrganizationApplicationLite {
+  id: string;
+  loan_type: LoanType;
+  amount: number;
+  status: ApplicationStatus;
+  created_at: string;
+  user_name: string | null;
+}
+
+export interface OrganizationDetail extends Organization {
+  contacts: OrganizationContactLite[];
+  applications: OrganizationApplicationLite[];
+}
+
 export interface ContactDetail extends Contact {
   organizations: ContactOrganization[];
   applications: ContactApplication[];
+  lending_history: LendingHistoryEntry[];
 }
 
 export interface KanbanBoardListItem {

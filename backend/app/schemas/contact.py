@@ -5,6 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.schemas.lending_history import LendingHistoryEntryOut
+
 
 class OrganizationOut(BaseModel):
     id: str
@@ -56,9 +58,10 @@ class ContactOut(BaseModel):
 
 
 class ContactDetailOut(ContactOut):
-    """Full contact with organizations and lending history."""
+    """Full contact with organizations, portal applications, and manual lending history."""
     organizations: list[OrganizationOut] = []
     applications: list[ContactApplicationOut] = []
+    lending_history: list[LendingHistoryEntryOut] = []
 
 
 class ContactCreate(BaseModel):

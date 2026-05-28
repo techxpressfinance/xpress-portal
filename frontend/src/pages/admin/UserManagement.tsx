@@ -302,7 +302,7 @@ export default function UserManagement() {
                               <Button variant="danger" size="sm" onClick={() => setPendingAction({ type: 'delete', userId: user.id, userName: user.full_name })}>Delete</Button>
                             </>
                           )}
-                          {currentUser?.role === 'broker' && !isSelf && user.invited_by_id === currentUser.id && (
+                          {currentUser?.role === 'broker' && !isSelf && (
                             <Button variant="secondary" size="sm" loading={sendingReset === user.id} onClick={() => handleSendPasswordReset(user.id)}>Reset Password</Button>
                           )}
                         </div>

@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    abn: Optional[str] = Field(default=None, max_length=20)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    address: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = None
+
+
+class OrganizationUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    abn: Optional[str] = Field(default=None, max_length=20)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    address: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = None
+
+
+class OrganizationOut(BaseModel):
+    id: str
+    name: str
+    abn: Optional[str]
+    industry: Optional[str]
+    address: Optional[str]
+    notes: Optional[str]
+    contact_count: int = 0
+    application_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrganizationContactOut(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: Optional[str]
+    phone: Optional[str]
+    role: Optional[str] = None
+
+
+class OrganizationApplicationOut(BaseModel):
+    id: str
+    loan_type: str
+    amount: float
+    status: str
+    created_at: datetime
+    user_name: Optional[str] = None
+
+
+class OrganizationDetailOut(OrganizationOut):
+    contacts: list[OrganizationContactOut] = []
+    applications: list[OrganizationApplicationOut] = []
+
+
+class OrganizationContactLink(BaseModel):
+    contact_id: str
+    role: Optional[str] = Field(default=None, max_length=100)
+
+
+class PaginatedOrganizations(BaseModel):
+    items: list[OrganizationOut]
+    total: int
+    page: int
+    per_page: int

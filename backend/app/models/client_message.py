@@ -18,6 +18,7 @@ class ClientMessage(Base):
     client_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     author_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     recipient_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    application_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("loan_applications.id"), nullable=True, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     visibility: Mapped[str] = mapped_column(String(20), default="all", nullable=False)

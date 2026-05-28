@@ -5,7 +5,7 @@ import api from '../api/client';
 import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import { getErrorMessage } from '../lib/utils';
-import { Button, Input, GlassCard } from '../components/ui';
+import { Button, Input, GlassCard, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
 
 interface ResetForm {
   password: string;
@@ -117,17 +117,20 @@ export default function ResetPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 w-full">
-              <Input
-                label="New Password"
-                type="password"
-                placeholder="Min 8 chars, 1 uppercase, 1 digit"
-                error={errors.password?.message}
-                className="bg-background/50 border-border/60 focus:bg-background transition-colors"
-                {...register('password', {
-                  required: 'Password is required',
-                  minLength: { value: 8, message: 'Min 8 characters' },
-                })}
-              />
+              <div>
+                <Input
+                  label="New Password"
+                  type="password"
+                  placeholder="Create a strong password"
+                  error={errors.password?.message}
+                  className="bg-background/50 border-border/60 focus:bg-background transition-colors"
+                  {...register('password', {
+                    required: 'Password is required',
+                    validate: (v) => passwordMeetsRequirements(v) || 'Password does not meet the requirements below',
+                  })}
+                />
+                <PasswordRequirements password={watch('password') || ''} alwaysShow />
+              </div>
               <Input
                 label="Confirm Password"
                 type="password"

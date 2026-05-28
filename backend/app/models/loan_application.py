@@ -152,6 +152,9 @@ class LoanApplication(Base):
     # Contact linkage
     contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=True)
 
+    # Business / company linkage
+    business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
+
     # Lend sync tracking
     lend_ref: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     lend_sync_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -175,6 +178,7 @@ class LoanApplication(Base):
     client_sections: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
+    business_organization = relationship("Organization", foreign_keys=[business_organization_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     # Legacy single-broker FK kept for backward compat / migration

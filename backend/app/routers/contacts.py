@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.lending_history_entry import LendingHistoryEntry, RepaymentFrequency
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.contact import (
@@ -19,6 +20,11 @@ from app.schemas.contact import (
     ContactOut,
     ContactUpdate,
     PaginatedContacts,
+)
+from app.schemas.lending_history import (
+    LendingHistoryEntryCreate,
+    LendingHistoryEntryOut,
+    LendingHistoryEntryUpdate,
 )
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
@@ -167,10 +173,13 @@ def get_contact(
         for a in apps
     ]
 
+    lending_history = _list_lending_history(contact_id, db)
+
     return {
         **_contact_with_count(contact, db),
         "organizations": organizations,
         "applications": applications,
+        "lending_history": lending_history,
     }
 
 
@@ -501,3 +510,155 @@ def deduplicate_contacts(
         "duplicates_removed": deleted_count,
         "contacts_remaining": remaining,
     }
+
+
+# --- Lending history (manual entries) ---
+
+
+def _serialize_lending_entry(entry: LendingHistoryEntry, guarantor_name: Optional[str]) -> dict:
+    return {
+        "id": entry.id,
+        "contact_id": entry.contact_id,
+        "lender_name": entry.lender_name,
+        "amount": float(entry.amount) if entry.amount is not None else 0.0,
+        "balloon": float(entry.balloon) if entry.balloon is not None else None,
+        "other_broker_name": entry.other_broker_name,
+        "repayment_amount": float(entry.repayment_amount) if entry.repayment_amount is not None else None,
+        "repayment_frequency": entry.repayment_frequency.value if entry.repayment_frequency else None,
+        "start_date": entry.start_date,
+        "identifier": entry.identifier,
+        "guaranteed_by_contact_id": entry.guaranteed_by_contact_id,
+        "guaranteed_by_name": guarantor_name,
+        "notes": entry.notes,
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+    }
+
+
+def _list_lending_history(contact_id: str, db: Session) -> list[dict]:
+    entries = (
+        db.query(LendingHistoryEntry)
+        .filter(LendingHistoryEntry.contact_id == contact_id)
+        .order_by(LendingHistoryEntry.start_date.desc().nullslast(), LendingHistoryEntry.created_at.desc())
+        .all()
+    )
+    if not entries:
+        return []
+    guarantor_ids = {e.guaranteed_by_contact_id for e in entries if e.guaranteed_by_contact_id}
+    guarantor_names: dict[str, str] = {}
+    if guarantor_ids:
+        for c in db.query(Contact).filter(Contact.id.in_(guarantor_ids)).all():
+            guarantor_names[c.id] = f"{c.first_name} {c.last_name}".strip()
+    return [_serialize_lending_entry(e, guarantor_names.get(e.guaranteed_by_contact_id)) for e in entries]
+
+
+def _get_contact_in_tenant(contact_id: str, tenant_id: str, db: Session) -> Contact:
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.tenant_id == tenant_id).first()
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    return contact
+
+
+def _resolve_guarantor(
+    guarantor_id: Optional[str], tenant_id: str, db: Session
+) -> Optional[Contact]:
+    if not guarantor_id:
+        return None
+    guarantor = db.query(Contact).filter(Contact.id == guarantor_id, Contact.tenant_id == tenant_id).first()
+    if not guarantor:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Guarantor contact not found")
+    return guarantor
+
+
+@router.post("/{contact_id}/lending-history", response_model=LendingHistoryEntryOut, status_code=status.HTTP_201_CREATED)
+def create_lending_entry(
+    contact_id: str,
+    data: LendingHistoryEntryCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    _get_contact_in_tenant(contact_id, tenant_id, db)
+    guarantor = _resolve_guarantor(data.guaranteed_by_contact_id, tenant_id, db)
+
+    entry = LendingHistoryEntry(
+        contact_id=contact_id,
+        tenant_id=tenant_id,
+        lender_name=data.lender_name.strip(),
+        amount=data.amount,
+        balloon=data.balloon,
+        other_broker_name=data.other_broker_name.strip() if data.other_broker_name else None,
+        repayment_amount=data.repayment_amount,
+        repayment_frequency=RepaymentFrequency(data.repayment_frequency) if data.repayment_frequency else None,
+        start_date=data.start_date,
+        identifier=data.identifier.strip() if data.identifier else None,
+        guaranteed_by_contact_id=guarantor.id if guarantor else None,
+        notes=data.notes,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    guarantor_name = f"{guarantor.first_name} {guarantor.last_name}".strip() if guarantor else None
+    return _serialize_lending_entry(entry, guarantor_name)
+
+
+@router.patch("/{contact_id}/lending-history/{entry_id}", response_model=LendingHistoryEntryOut)
+def update_lending_entry(
+    contact_id: str,
+    entry_id: str,
+    data: LendingHistoryEntryUpdate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    _get_contact_in_tenant(contact_id, tenant_id, db)
+    entry = (
+        db.query(LendingHistoryEntry)
+        .filter(LendingHistoryEntry.id == entry_id, LendingHistoryEntry.contact_id == contact_id)
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lending entry not found")
+
+    payload = data.model_dump(exclude_unset=True)
+    if "guaranteed_by_contact_id" in payload:
+        guarantor = _resolve_guarantor(payload["guaranteed_by_contact_id"], tenant_id, db)
+        entry.guaranteed_by_contact_id = guarantor.id if guarantor else None
+        payload.pop("guaranteed_by_contact_id")
+    if "repayment_frequency" in payload:
+        freq = payload.pop("repayment_frequency")
+        entry.repayment_frequency = RepaymentFrequency(freq) if freq else None
+    for key in ("lender_name", "other_broker_name", "identifier"):
+        if key in payload and payload[key] is not None:
+            payload[key] = payload[key].strip() or None
+    for field, value in payload.items():
+        setattr(entry, field, value)
+    db.commit()
+    db.refresh(entry)
+
+    guarantor_name = None
+    if entry.guaranteed_by_contact_id:
+        g = db.query(Contact).filter(Contact.id == entry.guaranteed_by_contact_id).first()
+        if g:
+            guarantor_name = f"{g.first_name} {g.last_name}".strip()
+    return _serialize_lending_entry(entry, guarantor_name)
+
+
+@router.delete("/{contact_id}/lending-history/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_lending_entry(
+    contact_id: str,
+    entry_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    _get_contact_in_tenant(contact_id, tenant_id, db)
+    entry = (
+        db.query(LendingHistoryEntry)
+        .filter(LendingHistoryEntry.id == entry_id, LendingHistoryEntry.contact_id == contact_id)
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lending entry not found")
+    db.delete(entry)
+    db.commit()

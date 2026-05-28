@@ -262,7 +262,7 @@ export default function ReferrerManagement() {
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Organization</th>
                   <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Joined</th>
-                  {isAdmin && <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>}
+                  {(isAdmin || currentUser?.role === 'broker') && <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -288,16 +288,22 @@ export default function ReferrerManagement() {
                     </td>
                     <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(referrer.created_at)}</td>
                     <td className="px-6 py-4">
-                      {isAdmin && (
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
-                          <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
-                            {referrer.is_active ? 'Deactivate' : 'Activate'}
-                          </Button>
+                      <div className="flex gap-2">
+                        {isAdmin && (
+                          <>
+                            <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
+                            <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
+                              {referrer.is_active ? 'Deactivate' : 'Activate'}
+                            </Button>
+                          </>
+                        )}
+                        {(isAdmin || currentUser?.role === 'broker') && (
                           <Button size="sm" variant="secondary" loading={sendingReset === referrer.id} onClick={() => handleSendPasswordReset(referrer.id)}>Reset Password</Button>
+                        )}
+                        {isAdmin && (
                           <Button size="sm" variant="danger" onClick={() => setPendingAction({ type: 'delete', userId: referrer.id, userName: referrer.full_name })}>Delete</Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

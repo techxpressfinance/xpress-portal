@@ -5,7 +5,7 @@ import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
-import { Button, Input } from '../components/ui';
+import { Button, Input, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
 
 interface RegisterForm {
   full_name: string;
@@ -159,13 +159,19 @@ export default function Register() {
               </label>
               <Input placeholder="+61 412 345 678" {...register('phone')} />
             </div>
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Min 8 chars, 1 uppercase, 1 digit"
-              error={errors.password?.message}
-              {...register('password', { required: 'Password is required', minLength: { value: 8, message: 'Min 8 characters' } })}
-            />
+            <div>
+              <Input
+                label="Password"
+                type="password"
+                placeholder="Create a strong password"
+                error={errors.password?.message}
+                {...register('password', {
+                  required: 'Password is required',
+                  validate: (v) => passwordMeetsRequirements(v) || 'Password does not meet the requirements below',
+                })}
+              />
+              <PasswordRequirements password={watch('password') || ''} alwaysShow />
+            </div>
             <Input
               label="Confirm password"
               type="password"

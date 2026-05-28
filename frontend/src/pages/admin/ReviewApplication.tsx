@@ -230,7 +230,7 @@ export default function ReviewApplication() {
 
   useEffect(() => {
     if (client?.id) {
-      api.get(`/clients/${client.id}/messages`)
+      api.get(`/clients/${client.id}/messages`, { params: { application_id: id } })
         .then(({ data }) => setClientMessages(data))
         .catch(() => { });
       api.get(`/clients/${client.id}/alerts`)
@@ -238,7 +238,7 @@ export default function ReviewApplication() {
         .catch(() => { });
     }
     if (referrer?.id) {
-      api.get(`/clients/${referrer.id}/messages`)
+      api.get(`/clients/${referrer.id}/messages`, { params: { application_id: id } })
         .then(({ data }) => setReferrerMessages(data))
         .catch(() => { });
     }
@@ -2559,7 +2559,7 @@ export default function ReviewApplication() {
                                   e.preventDefault();
                                   if (!referrer?.id || !newRefMsgContent.trim()) return;
                                   setSendingRefMsg(true);
-                                  api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id })
+                                  api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id })
                                     .then(({ data }) => { setReferrerMessages((prev) => [...prev, data]); setNewRefMsgContent(''); toast('Message sent', 'success'); })
                                     .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
                                     .finally(() => setSendingRefMsg(false));
@@ -2580,7 +2580,7 @@ export default function ReviewApplication() {
                                   if (!referrer?.id || !newRefMsgContent.trim()) return;
                                   setSendingRefMsg(true);
                                   try {
-                                    const { data } = await api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id });
+                                    const { data } = await api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id });
                                     setReferrerMessages((prev) => [...prev, data]);
                                     setNewRefMsgContent('');
                                     toast('Message sent', 'success');
@@ -2651,7 +2651,7 @@ export default function ReviewApplication() {
                               e.preventDefault();
                               if (!client?.id || !newClientMsgContent.trim()) return;
                               setSendingClientMsg(true);
-                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id })
+                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id })
                                 .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
                                 .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
                                 .finally(() => setSendingClientMsg(false));
@@ -2672,7 +2672,7 @@ export default function ReviewApplication() {
                               if (!client?.id || !newClientMsgContent.trim()) return;
                               setSendingClientMsg(true);
                               try {
-                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id });
+                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id });
                                 setClientMessages((prev) => [...prev, data]);
                                 setNewClientMsgContent('');
                                 toast('Message sent', 'success');
