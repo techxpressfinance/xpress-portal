@@ -436,7 +436,7 @@ export default function AdminMessages() {
                       value={newChatMsg}
                       onChange={(e) => setNewChatMsg(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleSendChat();
                         }
@@ -446,7 +446,7 @@ export default function AdminMessages() {
                       placeholder={`Message ${selectedConv.client_name ?? 'recipient'}…`}
                     />
                     <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                      <span className="text-[11px] text-[var(--led-muted)]">⌘+Enter to send</span>
+                      <span className="text-[11px] text-[var(--led-muted)]">Enter to send · Shift+Enter for new line</span>
                       <Button size="sm" loading={sendingChatMsg} disabled={!newChatMsg.trim()} onClick={handleSendChat}>
                         <Ic d={ICON.send} className="h-3.5 w-3.5" />
                         Send

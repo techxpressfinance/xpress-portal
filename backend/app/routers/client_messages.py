@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.config import EMAIL_ENABLED
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.client_message import ClientMessage
@@ -14,7 +16,10 @@ from app.models.external_referral import ClientEngagementModel, ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
+from app.services.email import _send_async
 from app.services.tenant_scope import get_tenant_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["client-messages"])
 
@@ -140,7 +145,7 @@ def create_client_message(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Content required")
     if data.visibility not in _VALID_VISIBILITY:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid visibility value")
-    recipient = db.query(User).filter(User.id == data.recipient_id).first()
+    recipient = db.query(User).filter(User.id == data.recipient_id, User.tenant_id == tenant_id).first()
     if not recipient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
     # Invariant: one of the two participants must be the conversation subject (client_id)
@@ -178,6 +183,22 @@ def create_client_message(
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    # The bell (/messages/notifications) already surfaces unread ClientMessages
+    # directly, so no Notification row is created here (it would double up).
+    # Email is the piece that was missing — send it fire-and-forget below.
+    if EMAIL_ENABLED and recipient.email and not recipient.email.endswith("@deleted.invalid"):
+        body = (
+            f"Hello {recipient.full_name},\n\n"
+            f"You have a new message from {current_user.full_name}:\n\n"
+            f"{msg.content}\n\n"
+            f"Log in to your Xpress Finance Portal account to reply.\n\n"
+            f"Best regards,\nXpress Finance Team"
+        )
+        _send_async(recipient.email, f"New message from {current_user.full_name} - Xpress Finance Portal", body)
+    else:
+        logger.debug("Email not sent for client message to %s", recipient.email)
+
     return _msg_out(msg)
 
 
@@ -191,6 +212,8 @@ def delete_client_message(
 ):
     if current_user.role not in (UserRole.admin, UserRole.broker):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin or broker required")
+    # Same access gate as read/write: brokers can't touch direct-engagement clients.
+    _check_access(client_id, current_user, tenant_id, db)
     msg = db.query(ClientMessage).filter(
         ClientMessage.id == msg_id,
         ClientMessage.client_id == client_id,

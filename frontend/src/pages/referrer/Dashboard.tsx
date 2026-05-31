@@ -12,8 +12,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Badge, Button } from '../../components/ui';
-import { LOAN_TYPE_ICONS } from '../../lib/constants';
+import { GlassCard, Badge, Button, Skeleton, EmptyState, LoanTypeIcon } from '../../components/ui';
 import { formatShortDate, formatDateTime } from '../../lib/utils';
 import type { ExternalReferrerStats, LoanApplication } from '../../types';
 
@@ -90,9 +89,9 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
       <div className="p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
         <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
-          {loading ? '--' : value}
+          {loading ? <Skeleton width={80} height={36} className="mt-1" /> : value}
         </p>
-        <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{detail}</p>
+        <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{loading ? <Skeleton width={160} height={16} /> : detail}</p>
       </div>
     </GlassCard>
   );
@@ -191,13 +190,13 @@ export default function ReferrerDashboard() {
           <div className="led-card px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Referred</p>
             <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
-              {loading ? '--' : stats.total_referred}
+              {loading ? <Skeleton width={60} height={28} /> : stats.total_referred}
             </p>
           </div>
           <div className="led-card px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Applied</p>
             <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
-              {loading ? '--' : stats.applied}
+              {loading ? <Skeleton width={60} height={28} /> : stats.applied}
             </p>
           </div>
           <Link to="/referrer/add-lead">
@@ -256,9 +255,9 @@ export default function ReferrerDashboard() {
                 <div key={item.label} className="p-6">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{item.label}</p>
                   <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] led-tnum text-[var(--led-ink)]">
-                    {loading ? '--' : item.value}
+                    {loading ? <Skeleton width={60} height={36} /> : item.value}
                   </p>
-                  <p className="mt-2 text-[12px] text-[var(--led-muted)]">{item.detail}</p>
+                  <p className="mt-2 text-[12px] text-[var(--led-muted)]">{loading ? <Skeleton width={140} height={14} /> : item.detail}</p>
                 </div>
               ))}
             </div>
@@ -273,26 +272,32 @@ export default function ReferrerDashboard() {
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Stage Allocation</h2>
               </div>
               <div className="space-y-4 p-6">
-                {analytics && STATUS_ORDER.map((status) => {
-                  const count = analytics.by_status[status] ?? 0;
-                  if (count === 0) return null;
-                  const pct = maxStatusCount > 0 ? (count / maxStatusCount) * 100 : 0;
-                  return (
-                    <div key={status} className="grid grid-cols-[minmax(120px,160px)_1fr_auto] items-center gap-4">
-                      <div className="min-w-0">
-                        <Badge value={status} className="truncate" />
+                {loading
+                  ? [1, 2, 3, 4].map((i) => (
+                      <div key={i} className="grid grid-cols-[minmax(120px,160px)_1fr_auto] items-center gap-4">
+                        <Skeleton width={100} height={20} />
+                        <Skeleton height={8} />
+                        <Skeleton width={32} height={16} />
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
-                        <div className="h-full rounded-full bg-[var(--led-accent)]" style={{ width: `${pct}%` }} />
-                      </div>
-                      <p className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{count}</p>
-                    </div>
-                  );
-                })}
+                    ))
+                  : analytics && STATUS_ORDER.map((status) => {
+                      const count = analytics.by_status[status] ?? 0;
+                      if (count === 0) return null;
+                      const pct = maxStatusCount > 0 ? (count / maxStatusCount) * 100 : 0;
+                      return (
+                        <div key={status} className="grid grid-cols-[minmax(120px,160px)_1fr_auto] items-center gap-4">
+                          <div className="min-w-0">
+                            <Badge value={status} className="truncate" />
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                            <div className="h-full rounded-full bg-[var(--led-accent)]" style={{ width: `${pct}%` }} />
+                          </div>
+                          <p className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{count}</p>
+                        </div>
+                      );
+                    })}
                 {!loading && (!analytics || Object.values(analytics.by_status).every((v) => v === 0)) && (
-                  <div className="rounded-[14px] border border-dashed border-[var(--led-line)] px-4 py-8 text-center text-[13px] text-[var(--led-muted)]">
-                    No pipeline data yet.
-                  </div>
+                  <EmptyState title="No pipeline data" description="Stage allocation will appear here once applications are submitted." />
                 )}
               </div>
             </GlassCard>
@@ -304,61 +309,85 @@ export default function ReferrerDashboard() {
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Volume by Product</h2>
               </div>
               <div className="space-y-4 p-6">
-                {loanTypes.map((type) => {
-                  const count = analytics?.by_loan_type[type] ?? 0;
-                  const pct = maxLoanTypeCount > 0 ? (count / maxLoanTypeCount) * 100 : 0;
-                  return (
-                    <div key={type}>
-                      <div className="mb-2 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)]">
-                            {LOAN_TYPE_ICONS[type]}
-                          </div>
-                          <div>
-                            <p className="text-[14px] font-medium capitalize text-[var(--led-ink)]">{type}</p>
-                            <p className="text-[12px] text-[var(--led-muted)]">{count} files</p>
+                {loading
+                  ? [1, 2, 3, 4].map((i) => (
+                      <div key={i}>
+                        <div className="mb-2 flex items-center gap-3">
+                          <Skeleton width={36} height={36} circle />
+                          <div className="space-y-1.5">
+                            <Skeleton width={80} height={16} />
+                            <Skeleton width={50} height={12} />
                           </div>
                         </div>
+                        <Skeleton height={8} />
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
-                        <div
-                          className="h-full rounded-full bg-[var(--led-accent)]"
-                          style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))
+                  : loanTypes.map((type) => {
+                      const count = analytics?.by_loan_type[type] ?? 0;
+                      const pct = maxLoanTypeCount > 0 ? (count / maxLoanTypeCount) * 100 : 0;
+                      return (
+                        <div key={type}>
+                          <div className="mb-2 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)]">
+                                <LoanTypeIcon type={type} className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="text-[14px] font-medium capitalize text-[var(--led-ink)]">{type}</p>
+                                <p className="text-[12px] text-[var(--led-muted)]">{count} files</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                            <div
+                              className="h-full rounded-full bg-[var(--led-accent)]"
+                              style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                {!loading && (!analytics || loanTypes.every((t) => !(analytics.by_loan_type[t] ?? 0))) && (
+                  <EmptyState title="No product data" description="Loan type breakdown will appear here once applications are submitted." />
+                )}
               </div>
             </GlassCard>
           </div>
 
           {/* Monthly trend chart */}
-          {monthlyTrendData.length > 0 && (
-            <GlassCard padding="none" className="flex flex-col">
-              <div className="border-b border-[var(--led-line)] px-6 py-5">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <GlassCard padding="none" className="flex flex-col">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Origination</p>
+                  <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Monthly Booking Trend</h2>
+                </div>
+                <div className="flex gap-6">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Origination</p>
-                    <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Monthly Booking Trend</h2>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Peak Month</p>
+                    <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
+                      {loading ? <Skeleton width={50} height={28} /> : monthlyPeak?.count ?? 0}
+                    </p>
                   </div>
-                  <div className="flex gap-6">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Peak Month</p>
-                      <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
-                        {loading ? '--' : monthlyPeak?.count ?? 0}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Avg / Month</p>
-                      <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
-                        {loading ? '--' : monthlyAverage.toFixed(1)}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Avg / Month</p>
+                    <p className="mt-1 text-[20px] font-semibold led-tnum text-[var(--led-ink)]">
+                      {loading ? <Skeleton width={50} height={28} /> : monthlyAverage.toFixed(1)}
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="h-[260px] px-4 py-4">
+            </div>
+            <div className="h-[260px] px-4 py-4">
+              {loading ? (
+                <div className="flex h-full flex-col justify-center gap-4 px-6">
+                  <Skeleton height={180} />
+                  <div className="flex gap-4">
+                    <Skeleton height={32} className="flex-1" />
+                    <Skeleton height={32} className="flex-1" />
+                  </div>
+                </div>
+              ) : monthlyTrendData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={monthlyTrendData} margin={{ top: 12, right: 12, left: -18, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="var(--led-line)" strokeDasharray="3 3" />
@@ -386,9 +415,13 @@ export default function ReferrerDashboard() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </GlassCard>
-          )}
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <EmptyState title="No trend data" description="Monthly booking trends will appear here once applications are submitted." />
+                </div>
+              )}
+            </div>
+          </GlassCard>
 
           {/* Applications table */}
           <GlassCard padding="none" className="flex min-h-[400px] flex-col overflow-hidden">
@@ -413,42 +446,67 @@ export default function ReferrerDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--led-line)]">
-                  {activeApplications.map((app) => (
-                    <tr
-                      key={app.id}
-                      className={`cursor-pointer transition-colors hover:bg-[var(--led-surface-2)] ${selectedAppId === app.id ? 'bg-[var(--led-accent-tint)]' : ''}`}
-                      onClick={() => setSelectedAppId(app.id)}
-                    >
-                      <td className="px-6 py-4 align-top">
-                        <div className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">{app.id.substring(0, 8)}</div>
-                        <div className="mt-1 text-[12px] text-[var(--led-muted)]">
-                          {formatShortDate(app.updated_at)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 align-top">
-                        <div className="font-medium text-[var(--led-ink)]">{app.user_name || 'Unknown client'}</div>
-                        <div className="mt-1 text-[12px] text-[var(--led-muted)]">{app.user_email || 'No email on file'}</div>
-                      </td>
-                      <td className="px-6 py-4 align-top">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[11px] text-[var(--led-muted)]">
-                            {LOAN_TYPE_ICONS[app.loan_type]}
-                          </div>
-                          <span className="capitalize text-[var(--led-ink)]">{app.loan_type}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 align-top">
-                        <div className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</div>
-                      </td>
-                      <td className="px-6 py-4 align-top">
-                        <Badge value={app.status} className="py-1 px-3" />
-                      </td>
-                    </tr>
-                  ))}
+                  {loading
+                    ? [1, 2, 3, 4].map((i) => (
+                        <tr key={i}>
+                          <td className="px-6 py-4 align-top space-y-2">
+                            <Skeleton width={80} height={14} />
+                            <Skeleton width={60} height={12} />
+                          </td>
+                          <td className="px-6 py-4 align-top space-y-2">
+                            <Skeleton width={120} height={14} />
+                            <Skeleton width={100} height={12} />
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <div className="flex items-center gap-2">
+                              <Skeleton width={28} height={28} circle />
+                              <Skeleton width={60} height={14} />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <Skeleton width={80} height={16} />
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <Skeleton width={80} height={24} />
+                          </td>
+                        </tr>
+                      ))
+                    : activeApplications.map((app) => (
+                        <tr
+                          key={app.id}
+                          className={`cursor-pointer transition-colors hover:bg-[var(--led-surface-2)] ${selectedAppId === app.id ? 'bg-[var(--led-accent-tint)]' : ''}`}
+                          onClick={() => setSelectedAppId(app.id)}
+                        >
+                          <td className="px-6 py-4 align-top">
+                            <div className="text-[13px] font-semibold led-tnum text-[var(--led-ink)]">{app.id.substring(0, 8)}</div>
+                            <div className="mt-1 text-[12px] text-[var(--led-muted)]">
+                              {formatShortDate(app.updated_at)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <div className="font-medium text-[var(--led-ink)]">{app.user_name || 'Unknown client'}</div>
+                            <div className="mt-1 text-[12px] text-[var(--led-muted)]">{app.user_email || 'No email on file'}</div>
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)]">
+                                <LoanTypeIcon type={app.loan_type} className="h-4 w-4" />
+                              </div>
+                              <span className="capitalize text-[var(--led-ink)]">{app.loan_type}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <div className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</div>
+                          </td>
+                          <td className="px-6 py-4 align-top">
+                            <Badge value={app.status} className="py-1 px-3" />
+                          </td>
+                        </tr>
+                      ))}
                   {!loading && activeApplications.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-14 text-center text-[13px] text-[var(--led-muted)]">
-                        No active applications in the pipeline.
+                      <td colSpan={5} className="px-6 py-10">
+                        <EmptyState title="No active files" description="Applications in progress will appear here once submitted." />
                       </td>
                     </tr>
                   )}
@@ -582,8 +640,8 @@ export default function ReferrerDashboard() {
                   {selectedApp.user_name || 'Unknown Client'}
                 </h2>
                 <div className="mt-3 flex items-center gap-2 text-[14px] text-[var(--led-muted)]">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[11px]">
-                    {LOAN_TYPE_ICONS[selectedApp.loan_type]}
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[10px] border border-[var(--led-line)] bg-[var(--led-surface-2)] text-[var(--led-muted)]">
+                    <LoanTypeIcon type={selectedApp.loan_type} className="h-4 w-4" />
                   </div>
                   <span className="capitalize">{selectedApp.loan_type} loan</span>
                   <span>&middot;</span>

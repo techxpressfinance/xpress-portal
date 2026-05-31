@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements } from '../../components/ui';
+import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker } from '../../components/ui';
 import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
 
 interface FormData {
@@ -67,6 +67,8 @@ export default function Profile() {
     register: registerDetails,
     handleSubmit: handleSubmitDetails,
     reset: resetDetails,
+    watch: watchDetails,
+    setValue: setValueDetails,
     formState: { isSubmitting: detailsSubmitting, isDirty: detailsDirty },
   } = useForm<ClientProfileData>();
 
@@ -218,8 +220,12 @@ export default function Profile() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Date of Birth</label>
-                  <input type="date" className={inputClass} {...registerDetails('applicant_dob')} />
+                  <DatePicker
+                    label="Date of Birth"
+                    value={watchDetails('applicant_dob') || ''}
+                    onChange={(v) => setValueDetails('applicant_dob', v, { shouldDirty: true })}
+                    className="bg-[var(--led-surface-2)] border-[var(--led-line)] text-[var(--led-ink)]"
+                  />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
@@ -267,8 +273,12 @@ export default function Profile() {
                   <input placeholder="NSW or Australia" className={inputClass} {...registerDetails('id_issuing_state_country')} />
                 </div>
                 <div>
-                  <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">ID Expiry Date</label>
-                  <input type="date" className={inputClass} {...registerDetails('id_expiry_date')} />
+                  <DatePicker
+                    label="ID Expiry Date"
+                    value={watchDetails('id_expiry_date') || ''}
+                    onChange={(v) => setValueDetails('id_expiry_date', v, { shouldDirty: true })}
+                    className="bg-[var(--led-surface-2)] border-[var(--led-line)] text-[var(--led-ink)]"
+                  />
                 </div>
               </div>
               <div>

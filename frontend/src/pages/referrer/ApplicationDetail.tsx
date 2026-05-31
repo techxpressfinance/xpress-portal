@@ -9,7 +9,7 @@ import DocumentUploader from '../../components/DocumentUploader';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, LEND_SYNC_BADGE } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -81,7 +81,7 @@ export default function ReferrerApplicationDetail() {
     signature_name: '', emergency_contact_name: '', emergency_contact_relationship: '',
     emergency_contact_phone: '',
   };
-  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   // Check if referrer is handling the client (self-managed mode)
   const isSelfManaged = application?.client_engagement_model === 'self_managed';
@@ -356,6 +356,23 @@ export default function ReferrerApplicationDetail() {
   const uploadedDocTypes = new Set(documents.map((d) => d.doc_type));
   const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
   const allDocsUploaded = missingDocs.length === 0;
+
+  // Broker-selected sections the client may complete (JSON array of section keys).
+  // null/absent = all sections visible. A referrer must not see or edit anything
+  // beyond what the broker exposed to the client — mirrors the client view's gating.
+  const enabledSections: Set<string> | null = (() => {
+    if (!application?.client_sections) return null;
+    try {
+      const parsed = JSON.parse(application.client_sections);
+      return Array.isArray(parsed)
+        ? new Set(parsed.filter((s: unknown): s is string => typeof s === 'string'))
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  const sectionVisible = (...keys: string[]) =>
+    !enabledSections || keys.some((k) => enabledSections.has(k));
 
   // Client-style view for self-managed mode
   if (isSelfManaged) {
@@ -940,10 +957,10 @@ export default function ReferrerApplicationDetail() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
-        <Link to="/referrer/applications" className="inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-primary transition-colors">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-          Back to All Applications
-        </Link>
+        <Breadcrumbs items={[
+          { label: 'Applications', href: '/referrer/applications' },
+          { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Detail' },
+        ]} />
       </div>
 
       {/* Status Timeline */}
@@ -1030,6 +1047,7 @@ export default function ReferrerApplicationDetail() {
                         </div>
                       </div>
 
+                      {sectionVisible('personal') && (<>
                       <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
                       <div className="grid gap-3 sm:grid-cols-4">
                         <div>
@@ -1058,8 +1076,12 @@ export default function ReferrerApplicationDetail() {
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('applicant_dob')} />
+                          <DatePicker
+                            label="DOB"
+                            value={watchEdit('applicant_dob') || ''}
+                            onChange={(v) => setValueEdit('applicant_dob', v, { shouldValidate: true })}
+                            className="led-input"
+                          />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
@@ -1076,7 +1098,9 @@ export default function ReferrerApplicationDetail() {
                           </select>
                         </div>
                       </div>
+                      </>)}
 
+                      {sectionVisible('living') && (<>
                       <h3 className="text-[13px] font-medium text-muted-foreground">Address</h3>
                       <div>
                         <label className="block text-[12px] text-muted-foreground mb-1">Street Address</label>
@@ -1102,7 +1126,9 @@ export default function ReferrerApplicationDetail() {
                         </div>
                       </div>
 
-                      {(watchEdit('loan_type') === 'business' || watchEdit('business_name') || watchEdit('business_abn')) && (
+                      </>)}
+
+                      {sectionVisible('business') && (watchEdit('loan_type') === 'business' || watchEdit('business_name') || watchEdit('business_abn')) && (
                         <>
                           <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -1184,7 +1210,7 @@ export default function ReferrerApplicationDetail() {
                 })()}
 
                 {/* Applicant Summary */}
-                {application.applicant_first_name && (
+                {application.applicant_first_name && sectionVisible('personal', 'living', 'business') && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
                     <dl className="grid gap-3 sm:grid-cols-2">
@@ -1194,25 +1220,25 @@ export default function ReferrerApplicationDetail() {
                           {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
                         </dd>
                       </div>
-                      {application.applicant_dob && (
+                      {sectionVisible('personal') && application.applicant_dob && (
                         <div className="rounded-xl bg-secondary/50 p-3">
                           <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
                           <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
                         </div>
                       )}
-                      {application.applicant_gender && (
+                      {sectionVisible('personal') && application.applicant_gender && (
                         <div className="rounded-xl bg-secondary/50 p-3">
                           <dt className="text-[12px] font-medium text-muted-foreground">Gender</dt>
                           <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender}</dd>
                         </div>
                       )}
-                      {application.applicant_marital_status && (
+                      {sectionVisible('personal') && application.applicant_marital_status && (
                         <div className="rounded-xl bg-secondary/50 p-3">
                           <dt className="text-[12px] font-medium text-muted-foreground">Marital Status</dt>
                           <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status}</dd>
                         </div>
                       )}
-                      {application.applicant_address && (
+                      {sectionVisible('living') && application.applicant_address && (
                         <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
                           <dt className="text-[12px] font-medium text-muted-foreground">Address</dt>
                           <dd className="mt-0.5 text-[14px] font-medium text-foreground">
@@ -1220,7 +1246,7 @@ export default function ReferrerApplicationDetail() {
                           </dd>
                         </div>
                       )}
-                      {application.business_name && (
+                      {sectionVisible('business') && application.business_name && (
                         <>
                           <div className="rounded-xl bg-secondary/50 p-3">
                             <dt className="text-[12px] font-medium text-muted-foreground">Business</dt>
@@ -1244,6 +1270,7 @@ export default function ReferrerApplicationDetail() {
             {activeTab === 'details' && (
               <div className="space-y-6">
                 {/* Contact */}
+                {sectionVisible('contact') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Contact Details</h2>
                   <div className="space-y-4">
@@ -1266,14 +1293,20 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Identification */}
+                {sectionVisible('identification') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Identification</h2>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">ID Expiry Date</label>
-                      <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('id_expiry_date')} />
+                      <DatePicker
+                        label="ID Expiry Date"
+                        value={watchEdit('id_expiry_date') || ''}
+                        onChange={(v) => setValueEdit('id_expiry_date', v, { shouldValidate: true })}
+                        className="led-input"
+                      />
                     </div>
                     <div>
                       <label className="block text-[12px] font-medium text-muted-foreground mb-1">Residency Status</label>
@@ -1284,8 +1317,10 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Living Situation */}
+                {sectionVisible('living') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Living Situation</h2>
                   <div className="space-y-4">
@@ -1322,8 +1357,10 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Employment & Income */}
+                {sectionVisible('employment', 'income') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Employment & Income</h2>
                   <div className="space-y-4">
@@ -1369,8 +1406,10 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Business Details */}
+                {sectionVisible('business') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Business Details</h2>
                   <div className="space-y-4">
@@ -1405,8 +1444,10 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Emergency Contact */}
+                {sectionVisible('emergency') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Emergency Contact</h2>
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -1424,8 +1465,10 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 {/* Declarations */}
+                {sectionVisible('declarations') && (
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Declarations</h2>
                   <div className="space-y-4">
@@ -1445,6 +1488,7 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   </div>
                 </GlassCard>
+                )}
 
                 <div className="flex items-center gap-3 pb-2">
                   <Button onClick={handleEditSubmit(handleSaveDetails)} loading={savingDetails}>Save Details</Button>
@@ -1468,7 +1512,7 @@ export default function ReferrerApplicationDetail() {
                       <p className="text-[13px] font-semibold text-muted-foreground">Application Data (Read-only)</p>
 
                       {/* Identification */}
-                      {idEntry && (
+                      {sectionVisible('identification') && idEntry && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">ID Document</h2>
                           <div className="grid gap-3 sm:grid-cols-3">
@@ -1480,7 +1524,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Employment details */}
-                      {empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details) && (
+                      {sectionVisible('employment') && empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details) && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Employment Details</h2>
                           <div className="grid gap-3 sm:grid-cols-3">
@@ -1492,7 +1536,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Income */}
-                      {incomes.length > 0 && (
+                      {sectionVisible('income') && incomes.length > 0 && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Income</h2>
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -1507,7 +1551,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Expenses */}
-                      {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
+                      {sectionVisible('expenses') && expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Monthly Expenses</h2>
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -1520,7 +1564,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Real Estate Assets */}
-                      {realEstateAssets.length > 0 && (
+                      {sectionVisible('assets') && realEstateAssets.length > 0 && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Real Estate Assets</h2>
                           <div className="space-y-3">
@@ -1540,7 +1584,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Other Assets */}
-                      {otherAssets.length > 0 && (
+                      {sectionVisible('assets') && otherAssets.length > 0 && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Other Assets</h2>
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -1555,7 +1599,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Liabilities */}
-                      {liabs.length > 0 && (
+                      {sectionVisible('liabilities') && liabs.length > 0 && (
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Liabilities</h2>
                           <div className="space-y-3">
@@ -1574,7 +1618,7 @@ export default function ReferrerApplicationDetail() {
                       )}
 
                       {/* Loan Type Details */}
-                      {(() => {
+                      {sectionVisible('loan_details') && (() => {
                         try {
                           const extraData = JSON.parse(application.lend_extra_data || '{}');
                           const loanDetails = extraData.loan_type_details;

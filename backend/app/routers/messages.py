@@ -2,43 +2,24 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.config import EMAIL_ENABLED
 from app.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.application_note import ApplicationNote
 from app.models.client_message import ClientMessage
-from app.models.direct_message import DirectMessage
 from app.models.notification import Notification
 from app.models.external_referral import ExternalReferral
-from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User
 from app.models.user import UserRole
-from app.schemas.message import ApplicationNoteMessageOut, MessageCreate, MessageOut, MessageRecipientOut, PaginatedMessages
-from app.services.email import _send_async
+from app.schemas.message import MessageRecipientOut
 from app.services.tenant_scope import get_tenant_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
-
-
-def _message_to_out(msg: DirectMessage) -> MessageOut:
-    return MessageOut(
-        id=msg.id,
-        sender_id=msg.sender_id,
-        sender_name=msg.sender.full_name if msg.sender else None,
-        recipient_id=msg.recipient_id,
-        recipient_name=msg.recipient.full_name if msg.recipient else None,
-        subject=msg.subject,
-        content=msg.content,
-        is_read=msg.is_read,
-        created_at=msg.created_at,
-    )
 
 
 @router.get("/notifications")
@@ -49,38 +30,7 @@ def get_notifications(
 ):
     items: list[dict] = []
 
-    # Unread direct messages
-    msgs = (
-        db.query(DirectMessage)
-        .filter(
-            DirectMessage.recipient_id == current_user.id,
-            DirectMessage.is_read == False,  # noqa: E712
-            DirectMessage.tenant_id == tenant_id,
-        )
-        .order_by(DirectMessage.created_at.desc())
-        .limit(15)
-        .all()
-    )
-    for msg in msgs:
-        sender_name = msg.sender.full_name if msg.sender else "Someone"
-        preview = msg.content[:80] + ("..." if len(msg.content) > 80 else "")
-        if current_user.role == UserRole.client:
-            link = "/messages"
-        elif current_user.role == UserRole.referrer:
-            link = "/referrer/messages"
-        else:
-            link = "/admin/messages"
-        items.append({
-            "id": msg.id,
-            "type": "message",
-            "title": f"Message from {sender_name}",
-            "body": msg.subject or preview,
-            "is_read": msg.is_read,
-            "created_at": msg.created_at.isoformat(),
-            "link": link,
-        })
-
-    # Unread client messages (for clients)
+    # Unread client messages (the live chat path, for all roles)
     client_msgs = (
         db.query(ClientMessage)
         .filter(
@@ -153,17 +103,21 @@ def unread_count(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    direct_count = (
-        db.query(DirectMessage)
-        .filter(DirectMessage.recipient_id == current_user.id, DirectMessage.is_read == False, DirectMessage.tenant_id == tenant_id)  # noqa: E712
-        .count()
-    )
+    # The Messages nav badge represents the global inbox, which only shows
+    # "outside" (non-application) conversations. App-scoped unread messages are
+    # surfaced via the notification bell + the application's own Messages tab,
+    # so they're excluded here to keep the badge and the inbox in agreement.
     client_count = (
         db.query(ClientMessage)
-        .filter(ClientMessage.recipient_id == current_user.id, ClientMessage.is_read == False, ClientMessage.tenant_id == tenant_id)  # noqa: E712
+        .filter(
+            ClientMessage.recipient_id == current_user.id,
+            ClientMessage.is_read == False,  # noqa: E712
+            ClientMessage.tenant_id == tenant_id,
+            ClientMessage.application_id.is_(None),
+        )
         .count()
     )
-    return {"count": direct_count + client_count}
+    return {"count": client_count}
 
 
 @router.post("/notifications/{notification_id}/read", status_code=status.HTTP_200_OK)
@@ -173,17 +127,6 @@ def mark_notification_read(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    # Try DirectMessage
-    msg = db.query(DirectMessage).filter(
-        DirectMessage.id == notification_id,
-        DirectMessage.recipient_id == current_user.id,
-        DirectMessage.tenant_id == tenant_id,
-    ).first()
-    if msg:
-        msg.is_read = True
-        db.commit()
-        return {"ok": True}
-
     # Try ClientMessage
     client_msg = db.query(ClientMessage).filter(
         ClientMessage.id == notification_id,
@@ -209,101 +152,6 @@ def mark_notification_read(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
 
 
-@router.get("", response_model=PaginatedMessages)
-def list_messages(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    query = db.query(DirectMessage).filter(
-        DirectMessage.tenant_id == tenant_id,
-        or_(DirectMessage.recipient_id == current_user.id, DirectMessage.sender_id == current_user.id),
-    )
-
-    total = query.count()
-    messages = query.order_by(DirectMessage.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
-
-    items = [
-        MessageOut(
-            id=msg.id,
-            sender_id=msg.sender_id,
-            sender_name=msg.sender.full_name if msg.sender else None,
-            recipient_id=msg.recipient_id,
-            recipient_name=msg.recipient.full_name if msg.recipient else None,
-            subject=msg.subject,
-            content=msg.content,
-            is_read=msg.is_read,
-            created_at=msg.created_at,
-        )
-        for msg in messages
-    ]
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-    }
-
-
-@router.get("/application-notes", response_model=list[ApplicationNoteMessageOut])
-def list_application_note_messages(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    """Return application notes visible to the current user (based on visibility field)."""
-    if current_user.role.value == "client":
-        # Client sees notes where visibility includes "client" on their own applications
-        notes = (
-            db.query(ApplicationNote)
-            .join(LoanApplication, ApplicationNote.application_id == LoanApplication.id)
-            .filter(
-                ApplicationNote.tenant_id == tenant_id,
-                LoanApplication.user_id == current_user.id,
-                ApplicationNote.visibility.contains("client"),
-            )
-            .order_by(ApplicationNote.created_at.desc())
-            .all()
-        )
-    elif current_user.role.value == "referrer":
-        # Referrer sees notes where visibility includes "referrer"
-        notes = (
-            db.query(ApplicationNote)
-            .filter(
-                ApplicationNote.tenant_id == tenant_id,
-                ApplicationNote.visibility.contains("referrer"),
-            )
-            .order_by(ApplicationNote.created_at.desc())
-            .all()
-        )
-    else:
-        # Broker/admin sees client/referrer-visible notes they authored (for the Messages page)
-        notes = (
-            db.query(ApplicationNote)
-            .filter(
-                ApplicationNote.tenant_id == tenant_id,
-                ApplicationNote.author_id == current_user.id,
-                ApplicationNote.visibility != "broker",
-            )
-            .order_by(ApplicationNote.created_at.desc())
-            .all()
-        )
-    return [
-        ApplicationNoteMessageOut(
-            id=n.id,
-            application_id=n.application_id,
-            loan_type=n.application.loan_type.value if n.application else "unknown",
-            author_id=n.author_id,
-            author_name=n.author.full_name if n.author else None,
-            content=n.content,
-            created_at=n.created_at,
-        )
-        for n in notes
-    ]
-
-
 @router.get("/recipients", response_model=list[MessageRecipientOut])
 def list_message_recipients(
     db: Session = Depends(get_db),
@@ -311,18 +159,20 @@ def list_message_recipients(
     tenant_id: str = Depends(get_tenant_id),
 ):
     from app.models.external_referral import ClientEngagementModel
+    from app.services.query_utils import active_user_clauses
     role = current_user.role.value
     if role == "client":
-        recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
+        recipients = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id, *active_user_clauses()).all()
     elif role == "referrer":
         # Referrers can message brokers, admins, and clients they referred
-        staff = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id).all()
+        staff = db.query(User).filter(User.role.in_([UserRole.broker, UserRole.admin]), User.tenant_id == tenant_id, *active_user_clauses()).all()
         # Get clients they referred via ExternalReferral
         ext_referral_clients = db.query(User).join(
             ExternalReferral, User.id == ExternalReferral.referred_client_id
         ).filter(
             ExternalReferral.referrer_id == current_user.id,
             ExternalReferral.referred_client_id.isnot(None),
+            *active_user_clauses(),
         ).all()
         # Get clients they referred via Referral (internal)
         internal_referral_clients = db.query(User).join(
@@ -330,6 +180,7 @@ def list_message_recipients(
         ).filter(
             Referral.referrer_id == current_user.id,
             Referral.referred_user_id.isnot(None),
+            *active_user_clauses(),
         ).all()
         # Combine and deduplicate
         seen_ids = {u.id for u in staff}
@@ -342,12 +193,14 @@ def list_message_recipients(
         recipients = db.query(User).filter(
             User.tenant_id == tenant_id,
             User.id != current_user.id,
+            *active_user_clauses(),
         ).all()
     else:
         all_recipients = db.query(User).filter(
             User.role.in_([UserRole.client, UserRole.referrer, UserRole.broker]),
             User.tenant_id == tenant_id,
             User.id != current_user.id,
+            *active_user_clauses(),
         ).all()
         blocked = {
             r.referred_client_id
@@ -535,102 +388,3 @@ def list_client_inbox(
     return _build_conversations(pairs, db, tenant_id)
 
 
-@router.get("/{message_id}", response_model=MessageOut)
-def get_message(
-    message_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    msg = db.query(DirectMessage).filter(DirectMessage.id == message_id).first()
-    if not msg:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-
-    # Only sender or recipient can view
-    if msg.sender_id != current_user.id and msg.recipient_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    # Mark as read if current user is the recipient
-    if msg.recipient_id == current_user.id and not msg.is_read:
-        msg.is_read = True
-        db.commit()
-        db.refresh(msg)
-
-    return _message_to_out(msg)
-
-
-@router.post("", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
-def send_message(
-    data: MessageCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    # Validate recipient exists within the same tenant
-    recipient = db.query(User).filter(User.id == data.recipient_id, User.tenant_id == tenant_id).first()
-    if not recipient:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
-
-    sender_role = current_user.role.value
-    recipient_role = recipient.role.value
-    if sender_role == "client" and recipient_role not in {"broker", "admin"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Clients can only message brokers or admins")
-    if sender_role == "referrer":
-        # Referrers can message brokers, admins, or clients they referred
-        if recipient_role in {"broker", "admin"}:
-            pass  # Allowed
-        elif recipient_role == "client":
-            # Check if this referrer referred this client
-            referred = db.query(ExternalReferral).filter(
-                ExternalReferral.referrer_id == current_user.id,
-                ExternalReferral.referred_client_id == recipient.id,
-            ).first() or db.query(Referral).filter(
-                Referral.referrer_id == current_user.id,
-                Referral.referred_user_id == recipient.id,
-            ).first()
-            if not referred:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You can only message clients you referred",
-                )
-        else:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Referrers can only message brokers, admins, or clients they referred")
-    if sender_role == "broker" and recipient_role not in {"client", "referrer"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Brokers can only message clients or referrers")
-
-    msg = DirectMessage(
-        sender_id=current_user.id,
-        recipient_id=data.recipient_id,
-        subject=data.subject,
-        content=data.content,
-        tenant_id=tenant_id,
-    )
-    db.add(msg)
-    db.commit()
-    db.refresh(msg)
-
-    # Send email notification to the recipient
-    if EMAIL_ENABLED:
-        if recipient_role == "client":
-            body = (
-                f"Dear {recipient.full_name},\n\n"
-                f"You have a new message from {current_user.full_name}.\n\n"
-                f"Subject: {data.subject}\n\n"
-                f"{data.content}\n\n"
-                f"Log in to your Xpress Finance Portal account to view the full message.\n\n"
-                f"Best regards,\nXpress Finance Team"
-            )
-        else:
-            body = (
-                f"Hello {recipient.full_name},\n\n"
-                f"You have a new client message from {current_user.full_name}.\n\n"
-                f"Subject: {data.subject}\n\n"
-                f"{data.content}\n\n"
-                f"Log in to your Xpress Finance Portal account to reply.\n\n"
-                f"Best regards,\nXpress Finance Team"
-            )
-        _send_async(recipient.email, f"New Message: {data.subject} - Xpress Finance Portal", body)
-    else:
-        logger.debug("Email not configured, skipping message notification to %s", recipient.email)
-
-    return _message_to_out(msg)

@@ -64,12 +64,26 @@ def blacklist_token(token: str, db) -> None:
     payload = decode_token(token)
     if not payload or "jti" not in payload:
         return
+    # Idempotent: a token may be revoked more than once (e.g. double logout or a
+    # retried refresh). Skip if already blacklisted to avoid a UNIQUE violation.
+    if is_token_blacklisted(payload["jti"], db):
+        return
     entry = TokenBlacklist(
         token_jti=payload["jti"],
         user_id=payload["sub"],
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     )
-    db.add(entry)
+    # Guard against the concurrent case (two refreshes racing on the same token):
+    # the pre-check above can pass in both before either commits. Insert inside a
+    # savepoint so a UNIQUE collision rolls back only this row, not the caller's
+    # other pending changes — the token ends up blacklisted either way.
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        with db.begin_nested():
+            db.add(entry)
+    except IntegrityError:
+        pass
 
 
 def blacklist_all_user_tokens(user_id: str, db) -> None:

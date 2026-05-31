@@ -18,7 +18,7 @@ from app.models.user import User
 from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
 from app.models.application_broker import ApplicationBroker
 from app.schemas.common import normalize_email
-from app.services.email import send_complete_application_email, send_setup_account_email
+from app.services.email import notify_admins_new_account, send_complete_application_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
@@ -132,6 +132,11 @@ def invite_user(
 
     setup_url = f"{FRONTEND_URL}/setup-account?token={token}"
     send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="client")
+
+    notify_admins_new_account(
+        db, tenant_id, "client", data.full_name, data.email, current_user.full_name or current_user.email,
+        f"{FRONTEND_URL}/admin/contacts",
+    )
     return user
 
 

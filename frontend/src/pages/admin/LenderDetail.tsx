@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { GlassCard, Badge, Button, Input } from '../../components/ui';
+import { GlassCard, Badge, Button, Input, Breadcrumbs } from '../../components/ui';
 import type { Lender, LenderContact } from '../../types';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
@@ -171,12 +171,10 @@ export default function LenderDetail() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link to="/admin/lenders" className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-5">
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-        </svg>
-        Lenders
-      </Link>
+      <Breadcrumbs items={[
+        { label: 'Lenders', href: '/admin/lenders' },
+        { label: lender?.name || 'Detail' },
+      ]} />
 
       {/* Lender info */}
       <GlassCard className="mb-4">

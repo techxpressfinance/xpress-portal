@@ -2,20 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Badge, Button } from '../../components/ui';
+import { GlassCard, Badge, Button, LoanTypeIcon } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import type { ApplicationStatus, LoanApplication } from '../../types';
-
-const LOAN_ICON: Record<string, string> = {
-  personal: '💳',
-  home: '🏠',
-  home_loan: '🏠',
-  vehicle: '🚗',
-  business: '💼',
-  business_loan: '💼',
-  equipment_finance: '🏗️',
-  commercial_property: '🏢',
-};
 
 const STATUS_ACCENT: Record<ApplicationStatus, string> = {
   draft: 'bg-[var(--led-muted)]',
@@ -129,8 +118,8 @@ export default function Applications() {
               <div className={`mt-0.5 h-12 w-1 shrink-0 rounded-full ${STATUS_ACCENT[app.status]}`} />
 
               {/* Loan type icon */}
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--led-surface-2)] text-xl">
-                {LOAN_ICON[app.loan_type] ?? '📄'}
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--led-surface-2)] text-[var(--led-muted)]">
+                <LoanTypeIcon type={app.loan_type} className="h-6 w-6" />
               </div>
 
               {/* Main content */}

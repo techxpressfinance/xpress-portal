@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, DatePicker } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import type { Contact, PaginatedResponse } from '../../types';
 
@@ -86,8 +86,11 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <Input type="tel" placeholder="04XX XXX XXX" {...field('phone')} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Date of Birth</label>
-            <Input type="date" {...field('date_of_birth')} />
+            <DatePicker
+              label="Date of Birth"
+              value={form.date_of_birth}
+              onChange={(v) => setForm(f => ({ ...f, date_of_birth: v }))}
+            />
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>

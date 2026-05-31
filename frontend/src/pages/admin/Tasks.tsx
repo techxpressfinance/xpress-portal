@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard } from '../../components/ui';
+import { GlassCard, DatePicker } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
 
 const STATUS_TABS = [
@@ -97,12 +97,18 @@ export default function Tasks() {
     e.stopPropagation();
     if (toggling) return;
     setToggling(task.id);
-    const newStatus = task.status === 'completed' ? 'todo' : 'completed';
+    const newStatus: TaskListItem['status'] = task.status === 'completed' ? 'todo' : 'completed';
+    // Optimistic: update the row instantly. In a filtered tab the row no longer
+    // matches, so drop it locally rather than waiting on a refetch.
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t));
+      return statusFilter ? updated.filter((t) => t.status === statusFilter) : updated;
+    });
     try {
       await api.patch(`/tasks/${task.id}`, { status: newStatus });
-      fetchData();
     } catch {
       toast('Failed to update task', 'error');
+      fetchData(); // reconcile from server on failure
     } finally {
       setToggling(null);
     }
@@ -376,12 +382,11 @@ export default function Tasks() {
               disabled={adding}
               className="flex-1 min-w-[120px] bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
-            <input
-              type="date"
+            <DatePicker
               value={newDueDate}
-              onChange={(e) => setNewDueDate(e.target.value)}
-              title="Due date"
-              className="text-[12px] rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              onChange={(v) => setNewDueDate(v)}
+              placeholder="Due date"
+              className="text-[12px] h-8 py-1"
             />
             <select
               value={newAssignee}

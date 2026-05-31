@@ -708,3 +708,74 @@ def send_new_lead_notification(
     html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
+
+
+def send_new_account_notification(
+    to_email: str,
+    admin_name: str,
+    account_type: str,
+    account_name: str,
+    account_email: str,
+    added_by_name: str,
+    portal_url: str,
+) -> None:
+    """Notify an admin that a new referrer or client account has been added. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping new account notification for %s", to_email)
+        return
+
+    type_label = "referrer" if account_type == "referrer" else "client"
+    subject = f"New {type_label.capitalize()} Added: {account_name} — Xpress Finance Portal"
+    body = (
+        f"Dear {admin_name},\n\n"
+        f"{added_by_name} has added a new {type_label}.\n\n"
+        f"Name: {account_name}\n"
+        f"Email: {account_email}\n\n"
+        f"Log in to the portal to review: {portal_url}\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(admin_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            <strong>{_esc(added_by_name)}</strong> has added a new {_esc(type_label)}.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Name:</strong> {_esc(account_name)}</p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Email:</strong> {_esc(account_email)}</p>
+                </td>
+            </tr>
+        </table>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(portal_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Open Portal</a>
+        </div>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
+def notify_admins_new_account(
+    db,
+    tenant_id: str,
+    account_type: str,
+    account_name: str,
+    account_email: str,
+    added_by_name: str,
+    portal_url: str,
+) -> None:
+    """Email every admin in the tenant that a new referrer/client account was added. Non-blocking."""
+    from app.models.user import User, UserRole
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+    for admin in admins:
+        send_new_account_notification(
+            admin.email,
+            admin.full_name or "Admin",
+            account_type,
+            account_name,
+            account_email,
+            added_by_name,
+            portal_url,
+        )

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Input } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES } from '../../lib/constants';
 
@@ -728,7 +728,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
                   className={`rounded-xl border p-3 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
                 >
-                  <span className="text-xl leading-none">{type.icon}</span>
+                  <LoanTypeIcon type={type.value} className="h-5 w-5 text-muted-foreground" />
                   <p className="text-[13px] font-medium text-foreground mt-1">{type.label}</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{type.description}</p>
                 </button>
@@ -904,7 +904,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                     <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
                       className={`rounded-xl border p-2.5 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
                     >
-                      <p className="text-[13px] font-medium text-foreground">{type.icon} {type.label}</p>
+                      <p className="flex items-center gap-2 text-[13px] font-medium text-foreground"><LoanTypeIcon type={type.value} className="h-4 w-4 shrink-0 text-muted-foreground" /> {type.label}</p>
                     </button>
                   );
                 })}
@@ -1252,8 +1252,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 <input type="text" className="led-input" placeholder="Optional" value={extra.applicant_middle_name} onChange={e => setExtra('applicant_middle_name', e.target.value)} />
               </div>
               <div>
-                <label className={LBL}>Date of Birth</label>
-                <input type="text" className="led-input" placeholder="YYYY-MM-DD" value={extra.applicant_dob} onChange={e => setExtra('applicant_dob', e.target.value)} />
+                <DatePicker
+                  label="Date of Birth"
+                  value={extra.applicant_dob}
+                  onChange={(v) => setExtra('applicant_dob', v)}
+                  placeholder="Select date"
+                  className="led-input"
+                />
               </div>
               <div>
                 <label className={LBL}>Gender</label>
@@ -1315,8 +1320,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 )}
               </div>
               <div>
-                <label className={LBL}>ID Expiry Date</label>
-                <input type="text" className="led-input" placeholder="YYYY-MM-DD" value={extra.id_expiry_date} onChange={e => setExtra('id_expiry_date', e.target.value)} />
+                <DatePicker
+                  label="ID Expiry Date"
+                  value={extra.id_expiry_date}
+                  onChange={(v) => setExtra('id_expiry_date', v)}
+                  placeholder="Select date"
+                  className="led-input"
+                />
               </div>
             </div>
           </GlassCard>
@@ -1401,8 +1411,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 <input type="text" className="led-input" value={extra.employer_name} onChange={e => setExtra('employer_name', e.target.value)} />
               </div>
               <div>
-                <label className={LBL}>Employment Start Date</label>
-                <input type="text" className="led-input" placeholder="YYYY-MM-DD" value={extra.employment_start_date} onChange={e => setExtra('employment_start_date', e.target.value)} />
+                <DatePicker
+                  label="Employment Start Date"
+                  value={extra.employment_start_date}
+                  onChange={(v) => setExtra('employment_start_date', v)}
+                  placeholder="Select date"
+                  className="led-input"
+                />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
@@ -8,7 +8,7 @@ import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
-import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
 import { DOC_TYPE_LABELS, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { useAuth } from '../../hooks/useAuth';
@@ -212,17 +212,32 @@ export default function ApplicationDetail() {
     );
   }
 
+  // Broker-selected sections the client may complete (JSON array of section keys).
+  // null/absent = all sections visible. Staff (broker/admin) always see every
+  // section regardless of what was requested of the client.
+  const isStaffViewer = user?.role === 'admin' || user?.role === 'broker';
+  const enabledSections: Set<string> | null = (() => {
+    if (!application.client_sections) return null;
+    try {
+      const parsed = JSON.parse(application.client_sections);
+      return Array.isArray(parsed)
+        ? new Set(parsed.filter((s: unknown): s is string => typeof s === 'string'))
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  const sectionVisible = (...keys: string[]) =>
+    isStaffViewer || !enabledSections || keys.some((k) => enabledSections.has(k));
+
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
       <div className="mb-8 mt-2">
-        <Link
-          to="/applications"
-          className="inline-flex items-center gap-2 text-[12px] font-medium text-[var(--led-muted)] hover:text-[var(--led-accent)] transition-colors mb-4"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-          Back to Applications
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <Breadcrumbs items={[
+          { label: 'Applications', href: '/applications' },
+          { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Detail' },
+        ]} />
+        <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="led-chip led-chip-accent">Application</span>
@@ -364,6 +379,7 @@ export default function ApplicationDetail() {
           {activeTab === 'details' && (
           <>
           {/* Personal Details */}
+          {sectionVisible('personal', 'contact', 'living') && (
           <GlassCard padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Applicant</p>
@@ -371,6 +387,7 @@ export default function ApplicationDetail() {
             </div>
             <div className="p-6">
             <div className="grid gap-3 sm:grid-cols-2">
+              {sectionVisible('personal') && (<>
               <div className="rounded-xl bg-[var(--led-surface-2)] p-3.5 sm:col-span-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Full Name</p>
                 <p className="mt-1 text-[14px] font-medium text-[var(--led-ink)]">
@@ -389,10 +406,14 @@ export default function ApplicationDetail() {
                 <p className="text-[12px] text-[var(--led-muted)]">Marital Status</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)] capitalize">{application.applicant_marital_status || '—'}</p>
               </div>
+              </>)}
+              {sectionVisible('living') && (
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
                 <p className="text-[12px] text-[var(--led-muted)]">Dependants</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_num_dependants ?? '—'}</p>
               </div>
+              )}
+              {sectionVisible('contact') && (<>
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
                 <p className="text-[12px] text-[var(--led-muted)]">Mobile</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_mobile || '—'}</p>
@@ -401,15 +422,20 @@ export default function ApplicationDetail() {
                 <p className="text-[12px] text-[var(--led-muted)]">Preferred Contact</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)] capitalize">{application.preferred_contact_method || '—'}</p>
               </div>
+              </>)}
+              {sectionVisible('living') && (
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
                 <p className="text-[12px] text-[var(--led-muted)]">Residency Status</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_residency_status || '—'}</p>
               </div>
+              )}
             </div>
           </div>
           </GlassCard>
+          )}
 
           {/* Address & Living Situation */}
+          {sectionVisible('living') && (
           <GlassCard padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Residence</p>
@@ -442,8 +468,10 @@ export default function ApplicationDetail() {
             </div>
           </div>
           </GlassCard>
+          )}
 
           {/* Employment */}
+          {sectionVisible('employment', 'business') && (
           <GlassCard padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Work</p>
@@ -504,9 +532,10 @@ export default function ApplicationDetail() {
             </div>
           </div>
           </GlassCard>
+          )}
 
           {/* Loan Type Details (from lend_extra_data) */}
-          {application.lend_extra_data && (() => {
+          {sectionVisible('loan_details') && application.lend_extra_data && (() => {
             try {
               const extraData = JSON.parse(application.lend_extra_data);
               const loanDetails = extraData.loan_type_details;
@@ -609,6 +638,7 @@ export default function ApplicationDetail() {
           })()}
 
           {/* Emergency Contact */}
+          {sectionVisible('emergency') && (
           <GlassCard padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Contact</p>
@@ -631,6 +661,7 @@ export default function ApplicationDetail() {
             </div>
           </div>
           </GlassCard>
+          )}
 
           {/* Referrer Info */}
           {application.referrer && (
@@ -673,15 +704,16 @@ export default function ApplicationDetail() {
           )}
 
           {/* Applicant Details */}
-          {application.applicant_first_name && (
+          {application.applicant_first_name && sectionVisible('personal', 'contact', 'living', 'employment', 'business', 'loan_details', 'emergency', 'declarations') && (
             <GlassCard padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Full Details</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Applicant Details</h2>
               </div>
               <div className="p-6">
-              
+
               {/* Personal Information */}
+              {sectionVisible('personal') && (
               <div className="mb-5">
                 <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Personal Information</h3>
                 <dl className="grid gap-3 sm:grid-cols-2">
@@ -711,9 +743,10 @@ export default function ApplicationDetail() {
                   )}
                 </dl>
               </div>
+              )}
 
               {/* Contact Information */}
-              {(application.applicant_mobile || application.preferred_contact_method || application.user_email) && (
+              {sectionVisible('contact') && (application.applicant_mobile || application.preferred_contact_method || application.user_email) && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Contact Information</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -740,7 +773,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Address */}
-              {application.applicant_address && (
+              {sectionVisible('living') && application.applicant_address && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Address</h3>
                   <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3 mb-3">
@@ -773,7 +806,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Living Situation */}
-              {(application.has_partner !== null || application.partner_working !== null || application.applicant_residency_status || application.id_expiry_date) && (
+              {sectionVisible('living') && (application.has_partner !== null || application.partner_working !== null || application.applicant_residency_status || application.id_expiry_date) && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Living Situation</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -806,7 +839,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Employment Information */}
-              {(application.employment_category || application.employer_name || application.job_title || application.gross_income) && (
+              {sectionVisible('employment') && (application.employment_category || application.employer_name || application.job_title || application.gross_income) && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Employment Information</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -851,7 +884,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Business Information */}
-              {(application.business_name || application.business_abn || application.trading_name || application.business_structure) && (
+              {sectionVisible('business') && (application.business_name || application.business_abn || application.trading_name || application.business_structure) && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Business Information</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -914,7 +947,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Loan Details */}
-              {(application.loan_term_requested || application.loan_purpose_id) && (
+              {sectionVisible('loan_details') && (application.loan_term_requested || application.loan_purpose_id) && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Loan Details</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -935,7 +968,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Emergency Contact */}
-              {application.emergency_contact_name && (
+              {sectionVisible('emergency') && application.emergency_contact_name && (
                 <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Emergency Contact</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -960,7 +993,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Declarations */}
-              {(application.previously_declined !== null || application.change_of_circumstances !== null || application.signature_name) && (
+              {sectionVisible('declarations') && (application.previously_declined !== null || application.change_of_circumstances !== null || application.signature_name) && (
                 <div className="pt-4 border-t border-[var(--led-line)]">
                   <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Declarations</h3>
                   <dl className="grid gap-3 sm:grid-cols-2">
@@ -990,7 +1023,7 @@ export default function ApplicationDetail() {
           )}
 
           {/* Loan Type Details from lend_extra_data */}
-          {application.lend_extra_data && (() => {
+          {sectionVisible('loan_details') && application.lend_extra_data && (() => {
             try {
               const extraData = JSON.parse(application.lend_extra_data);
               const loanDetails = extraData.loan_type_details;
@@ -1317,32 +1350,32 @@ export default function ApplicationDetail() {
 
               // Identification: stored as array [{type, number, state/country, expiry_date}]
               const idEntry = Array.isArray(extraData.identification) ? extraData.identification[0] : null;
-              const hasIdentification = idEntry && (idEntry.type || idEntry.number);
+              const hasIdentification = sectionVisible('identification') && idEntry && (idEntry.type || idEntry.number);
 
               // Employment: stored as array [{employer_name, employment_type, start_date, industry, job_title, contact_details}]
               const empEntry = Array.isArray(extraData.employments) ? extraData.employments[0] : null;
-              const hasEmployment = empEntry && (empEntry.job_title || empEntry.employer_name);
+              const hasEmployment = sectionVisible('employment') && empEntry && (empEntry.job_title || empEntry.employer_name);
 
               // Income: stored as array [{income_type, amount, frequency}]
               const incomes: Array<{income_type?: string; amount?: number; frequency?: string}> = Array.isArray(extraData.incomes) ? extraData.incomes.filter((i: {amount?: number}) => (i.amount ?? 0) > 0) : [];
-              const hasIncome = incomes.length > 0;
+              const hasIncome = sectionVisible('income') && incomes.length > 0;
 
               // Assets: stored as {real_estate: [...], other: [...]}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const realEstateAssets: Array<Record<string, any>> = Array.isArray(extraData.assets?.real_estate) ? extraData.assets.real_estate : [];
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const otherAssets: Array<Record<string, any>> = Array.isArray(extraData.assets?.other) ? extraData.assets.other : [];
-              const hasAssets = realEstateAssets.length > 0 || otherAssets.length > 0;
+              const hasAssets = sectionVisible('assets') && (realEstateAssets.length > 0 || otherAssets.length > 0);
 
               // Liabilities: stored as array [{liability_type, lender, balance, limit, monthly_repayment}]
               const liabs: Array<Record<string, unknown>> = Array.isArray(extraData.liabilities) ? extraData.liabilities : [];
-              const hasLiabilities = liabs.length > 0;
+              const hasLiabilities = sectionVisible('liabilities') && liabs.length > 0;
 
               // Expenses: stored as {monthly_living, rent_mortgage, child_support, other_commitments}
               const expenses = extraData.expenses;
-              const hasExpenses = expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0);
+              const hasExpenses = sectionVisible('expenses') && expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0);
 
-              const hasOtherDirectors = !!extraData.other_directors;
+              const hasOtherDirectors = sectionVisible('business') && !!extraData.other_directors;
 
               if (!hasIdentification && !hasEmployment && !hasIncome && !hasAssets && !hasLiabilities && !hasExpenses && !hasOtherDirectors) return null;
 
@@ -1495,7 +1528,7 @@ export default function ApplicationDetail() {
                   )}
 
                   {/* Real Estate Assets */}
-                  {realEstateAssets.length > 0 && (
+                  {sectionVisible('assets') && realEstateAssets.length > 0 && (
                     <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                       <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Real Estate Assets</h3>
                       <div className="space-y-3">
@@ -1518,7 +1551,7 @@ export default function ApplicationDetail() {
                   )}
 
                   {/* Other Assets */}
-                  {otherAssets.length > 0 && (
+                  {sectionVisible('assets') && otherAssets.length > 0 && (
                     <div className="mb-5 pt-4 border-t border-[var(--led-line)]">
                       <h3 className="text-[13px] font-medium text-[var(--led-muted)] mb-3">Other Assets</h3>
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -1921,7 +1954,7 @@ export default function ApplicationDetail() {
               </div>
 
               {/* Personal Details */}
-              {application.applicant_first_name && (
+              {sectionVisible('personal', 'contact', 'living', 'identification') && application.applicant_first_name && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Applicant Details</h2>
                   <div style={S.grid}>
@@ -1942,7 +1975,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Address */}
-              {application.applicant_address && (
+              {sectionVisible('living') && application.applicant_address && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Address & Living Situation</h2>
                   <div style={S.grid}>
@@ -1957,7 +1990,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Employment */}
-              {(application.employment_category || empEntry) && (
+              {sectionVisible('employment', 'business') && (application.employment_category || empEntry) && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Employment</h2>
                   <div style={S.grid}>
@@ -1983,7 +2016,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Loan Type Details */}
-              {loanDetails && Object.keys(loanDetails).length > 0 && (
+              {sectionVisible('loan_details') && loanDetails && Object.keys(loanDetails).length > 0 && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Loan Type Details</h2>
                   {Object.entries(loanDetails).map(([key, val]) => {
@@ -2008,7 +2041,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Income */}
-              {incomes.length > 0 && (
+              {sectionVisible('income') && incomes.length > 0 && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Income</h2>
                   <div style={S.grid}>
@@ -2023,7 +2056,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Expenses */}
-              {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
+              {sectionVisible('expenses') && expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Monthly Expenses</h2>
                   <div style={S.grid}>
@@ -2036,7 +2069,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Real Estate Assets */}
-              {realEstateAssets.length > 0 && (
+              {sectionVisible('assets') && realEstateAssets.length > 0 && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Real Estate Assets</h2>
                   {realEstateAssets.map((asset, idx) => (
@@ -2055,7 +2088,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Other Assets */}
-              {otherAssets.length > 0 && (
+              {sectionVisible('assets') && otherAssets.length > 0 && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Other Assets</h2>
                   <div style={S.grid}>
@@ -2070,7 +2103,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Liabilities */}
-              {liabs.length > 0 && (
+              {sectionVisible('liabilities') && liabs.length > 0 && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Liabilities</h2>
                   {liabs.map((lib, idx) => (
@@ -2087,7 +2120,7 @@ export default function ApplicationDetail() {
               )}
 
               {/* Declarations */}
-              {(application.previously_declined != null || application.change_of_circumstances != null || application.signature_name || application.emergency_contact_name) && (
+              {sectionVisible('declarations', 'emergency') && (application.previously_declined != null || application.change_of_circumstances != null || application.signature_name || application.emergency_contact_name) && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Declarations</h2>
                   <div style={S.grid}>

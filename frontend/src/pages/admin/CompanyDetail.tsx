@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import type { OrganizationDetail, OrganizationContactLite } from '../../types';
@@ -287,6 +287,10 @@ export default function CompanyDetail() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs items={[
+        { label: 'Companies', href: '/admin/companies' },
+        { label: company.name },
+      ]} />
       <PageHeader
         title={company.name}
         subtitle={company.abn ? `ABN ${company.abn}` : 'Company'}
@@ -294,7 +298,6 @@ export default function CompanyDetail() {
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={() => setEditing(true)}>Edit</Button>
             <Button variant="danger" size="sm" loading={deleting} onClick={handleDelete}>Delete</Button>
-            <Link to="/admin/companies"><Button variant="secondary" size="sm">Back</Button></Link>
           </div>
         }
       />

@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { formatDate } from '../../lib/utils';
-import { GlassCard, Badge, Button } from '../../components/ui';
+import { GlassCard, Badge, Button, Skeleton, EmptyState } from '../../components/ui';
 import type { LoanApplication } from '../../types';
 
 export default function ClientDashboard() {
@@ -22,6 +22,12 @@ export default function ClientDashboard() {
   }, []);
 
   const activeCount = applications.filter((a) => !['settled', 'rejected'].includes(a.status)).length;
+
+  // Broker on the most recent application that has one assigned (applications come ordered newest-first)
+  const myBroker = applications.find((a) => a.assigned_broker_name)?.assigned_broker_name ?? null;
+  const brokerInitials = myBroker
+    ? myBroker.split(' ').filter(Boolean).slice(0, 2).map((n) => n.charAt(0).toUpperCase()).join('')
+    : '';
 
   const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
@@ -50,6 +56,25 @@ export default function ClientDashboard() {
               Here's an overview of your loan applications
             </p>
           </div>
+
+          {myBroker && (
+            <Link
+              to="/messages"
+              className="group inline-flex items-center gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3 transition-colors hover:bg-[var(--led-bg-2)]"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--led-accent)] text-[14px] font-semibold text-[var(--led-accent-ink)]">
+                {brokerInitials}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Your Broker</p>
+                <p className="text-[14px] font-semibold text-[var(--led-ink)]">{myBroker}</p>
+              </div>
+              <span className="ml-2 inline-flex items-center gap-1 text-[13px] font-medium text-[var(--led-accent)] opacity-0 transition-opacity group-hover:opacity-100">
+                Message
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+              </span>
+            </Link>
+          )}
         </div>
         <Link to="/applications/new" data-tour="new-application">
           <Button size="lg" className="h-11 px-5">+ New Application</Button>
@@ -64,7 +89,7 @@ export default function ClientDashboard() {
               <div className="p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Total Applications</p>
                 <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
-                  {loading ? '--' : applications.length}
+                  {loading ? <Skeleton width={60} height={36} className="mt-1" /> : applications.length}
                 </p>
                 <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">Applications you have submitted</p>
               </div>
@@ -74,7 +99,7 @@ export default function ClientDashboard() {
               <div className="p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Active</p>
                 <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
-                  {loading ? '--' : activeCount}
+                  {loading ? <Skeleton width={60} height={36} className="mt-1" /> : activeCount}
                 </p>
                 <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">Applications currently in progress</p>
               </div>
@@ -102,16 +127,20 @@ export default function ClientDashboard() {
                 ))}
               </div>
             ) : applications.length === 0 ? (
-              <div className="px-6 py-12 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--led-surface-2)]">
-                  <svg className="h-8 w-8 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                </div>
-                <p className="text-[14px] font-medium text-[var(--led-ink)] mb-1">No applications yet</p>
-                <p className="text-[13px] text-[var(--led-muted)] mb-5">Get started by creating your first loan application</p>
-                <Link to="/applications/new">
-                  <Button size="sm">Create Application</Button>
-                </Link>
-              </div>
+              <EmptyState
+                title="No applications yet"
+                description="Get started by creating your first loan application."
+                icon={
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                }
+                action={
+                  <Link to="/applications/new">
+                    <Button size="sm">Create Application</Button>
+                  </Link>
+                }
+              />
             ) : (
               <div className="divide-y divide-[var(--led-line)]">
                 {applications.slice(0, 5).map((app) => (

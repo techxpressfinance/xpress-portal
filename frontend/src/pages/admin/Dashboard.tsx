@@ -14,7 +14,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Button } from '../../components/ui';
+import { GlassCard, Button, Skeleton, EmptyState } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { formatShortDate, formatTime } from '../../lib/utils';
 import type { ActivityLog, DashboardStats, LoanApplication } from '../../types';
@@ -110,12 +110,12 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
             <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
-              {loading ? '--' : value}
+              {loading ? <Skeleton width={80} height={36} className="mt-1" /> : value}
             </p>
           </div>
           {delta && !loading && <span className={toneStyles[tone].chip}>{delta}</span>}
         </div>
-        <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{detail}</p>
+        <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{loading ? <Skeleton width={180} height={16} /> : detail}</p>
       </div>
     </GlassCard>
   );
@@ -262,14 +262,14 @@ export default function AdminDashboard() {
             <div className="led-card px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Avg Turnaround</p>
               <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
-                {loading ? '--' : formatDays(dashStats?.avg_turnaround_days ?? null)}
+                {loading ? <Skeleton width={60} height={28} /> : formatDays(dashStats?.avg_turnaround_days ?? null)}
               </p>
             </div>
           )}
           <div className="led-card px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Urgent Exceptions</p>
             <p className="mt-1 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
-              {loading ? '--' : urgentActions}
+              {loading ? <Skeleton width={60} height={28} /> : urgentActions}
             </p>
           </div>
           <Link to="/admin/applications">
@@ -363,9 +363,17 @@ export default function AdminDashboard() {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+                ) : loading ? (
+                  <div className="flex h-full flex-col justify-center gap-4 px-6">
+                    <Skeleton height={200} />
+                    <div className="flex gap-4">
+                      <Skeleton height={40} className="flex-1" />
+                      <Skeleton height={40} className="flex-1" />
+                    </div>
+                  </div>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[13px] text-[var(--led-muted)]">
-                    {loading ? 'Loading intake data...' : 'No recent intake activity'}
+                  <div className="flex h-full items-center justify-center">
+                    <EmptyState title="No recent intake" description="Application intake data will appear here once available." />
                   </div>
                 )}
               </div>
@@ -431,9 +439,17 @@ export default function AdminDashboard() {
                       <Bar dataKey="count" fill="var(--led-accent)" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                ) : loading ? (
+                  <div className="flex h-full flex-col justify-center gap-4 px-6">
+                    <Skeleton height={200} />
+                    <div className="flex gap-4">
+                      <Skeleton height={40} className="flex-1" />
+                      <Skeleton height={40} className="flex-1" />
+                    </div>
+                  </div>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[13px] text-[var(--led-muted)]">
-                    {loading ? 'Loading monthly data...' : 'No monthly trend data yet'}
+                  <div className="flex h-full items-center justify-center">
+                    <EmptyState title="No monthly data" description="Monthly booking trends will appear here once available." />
                   </div>
                 )}
               </div>
@@ -463,8 +479,14 @@ export default function AdminDashboard() {
             </div>
             <div className="p-6">
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <div className="space-y-4 py-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton width={80} height={16} />
+                      <Skeleton height={28} className="flex-1" />
+                      <Skeleton width={40} height={16} />
+                    </div>
+                  ))}
                 </div>
               ) : (() => {
                 const pipeline: { status: string; label: string; color: string }[] = [
@@ -561,29 +583,40 @@ export default function AdminDashboard() {
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Top Lenders</h2>
               </div>
               <div className="space-y-4 p-6">
-                {dashStats?.top_lenders?.map((lender, index) => (
-                  <div key={lender.name}>
-                    <div className="mb-2 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[11px] font-semibold text-[var(--led-accent-ink)]">
-                          {index + 1}
+                {loading
+                  ? [1, 2, 3, 4].map((i) => (
+                      <div key={i}>
+                        <div className="mb-2 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <Skeleton width={28} height={28} circle />
+                            <Skeleton width={120} height={16} />
+                          </div>
+                          <Skeleton width={40} height={16} />
                         </div>
-                        <span className="text-[14px] font-medium text-[var(--led-ink)]">{lender.name}</span>
+                        <Skeleton height={8} />
                       </div>
-                      <span className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{lender.approvals}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
-                      <div
-                        className="h-full rounded-full bg-[var(--led-accent)]"
-                        style={{ width: `${Math.max((lender.approvals / topLenderApprovalMax) * 100, lender.approvals > 0 ? 6 : 0)}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                    ))
+                  : dashStats?.top_lenders?.map((lender, index) => (
+                      <div key={lender.name}>
+                        <div className="mb-2 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[11px] font-semibold text-[var(--led-accent-ink)]">
+                              {index + 1}
+                            </div>
+                            <span className="text-[14px] font-medium text-[var(--led-ink)]">{lender.name}</span>
+                          </div>
+                          <span className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{lender.approvals}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--led-accent)]"
+                            style={{ width: `${Math.max((lender.approvals / topLenderApprovalMax) * 100, lender.approvals > 0 ? 6 : 0)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                 {(!dashStats?.top_lenders || dashStats.top_lenders.length === 0) && !loading && (
-                  <div className="rounded-[14px] border border-dashed border-[var(--led-line)] px-4 py-8 text-center text-[13px] text-[var(--led-muted)]">
-                    No lender approval data yet.
-                  </div>
+                  <EmptyState title="No lender data" description="Top lender approvals will appear here once applications progress." />
                 )}
               </div>
             </GlassCard>
@@ -606,27 +639,35 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="space-y-3 p-4">
-              {dashStats?.action_items?.map((task) => (
-                <div key={task.id} className="rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[14px] font-medium leading-6 text-[var(--led-ink)]">{task.title}</span>
-                    {task.priority === 'urgent' && <span className="led-chip led-chip-danger">Urgent</span>}
-                    {task.priority === 'high' && <span className="led-chip led-chip-warning">High</span>}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[var(--led-muted)]">
-                    <span className="capitalize">{task.status.replace('_', ' ')}</span>
-                    {task.due_date && (
-                      <span className="led-tnum">
-                        Due {formatShortDate(task.due_date)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
+              {loading
+                ? [1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4 space-y-3">
+                      <Skeleton height={16} className="w-3/4" />
+                      <div className="flex justify-between">
+                        <Skeleton width={60} height={14} />
+                        <Skeleton width={80} height={14} />
+                      </div>
+                    </div>
+                  ))
+                : dashStats?.action_items?.map((task) => (
+                    <div key={task.id} className="rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-[14px] font-medium leading-6 text-[var(--led-ink)]">{task.title}</span>
+                        {task.priority === 'urgent' && <span className="led-chip led-chip-danger">Urgent</span>}
+                        {task.priority === 'high' && <span className="led-chip led-chip-warning">High</span>}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[var(--led-muted)]">
+                        <span className="capitalize">{task.status.replace('_', ' ')}</span>
+                        {task.due_date && (
+                          <span className="led-tnum">
+                            Due {formatShortDate(task.due_date)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
               {(!dashStats?.action_items || dashStats.action_items.length === 0) && !loading && (
-                <div className="rounded-[16px] border border-dashed border-[var(--led-line)] px-4 py-10 text-center text-[13px] text-[var(--led-muted)]">
-                  No open exception items on the desk.
-                </div>
+                <EmptyState title="All clear" description="No open exception items on the desk." />
               )}
             </div>
           </GlassCard>
@@ -637,27 +678,35 @@ export default function AdminDashboard() {
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Activity Tape</h2>
             </div>
             <div className="flex-1 space-y-3 overflow-auto p-4">
-              {logs.map((log) => (
-                <div key={log.id} className="flex gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--led-bg)] text-[var(--led-muted)]">
-                    {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] leading-6 text-[var(--led-ink)]">
-                      <span className="font-semibold">{log.user_name || 'System'}</span>
-                      <span className="mx-1.5 text-[var(--led-muted)]">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
-                      <span className="font-medium">{log.entity_type}</span>
-                    </p>
-                    <p className="mt-1 text-[12px] text-[var(--led-muted)]">
-                      {formatTime(log.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))}
+              {loading
+                ? [1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+                      <Skeleton width={32} height={32} circle />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton height={14} className="w-3/4" />
+                        <Skeleton width={80} height={12} />
+                      </div>
+                    </div>
+                  ))
+                : logs.map((log) => (
+                    <div key={log.id} className="flex gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--led-bg)] text-[var(--led-muted)]">
+                        {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] leading-6 text-[var(--led-ink)]">
+                          <span className="font-semibold">{log.user_name || 'System'}</span>
+                          <span className="mx-1.5 text-[var(--led-muted)]">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
+                          <span className="font-medium">{log.entity_type}</span>
+                        </p>
+                        <p className="mt-1 text-[12px] text-[var(--led-muted)]">
+                          {formatTime(log.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
               {!loading && logs.length === 0 && (
-                <div className="rounded-[16px] border border-dashed border-[var(--led-line)] px-4 py-10 text-center text-[13px] text-[var(--led-muted)]">
-                  No recent operational activity.
-                </div>
+                <EmptyState title="No activity" description="Recent operational activity will appear here." />
               )}
             </div>
           </GlassCard>

@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, PageHeader } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, DatePicker } from '../../components/ui';
 import type { LenderAnalytics } from '../../types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -83,19 +83,18 @@ export default function LenderAnalyticsPage() {
             </div>
             {period === 'custom' && (
               <div className="flex items-center gap-2">
-                <input
-                  type="date"
+                <DatePicker
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  onChange={(v) => setDateFrom(v)}
+                  placeholder="From"
+                  className="text-[13px] h-8 py-1.5"
                 />
                 <span className="text-[13px] text-muted-foreground">to</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={dateTo}
-                  min={dateFrom}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  onChange={(v) => setDateTo(v)}
+                  placeholder="To"
+                  className="text-[13px] h-8 py-1.5"
                 />
               </div>
             )}

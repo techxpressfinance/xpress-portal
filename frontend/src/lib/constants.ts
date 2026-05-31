@@ -88,17 +88,6 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-export const LOAN_TYPE_ICONS: Record<string, string> = {
-  personal: '\u{1F4B3}',
-  home: '\u{1F3E0}',
-  business: '\u{1F4BC}',
-  vehicle: '\u{1F697}',
-  equipment_finance: '\u{1F3D7}',
-  business_loan: '\u{1F4BC}',
-  commercial_property: '\u{1F3E2}',
-  home_loan: '\u{1F3E0}',
-};
-
 export const LOAN_TYPE_LABELS: Record<string, string> = {
   personal: 'Personal Loan',
   home: 'Home Loan',
@@ -229,23 +218,23 @@ export const COLUMN_COLOR_OPTIONS = [
 
 // Comprehensive Loan Type Configurations
 export const CONSUMER_LOAN_TYPES = [
-  { value: 'car', label: 'Car Loan', icon: '🚗', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'motorcycle', label: 'Motorcycle Loan', icon: '🏍️', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'caravan', label: 'Caravan / RV Loan', icon: '🚐', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'other_vehicle', label: 'Other Vehicle', icon: '🚙', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'personal', label: 'Personal Loan', icon: '💳', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
-  { value: 'purchase', label: 'Purchase', icon: '🏠', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
-  { value: 'refinance', label: 'Refinance', icon: '🔄', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
+  { value: 'car', label: 'Car Loan', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'motorcycle', label: 'Motorcycle Loan', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'caravan', label: 'Caravan / RV Loan', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'other_vehicle', label: 'Other Vehicle', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'personal', label: 'Personal Loan', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
+  { value: 'purchase', label: 'Purchase', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
+  { value: 'refinance', label: 'Refinance', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
 ] as const;
 
 export const COMMERCIAL_LOAN_TYPES = [
-  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', icon: '💵', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
-  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', icon: '🚛', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
-  { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', icon: '🏗️', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
-  { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', icon: '⏳', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
-  { value: 'property', label: 'Development finance & Construction', icon: '🏢', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
-  { value: 'new_business', label: 'Start a new business/ Purchase an existing business', icon: '🚀', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
-  { value: 'other', label: 'Other', icon: '📋', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
+  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
+  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
+  { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
+  { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
+  { value: 'property', label: 'Development finance & Construction', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
+  { value: 'new_business', label: 'Start a new business/ Purchase an existing business', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
+  { value: 'other', label: 'Other', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
 ] as const;
 
 export const VEHICLE_MAKES = [

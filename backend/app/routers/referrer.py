@@ -16,7 +16,7 @@ from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User, UserRole
 from app.schemas.common import normalize_email
 from app.services.activity_log import log_activity
-from app.services.email import send_new_lead_notification
+from app.services.email import notify_admins_new_account, send_new_lead_notification
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
@@ -168,6 +168,11 @@ def create_referrer_client(
     log_activity(db, current_user.id, "client_referred", "client", client_id,
                 {"client_name": client_name, "client_email": email}, tenant_id=tenant_id)
     db.commit()
+
+    notify_admins_new_account(
+        db, tenant_id, "client", client_name, email, current_user.full_name or current_user.email,
+        f"{FRONTEND_URL}/admin/contacts",
+    )
 
     name_parts = (data.first_name.strip(), data.last_name.strip())
     return {

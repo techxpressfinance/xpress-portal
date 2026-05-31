@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, Button, Input, AbrResultCard } from '../../components/ui';
+import { GlassCard, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
@@ -275,10 +275,10 @@ const COMMERCIAL_PURPOSES = [
 ];
 
 const LEND_LOAN_TYPES = [
-  { value: 'equipment_finance', label: 'Equipment Finance', description: 'Finance equipment, machinery and vehicles', icon: '🏗️' },
-  { value: 'business_loan', label: 'Business Loan', description: 'Working capital, growth or refinancing', icon: '💼' },
-  { value: 'commercial_property', label: 'Commercial Property', description: 'Purchase or refinance commercial real estate', icon: '🏢' },
-  { value: 'home_loan', label: 'Home Loan', description: 'Purchase or refinance residential property', icon: '🏠' },
+  { value: 'equipment_finance', label: 'Equipment Finance', description: 'Finance equipment, machinery and vehicles' },
+  { value: 'business_loan', label: 'Business Loan', description: 'Working capital, growth or refinancing' },
+  { value: 'commercial_property', label: 'Commercial Property', description: 'Purchase or refinance commercial real estate' },
+  { value: 'home_loan', label: 'Home Loan', description: 'Purchase or refinance residential property' },
 ];
 
 const CONSUMER_TYPE_TO_PURPOSE_ID: Record<string, number> = {
@@ -1263,7 +1263,7 @@ export default function NewApplication() {
                           <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                             {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                           </div>
-                          <span className="text-2xl">{type.icon}</span>
+                          <LoanTypeIcon type={type.value} className="mt-0.5 h-6 w-6 shrink-0 text-[var(--led-muted)]" />
                           <div>
                             <p className={`text-[14px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
                             <p className="text-[13px] text-[var(--led-muted)] mt-0.5">{type.description}</p>
@@ -1277,7 +1277,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('equipment_finance') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏗️ Equipment Finance Details</h3>
+                    <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="equipment_finance" className="h-5 w-5 text-[var(--led-muted)]" /> Equipment Finance Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className={LABEL_CLS}>Asset Type <span className="font-normal">(Optional)</span></label>
@@ -1331,7 +1331,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('business_loan') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">💼 Business Loan Details</h3>
+                    <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="business_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Business Loan Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Loan Purpose <span className="font-normal">(Optional)</span></label>
                       <textarea {...register('bl_loan_purpose')} rows={2} className={TEXTAREA_CLS} placeholder="Describe the purpose of the loan..." />
@@ -1357,7 +1357,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('commercial_property') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏢 Commercial Property Details</h3>
+                    <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="commercial_property" className="h-5 w-5 text-[var(--led-muted)]" /> Commercial Property Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
                       <div className="flex gap-3">
@@ -1390,7 +1390,7 @@ export default function NewApplication() {
 
                 {selectedLoanTypes.includes('home_loan') && (
                   <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">🏠 Home Loan Details</h3>
+                    <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="home_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Home Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
@@ -1532,7 +1532,7 @@ export default function NewApplication() {
                             <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                               {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                             </div>
-                            <span className="text-2xl">{type.icon}</span>
+                            <LoanTypeIcon type={type.value} className="mt-0.5 h-6 w-6 shrink-0 text-[var(--led-muted)]" />
                             <div>
                               <p className={`text-[14px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
                               <p className="text-[13px] text-[var(--led-muted)] mt-0.5">{type.description}</p>
@@ -1722,8 +1722,9 @@ export default function NewApplication() {
                               <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                                 {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                               </div>
-                              <div>
-                                <p className={`text-[13px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.icon} {type.label}</p>
+                              <div className="flex items-center gap-2">
+                                <LoanTypeIcon type={type.value} className={`h-4 w-4 shrink-0 ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} />
+                                <p className={`text-[13px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
                               </div>
                             </label>
                           );
@@ -2031,7 +2032,11 @@ export default function NewApplication() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={LABEL_CLS}>Date of Birth *{prefillTag('applicant_dob')}</label>
-                  <Input type="date" error={errors.applicant_dob?.message} {...register('applicant_dob', { required: isSectionVisible('personal') && 'Required' })} />
+                  <DatePicker
+                    error={errors.applicant_dob?.message}
+                    value={watch('applicant_dob') || ''}
+                    onChange={(v) => setValue('applicant_dob', v, { shouldValidate: true })}
+                  />
                 </div>
                 <div>
                   <label className={LABEL_CLS}>Number of Dependants</label>
@@ -2071,7 +2076,10 @@ export default function NewApplication() {
                 </div>
                 <div>
                   <label className={LABEL_CLS}>Expiry Date *{prefillTag('id_expiry_date')}</label>
-                  <Input type="date" {...register('id_expiry_date')} />
+                  <DatePicker
+                    value={watch('id_expiry_date') || ''}
+                    onChange={(v) => setValue('id_expiry_date', v, { shouldValidate: true })}
+                  />
                 </div>
               </div>
             </GlassCard>
@@ -2260,7 +2268,10 @@ export default function NewApplication() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className={LABEL_CLS}>Employment Start Date</label>
-                      <Input type="date" {...register('employment_start_date')} />
+                      <DatePicker
+                        value={watch('employment_start_date') || ''}
+                        onChange={(v) => setValue('employment_start_date', v, { shouldValidate: true })}
+                      />
                     </div>
                     <div>
                       <label className={LABEL_CLS}>Income Frequency</label>

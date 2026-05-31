@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { TASK_STATUS_BADGE, TASK_PRIORITY_BADGE } from '../../lib/constants';
-import { GlassCard, Badge, Button, Select, Input } from '../../components/ui';
+import { GlassCard, Badge, Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
 import type { Task, ChecklistItem, User } from '../../types';
 
 export default function TaskDetail() {
@@ -169,13 +169,10 @@ export default function TaskDetail() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      {/* Back */}
-      <Link to="/admin/tasks" className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-5">
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-        </svg>
-        Tasks
-      </Link>
+      <Breadcrumbs items={[
+        { label: 'Tasks', href: '/admin/tasks' },
+        { label: task?.title || 'Detail' },
+      ]} />
 
       {/* Task detail */}
       <GlassCard className="mb-4">
@@ -209,7 +206,7 @@ export default function TaskDetail() {
                   <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
                 ))}
               </Select>
-              <Input label="Due Date" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+              <DatePicker label="Due Date" value={editDueDate} onChange={(v) => setEditDueDate(v)} />
             </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>

@@ -5,6 +5,7 @@ import { useToast } from '../../components/Toast';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
 import { STATUS_LABEL } from '../../lib/constants';
 import type { LoanApplication, ApplicationStatus, User } from '../../types';
+import { Skeleton, EmptyState } from '../../components/ui';
 
 // ── Icons ──
 
@@ -373,19 +374,26 @@ export default function AllApplications() {
                 {loading ? (
                   [1, 2, 3, 4, 5].map((i) => (
                     <tr key={i}>
-                      <td colSpan={10}>
-                        <div style={{ height: 22 }} className="shimmer" />
-                      </td>
+                      <td><div className="flex items-center gap-2"><Skeleton width={22} height={22} circle /><Skeleton width={100} height={14} /></div></td>
+                      <td><Skeleton width={80} height={14} /></td>
+                      <td><Skeleton width={60} height={12} /></td>
+                      <td><Skeleton width={60} height={14} /></td>
+                      <td style={{ textAlign: 'right' }}><Skeleton width={60} height={14} /></td>
+                      <td><Skeleton width={70} height={20} /></td>
+                      <td><div className="flex items-center gap-2"><Skeleton width={22} height={22} circle /><Skeleton width={60} height={12} /></div></td>
+                      <td><Skeleton width={60} height={12} /></td>
+                      <td style={{ textAlign: 'right' }}><Skeleton width={50} height={12} /></td>
+                      <td><Skeleton width={16} height={16} /></td>
                     </tr>
                   ))
                 ) : sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={10}>
-                      <div className="led-empty">
-                        <div className="led-empty-icon"><Icon name="search" size={18} /></div>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 4 }}>No applications found</div>
-                        <div style={{ fontSize: 12.5 }}>Try adjusting your filters or search terms.</div>
-                      </div>
+                    <td colSpan={10} className="py-10">
+                      <EmptyState
+                        title="No applications found"
+                        description="Try adjusting your filters or search terms."
+                        icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>}
+                      />
                     </td>
                   </tr>
                 ) : sorted.map((app) => {

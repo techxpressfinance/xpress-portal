@@ -18,7 +18,11 @@ from app.schemas.external_referrer import (
     ReferrerCreate,
 )
 from app.schemas.user import UserOut
-from app.services.email import send_referral_notification_email, send_setup_account_email
+from app.services.email import (
+    notify_admins_new_account,
+    send_referral_notification_email,
+    send_setup_account_email,
+)
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/external-referrers", tags=["external-referrers"])
@@ -66,6 +70,11 @@ def create_referrer(
 
     setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
     send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="referrer")
+
+    notify_admins_new_account(
+        db, tenant_id, "referrer", data.full_name, data.email, current_user.full_name or current_user.email,
+        f"{FRONTEND_URL}/admin/referrers",
+    )
     return user
 
 
@@ -76,9 +85,10 @@ def list_referrers(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """List external referrers across the tenant. Admins and brokers."""
+    from app.services.query_utils import active_user_clauses
     return (
         db.query(User)
-        .filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
+        .filter(User.role == UserRole.referrer, User.tenant_id == tenant_id, *active_user_clauses())
         .order_by(User.created_at.desc())
         .all()
     )
@@ -170,6 +180,12 @@ def refer_client(
         db.commit()
         setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
         send_setup_account_email(email, name, setup_url, current_user.full_name, role="client")
+
+    client_name = (existing_user.full_name if existing_user else name) or email
+    notify_admins_new_account(
+        db, tenant_id, "client", client_name, email, current_user.full_name or current_user.email,
+        f"{FRONTEND_URL}/admin/contacts",
+    )
 
     db.refresh(referral)
     return _serialize_referral(referral, db)

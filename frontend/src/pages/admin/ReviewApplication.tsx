@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import ApplicationCalculators from '../../components/ApplicationCalculators';
@@ -13,7 +13,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { GlassCard, Badge, Button, ConfirmDialog } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -40,6 +40,11 @@ export default function ReviewApplication() {
   const [newNoteContent, setNewNoteContent] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<'broker' | 'personal'>('broker');
   const [sendingNote, setSendingNote] = useState(false);
+  const [pinningMsgId, setPinningMsgId] = useState<string | null>(null);
+  const [pinnedMsgIds, setPinnedMsgIds] = useState<Set<string>>(new Set());
+  // Maps a pinned deal note's id back to its source message id, so deleting the
+  // note un-checks the message it came from.
+  const [noteSourceMsg, setNoteSourceMsg] = useState<Record<string, string>>({});
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
   const [newClientMsgContent, setNewClientMsgContent] = useState('');
   const [sendingClientMsg, setSendingClientMsg] = useState(false);
@@ -140,7 +145,7 @@ export default function ReviewApplication() {
     signature_name: '',
     emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
   };
-  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   useEffect(() => {
     if (!id || activeTab !== 'activity') return;
@@ -274,6 +279,25 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to change status'), 'error');
     } finally {
       setChangingStatus(false);
+    }
+  };
+
+  const handlePinMessageToDealNotes = async (msg: ClientMessage, who: string) => {
+    if (!id) return;
+    setPinningMsgId(msg.id);
+    try {
+      const { data } = await api.post(`/applications/${id}/notes`, {
+        content: `${msg.content}\n\n— from ${who}'s message`,
+        visibility: ['broker'],
+      });
+      setAppNotes((prev) => [...prev, data]);
+      setPinnedMsgIds((prev) => new Set(prev).add(msg.id));
+      setNoteSourceMsg((prev) => ({ ...prev, [data.id]: msg.id }));
+      toast('Added to deal notes', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to add to deal notes'), 'error');
+    } finally {
+      setPinningMsgId(null);
     }
   };
 
@@ -638,11 +662,11 @@ export default function ReviewApplication() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <Breadcrumbs items={[
+        { label: 'Applications', href: '/admin/applications' },
+        { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Review' },
+      ]} />
       <div className="flex items-center justify-between mb-6">
-        <Link to="/admin/applications" className="inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground hover:text-primary transition-colors" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-          Back to All Applications
-        </Link>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
             <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -829,8 +853,12 @@ export default function ReviewApplication() {
                       </div>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
-                          <label className="block text-[12px] text-muted-foreground mb-1">DOB</label>
-                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('applicant_dob')} />
+                          <DatePicker
+                            label="DOB"
+                            value={watchEdit('applicant_dob') || ''}
+                            onChange={(v) => setValueEdit('applicant_dob', v, { shouldValidate: true })}
+                            className="led-input"
+                          />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Gender</label>
@@ -899,7 +927,12 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">ID Expiry Date</label>
-                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('id_expiry_date')} />
+                          <DatePicker
+                            label="ID Expiry"
+                            value={watchEdit('id_expiry_date') || ''}
+                            onChange={(v) => setValueEdit('id_expiry_date', v, { shouldValidate: true })}
+                            className="led-input"
+                          />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Residency Status</label>
@@ -1007,7 +1040,12 @@ export default function ReviewApplication() {
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Registration Date</label>
-                          <input type="text" placeholder="YYYY-MM-DD" className="led-input" {...regEdit('business_registration_date')} />
+                          <DatePicker
+                            label="Registration Date"
+                            value={watchEdit('business_registration_date') || ''}
+                            onChange={(v) => setValueEdit('business_registration_date', v, { shouldValidate: true })}
+                            className="led-input"
+                          />
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Industry ID</label>
@@ -2521,11 +2559,24 @@ export default function ReviewApplication() {
                             ) : (
                               referrerMessages.map((msg) => {
                                 const isOwn = msg.author_id === currentUser?.id;
+                                const isPinned = pinnedMsgIds.has(msg.id);
                                 return (
-                                  <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                                  <div key={msg.id} className={`group flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
                                     <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
                                       <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || referrer.full_name)}</span>
                                       <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
+                                      <button
+                                        onClick={() => handlePinMessageToDealNotes(msg, isOwn ? 'your' : (msg.author_name || referrer.full_name))}
+                                        disabled={pinningMsgId === msg.id || isPinned}
+                                        className={`transition-opacity p-0.5 rounded ${isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
+                                        title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
+                                      >
+                                        {isPinned ? (
+                                          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.32 2.577a49.255 49.255 0 0 1 11.36 0c1.497.174 2.57 1.46 2.57 2.93V21a.75.75 0 0 1-1.085.67L12 18.089l-7.165 3.583A.75.75 0 0 1 3.75 21V5.507c0-1.47 1.073-2.756 2.57-2.93Z" /></svg>
+                                        ) : (
+                                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
+                                        )}
+                                      </button>
                                       {!isOwn && (
                                         <button
                                           onClick={async () => {
@@ -2535,7 +2586,7 @@ export default function ReviewApplication() {
                                               setReferrerMessages((prev) => prev.filter((m) => m.id !== msg.id));
                                             } catch {}
                                           }}
-                                          className="opacity-0 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                           title="Delete"
                                         >
                                           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
@@ -2557,7 +2608,7 @@ export default function ReviewApplication() {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                   e.preventDefault();
-                                  if (!referrer?.id || !newRefMsgContent.trim()) return;
+                                  if (!referrer?.id || referrer.id === currentUser?.id || !newRefMsgContent.trim()) return;
                                   setSendingRefMsg(true);
                                   api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id })
                                     .then(({ data }) => { setReferrerMessages((prev) => [...prev, data]); setNewRefMsgContent(''); toast('Message sent', 'success'); })
@@ -2566,8 +2617,9 @@ export default function ReviewApplication() {
                                 }
                               }}
                               rows={2}
-                              className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
-                              placeholder={`Message ${referrer.full_name}…`}
+                              disabled={referrer.id === currentUser?.id}
+                              className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none disabled:opacity-60"
+                              placeholder={referrer.id === currentUser?.id ? "This is your own application — you can't message yourself." : `Message ${referrer.full_name}…`}
                             />
                             <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                               <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
@@ -2575,9 +2627,9 @@ export default function ReviewApplication() {
                                 size="sm"
                                 className="rounded-xl h-8 px-3.5"
                                 loading={sendingRefMsg}
-                                disabled={!newRefMsgContent.trim() || !referrer?.id}
+                                disabled={!newRefMsgContent.trim() || !referrer?.id || referrer.id === currentUser?.id}
                                 onClick={async () => {
-                                  if (!referrer?.id || !newRefMsgContent.trim()) return;
+                                  if (!referrer?.id || referrer.id === currentUser?.id || !newRefMsgContent.trim()) return;
                                   setSendingRefMsg(true);
                                   try {
                                     const { data } = await api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id });
@@ -2613,11 +2665,24 @@ export default function ReviewApplication() {
                         ) : (
                           clientMessages.map((msg) => {
                             const isOwn = msg.author_id === currentUser?.id;
+                            const isPinned = pinnedMsgIds.has(msg.id);
                             return (
-                              <div key={msg.id} className={`flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                              <div key={msg.id} className={`group flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
                                 <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
                                   <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
                                   <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
+                                  <button
+                                    onClick={() => handlePinMessageToDealNotes(msg, isOwn ? 'your' : (msg.author_name || 'the client'))}
+                                    disabled={pinningMsgId === msg.id || isPinned}
+                                    className={`transition-opacity p-0.5 rounded ${isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
+                                    title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
+                                  >
+                                    {isPinned ? (
+                                      <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.32 2.577a49.255 49.255 0 0 1 11.36 0c1.497.174 2.57 1.46 2.57 2.93V21a.75.75 0 0 1-1.085.67L12 18.089l-7.165 3.583A.75.75 0 0 1 3.75 21V5.507c0-1.47 1.073-2.756 2.57-2.93Z" /></svg>
+                                    ) : (
+                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
+                                    )}
+                                  </button>
                                   {!isOwn && (
                                     <button
                                       onClick={async () => {
@@ -2627,7 +2692,7 @@ export default function ReviewApplication() {
                                           setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
                                         } catch {}
                                       }}
-                                      className="opacity-0 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                       title="Delete"
                                     >
                                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
@@ -2649,7 +2714,7 @@ export default function ReviewApplication() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
-                              if (!client?.id || !newClientMsgContent.trim()) return;
+                              if (!client?.id || client.id === currentUser?.id || !newClientMsgContent.trim()) return;
                               setSendingClientMsg(true);
                               api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id })
                                 .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
@@ -2658,8 +2723,9 @@ export default function ReviewApplication() {
                             }
                           }}
                           rows={2}
-                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none"
-                          placeholder="Message the client…"
+                          disabled={client?.id === currentUser?.id}
+                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none disabled:opacity-60"
+                          placeholder={client?.id === currentUser?.id ? "This is your own application — you can't message yourself." : 'Message the client…'}
                         />
                         <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                           <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
@@ -2667,9 +2733,9 @@ export default function ReviewApplication() {
                             size="sm"
                             className="rounded-xl h-8 px-3.5"
                             loading={sendingClientMsg}
-                            disabled={!newClientMsgContent.trim() || !client?.id}
+                            disabled={!newClientMsgContent.trim() || !client?.id || client?.id === currentUser?.id}
                             onClick={async () => {
-                              if (!client?.id || !newClientMsgContent.trim()) return;
+                              if (!client?.id || client.id === currentUser?.id || !newClientMsgContent.trim()) return;
                               setSendingClientMsg(true);
                               try {
                                 const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id });
@@ -2723,6 +2789,20 @@ export default function ReviewApplication() {
                                         try {
                                           await api.delete(`/applications/${id}/notes/${note.id}`);
                                           setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
+                                          // If this note was pinned from a message, un-check that message.
+                                          const srcMsgId = noteSourceMsg[note.id];
+                                          if (srcMsgId) {
+                                            setPinnedMsgIds((prev) => {
+                                              const next = new Set(prev);
+                                              next.delete(srcMsgId);
+                                              return next;
+                                            });
+                                            setNoteSourceMsg((prev) => {
+                                              const next = { ...prev };
+                                              delete next[note.id];
+                                              return next;
+                                            });
+                                          }
                                           toast('Note deleted', 'success');
                                         } catch (err: unknown) {
                                           toast(getErrorMessage(err, 'Failed to delete'), 'error');

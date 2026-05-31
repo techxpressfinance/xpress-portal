@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { getTenantSlug } from '../api/client';
+import DatePicker from '../components/ui/DatePicker';
 
 const publicApi = axios.create({ baseURL: '/api' });
 publicApi.interceptors.request.use((config) => {
@@ -78,7 +79,7 @@ export default function PublicApply() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
-  const { register, handleSubmit, formState: { errors, isSubmitting }, setValue } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting }, setValue, watch } = useForm<FormData>({
     defaultValues: {
       applicant_first_name: '',
       applicant_middle_name: '',
@@ -267,7 +268,15 @@ export default function PublicApply() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Date of Birth">
-                    <input type="date" {...register('applicant_dob')} className={inputClass} />
+                    <DatePicker
+                      value={watch('applicant_dob') || ''}
+                      onChange={(v) => {
+                        setValue('applicant_dob', v, { shouldValidate: true });
+                      }}
+                      placeholder="Select date"
+                      className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                    />
+                    {errors.applicant_dob && <p className="text-red-500 text-[12px] mt-1">{errors.applicant_dob.message}</p>}
                   </Field>
                   <Field label="Gender">
                     <select {...register('applicant_gender')} className={selectClass}>
@@ -292,7 +301,17 @@ export default function PublicApply() {
                 </Field>
 
                 <Field label="Mobile">
-                  <input {...register('applicant_mobile')} className={inputClass} placeholder="04XX XXX XXX" />
+                  <input
+                    {...register('applicant_mobile', {
+                      pattern: {
+                        value: /^(\+?61|0)4\d{8}$/,
+                        message: 'Please enter a valid Australian mobile number',
+                      },
+                    })}
+                    className={inputClass}
+                    placeholder="04XX XXX XXX"
+                  />
+                  {errors.applicant_mobile && <p className="text-red-500 text-[12px] mt-1">{errors.applicant_mobile.message}</p>}
                 </Field>
 
                 <Field label="Residential Address">
@@ -312,7 +331,18 @@ export default function PublicApply() {
                     </select>
                   </Field>
                   <Field label="Postcode">
-                    <input {...register('applicant_postcode')} className={inputClass} placeholder="2000" maxLength={4} />
+                    <input
+                      {...register('applicant_postcode', {
+                        pattern: {
+                          value: /^\d{4}$/,
+                          message: 'Please enter a 4-digit postcode',
+                        },
+                      })}
+                      className={inputClass}
+                      placeholder="2000"
+                      maxLength={4}
+                    />
+                    {errors.applicant_postcode && <p className="text-red-500 text-[12px] mt-1">{errors.applicant_postcode.message}</p>}
                   </Field>
                 </div>
 
@@ -381,7 +411,16 @@ export default function PublicApply() {
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                       <input
-                        {...register('gross_income')}
+                        {...register('gross_income', {
+                          pattern: {
+                            value: /^\d+(\.\d{1,2})?$/,
+                            message: 'Please enter a valid amount',
+                          },
+                          min: {
+                            value: 0,
+                            message: 'Income must be a positive number',
+                          },
+                        })}
                         type="number"
                         min="0"
                         step="1"
@@ -389,6 +428,7 @@ export default function PublicApply() {
                         placeholder="0"
                       />
                     </div>
+                    {errors.gross_income && <p className="text-red-500 text-[12px] mt-1">{errors.gross_income.message}</p>}
                   </Field>
                 </div>
               </div>

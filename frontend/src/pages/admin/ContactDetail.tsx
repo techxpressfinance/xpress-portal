@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, Select } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { LOAN_TYPES, APPLICATION_STATUSES } from '../../types';
 import type { ContactDetail as ContactDetailType, ContactApplication, LendingHistoryEntry, RepaymentFrequency } from '../../types';
@@ -131,8 +131,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>Date of Birth</label>
-              <Input type="date" {...field('date_of_birth')} />
+              <DatePicker label="Date of Birth" value={form.date_of_birth} onChange={(v) => setForm(f => ({ ...f, date_of_birth: v }))} />
             </div>
             <div>
               <label className={LABEL}>Driver's License</label>
@@ -616,8 +615,7 @@ function LendingEntryModal({ contactId, entry, onClose, onSaved }: {
               </Select>
             </div>
             <div>
-              <label className={LABEL}>Start Date</label>
-              <Input type="date" value={form.start_date} onChange={e => update('start_date', e.target.value)} />
+              <DatePicker label="Start Date" value={form.start_date} onChange={(v) => update('start_date', v)} />
             </div>
           </div>
 
@@ -721,15 +719,16 @@ export default function ContactDetail() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs items={[
+        { label: 'Contacts', href: '/admin/contacts' },
+        { label: `${contact.first_name} ${contact.last_name}` },
+      ]} />
       <PageHeader
         title={`${contact.first_name} ${contact.last_name}`}
         subtitle="Contact Details"
         action={
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={() => setEditing(true)}>Edit Contact</Button>
-            <Link to="/admin/contacts">
-              <Button variant="secondary" size="sm">Back to Contacts</Button>
-            </Link>
           </div>
         }
       />
