@@ -293,7 +293,7 @@ export default function ReferrerMessages() {
                                 {formatTime(msg.created_at)}
                               </span>
                             </div>
-                            <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                            <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary/10 text-primary rounded-tr-sm ring-1 ring-primary/20' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
                               <p className="whitespace-pre-wrap">{msg.content}</p>
                             </div>
                           </div>

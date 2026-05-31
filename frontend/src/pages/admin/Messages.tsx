@@ -416,7 +416,7 @@ export default function AdminMessages() {
                                   <span className="text-[12px] font-semibold text-[var(--led-ink)]">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
                                   <span className="text-[11px] text-[var(--led-muted)]">{formatTime(msg.created_at)}</span>
                                 </div>
-                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'rounded-tr-sm bg-[var(--led-accent)] text-white' : 'rounded-tl-sm border border-[var(--led-line)] bg-[var(--led-surface)] text-[var(--led-ink)] shadow-[var(--led-shadow-sm)]'}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'rounded-tr-sm bg-[var(--led-accent-tint-2)] text-[var(--led-accent-ink)] ring-1 ring-[var(--led-accent)]/15' : 'rounded-tl-sm border border-[var(--led-line)] bg-[var(--led-surface)] text-[var(--led-ink)] shadow-[var(--led-shadow-sm)]'}`}>
                                   <p className="whitespace-pre-wrap">{msg.content}</p>
                                 </div>
                               </div>
