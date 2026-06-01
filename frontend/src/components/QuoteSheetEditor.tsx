@@ -289,9 +289,10 @@ function DollarInput({ label, value, onChange, placeholder }: {
         <input
           type="number"
           step="any"
+          min="0"
           placeholder={placeholder}
           value={value}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          onChange={e => onChange(Math.max(0, parseFloat(e.target.value)) || 0)}
           className={`${fieldBase} pl-6 pr-3`}
         />
       </div>
@@ -530,18 +531,22 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             <div>
               <label className={labelBase}>Deposit %</label>
               <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
                 <input
                   type="number"
-                  step="any"
+                  step="0.5"
+                  min="0"
                   value={inputs.deposit_percent || ''}
-                  onChange={e => { updateInput('deposit_percent', parseFloat(e.target.value) || 0); updateInput('deposit_amount', null); }}
-                  className={`${fieldBase} px-3 pr-6`}
+                  onChange={e => {
+                    const pct = Math.max(0, parseFloat(e.target.value)) || 0;
+                    setInputs(prev => ({ ...prev, deposit_percent: pct, deposit_amount: prev.asset_price > 0 ? fmt2(prev.asset_price * (pct / 100)) : null }));
+                  }}
+                  className={`${fieldBase} pl-7 pr-3`}
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
               </div>
             </div>
-            <div>
-              <label className={`${labelBase} flex gap-1`}>
+              <div>
+                <label className={`${labelBase} flex gap-1`}>
                 Deposit $
                 <span className="text-[9px] font-semibold text-muted-foreground/50">OVERRIDE</span>
               </label>
@@ -550,9 +555,13 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <input
                   type="number"
                   step="any"
+                  min="0"
                   placeholder={fmtCurrency(inputs.asset_price * (inputs.deposit_percent / 100)).replace('$', '')}
                   value={inputs.deposit_amount ?? ''}
-                  onChange={e => updateInput('deposit_amount', e.target.value ? parseFloat(e.target.value) : null)}
+                  onChange={e => {
+                    const amt = e.target.value ? Math.max(0, parseFloat(e.target.value)) : null;
+                    setInputs(prev => ({ ...prev, deposit_amount: amt, deposit_percent: amt != null && prev.asset_price > 0 ? fmt2((amt / prev.asset_price) * 100) : prev.deposit_percent }));
+                  }}
                   className={`${fieldBase} pl-6 pr-3`}
                 />
               </div>
@@ -637,27 +646,29 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               <div>
                 <label className={labelBase}>Lender Interest Rate</label>
                 <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
                   <input
                     type="number"
-                    step="any"
+                    step="0.5"
+                    min="0"
                     value={inputs.interest_rate || ''}
-                    onChange={e => updateInput('interest_rate', parseFloat(e.target.value) || 0)}
-                    className={`${fieldBase} px-3 pr-6`}
+                    onChange={e => updateInput('interest_rate', Math.max(0, parseFloat(e.target.value)) || 0)}
+                    className={`${fieldBase} pl-7 pr-3`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
                 </div>
               </div>
               <div>
                 <label className={labelBase}>Brokerage %</label>
                 <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
                   <input
                     type="number"
-                    step="any"
+                    step="0.5"
+                    min="0"
                     value={inputs.brokerage_percent || ''}
-                    onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
-                    className={`${fieldBase} px-3 pr-6`}
+                    onChange={e => updateInput('brokerage_percent', Math.max(0, parseFloat(e.target.value)) || 0)}
+                    className={`${fieldBase} pl-7 pr-3`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
                 </div>
               </div>
               <ToggleButton
@@ -693,9 +704,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                     <div className="relative">
                       <input
                         type="number"
-                        step="any"
+                        step="0.5"
+                        min="0"
                         value={inputs.balloon_percentages[String(t)] ?? 0}
-                        onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
+                        onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0)}
                         className={`${fieldBase} px-2 pr-5 text-center`}
                       />
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
@@ -745,7 +757,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                       min="0"
                       placeholder="e.g. 50"
                       value={inputs.repayment_range ?? ''}
-                      onChange={e => updateInput('repayment_range', parseFloat(e.target.value) || undefined)}
+                      onChange={e => updateInput('repayment_range', Math.max(0, parseFloat(e.target.value)) || undefined)}
                       className={`${fieldBase} pl-8 pr-3`}
                     />
                   </div>
