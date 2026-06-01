@@ -186,7 +186,7 @@ export default function ReferrerApplications() {
                               <div className="min-w-0">
                                 <p className="text-[14px] font-medium text-foreground truncate">{displayName || app.user_id.slice(0, 8) + '...'}</p>
                                 {displayEmail && <p className="text-[12px] text-muted-foreground truncate">{displayEmail}</p>}
-                                <p className="sm:hidden text-[12px] text-muted-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type} &middot; ${Number(app.amount).toLocaleString()}</p>
+                                <p className="sm:hidden text-[12px] text-muted-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type} &middot; ${Number(app.amount).toLocaleString('en-AU')}</p>
                               </div>
                             </div>
                           );
@@ -196,7 +196,7 @@ export default function ReferrerApplications() {
                         {app.business_name || <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
-                      <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString()}</td>
+                      <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString('en-AU')}</td>
                       <td className="px-3 sm:px-6 py-4">
                         <Badge value={app.status} />
                       </td>

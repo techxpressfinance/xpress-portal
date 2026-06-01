@@ -3,9 +3,37 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { TASK_STATUS_BADGE, TASK_PRIORITY_BADGE } from '../../lib/constants';
-import { GlassCard, Badge, Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
+import { TASK_PRIORITY_BADGE } from '../../lib/constants';
+import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
 import type { Task, ChecklistItem, User } from '../../types';
+
+function priorityDotClass(priority: string): string {
+  switch (priority) {
+    case 'urgent': return 'bg-red-500';
+    case 'high': return 'bg-orange-400';
+    case 'medium': return 'bg-sky-400';
+    default: return 'bg-[var(--led-line-strong)]';
+  }
+}
+
+function CheckCircle({ completed, onClick }: { completed: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+        completed
+          ? 'border-[var(--led-muted)] bg-[var(--led-muted)] text-white'
+          : 'border-[var(--led-line-strong)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5'
+      }`}
+    >
+      {completed && (
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
@@ -46,18 +74,9 @@ export default function TaskDetail() {
   };
 
   const fetchStaff = () => {
-    Promise.all([
-      api.get('/users?role=admin&per_page=100'),
-      api.get('/users?role=broker&per_page=100'),
-      api.get('/users?role=referrer&per_page=100'),
-    ]).then(([{ data: adminData }, { data: brokerData }, { data: referrerData }]) => {
-      const combined = [
-        ...(adminData.items || adminData),
-        ...(brokerData.items || brokerData),
-        ...(referrerData.items || referrerData),
-      ];
-      setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
-    }).catch(() => {});
+    api.get('/users?role=broker&per_page=100')
+      .then(({ data }) => setStaff(data.items || data))
+      .catch(() => {});
   };
 
   useEffect(() => { fetchTask(); fetchStaff(); }, [id]);
@@ -140,14 +159,11 @@ export default function TaskDetail() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <GlassCard>
-          <div className="space-y-4">
-            <div className="h-6 w-64 rounded-lg shimmer" />
-            <div className="h-4 w-48 rounded-lg shimmer" />
-            <div className="h-4 w-32 rounded-lg shimmer" />
-          </div>
-        </GlassCard>
+      <div className="mx-auto max-w-2xl space-y-4 pt-2">
+        <div className="h-5 w-32 rounded-lg shimmer" />
+        <div className="h-8 w-72 rounded-lg shimmer" />
+        <div className="h-4 w-48 rounded-lg shimmer" />
+        <div className="h-4 w-56 rounded-lg shimmer" />
       </div>
     );
   }
@@ -155,193 +171,232 @@ export default function TaskDetail() {
   if (!task) {
     return (
       <div className="mx-auto max-w-2xl">
-        <GlassCard>
-          <p className="text-[14px] text-muted-foreground">This task does not exist or has been deleted.</p>
-          <Link to="/admin/tasks"><Button variant="secondary" className="mt-4">Back to Tasks</Button></Link>
-        </GlassCard>
+        <p className="text-[14px] text-[var(--led-muted)] mb-4">This task does not exist or has been deleted.</p>
+        <Link to="/admin/tasks"><Button variant="secondary">Back to Tasks</Button></Link>
       </div>
     );
   }
 
   const completedCount = task.checklist_items.filter((i) => i.is_completed).length;
   const totalItems = task.checklist_items.length;
-  const isOverdue = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
+  const isCompleted = task.status === 'completed';
+  const isOverdue = task.due_date && !isCompleted && new Date(task.due_date) < new Date();
+  const initials = task.assigned_to_name
+    ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    : null;
 
   return (
     <div className="mx-auto max-w-2xl">
       <Breadcrumbs items={[
         { label: 'Tasks', href: '/admin/tasks' },
-        { label: task?.title || 'Detail' },
+        { label: task.title },
       ]} />
 
-      {/* Task detail */}
-      <GlassCard className="mb-4">
-        {editing ? (
-          <div className="space-y-4">
-            <Input label="Title *" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-            <Input label="Description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select label="Status" value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
-                <option value="todo">To Do</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-              </Select>
-              <div>
-                <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Priority</label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editPriority === 'urgent'}
-                    onChange={(e) => setEditPriority(e.target.checked ? 'urgent' : 'low')}
-                    className="h-4 w-4 rounded border-border accent-destructive"
-                  />
-                  <span className="text-[14px] text-foreground">Mark as urgent</span>
-                </label>
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select label="Assigned To" value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)}>
-                <option value="">Unassigned</option>
-                {staff.map((u) => (
-                  <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
-                ))}
-              </Select>
-              <DatePicker label="Due Date" value={editDueDate} onChange={(v) => setEditDueDate(v)} />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
-              <Button variant="secondary" onClick={() => { setEditing(false); populateEditForm(task); }}>Cancel</Button>
+      {editing ? (
+        /* ── Edit form ── */
+        <div className="space-y-4 pb-6">
+          <Input label="Title *" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--led-muted)] mb-1.5">Description</label>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={3}
+              placeholder="Add a description..."
+              className="w-full rounded-xl border border-[var(--led-line-strong)] bg-[var(--led-surface)] px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-[var(--led-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--led-accent)]/30 transition-all resize-none"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select label="Status" value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </Select>
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--led-muted)] mb-1.5">Priority</label>
+              <label className="flex items-center gap-2 cursor-pointer mt-2.5">
+                <input
+                  type="checkbox"
+                  checked={editPriority === 'urgent'}
+                  onChange={(e) => setEditPriority(e.target.checked ? 'urgent' : 'low')}
+                  className="h-4 w-4 rounded border-border accent-red-500"
+                />
+                <span className="text-[14px] text-foreground">Mark as urgent</span>
+              </label>
             </div>
           </div>
-        ) : (
-          <>
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <h1 className="text-[20px] font-semibold text-foreground leading-snug">{task.title}</h1>
-              <div className="flex shrink-0 gap-2">
-                <Badge type="custom" value={TASK_STATUS_BADGE[task.status].label} className={TASK_STATUS_BADGE[task.status].className} />
-                {task.priority === 'urgent' && (
-                  <Badge type="custom" value="Urgent" className={TASK_PRIORITY_BADGE.urgent.className} />
-                )}
-              </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select label="Assigned To" value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)}>
+              <option value="">Unassigned</option>
+              {staff.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </Select>
+            <DatePicker label="Due Date" value={editDueDate} onChange={(v) => setEditDueDate(v)} />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</Button>
+            <Button variant="secondary" onClick={() => { setEditing(false); populateEditForm(task); }}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        /* ── View mode ── */
+        <div className="space-y-6 pb-6">
+          {/* Title row */}
+          <div className="flex items-start gap-3">
+            <div className="mt-1">
+              <div className={`h-3 w-3 rounded-full ${priorityDotClass(task.priority)}`} title={`Priority: ${task.priority}`} />
             </div>
-
-            {task.description && (
-              <p className="text-[14px] text-muted-foreground mb-4">{task.description}</p>
-            )}
-
-            {/* Meta row */}
-            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] text-muted-foreground mb-4">
-              <span>
-                Assigned to{' '}
-                <span className="text-foreground font-medium">{task.assigned_to_name || 'nobody'}</span>
-              </span>
-              {task.due_date && (
-                <span>
-                  Due{' '}
-                  <span className={`font-medium ${isOverdue ? 'text-destructive' : 'text-foreground'}`}>
-                    {formatDate(task.due_date)}
-                  </span>
-                </span>
+            <div className="flex-1 min-w-0">
+              <h1 className={`text-[22px] font-bold text-foreground leading-snug ${isCompleted ? 'line-through text-[var(--led-muted)]' : ''}`}>
+                {task.title}
+              </h1>
+              {task.description && (
+                <p className="mt-1.5 text-[14px] text-[var(--led-muted)] leading-relaxed">{task.description}</p>
               )}
-              <span>
-                Created by{' '}
-                <span className="text-foreground font-medium">{task.created_by_name || 'unknown'}</span>
-                {' '}on{' '}
-                <span className="text-foreground font-medium">{formatDate(task.created_at)}</span>
+            </div>
+          </div>
+
+          {/* Meta grid */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-[13px] border-y border-[var(--led-line)] py-4">
+            <div>
+              <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Assignee</p>
+              {initials ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--led-accent)]/15 text-[10px] font-semibold text-[var(--led-accent)]">
+                    {initials}
+                  </div>
+                  <span className="text-foreground font-medium">{task.assigned_to_name}</span>
+                </div>
+              ) : (
+                <span className="text-[var(--led-muted)] italic">Unassigned</span>
+              )}
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Status</p>
+              <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${
+                task.status === 'completed' ? 'text-[var(--led-success)]'
+                : task.status === 'in_progress' ? 'text-amber-500'
+                : 'text-foreground'
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${
+                  task.status === 'completed' ? 'bg-[var(--led-success)]'
+                  : task.status === 'in_progress' ? 'bg-amber-500'
+                  : 'bg-[var(--led-muted)]'
+                }`} />
+                {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Completed'}
               </span>
             </div>
 
-            {task.application_id && task.application_label && (
-              <div className="mb-4 rounded-xl bg-primary/5 border border-primary/10 p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-medium text-muted-foreground">Linked Application</p>
-                  <p className="text-[14px] font-medium text-foreground">{task.application_label}</p>
-                </div>
-                <Link to={`/admin/applications/${task.application_id}`}>
-                  <Button variant="ghost" size="sm">View</Button>
-                </Link>
+            {task.due_date && (
+              <div>
+                <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Due Date</p>
+                <span className={`text-[13px] font-medium ${isOverdue ? 'text-red-500' : 'text-foreground'}`}>
+                  {formatDate(task.due_date)}
+                  {isOverdue && ' — overdue'}
+                </span>
               </div>
             )}
 
-            <div className="flex gap-2 pt-3 border-t border-border">
-              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit</Button>
-              <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Deleting...' : 'Delete'}
-              </Button>
-            </div>
-          </>
-        )}
-      </GlassCard>
-
-      {/* Checklist */}
-      <GlassCard>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[15px] font-semibold text-foreground">Checklist</h2>
-          {totalItems > 0 && (
-            <div className="flex items-center gap-3">
-              <div className="h-1.5 w-24 rounded-full bg-secondary overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-success transition-all"
-                  style={{ width: `${(completedCount / totalItems) * 100}%` }}
-                />
+            {task.priority === 'urgent' && (
+              <div>
+                <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Priority</p>
+                <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${TASK_PRIORITY_BADGE.urgent.className}`}>
+                  ● Urgent
+                </span>
               </div>
-              <span className="text-[12px] text-muted-foreground">{completedCount}/{totalItems}</span>
+            )}
+
+            <div>
+              <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Created by</p>
+              <span className="text-foreground font-medium">{task.created_by_name || '—'}</span>
+              <span className="text-[var(--led-muted)]"> · {formatDate(task.created_at)}</span>
+            </div>
+          </div>
+
+          {/* Linked application */}
+          {task.application_id && task.application_label && (
+            <div className="rounded-xl bg-[var(--led-accent)]/5 border border-[var(--led-accent)]/15 px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-0.5">Linked Application</p>
+                <p className="text-[14px] font-medium text-foreground">{task.application_label}</p>
+              </div>
+              <Link to={`/admin/applications/${task.application_id}`}>
+                <Button variant="ghost" size="sm">View →</Button>
+              </Link>
             </div>
           )}
-        </div>
 
-        {totalItems === 0 && (
-          <p className="text-[13px] text-muted-foreground mb-4">No items yet.</p>
-        )}
-
-        <div className="space-y-1">
-          {task.checklist_items.map((item) => (
-            <div
-              key={item.id}
-              className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-secondary/50 transition-colors"
-            >
-              <button
-                onClick={() => handleToggleItem(item)}
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
-                  item.is_completed
-                    ? 'border-success bg-success text-white'
-                    : 'border-border hover:border-primary'
-                }`}
-              >
-                {item.is_completed && (
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                  </svg>
-                )}
-              </button>
-              <span className={`flex-1 text-[14px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                {item.title}
-              </span>
-              <button
-                onClick={() => handleDeleteItem(item.id)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
+          {/* Checklist */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[13px] font-semibold text-foreground">Checklist</p>
+              {totalItems > 0 && (
+                <div className="flex items-center gap-2.5">
+                  <div className="h-1.5 w-20 rounded-full bg-[var(--led-surface-2)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--led-success)] transition-all"
+                      style={{ width: `${(completedCount / totalItems) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[12px] text-[var(--led-muted)] tabular-nums">{completedCount}/{totalItems}</span>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
 
-        <form onSubmit={handleAddItem} className="mt-3 flex gap-2">
-          <Input
-            type="text"
-            value={newItemTitle}
-            onChange={(e) => setNewItemTitle(e.target.value)}
-            placeholder="Add an item..."
-            className="flex-1"
-          />
-          <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
-            {addingItem ? 'Adding...' : 'Add'}
-          </Button>
-        </form>
-      </GlassCard>
+            <div className="space-y-0.5 mb-3">
+              {task.checklist_items.map((item) => (
+                <div
+                  key={item.id}
+                  className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-[var(--led-surface-2)]/60 transition-colors -mx-2"
+                >
+                  <CheckCircle completed={item.is_completed} onClick={() => handleToggleItem(item)} />
+                  <span className={`flex-1 text-[14px] ${item.is_completed ? 'line-through text-[var(--led-muted)]' : 'text-foreground'}`}>
+                    {item.title}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteItem(item.id)}
+                    className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {totalItems === 0 && (
+                <p className="text-[13px] text-[var(--led-muted)] px-2 py-1">No items yet.</p>
+              )}
+            </div>
+
+            <form onSubmit={handleAddItem} className="flex gap-2">
+              <Input
+                type="text"
+                value={newItemTitle}
+                onChange={(e) => setNewItemTitle(e.target.value)}
+                placeholder="Add an item..."
+                className="flex-1"
+              />
+              <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
+                {addingItem ? '...' : 'Add'}
+              </Button>
+            </form>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3 pt-2 border-t border-[var(--led-line)]">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit task</Button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-[13px] text-[var(--led-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
+            >
+              {deleting ? 'Deleting...' : 'Delete task'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

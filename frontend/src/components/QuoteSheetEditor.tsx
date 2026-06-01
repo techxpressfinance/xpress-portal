@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Button, GlassCard, Input } from './ui';
+import { useState, useMemo, type ReactNode } from 'react';
+import { Button, GlassCard } from './ui';
 import type { QuoteSheet, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
@@ -272,6 +272,9 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
 
 // ── Shared field components ──────────────────────────────────────────
 
+const fieldBase = "w-full h-9 rounded-lg bg-secondary text-[13px] text-foreground transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent";
+const labelBase = "block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1";
+
 function DollarInput({ label, value, onChange, placeholder }: {
   label: string;
   value: number | string;
@@ -280,16 +283,16 @@ function DollarInput({ label, value, onChange, placeholder }: {
 }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+      <label className={labelBase}>{label}</label>
       <div className="relative">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[13px]">$</span>
         <input
           type="number"
           step="any"
           placeholder={placeholder}
           value={value}
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
-          className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+          className={`${fieldBase} pl-6 pr-3`}
         />
       </div>
     </div>
@@ -299,11 +302,11 @@ function DollarInput({ label, value, onChange, placeholder }: {
 function CalcField({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">
+      <label className={`${labelBase} flex items-center gap-1`}>
         {label}
-        <span className="ml-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">calc</span>
+        <span className="text-[9px] font-bold text-muted-foreground/50 tracking-wide">AUTO</span>
       </label>
-      <div className={`h-[44px] flex items-center px-4 rounded-xl bg-muted/40 text-sm text-foreground font-medium border border-dashed border-border/50 ${className ?? ''}`}>
+      <div className={`h-9 flex items-center px-3 rounded-lg bg-muted/30 text-[13px] text-foreground font-semibold border border-dashed border-border/40 tabular-nums ${className ?? ''}`}>
         {value}
       </div>
     </div>
@@ -319,17 +322,27 @@ function ToggleButton({ label, active, activeLabel, inactiveLabel, onClick }: {
 }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+      <label className={labelBase}>{label}</label>
       <button
         type="button"
         onClick={onClick}
-        className={`h-[44px] w-full px-3 rounded-xl text-xs font-medium transition-colors border ${active
-          ? 'bg-primary/10 text-primary border-primary/30'
-          : 'bg-muted text-muted-foreground border-transparent'
+        className={`h-9 w-full px-3 rounded-lg text-[12px] font-semibold transition-colors border ${active
+          ? 'bg-primary/10 text-primary border-primary/20'
+          : 'bg-muted text-muted-foreground border-border/40'
         }`}
       >
         {active ? activeLabel : inactiveLabel}
       </button>
+    </div>
+  );
+}
+
+function SectionHeader({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-0.5 h-4 bg-primary/60 rounded-full shrink-0" />
+      <h3 className="text-[11px] font-bold text-foreground uppercase tracking-widest">{children}</h3>
+      <div className="flex-1 h-px bg-border/50" />
     </div>
   );
 }
@@ -440,22 +453,31 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
   const fmtCurrency = (n: number) =>
     `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  const selectBase = `${fieldBase} px-3 appearance-none`;
+
   return (
     <GlassCard>
-      <div className="space-y-5">
+      <div className="space-y-6">
 
         {/* Sheet meta */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Title"
-            placeholder="e.g. Vehicle Finance Options"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Broker Notes <span className="text-[11px] text-muted-foreground font-normal">(internal, not shown to client)</span></label>
+            <label className={labelBase}>Title</label>
+            <input
+              type="text"
+              placeholder="e.g. Vehicle Finance Options"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className={`${fieldBase} px-3`}
+            />
+          </div>
+          <div>
+            <label className={`${labelBase} flex gap-1.5 items-center`}>
+              Broker Notes
+              <span className="text-[9px] font-semibold text-muted-foreground/50 tracking-wide">INTERNAL — NOT SHOWN TO CLIENT</span>
+            </label>
             <textarea
-              className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent min-h-[44px]"
+              className="w-full rounded-lg bg-secondary px-3 py-2 text-[13px] text-foreground transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent min-h-[36px] resize-none"
               placeholder="Internal notes..."
               value={brokerNotes}
               onChange={e => setBrokerNotes(e.target.value)}
@@ -465,16 +487,15 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
         </div>
 
         {/* ── SECTION 1: Loan Setup ─────────────────────────────── */}
-        <section className="border border-border rounded-xl p-5 space-y-4">
-          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Loan Setup</h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <section className="border border-border rounded-xl p-4">
+          <SectionHeader>Loan Setup</SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Facility Type</label>
+              <label className={labelBase}>Facility Type</label>
               <select
                 value={inputs.facility_type}
                 onChange={e => updateInput('facility_type', e.target.value as 'chattel' | 'hp' | 'lease')}
-                className="w-full h-[44px] px-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                className={selectBase}
               >
                 <option value="chattel">Chattel Mortgage</option>
                 <option value="hp">Hire Purchase</option>
@@ -489,43 +510,50 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               onClick={() => updateInput('payment_type', inputs.payment_type === 'advance' ? 'arrears' : 'advance')}
             />
             <div className="md:col-span-2">
-              <Input
-                label="Asset / Loan Type"
-                placeholder="e.g. Motor Vehicle, Industrial Equipment, Land, Boat"
+              <label className={labelBase}>Asset / Loan Description</label>
+              <input
+                type="text"
+                placeholder="e.g. Motor Vehicle, Industrial Equipment, Boat"
                 value={inputs.asset_description}
                 onChange={e => updateInput('asset_description', e.target.value)}
+                className={`${fieldBase} px-3`}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
             <DollarInput
               label="Asset Price"
               value={inputs.asset_price || ''}
               onChange={v => updateInput('asset_price', v)}
             />
-            <Input
-              label="Deposit %"
-              type="number"
-              step="any"
-              value={inputs.deposit_percent || ''}
-              onChange={e => { updateInput('deposit_percent', parseFloat(e.target.value) || 0); updateInput('deposit_amount', null); }}
-              suffix="%"
-            />
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              <label className={labelBase}>Deposit %</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="any"
+                  value={inputs.deposit_percent || ''}
+                  onChange={e => { updateInput('deposit_percent', parseFloat(e.target.value) || 0); updateInput('deposit_amount', null); }}
+                  className={`${fieldBase} px-3 pr-6`}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
+              </div>
+            </div>
+            <div>
+              <label className={`${labelBase} flex gap-1`}>
                 Deposit $
-                <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">override</span>
+                <span className="text-[9px] font-semibold text-muted-foreground/50">OVERRIDE</span>
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[13px]">$</span>
                 <input
                   type="number"
                   step="any"
                   placeholder={fmtCurrency(inputs.asset_price * (inputs.deposit_percent / 100)).replace('$', '')}
                   value={inputs.deposit_amount ?? ''}
                   onChange={e => updateInput('deposit_amount', e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full h-[44px] pl-7 pr-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                  className={`${fieldBase} pl-6 pr-3`}
                 />
               </div>
             </div>
@@ -534,10 +562,9 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
         </section>
 
         {/* ── SECTION 2: Fees & Charges ────────────────────────── */}
-        <section className="border border-border rounded-xl p-5 space-y-4">
-          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Fees & Charges</h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <section className="border border-border rounded-xl p-4">
+          <SectionHeader>Fees &amp; Charges</SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <DollarInput
               label="Establishment Fee"
               value={inputs.establishment_fee || ''}
@@ -560,35 +587,34 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Fees Treatment</label>
+              <label className={labelBase}>Fees Treatment</label>
               <select
                 value={inputs.fees_financed ? 'financed' : 'non-financed'}
                 onChange={e => updateInput('fees_financed', e.target.value === 'financed')}
-                className="w-full h-[44px] px-4 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
+                className={selectBase}
               >
                 <option value="financed">Financed (added to loan)</option>
-                <option value="non-financed">Non-Financed (charged separately)</option>
+                <option value="non-financed">Non-Financed (separate)</option>
               </select>
             </div>
             <CalcField
               label="Total Fees"
-              value={`${fmtCurrency(derived.totalFees)}${!inputs.fees_financed ? ' (separate)' : ''}`}
+              value={`${fmtCurrency(derived.totalFees)}${!inputs.fees_financed ? ' (sep.)' : ''}`}
             />
-            {derived.itcBenefit > 0 && (
+            {derived.itcBenefit > 0 ? (
               <CalcField
                 label="ITC Benefit"
                 value={`-${fmtCurrency(derived.itcBenefit)}`}
                 className="!text-green-700 !bg-green-500/10 !border-green-200"
               />
-            )}
+            ) : <div />}
             <CalcField label="Amount to be Financed" value={fmtCurrency(derived.amountFinanced)} />
           </div>
 
-          {/* Lease-specific fields */}
           {inputs.facility_type === 'lease' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1 border-t border-border/50">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
               <DollarInput
                 label="Non-Taxable On-Road Charges"
                 value={inputs.non_taxable_charges || ''}
@@ -603,180 +629,188 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
           )}
         </section>
 
-        {/* ── SECTION 3: Rate & Brokerage ──────────────────────── */}
-        <section className="border border-border rounded-xl p-5 space-y-4">
-          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Rate & Brokerage</h3>
+        {/* ── SECTION 3: Rate & Brokerage + Balloon ──────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section className="border border-border rounded-xl p-4">
+            <SectionHeader>Rate &amp; Brokerage</SectionHeader>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelBase}>Lender Interest Rate</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="any"
+                    value={inputs.interest_rate || ''}
+                    onChange={e => updateInput('interest_rate', parseFloat(e.target.value) || 0)}
+                    className={`${fieldBase} px-3 pr-6`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
+                </div>
+              </div>
+              <div>
+                <label className={labelBase}>Brokerage %</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="any"
+                    value={inputs.brokerage_percent || ''}
+                    onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
+                    className={`${fieldBase} px-3 pr-6`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px]">%</span>
+                </div>
+              </div>
+              <ToggleButton
+                label="GST on Brokerage"
+                active={inputs.gst_on_brokerage}
+                activeLabel="With GST"
+                inactiveLabel="Without GST"
+                onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
+              />
+              <CalcField label="Brokerage Amount" value={fmtCurrency(derived.brokerage)} />
+              <CalcField label="GST Rate" value="10%" />
+            </div>
+          </section>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <section className="border border-border rounded-xl p-4">
+            <SectionHeader>Balloon Settings</SectionHeader>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <ToggleButton
+                label="Balloon calculated on"
+                active={inputs.balloon_on_total_price}
+                activeLabel="Total Price"
+                inactiveLabel="Amount Financed"
+                onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
+              />
+              <CalcField label="Balloon Base" value={fmtCurrency(derived.balloonBase)} />
+            </div>
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Lender Interest Rate</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="any"
-                  value={inputs.interest_rate || ''}
-                  onChange={e => updateInput('interest_rate', parseFloat(e.target.value) || 0)}
-                  className="w-full h-[44px] px-4 pr-8 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+              <label className={labelBase}>Balloon % per Term</label>
+              <div className="grid grid-cols-5 gap-2 mt-1">
+                {TERMS.map(t => (
+                  <div key={t}>
+                    <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{t}yr</div>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={inputs.balloon_percentages[String(t)] ?? 0}
+                        onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
+                        className={`${fieldBase} px-2 pr-5 text-center`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-            <Input
-              label="Brokerage %"
-              type="number"
-              step="any"
-              value={inputs.brokerage_percent || ''}
-              onChange={e => updateInput('brokerage_percent', parseFloat(e.target.value) || 0)}
-              suffix="%"
-            />
-            <ToggleButton
-              label="GST on Brokerage"
-              active={inputs.gst_on_brokerage}
-              activeLabel="With GST"
-              inactiveLabel="Without GST"
-              onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <CalcField label="Brokerage Amount" value={fmtCurrency(derived.brokerage)} />
-            <CalcField label="GST Rate" value="10%" />
-          </div>
-        </section>
-
-        {/* ── SECTION 4: Balloon Settings ──────────────────────── */}
-        <section className="border border-border rounded-xl p-5 space-y-4">
-          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Balloon Settings</h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <ToggleButton
-              label="Balloon calculated on"
-              active={inputs.balloon_on_total_price}
-              activeLabel="Total Price"
-              inactiveLabel="Amount Financed"
-              onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
-            />
-            <CalcField label="Balloon Base" value={fmtCurrency(derived.balloonBase)} />
-          </div>
-
-          <div>
-            <p className="text-[13px] font-medium text-foreground mb-3">Balloon % per Term</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {TERMS.map(t => (
-                <Input
-                  key={t}
-                  label={`${t} Year`}
-                  type="number"
-                  step="any"
-                  value={inputs.balloon_percentages[String(t)] ?? 0}
-                  onChange={e => updateBalloonPct(String(t), parseFloat(e.target.value) || 0)}
-                  className="!text-center"
-                  suffix="%"
-                />
-              ))}
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         {/* ── Terms to Show Client ─────────────────────────────── */}
-        <section className="border border-border rounded-xl p-5 space-y-3">
-          <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Terms to Show Client</h3>
-          <div className="flex flex-wrap gap-3">
-            {TERMS.map(t => {
-              const isSelected = (inputs.selected_terms ?? TERMS).includes(t);
-              return (
+        <section className="border border-border rounded-xl p-4">
+          <SectionHeader>Client Output Settings</SectionHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className={`${labelBase} mb-2`}>Terms to include in client PDF</label>
+              <div className="flex flex-wrap gap-2">
+                {TERMS.map(t => {
+                  const isSelected = (inputs.selected_terms ?? TERMS).includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => toggleTerm(t)}
+                      className={`h-8 px-4 rounded-lg text-[12px] font-semibold transition-colors border ${isSelected
+                        ? 'bg-primary/10 text-primary border-primary/20'
+                        : 'bg-muted text-muted-foreground border-border/40 opacity-50'
+                      }`}
+                    >
+                      {t} Year
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Only selected terms appear in the client PDF.</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className={`${labelBase} mb-1.5`}>Repayment display range (±$)</label>
+                <div className="flex items-center gap-3">
+                  <div className="relative w-36">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px] select-none">±$</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="e.g. 50"
+                      value={inputs.repayment_range ?? ''}
+                      onChange={e => updateInput('repayment_range', parseFloat(e.target.value) || undefined)}
+                      className={`${fieldBase} pl-8 pr-3`}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Shows a range to client instead of exact. Leave blank for exact.</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
                 <button
-                  key={t}
                   type="button"
-                  onClick={() => toggleTerm(t)}
-                  className={`h-[40px] px-5 rounded-xl text-sm font-medium transition-colors border ${isSelected
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-muted text-muted-foreground border-transparent opacity-50'
+                  onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
+                  className={`h-8 px-3 rounded-lg text-[12px] font-semibold transition-colors border whitespace-nowrap ${inputs.show_interest_rate
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'bg-muted text-muted-foreground border-border/40'
                   }`}
                 >
-                  {t} Year
+                  {inputs.show_interest_rate ? 'Interest rate: visible' : 'Interest rate: hidden'}
                 </button>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-muted-foreground">Only selected terms appear in the client PDF.</p>
-          <div className="pt-2 flex items-center gap-4">
-            <label className="text-[13px] font-medium text-foreground whitespace-nowrap">
-              Repayment range (±$)
-            </label>
-            <div className="relative w-32">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">±$</span>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                placeholder="e.g. 50"
-                value={inputs.repayment_range ?? ''}
-                onChange={e => updateInput('repayment_range', parseFloat(e.target.value) || undefined)}
-                className="w-full h-[44px] pl-9 pr-3 rounded-xl bg-secondary text-[14px] text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent"
-              />
+                <span className="text-[10px] text-muted-foreground">Controls interest rate visibility on client quote.</span>
+              </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Client sees a range instead of the exact figure. Leave blank to show exact.
-            </p>
-          </div>
-          <div className="pt-2 flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => updateInput('show_interest_rate', !inputs.show_interest_rate)}
-              className={`h-[36px] px-4 rounded-xl text-xs font-medium transition-colors border ${inputs.show_interest_rate
-                ? 'bg-primary/10 text-primary border-primary/30'
-                : 'bg-muted text-muted-foreground border-transparent'
-              }`}
-            >
-              {inputs.show_interest_rate ? 'Interest rate: visible to client' : 'Interest rate: hidden from client'}
-            </button>
-            <p className="text-[11px] text-muted-foreground">
-              Controls whether the interest rate appears on the client-facing quote.
-            </p>
           </div>
         </section>
 
         {/* ── Live Preview ─────────────────────────────────────── */}
         {scenarios.length > 0 && (
-          <section className="border border-border rounded-xl p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">Preview</h3>
-              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase">
-                {inputs.facility_type === 'chattel' ? 'Chattel' : inputs.facility_type === 'hp' ? 'HP' : 'Lease'}
+          <section className="border border-border rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-0.5 h-4 bg-primary/60 rounded-full shrink-0" />
+              <h3 className="text-[11px] font-bold text-foreground uppercase tracking-widest">Live Preview</h3>
+              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                {inputs.facility_type === 'chattel' ? 'Chattel Mortgage' : inputs.facility_type === 'hp' ? 'Hire Purchase' : 'Lease'}
               </span>
+              <div className="flex-1 h-px bg-border/50" />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-[12px] border-collapse">
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Term</th>
-                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Balloon</th>
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Net Rental</th>
-                    {inputs.facility_type !== 'chattel' && <th className="text-right py-2 px-3 text-muted-foreground font-medium">Stamp Duty</th>}
-                    {inputs.facility_type === 'lease' && <th className="text-right py-2 px-3 text-muted-foreground font-medium">GST</th>}
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Monthly</th>
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Fortnightly</th>
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Weekly</th>
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Total Interest</th>
-                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">All Up Interest Rate</th>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className="text-left py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Term</th>
+                    <th className="text-left py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Balloon</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Net Rental</th>
+                    {inputs.facility_type !== 'chattel' && <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Stamp Duty</th>}
+                    {inputs.facility_type === 'lease' && <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">GST</th>}
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Monthly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Fortnightly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Weekly</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Total Interest</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">All Up Rate</th>
                   </tr>
                 </thead>
                 <tbody>
                   {scenarios.map((s, i) => (
-                    <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
-                      <td className="py-2 px-3 font-medium">{s.termYears} Year</td>
-                      <td className="py-2 px-3 text-muted-foreground">
-                        {s.hasBalloon ? `${s.balloonPercent}% (${fmtCurrency(s.balloon)})` : 'None'}
+                    <tr key={i} className={`border-b border-border/40 last:border-0 ${i % 2 === 0 ? '' : 'bg-muted/20'}`}>
+                      <td className="py-2 px-3 font-semibold tabular-nums">{s.termYears}yr</td>
+                      <td className="py-2 px-3 text-muted-foreground tabular-nums">
+                        {s.hasBalloon ? `${s.balloonPercent}% · ${fmtCurrency(s.balloon)}` : '—'}
                       </td>
-                      <td className="py-2 px-3 text-right">{fmtCurrency(s.netRental)}</td>
-                      {inputs.facility_type !== 'chattel' && <td className="py-2 px-3 text-right">{fmtCurrency(s.stampDuty)}</td>}
-                      {inputs.facility_type === 'lease' && <td className="py-2 px-3 text-right">{fmtCurrency(s.gst)}</td>}
-                      <td className="py-2 px-3 text-right font-semibold">{fmtCurrency(s.monthlyRepayment)}</td>
-                      <td className="py-2 px-3 text-right">{fmtCurrency(s.fortnightlyRepayment)}</td>
-                      <td className="py-2 px-3 text-right">{fmtCurrency(s.weeklyRepayment)}</td>
-                      <td className="py-2 px-3 text-right">{fmtCurrency(s.totalInterest)}</td>
-                      <td className="py-2 px-3 text-right font-semibold text-primary">
+                      <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.netRental)}</td>
+                      {inputs.facility_type !== 'chattel' && <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.stampDuty)}</td>}
+                      {inputs.facility_type === 'lease' && <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.gst)}</td>}
+                      <td className="py-2 px-3 text-right font-bold tabular-nums">{fmtCurrency(s.monthlyRepayment)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.fortnightlyRepayment)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.weeklyRepayment)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.totalInterest)}</td>
+                      <td className="py-2 px-3 text-right font-bold tabular-nums text-primary">
                         {s.clientInterest != null ? `${(s.clientInterest * 100).toFixed(2)}%` : '—'}
                       </td>
                     </tr>

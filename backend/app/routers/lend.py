@@ -66,19 +66,13 @@ def trigger_sync(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    if application.lend_sync_status == "pending":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sync is already in progress")
-
-    # Auto-force when previous sync failed (stale ref likely)
-    should_force = force_new or application.lend_sync_status == "failed"
-
     from app.services.lend import sync_to_lend_background
 
     background_tasks.add_task(
         sync_to_lend_background,
         application_id=app_id,
         session_factory=SessionLocal,
-        force_new=should_force,
+        force_new=force_new,
     )
 
     return {"status": "sync_started", "application_id": app_id}
@@ -98,9 +92,6 @@ def get_sync_status(
 
     return {
         "lend_ref": application.lend_ref,
-        "lend_sync_status": application.lend_sync_status,
-        "lend_sync_error": application.lend_sync_error,
-        "lend_synced_at": application.lend_synced_at.isoformat() if application.lend_synced_at else None,
     }
 
 

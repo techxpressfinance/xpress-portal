@@ -347,13 +347,11 @@ def sync_to_lend_background(application_id: str, session_factory, force_new: boo
     from app.models.loan_application import LoanApplication
     from app.services.db_context import background_session
 
-    # Mark as pending; optionally clear stale ref
     with background_session(session_factory) as db:
         app = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
         if not app:
             logger.error("Lend sync: application %s not found", application_id)
             return
-        app.lend_sync_status = "pending"
         if force_new:
             app.lend_ref = None
             # Reset uploaded flags so docs get re-uploaded to the new lead
@@ -438,19 +436,7 @@ def sync_to_lend_background(application_id: str, session_factory, force_new: boo
             except Exception:
                 logger.exception("Failed to upload doc %s to Lend (retry)", doc_info["id"])
 
-        # Mark success
-        with background_session(session_factory) as db:
-            app = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
-            app.lend_sync_status = "synced"
-            app.lend_synced_at = datetime.now(timezone.utc)
-            app.lend_sync_error = None
-
         logger.info("Lend sync completed for application %s, ref=%s", application_id, lead_ref)
 
-    except Exception as exc:
+    except Exception:
         logger.exception("Lend sync failed for application %s", application_id)
-        with background_session(session_factory) as db:
-            app = db.query(LoanApplication).filter(LoanApplication.id == application_id).first()
-            if app:
-                app.lend_sync_status = "failed"
-                app.lend_sync_error = str(exc)[:2000]

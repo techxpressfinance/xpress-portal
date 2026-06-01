@@ -39,9 +39,7 @@ interface AppAnalytics {
 }
 
 function formatVolume(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
-  return `$${v.toLocaleString()}`;
+  return `$${Math.round(v).toLocaleString('en-AU')}`;
 }
 
 const STATUS_ORDER = [
@@ -496,7 +494,7 @@ export default function ReferrerDashboard() {
                             </div>
                           </td>
                           <td className="px-6 py-4 align-top">
-                            <div className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</div>
+                            <div className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">${Number(app.amount).toLocaleString('en-AU')}</div>
                           </td>
                           <td className="px-6 py-4 align-top">
                             <Badge value={app.status} className="py-1 px-3" />
@@ -645,7 +643,7 @@ export default function ReferrerDashboard() {
                   </div>
                   <span className="capitalize">{selectedApp.loan_type} loan</span>
                   <span>&middot;</span>
-                  <span className="font-semibold led-tnum text-[var(--led-ink)]">${Number(selectedApp.amount).toLocaleString()}</span>
+                  <span className="font-semibold led-tnum text-[var(--led-ink)]">${Number(selectedApp.amount).toLocaleString('en-AU')}</span>
                 </div>
               </div>
 

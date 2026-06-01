@@ -204,7 +204,7 @@ export default function GlobalSearch() {
                             </p>
                           </div>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            ${Number(app.amount).toLocaleString()}
+                            ${Number(app.amount).toLocaleString('en-AU')}
                             {app.created_at && ` · ${formatDate(app.created_at)}`}
                           </p>
                         </div>

@@ -178,7 +178,7 @@ export default function ActivityLogs() {
                 } else if (log.action === 'document_verified' && details.filename) {
                   description = `${details.filename} (${details.doc_type || ''})`;
                 } else if ((log.action === 'created' || log.action === 'lead_submitted') && details.loan_type) {
-                  description = `${details.loan_type} loan - $${Number(details.amount || 0).toLocaleString()}${details.client_name ? ` \u00b7 ${details.client_name}` : ''}`;
+                  description = `${details.loan_type} loan - $${Number(details.amount || 0).toLocaleString('en-AU')}${details.client_name ? ` \u00b7 ${details.client_name}` : ''}`;
                 } else if (log.action === 'client_referred' && details.client_name) {
                   description = `${details.client_name}${details.client_email ? ` (${details.client_email})` : ''}`;
                 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
+import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
@@ -283,7 +284,7 @@ export default function ApplicationDetail() {
           </div>
         </div>
         <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">
-          {application.loan_type} loan &middot; ${Number(application.amount).toLocaleString()}
+          {application.loan_type} loan &middot; ${Number(application.amount).toLocaleString('en-AU')}
         </p>
       </div>
 
@@ -337,7 +338,7 @@ export default function ApplicationDetail() {
               <div className="rounded-xl bg-[var(--led-surface-2)] p-4">
                 <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Amount</dt>
                 <dd className="mt-2 text-[22px] font-semibold tracking-[-0.03em] led-tnum text-[var(--led-ink)]">
-                  ${Number(application.amount).toLocaleString()}
+                  ${Number(application.amount).toLocaleString('en-AU')}
                 </dd>
               </div>
               <div className="rounded-xl bg-[var(--led-surface-2)] p-4">
@@ -498,7 +499,7 @@ export default function ApplicationDetail() {
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
                 <p className="text-[12px] text-[var(--led-muted)]">Gross Income</p>
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">
-                  {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString()}${application.income_frequency ? ` / ${application.income_frequency}` : ''}` : '—'}
+                  {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString('en-AU')}${application.income_frequency ? ` / ${application.income_frequency}` : ''}` : '—'}
                 </p>
               </div>
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
@@ -534,6 +535,22 @@ export default function ApplicationDetail() {
           </GlassCard>
           )}
 
+          {/* Directors (commercial loans) */}
+          {['business', 'business_loan', 'commercial_property', 'equipment_finance'].includes(application.loan_type) && (
+            <GlassCard padding="none" className="mt-6">
+              <div className="p-6">
+                <DirectorsSection
+                  application={application}
+                  onChange={async () => {
+                    const { data } = await api.get(`/applications/${id}`);
+                    setApplication(data);
+                  }}
+                  canManage
+                />
+              </div>
+            </GlassCard>
+          )}
+
           {/* Loan Type Details (from lend_extra_data) */}
           {sectionVisible('loan_details') && application.lend_extra_data && (() => {
             try {
@@ -564,8 +581,8 @@ export default function ApplicationDetail() {
                           <div><p className="text-[12px] text-[var(--led-muted)]">Model</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.model || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Year</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.year || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Condition</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.condition || '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.price > 0 ? `$${Number(loanDetails.vehicle_details.price).toLocaleString()}` : '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.deposit > 0 ? `$${Number(loanDetails.vehicle_details.deposit).toLocaleString()}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.price > 0 ? `$${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.deposit > 0 ? `$${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}` : '—'}</p></div>
                         </div>
                       </div>
                     )}
@@ -576,8 +593,8 @@ export default function ApplicationDetail() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div><p className="text-[12px] text-[var(--led-muted)]">Property Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.property_type || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Property Use</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.property_use || '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Property Value</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.value > 0 ? `$${Number(loanDetails.property_details.value).toLocaleString()}` : '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.deposit > 0 ? `$${Number(loanDetails.property_details.deposit).toLocaleString()}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Property Value</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.value > 0 ? `$${Number(loanDetails.property_details.value).toLocaleString('en-AU')}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.deposit > 0 ? `$${Number(loanDetails.property_details.deposit).toLocaleString('en-AU')}` : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">First Home Buyer</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.first_home_buyer != null ? (loanDetails.property_details.first_home_buyer ? 'Yes' : 'No') : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Current Lender</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.current_lender || '—'}</p></div>
                         </div>
@@ -590,8 +607,8 @@ export default function ApplicationDetail() {
                         <div><p className="text-[12px] text-[var(--led-muted)]">Asset Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.equipment_type || '—'}</p></div>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Description</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.description || '—'}</p></div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.price > 0 ? `$${Number(loanDetails.asset_details.price).toLocaleString()}` : '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.deposit > 0 ? `$${Number(loanDetails.asset_details.deposit).toLocaleString()}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.price > 0 ? `$${Number(loanDetails.asset_details.price).toLocaleString('en-AU')}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.deposit > 0 ? `$${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}` : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Vendor Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.vendor_type || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Business Use %</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.business_use_pct > 0 ? `${loanDetails.asset_details.business_use_pct}%` : '—'}</p></div>
                         </div>
@@ -603,8 +620,8 @@ export default function ApplicationDetail() {
                         <div><p className="text-[12px] text-[var(--led-muted)]">Business Plan</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.business_plan || '—'}</p></div>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Business Details</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.business_details || '—'}</p></div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Startup Costs</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.startup_costs > 0 ? `$${Number(loanDetails.business_details.startup_costs).toLocaleString()}` : '—'}</p></div>
-                          <div><p className="text-[12px] text-[var(--led-muted)]">Purchase Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.purchase_price > 0 ? `$${Number(loanDetails.business_details.purchase_price).toLocaleString()}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Startup Costs</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.startup_costs > 0 ? `$${Number(loanDetails.business_details.startup_costs).toLocaleString('en-AU')}` : '—'}</p></div>
+                          <div><p className="text-[12px] text-[var(--led-muted)]">Purchase Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.purchase_price > 0 ? `$${Number(loanDetails.business_details.purchase_price).toLocaleString('en-AU')}` : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Industry</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.industry || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Business Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.business_type || '—'}</p></div>
                         </div>
@@ -618,14 +635,14 @@ export default function ApplicationDetail() {
                         <div><p className="text-[12px] text-[var(--led-muted)]">Supplier Details</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.supplier_details || '—'}</p></div>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Outstanding Invoices</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.outstanding_invoices || '—'}</p></div>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Purpose</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.purpose_description || '—'}</p></div>
-                        <div><p className="text-[12px] text-[var(--led-muted)]">Loan Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.loan_amount > 0 ? `$${Number(loanDetails.working_capital.loan_amount).toLocaleString()}` : '—'}</p></div>
+                        <div><p className="text-[12px] text-[var(--led-muted)]">Loan Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.loan_amount > 0 ? `$${Number(loanDetails.working_capital.loan_amount).toLocaleString('en-AU')}` : '—'}</p></div>
                       </div>
                     )}
                     {loanDetails.personal_loan && (
                       <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5 space-y-3">
                         <p className="text-[13px] font-semibold text-[var(--led-ink)]">Personal Loan Details</p>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Purpose</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.purpose || '—'}</p></div>
-                        <div><p className="text-[12px] text-[var(--led-muted)]">Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.amount > 0 ? `$${Number(loanDetails.personal_loan.amount).toLocaleString()}` : '—'}</p></div>
+                        <div><p className="text-[12px] text-[var(--led-muted)]">Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.amount > 0 ? `$${Number(loanDetails.personal_loan.amount).toLocaleString('en-AU')}` : '—'}</p></div>
                         <div><p className="text-[12px] text-[var(--led-muted)]">Term</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.term || '—'}</p></div>
                       </div>
                     )}
@@ -876,7 +893,7 @@ export default function ApplicationDetail() {
                     {application.gross_income && (
                       <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                         <dt className="text-[12px] font-medium text-[var(--led-muted)]">Gross Income</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(application.gross_income).toLocaleString()}</dd>
+                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(application.gross_income).toLocaleString('en-AU')}</dd>
                       </div>
                     )}
                   </dl>
@@ -939,7 +956,7 @@ export default function ApplicationDetail() {
                     {application.business_monthly_sales && (
                       <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                         <dt className="text-[12px] font-medium text-[var(--led-muted)]">Monthly Sales</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(application.business_monthly_sales).toLocaleString()}</dd>
+                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(application.business_monthly_sales).toLocaleString('en-AU')}</dd>
                       </div>
                     )}
                   </dl>
@@ -1068,10 +1085,10 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">VIN</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.vin}</dd></div>
                           )}
                           {loanDetails.vehicle_details.price > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.vehicle_details.price).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.vehicle_details.deposit > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.vehicle_details.deposit).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.vehicle_details.term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.term}</dd></div>
@@ -1095,10 +1112,10 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Property Use</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.property_use}</dd></div>
                           )}
                           {loanDetails.property_details.value > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Property Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.value).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Property Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.value).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.property_details.deposit > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.deposit).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.deposit).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.property_details.first_home_buyer !== undefined && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">First Home Buyer</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.first_home_buyer ? 'Yes' : 'No'}</dd></div>
@@ -1107,7 +1124,7 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Current Lender</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.current_lender}</dd></div>
                           )}
                           {loanDetails.property_details.current_balance > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Current Balance</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.current_balance).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Current Balance</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.property_details.current_balance).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.property_details.refinance_reason && (
                             <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-[var(--led-muted)]">Refinance Reason</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.property_details.refinance_reason}</dd></div>
@@ -1137,7 +1154,7 @@ export default function ApplicationDetail() {
                             <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Purpose</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.purpose}</dd></div>
                           )}
                           {loanDetails.personal_loan.amount > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.personal_loan.amount).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.personal_loan.amount).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.personal_loan.term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.personal_loan.term}</dd></div>
@@ -1161,10 +1178,10 @@ export default function ApplicationDetail() {
                             <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-[var(--led-muted)]">Description</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.description}</dd></div>
                           )}
                           {loanDetails.asset_details.price > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.asset_details.price).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.asset_details.price).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.asset_details.deposit > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit / Trade-in</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.asset_details.deposit).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit / Trade-in</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.asset_details.vendor_type && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Vendor Type</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.vendor_type}</dd></div>
@@ -1197,13 +1214,13 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Business Type</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.business_type}</dd></div>
                           )}
                           {loanDetails.business_details.startup_costs > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Startup Costs</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.startup_costs).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Startup Costs</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.startup_costs).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.business_details.purchase_price > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Purchase Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.purchase_price).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Purchase Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.purchase_price).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.business_details.loan_amount > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.loan_amount).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_details.loan_amount).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.business_details.term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_details.term}</dd></div>
@@ -1233,7 +1250,7 @@ export default function ApplicationDetail() {
                             <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-[var(--led-muted)]">Purpose</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.purpose_description}</dd></div>
                           )}
                           {loanDetails.working_capital.loan_amount > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.working_capital.loan_amount).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.working_capital.loan_amount).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.working_capital.term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.working_capital.term}</dd></div>
@@ -1254,10 +1271,10 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">New or Used</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.equipment_finance.new_or_used}</dd></div>
                           )}
                           {loanDetails.equipment_finance.asset_price > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Asset Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.equipment_finance.asset_price).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Asset Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.equipment_finance.asset_price).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.equipment_finance.deposit_amount > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.equipment_finance.deposit_amount).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Deposit</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.equipment_finance.deposit_amount).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.equipment_finance.vendor_type && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Vendor Type</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.equipment_finance.vendor_type}</dd></div>
@@ -1284,7 +1301,7 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Purpose Type</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_loan.purpose_type}</dd></div>
                           )}
                           {loanDetails.business_loan.loan_amount > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_loan.loan_amount).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Amount</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.business_loan.loan_amount).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.business_loan.loan_term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.business_loan.loan_term}</dd></div>
@@ -1305,10 +1322,10 @@ export default function ApplicationDetail() {
                             <div className="sm:col-span-2"><dt className="text-[12px] font-medium text-[var(--led-muted)]">Security Address</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.commercial_property.security_address}</dd></div>
                           )}
                           {loanDetails.commercial_property.estimated_value > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Estimated Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.commercial_property.estimated_value).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Estimated Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.commercial_property.estimated_value).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.commercial_property.existing_debt > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Existing Debt</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.commercial_property.existing_debt).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Existing Debt</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.commercial_property.existing_debt).toLocaleString('en-AU')}</dd></div>
                           )}
                         </dl>
                       </div>
@@ -1326,7 +1343,7 @@ export default function ApplicationDetail() {
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Owner / Investment</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.home_loan.owner_or_investment}</dd></div>
                           )}
                           {loanDetails.home_loan.property_value > 0 && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Property Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.home_loan.property_value).toLocaleString()}</dd></div>
+                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Property Value</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.home_loan.property_value).toLocaleString('en-AU')}</dd></div>
                           )}
                           {loanDetails.home_loan.existing_lender && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Existing Lender</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.home_loan.existing_lender}</dd></div>
@@ -1485,7 +1502,7 @@ export default function ApplicationDetail() {
                             <p className="text-[12px] font-medium text-[var(--led-muted)] mb-1">{idx === 0 ? 'Primary Income' : `Additional Income ${idx}`}</p>
                             <div className="grid gap-2 sm:grid-cols-3">
                               {inc.income_type && <div><p className="text-[11px] text-[var(--led-muted)]">Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{inc.income_type}</p></div>}
-                              {(inc.amount ?? 0) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">${Number(inc.amount).toLocaleString()}</p></div>}
+                              {(inc.amount ?? 0) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Amount</p><p className="text-[14px] font-medium text-[var(--led-ink)]">${Number(inc.amount).toLocaleString('en-AU')}</p></div>}
                               {inc.frequency && <div><p className="text-[11px] text-[var(--led-muted)]">Frequency</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{inc.frequency}</p></div>}
                             </div>
                           </div>
@@ -1502,25 +1519,25 @@ export default function ApplicationDetail() {
                         {expenses.monthly_living > 0 && (
                           <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <dt className="text-[12px] font-medium text-[var(--led-muted)]">Living Expenses</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.monthly_living).toLocaleString()}/mo</dd>
+                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</dd>
                           </div>
                         )}
                         {expenses.rent_mortgage > 0 && (
                           <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <dt className="text-[12px] font-medium text-[var(--led-muted)]">Rent / Mortgage</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.rent_mortgage).toLocaleString()}/mo</dd>
+                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</dd>
                           </div>
                         )}
                         {expenses.child_support > 0 && (
                           <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <dt className="text-[12px] font-medium text-[var(--led-muted)]">Child Support</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.child_support).toLocaleString()}/mo</dd>
+                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.child_support).toLocaleString('en-AU')}/mo</dd>
                           </div>
                         )}
                         {expenses.other_commitments > 0 && (
                           <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <dt className="text-[12px] font-medium text-[var(--led-muted)]">Other Commitments</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.other_commitments).toLocaleString()}/mo</dd>
+                            <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</dd>
                           </div>
                         )}
                       </dl>
@@ -1538,11 +1555,11 @@ export default function ApplicationDetail() {
                             <div className="grid gap-2 sm:grid-cols-2">
                               {asset.address && <div className="sm:col-span-2"><p className="text-[11px] text-[var(--led-muted)]">Address</p><p className="text-[13px] font-medium text-[var(--led-ink)]">{String(asset.address)}</p></div>}
                               {asset.ownership_type && <div><p className="text-[11px] text-[var(--led-muted)]">Ownership</p><p className="text-[13px] font-medium text-[var(--led-ink)]">{String(asset.ownership_type)}</p></div>}
-                              {(asset.estimated_value as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Estimated Value</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.estimated_value).toLocaleString()}</p></div>}
+                              {(asset.estimated_value as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Estimated Value</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.estimated_value).toLocaleString('en-AU')}</p></div>}
                               {asset.is_financed === 'yes' && asset.lender && <div><p className="text-[11px] text-[var(--led-muted)]">Lender</p><p className="text-[13px] font-medium text-[var(--led-ink)]">{String(asset.lender)}</p></div>}
-                              {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Amount Owing</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.amount_owing).toLocaleString()}</p></div>}
-                              {asset.is_financed === 'yes' && (asset.monthly_repayment as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Monthly Repayment</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.monthly_repayment).toLocaleString()}</p></div>}
-                              {(asset.rental_income as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Rental Income</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.rental_income).toLocaleString()}/mo</p></div>}
+                              {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Amount Owing</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.amount_owing).toLocaleString('en-AU')}</p></div>}
+                              {asset.is_financed === 'yes' && (asset.monthly_repayment as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Monthly Repayment</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.monthly_repayment).toLocaleString('en-AU')}</p></div>}
+                              {(asset.rental_income as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Rental Income</p><p className="text-[13px] font-medium text-[var(--led-ink)]">${Number(asset.rental_income).toLocaleString('en-AU')}/mo</p></div>}
                             </div>
                           </div>
                         ))}
@@ -1558,7 +1575,7 @@ export default function ApplicationDetail() {
                         {otherAssets.map((asset, idx) => (
                           <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <dt className="text-[12px] font-medium text-[var(--led-muted)]">{String(asset.asset_type || `Asset ${idx + 1}`)}</dt>
-                            {(asset.value as number) > 0 && <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(asset.value).toLocaleString()}</dd>}
+                            {(asset.value as number) > 0 && <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(asset.value).toLocaleString('en-AU')}</dd>}
                           </div>
                         ))}
                       </div>
@@ -1574,9 +1591,9 @@ export default function ApplicationDetail() {
                           <div key={index} className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                             <p className="text-[13px] font-semibold text-[var(--led-ink)] mb-1">{String(liability.liability_type ?? `Liability ${index + 1}`)}{liability.lender ? ` — ${liability.lender}` : ''}</p>
                             <div className="grid gap-2 sm:grid-cols-3 text-[13px]">
-                              {(liability.balance as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Balance</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.balance).toLocaleString()}</p></div>}
-                              {(liability.limit as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Limit</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.limit).toLocaleString()}</p></div>}
-                              {(liability.monthly_repayment as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Monthly</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.monthly_repayment).toLocaleString()}</p></div>}
+                              {(liability.balance as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Balance</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.balance).toLocaleString('en-AU')}</p></div>}
+                              {(liability.limit as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Limit</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.limit).toLocaleString('en-AU')}</p></div>}
+                              {(liability.monthly_repayment as number) > 0 && <div><p className="text-[11px] text-[var(--led-muted)]">Monthly</p><p className="font-medium text-[var(--led-ink)]">${Number(liability.monthly_repayment).toLocaleString('en-AU')}</p></div>}
                             </div>
                           </div>
                         ))}
@@ -1949,7 +1966,7 @@ export default function ApplicationDetail() {
                 <div style={{ textAlign: 'right' }}>
                   <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Status</p>
                   <p style={{ fontSize: '13px', fontWeight: 700, textTransform: 'capitalize', color: '#111827' }}>{application.status.replace(/_/g, ' ')}</p>
-                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString()}</p>
+                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString('en-AU')}</p>
                 </div>
               </div>
 
@@ -2001,7 +2018,7 @@ export default function ApplicationDetail() {
                     {empEntry?.start_date && <div style={S.cell}><p style={S.label}>Start Date</p><p style={S.value}>{empEntry.start_date}</p></div>}
                     {(application.employer_industry || empEntry?.industry) && <div style={S.cell}><p style={S.label}>Industry</p><p style={S.value}>{application.employer_industry || empEntry?.industry}</p></div>}
                     {application.income_frequency && <div style={S.cell}><p style={S.label}>Income Frequency</p><p style={S.value}>{application.income_frequency}</p></div>}
-                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString()}</p></div>}
+                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString('en-AU')}</p></div>}
                     {empEntry?.contact_details && <div style={S.cell}><p style={S.label}>Employer Contact</p><p style={S.value}>{empEntry.contact_details}</p></div>}
                     {application.business_name && <div style={S.cell}><p style={S.label}>Business Name</p><p style={S.value}>{application.business_name}</p></div>}
                     {application.business_abn && <div style={S.cell}><p style={S.label}>ABN</p><p style={S.value}>{application.business_abn}</p></div>}
@@ -2030,7 +2047,7 @@ export default function ApplicationDetail() {
                           {entries.map(([k, v]) => (
                             <div key={k} style={S.cell}>
                               <p style={S.label}>{k.replace(/_/g, ' ')}</p>
-                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString()}` : String(v)}</p>
+                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString('en-AU')}` : String(v)}</p>
                             </div>
                           ))}
                         </div>
@@ -2048,7 +2065,7 @@ export default function ApplicationDetail() {
                     {incomes.map((inc, idx) => (
                       <div key={idx} style={S.cell}>
                         <p style={S.label}>{idx === 0 ? 'Primary Income' : `Additional Income ${idx}`}</p>
-                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
                       </div>
                     ))}
                   </div>
@@ -2060,10 +2077,10 @@ export default function ApplicationDetail() {
                 <div style={S.section}>
                   <h2 style={S.h2}>Monthly Expenses</h2>
                   <div style={S.grid}>
-                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
-                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
-                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
-                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
                   </div>
                 </div>
               )}
@@ -2077,10 +2094,10 @@ export default function ApplicationDetail() {
                       <p style={{ ...S.label, marginBottom: '4px' }}>{String(asset.property_type || `Property ${idx + 1}`)}</p>
                       {asset.address && <p style={S.value}>{String(asset.address)}</p>}
                       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const, marginTop: '4px' }}>
-                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
                         {asset.ownership_type && <span style={{ fontSize: '12px', color: '#374151' }}>Ownership: {String(asset.ownership_type)}</span>}
                         {asset.is_financed === 'yes' && asset.lender && <span style={{ fontSize: '12px', color: '#374151' }}>Lender: {String(asset.lender)}</span>}
-                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString()}</span>}
+                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString('en-AU')}</span>}
                       </div>
                     </div>
                   ))}
@@ -2095,7 +2112,7 @@ export default function ApplicationDetail() {
                     {otherAssets.map((asset, idx) => (
                       <div key={idx} style={S.cell}>
                         <p style={S.label}>{String(asset.asset_type || `Asset ${idx + 1}`)}</p>
-                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString()}</p>}
+                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString('en-AU')}</p>}
                       </div>
                     ))}
                   </div>
@@ -2110,9 +2127,9 @@ export default function ApplicationDetail() {
                     <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
                       <p style={{ ...S.label, marginBottom: '4px' }}>{String(lib.liability_type || `Liability ${idx + 1}`)}{lib.lender ? ` — ${lib.lender}` : ''}</p>
                       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const }}>
-                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString()}</span>}
-                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString()}</span>}
-                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString()}</span>}
+                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString('en-AU')}</span>}
+                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString('en-AU')}</span>}
+                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString('en-AU')}</span>}
                       </div>
                     </div>
                   ))}

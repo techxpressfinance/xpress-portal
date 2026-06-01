@@ -160,7 +160,7 @@ export default function ClientDashboard() {
                           {app.loan_type} Loan
                         </p>
                         <p className="text-[13px] text-[var(--led-muted)]">
-                          ${Number(app.amount).toLocaleString()} &middot; {formatDate(app.created_at)}
+                          ${Number(app.amount).toLocaleString('en-AU')} &middot; {formatDate(app.created_at)}
                         </p>
                       </div>
                     </div>

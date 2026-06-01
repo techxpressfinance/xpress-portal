@@ -94,9 +94,6 @@ _MIGRATIONS = [
     ("loan_applications", "lend_send_type", "VARCHAR(20)"),
     ("loan_applications", "lend_who_to_contact", "VARCHAR(20)"),
     ("loan_applications", "lend_ref", "VARCHAR(20)"),
-    ("loan_applications", "lend_sync_status", "VARCHAR(20)"),
-    ("loan_applications", "lend_sync_error", "TEXT"),
-    ("loan_applications", "lend_synced_at", "TIMESTAMP"),
     # Lend.com.au integration — documents
     ("documents", "lend_document_type", "VARCHAR(100)"),
     ("documents", "lend_uploaded", "BOOLEAN DEFAULT FALSE NOT NULL"),
@@ -213,6 +210,11 @@ _MIGRATIONS = [
     ("loan_applications", "business_organization_id", "VARCHAR(36) REFERENCES organizations(id)"),
     # Separates messages composed inside a specific application from "outside" (global) conversations
     ("client_messages", "application_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
+    # Commercial multi-director reconciliation flags
+    ("loan_applications", "needs_reconciliation", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("loan_applications", "reconciliation_note", "TEXT"),
+    # Referrer direct-engagement: hide from client portal until broker releases
+    ("loan_applications", "hidden_from_client", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 _logger = logging.getLogger(__name__)

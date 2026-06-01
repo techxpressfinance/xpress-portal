@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, LendSyncStatus, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -165,11 +165,6 @@ export const QUOTE_SHEET_STATUS_BADGE: Record<QuoteSheetStatus, { label: string;
   sent: { label: 'Sent to Client', className: 'led-chip-success' },
 };
 
-export const LEND_SYNC_BADGE: Record<LendSyncStatus, { label: string; className: string }> = {
-  pending: { label: 'Lend Syncing...', className: 'led-chip-warning' },
-  synced: { label: 'Lend Synced', className: 'led-chip-success' },
-  failed: { label: 'Lend Sync Failed', className: 'led-chip-danger' },
-};
 
 export const TASK_STATUS_BADGE: Record<TaskStatus, { label: string; className: string }> = {
   todo: { label: 'To Do', className: '' },

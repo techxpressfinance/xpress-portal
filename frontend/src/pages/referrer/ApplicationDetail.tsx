@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/client';
+import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
 import StatusTimeline from '../../components/StatusTimeline';
@@ -11,9 +12,9 @@ import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, LEND_SYNC_BADGE } from '../../lib/constants';
+import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
-import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User, LendSyncStatus } from '../../types';
+import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
 export default function ReferrerApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -436,9 +437,6 @@ export default function ReferrerApplicationDetail() {
                 </h1>
                 <div className="flex items-center gap-2">
                   <Badge value={application.status} />
-                  {application.lend_sync_status && LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus] && (
-                    <Badge type="custom" value={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].label} className={LEND_SYNC_BADGE[application.lend_sync_status as LendSyncStatus].className} />
-                  )}
                 </div>
               </div>
               {application.lend_ref && (
@@ -450,7 +448,7 @@ export default function ReferrerApplicationDetail() {
                 <div className="rounded-xl bg-secondary/50 p-4">
                   <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
                   <dd className="mt-1 text-[20px] font-semibold text-foreground">
-                    ${Number(application.amount).toLocaleString()}
+                    ${Number(application.amount).toLocaleString('en-AU')}
                   </dd>
                 </div>
                 <div className="rounded-xl bg-secondary/50 p-4">
@@ -611,7 +609,7 @@ export default function ReferrerApplicationDetail() {
                 <div className="rounded-xl bg-secondary/50 p-3.5">
                   <p className="text-[12px] text-muted-foreground">Gross Income</p>
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">
-                    {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString()}${application.income_frequency ? ` / ${application.income_frequency}` : ''}` : '—'}
+                    {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString('en-AU')}${application.income_frequency ? ` / ${application.income_frequency}` : ''}` : '—'}
                   </p>
                 </div>
                 <div className="rounded-xl bg-secondary/50 p-3.5">
@@ -644,6 +642,13 @@ export default function ReferrerApplicationDetail() {
                 </div>
               </div>
             </GlassCard>
+
+            {/* Directors (commercial loans, read-only) */}
+            {['business', 'business_loan', 'commercial_property', 'equipment_finance'].includes(application.loan_type) && (
+              <GlassCard>
+                <DirectorsSection application={application} onChange={() => {}} />
+              </GlassCard>
+            )}
 
             {/* Emergency Contact */}
             <GlassCard>
@@ -1158,7 +1163,7 @@ export default function ReferrerApplicationDetail() {
                     <dl className="grid gap-4 sm:grid-cols-2">
                       <div className="rounded-xl bg-secondary p-4">
                         <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
-                        <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                        <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString('en-AU')}</dd>
                       </div>
                       <div className="rounded-xl bg-secondary p-4">
                         <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
@@ -1543,7 +1548,7 @@ export default function ReferrerApplicationDetail() {
                             {incomes.map((inc, i) => (
                               <div key={i} className="rounded-xl bg-secondary/50 p-3">
                                 <p className="text-[12px] text-muted-foreground">{i === 0 ? 'Primary Income' : `Additional Income ${i}`}</p>
-                                <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                                <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
                               </div>
                             ))}
                           </div>
@@ -1555,10 +1560,10 @@ export default function ReferrerApplicationDetail() {
                         <GlassCard>
                           <h2 className="text-[15px] font-semibold text-foreground mb-4">Monthly Expenses</h2>
                           <div className="grid gap-3 sm:grid-cols-2">
-                            {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
-                            {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
-                            {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
-                            {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                            {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
+                            {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
+                            {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
+                            {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
                           </div>
                         </GlassCard>
                       )}
@@ -1573,7 +1578,7 @@ export default function ReferrerApplicationDetail() {
                                 <p className="text-[13px] font-medium text-foreground">{String(asset.property_type || `Property ${i + 1}`)}</p>
                                 {asset.address && <p className="text-[13px] text-muted-foreground mt-0.5">{String(asset.address)}</p>}
                                 <div className="flex gap-4 flex-wrap mt-1.5">
-                                  {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                                  {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
                                   {asset.ownership_type && <span className="text-[12px] text-muted-foreground">Ownership: {String(asset.ownership_type)}</span>}
                                   {asset.is_financed === 'yes' && asset.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(asset.lender)}</span>}
                                 </div>
@@ -1591,7 +1596,7 @@ export default function ReferrerApplicationDetail() {
                             {otherAssets.map((asset, i) => (
                               <div key={i} className="rounded-xl bg-secondary/50 p-3">
                                 <p className="text-[12px] text-muted-foreground">{String(asset.asset_type || `Asset ${i + 1}`)}</p>
-                                {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString()}</p>}
+                                {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString('en-AU')}</p>}
                               </div>
                             ))}
                           </div>
@@ -1608,8 +1613,8 @@ export default function ReferrerApplicationDetail() {
                                 <p className="text-[13px] font-medium text-foreground">{String(liab.liability_type || `Liability ${i + 1}`)}</p>
                                 <div className="flex gap-4 flex-wrap mt-1.5">
                                   {liab.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(liab.lender)}</span>}
-                                  {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString()}</span>}
-                                  {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString()}/mo</span>}
+                                  {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString('en-AU')}</span>}
+                                  {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString('en-AU')}/mo</span>}
                                 </div>
                               </div>
                             ))}
@@ -1650,8 +1655,8 @@ export default function ReferrerApplicationDetail() {
                                       {loanDetails.vehicle_details.model && <div><p className="text-[12px] text-muted-foreground">Model</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.model}</p></div>}
                                       {loanDetails.vehicle_details.year && <div><p className="text-[12px] text-muted-foreground">Year</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.year}</p></div>}
                                       {loanDetails.vehicle_details.condition && <div><p className="text-[12px] text-muted-foreground">Condition</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.condition}</p></div>}
-                                      {loanDetails.vehicle_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString()}</p></div>}
-                                      {loanDetails.vehicle_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString()}</p></div>}
+                                      {loanDetails.vehicle_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}</p></div>}
+                                      {loanDetails.vehicle_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}</p></div>}
                                     </div>
                                   </div>
                                 )}
@@ -1663,8 +1668,8 @@ export default function ReferrerApplicationDetail() {
                                     <div className="grid gap-3 sm:grid-cols-2">
                                       {loanDetails.property_details.property_type && <div><p className="text-[12px] text-muted-foreground">Property Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_type}</p></div>}
                                       {loanDetails.property_details.property_use && <div><p className="text-[12px] text-muted-foreground">Property Use</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_use}</p></div>}
-                                      {loanDetails.property_details.value > 0 && <div><p className="text-[12px] text-muted-foreground">Property Value</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString()}</p></div>}
-                                      {loanDetails.property_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString()}</p></div>}
+                                      {loanDetails.property_details.value > 0 && <div><p className="text-[12px] text-muted-foreground">Property Value</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString('en-AU')}</p></div>}
+                                      {loanDetails.property_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString('en-AU')}</p></div>}
                                       {loanDetails.property_details.first_home_buyer !== undefined && <div><p className="text-[12px] text-muted-foreground">First Home Buyer</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.first_home_buyer ? 'Yes' : 'No'}</p></div>}
                                       {loanDetails.property_details.current_lender && <div><p className="text-[12px] text-muted-foreground">Current Lender</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.current_lender}</p></div>}
                                     </div>
@@ -1678,8 +1683,8 @@ export default function ReferrerApplicationDetail() {
                                     {loanDetails.asset_details.equipment_type && <div><p className="text-[12px] text-muted-foreground">Asset Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.equipment_type}</p></div>}
                                     {loanDetails.asset_details.description && <div><p className="text-[12px] text-muted-foreground">Description</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.description}</p></div>}
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.asset_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString()}</p></div>}
-                                      {loanDetails.asset_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString()}</p></div>}
+                                      {loanDetails.asset_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString('en-AU')}</p></div>}
+                                      {loanDetails.asset_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}</p></div>}
                                       {loanDetails.asset_details.vendor_type && <div><p className="text-[12px] text-muted-foreground">Vendor Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.vendor_type}</p></div>}
                                       {loanDetails.asset_details.condition && <div><p className="text-[12px] text-muted-foreground">Condition</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.condition}</p></div>}
                                       {loanDetails.asset_details.business_use_pct > 0 && <div><p className="text-[12px] text-muted-foreground">Business Use %</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.business_use_pct}%</p></div>}
@@ -1693,8 +1698,8 @@ export default function ReferrerApplicationDetail() {
                                     {loanDetails.business_details.business_plan && <div><p className="text-[12px] text-muted-foreground">Business Plan</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_plan}</p></div>}
                                     {loanDetails.business_details.business_details && <div><p className="text-[12px] text-muted-foreground">Business Details</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_details}</p></div>}
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.business_details.startup_costs > 0 && <div><p className="text-[12px] text-muted-foreground">Startup Costs</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString()}</p></div>}
-                                      {loanDetails.business_details.purchase_price > 0 && <div><p className="text-[12px] text-muted-foreground">Purchase Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString()}</p></div>}
+                                      {loanDetails.business_details.startup_costs > 0 && <div><p className="text-[12px] text-muted-foreground">Startup Costs</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString('en-AU')}</p></div>}
+                                      {loanDetails.business_details.purchase_price > 0 && <div><p className="text-[12px] text-muted-foreground">Purchase Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString('en-AU')}</p></div>}
                                       {loanDetails.business_details.industry && <div><p className="text-[12px] text-muted-foreground">Industry</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.industry}</p></div>}
                                       {loanDetails.business_details.business_type && <div><p className="text-[12px] text-muted-foreground">Business Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_type}</p></div>}
                                     </div>
@@ -1709,7 +1714,7 @@ export default function ReferrerApplicationDetail() {
                                     {loanDetails.working_capital.supplier_details && <div><p className="text-[12px] text-muted-foreground">Supplier Details</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.supplier_details}</p></div>}
                                     {loanDetails.working_capital.outstanding_invoices && <div><p className="text-[12px] text-muted-foreground">Outstanding Invoices</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.outstanding_invoices}</p></div>}
                                     {loanDetails.working_capital.purpose_description && <div><p className="text-[12px] text-muted-foreground">Purpose</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.purpose_description}</p></div>}
-                                    {loanDetails.working_capital.loan_amount > 0 && <div><p className="text-[12px] text-muted-foreground">Loan Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString()}</p></div>}
+                                    {loanDetails.working_capital.loan_amount > 0 && <div><p className="text-[12px] text-muted-foreground">Loan Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString('en-AU')}</p></div>}
                                   </div>
                                 )}
 
@@ -1717,7 +1722,7 @@ export default function ReferrerApplicationDetail() {
                                   <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
                                     <p className="text-[13px] font-semibold text-foreground">Personal Loan Details</p>
                                     {loanDetails.personal_loan.purpose && <div><p className="text-[12px] text-muted-foreground">Purpose</p><p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.purpose}</p></div>}
-                                    {loanDetails.personal_loan.amount > 0 && <div><p className="text-[12px] text-muted-foreground">Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString()}</p></div>}
+                                    {loanDetails.personal_loan.amount > 0 && <div><p className="text-[12px] text-muted-foreground">Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString('en-AU')}</p></div>}
                                     {loanDetails.personal_loan.term && <div><p className="text-[12px] text-muted-foreground">Term</p><p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.term}</p></div>}
                                   </div>
                                 )}

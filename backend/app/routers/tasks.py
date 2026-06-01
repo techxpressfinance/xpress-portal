@@ -94,8 +94,8 @@ def _task_to_list_out(task: Task) -> dict:
 
 def _validate_assignee(db: Session, user_id: str, tenant_id: str) -> User:
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-    if not user or user.role not in (UserRole.admin, UserRole.broker, UserRole.referrer):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee must be an admin, broker, or referrer")
+    if not user or user.role != UserRole.broker:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee must be a broker")
     return user
 
 

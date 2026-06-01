@@ -1132,6 +1132,12 @@ export default function NewApplication() {
 
   const onSubmit = async (data: FormData) => {
     const payload = buildPayload(data);
+    // ABN is required for commercial loan applications (keys company reconciliation).
+    const COMMERCIAL_LOAN_TYPE_SET = ['business', 'business_loan', 'commercial_property', 'equipment_finance'];
+    if (COMMERCIAL_LOAN_TYPE_SET.includes(payload.loan_type as string) && !payload.business_abn) {
+      toast('ABN is required for commercial loan applications', 'error');
+      return;
+    }
     try {
       if (completeId) {
         const res = await api.patch(`/applications/${completeId}`, payload);
@@ -1699,7 +1705,7 @@ export default function NewApplication() {
                         <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
                       </div>
                       <div>
-                        <label className={LABEL_CLS}>ACN / ABN</label>
+                        <label className={LABEL_CLS}>ABN *</label>
                         <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
                         <AbnHint match={commercialAbnMatch} onUseName={(n) => setComBusinessName(n)} />
                         {!commercialAbnMatch && commercialAbr.enabled && (

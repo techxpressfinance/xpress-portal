@@ -16,7 +16,14 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.document import DocType, Document
 from app.models.external_referral import ExternalReferral, ExternalReferralStatus
-from app.models.loan_application import AnalysisStatus, ApplicationStatus, LoanApplication, LoanType
+from app.models.loan_application import (
+    COMMERCIAL_LOAN_TYPES,
+    AnalysisStatus,
+    ApplicationStatus,
+    LoanApplication,
+    LoanType,
+)
+from app.models.loan_applicant import LoanApplicant
 from app.models.application_note import ApplicationNote
 from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
@@ -46,7 +53,10 @@ from app.services.email import (
 )
 from app.services.notification_service import create_notification
 from app.services.organizations import find_or_create_organization_by_abn, normalize_abn
+from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
+    LoanApplicantCreate,
+    LoanApplicantOut,
     LoanApplicationCreate,
     LoanApplicationOut,
     LoanApplicationUpdate,
@@ -128,6 +138,27 @@ def create_application(
     db.add(app)
     db.flush()
     log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
+
+    # Commercial reconciliation: if another open application already exists for the
+    # same company (ABN), this is likely the same loan a different director applied
+    # for. Flag it (non-destructively) for the broker to merge or keep separate.
+    if app.loan_type in COMMERCIAL_LOAN_TYPES and (app.business_abn or app.business_name):
+        existing = find_matching_application(
+            db, tenant_id, app.business_abn, app.business_name, exclude_id=app.id
+        )
+        if existing:
+            diffs = signature_diff(existing, app)
+            if diffs:
+                app.reconciliation_note = (
+                    f"Possible duplicate of application {existing.id} for the same company, "
+                    f"but loan details differ: {'; '.join(diffs)}."
+                )
+            else:
+                app.reconciliation_note = (
+                    f"Same company and loan details as application {existing.id} — "
+                    f"likely the same loan. Consider merging the directors."
+                )
+            app.needs_reconciliation = True
 
     # Update referral status to "applied" if this user was referred
     referral = db.query(Referral).filter(
@@ -253,7 +284,10 @@ def list_applications(
     query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
-        query = query.filter(LoanApplication.user_id == current_user.id)
+        query = query.filter(
+            LoanApplication.user_id == current_user.id,
+            LoanApplication.hidden_from_client.is_(False),
+        )
     elif current_user.role == UserRole.broker:
         # Brokers see: applications assigned to them + referrer-submitted leads + their own created leads + all drafts (tenant-wide)
         from sqlalchemy import or_
@@ -316,7 +350,10 @@ def get_application_analytics(
     query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
-        query = query.filter(LoanApplication.user_id == current_user.id)
+        query = query.filter(
+            LoanApplication.user_id == current_user.id,
+            LoanApplication.hidden_from_client.is_(False),
+        )
     elif current_user.role == UserRole.broker:
         referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
         query = query.filter(
@@ -933,6 +970,7 @@ def send_client_invite(
     application.client_invite_token = token
     application.client_invite_email = data.email.strip()
     application.client_invite_sent_at = datetime.now(timezone.utc)
+    application.hidden_from_client = False  # inviting releases it onto the client's portal
     log_activity(db, current_user.id, "client_invite_sent", "application", app_id, {"email": data.email.strip()}, tenant_id=tenant_id)
     db.commit()
 
@@ -954,3 +992,128 @@ def send_client_invite(
         _send_async(data.email.strip(), "Complete Your Loan Application — Xpress Finance", body)
 
     return {"success": True, "invite_url": invite_url}
+
+
+# ---------------------------------------------------------------------------
+# Commercial multi-director endpoints
+# ---------------------------------------------------------------------------
+
+_APPLICANT_FIELDS = set(LoanApplicantCreate.model_fields) - {"invite_email"}
+
+
+def _load_commercial_app(app_id: str, current_user: User, db: Session, tenant_id: str) -> LoanApplication:
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+    if application.loan_type not in COMMERCIAL_LOAN_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Directors can only be added to commercial loan applications",
+        )
+    return application
+
+
+@router.post("/{app_id}/directors", response_model=LoanApplicantOut, status_code=status.HTTP_201_CREATED)
+def add_director(
+    app_id: str,
+    data: LoanApplicantCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Add an additional director to a commercial application.
+
+    If ``invite_email`` is provided, a magic-link invite is generated and emailed
+    so the director can self-complete their own block.
+    """
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+
+    applicant = LoanApplicant(
+        tenant_id=tenant_id,
+        application_id=application.id,
+        is_primary=False,
+        **{k: v for k, v in data.model_dump(exclude_none=True).items() if k in _APPLICANT_FIELDS},
+    )
+
+    invite_url = None
+    if data.invite_email:
+        token = secrets.token_urlsafe(32)
+        applicant.invite_token = token
+        applicant.invite_email = data.invite_email.strip()
+        applicant.invite_sent_at = datetime.now(timezone.utc)
+        invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{token}"
+
+    db.add(applicant)
+    log_activity(db, current_user.id, "director_added", "application", app_id,
+                 {"invited": bool(data.invite_email)}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(applicant)
+
+    if invite_url and EMAIL_ENABLED:
+        from app.services.email import _send_async
+        company = application.business_name or "your company"
+        body = (
+            f"Hi,\n\n"
+            f"You have been invited as a director to complete your part of a commercial "
+            f"loan application for {company} through Xpress Finance.\n\n"
+            f"Please click the link below to fill in your details:\n\n"
+            f"{invite_url}\n\n"
+            f"This link is unique to you — please do not share it.\n\n"
+            f"Best regards,\nXpress Finance Team"
+        )
+        _send_async(applicant.invite_email, "Complete Your Director Details — Xpress Finance", body)
+
+    return applicant
+
+
+@router.delete("/{app_id}/directors/{applicant_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_director(
+    app_id: str,
+    applicant_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    applicant = db.query(LoanApplicant).filter(
+        LoanApplicant.id == applicant_id,
+        LoanApplicant.application_id == application.id,
+    ).first()
+    if not applicant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Director not found")
+    db.delete(applicant)
+    log_activity(db, current_user.id, "director_removed", "application", app_id, tenant_id=tenant_id)
+    db.commit()
+    return None
+
+
+class ReconcileRequest(BaseModel):
+    note: Optional[str] = None
+
+
+@router.post("/{app_id}/reconcile", response_model=LoanApplicationOut)
+def reconcile_application(
+    app_id: str,
+    data: ReconcileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Broker resolves a flagged application: accept the divergent director(s) as-is.
+
+    To split a director into a separate application instead, remove them with the
+    DELETE endpoint and create a new application.
+    """
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    application.needs_reconciliation = False
+    application.reconciliation_note = data.note
+    log_activity(db, current_user.id, "application_reconciled", "application", app_id,
+                 {"note": data.note}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application)
+    return _app_with_user(application)

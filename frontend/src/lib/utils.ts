@@ -78,14 +78,11 @@ export function relativeTime(date: string | Date | null | undefined): string {
 }
 
 /**
- * Whole-dollar money with k/M suffix. e.g. 1_500_000 → "$1.5M".
+ * Whole-dollar money with comma separators. e.g. 1_500_000 → "$1,500,000".
  */
 export function fmtMoneyK(n: number): string {
   if (!Number.isFinite(n)) return '$0';
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (abs >= 1_000) return '$' + Math.round(n / 1_000) + 'k';
-  return '$' + Math.round(n);
+  return '$' + Math.round(n).toLocaleString('en-AU');
 }
 
 /**

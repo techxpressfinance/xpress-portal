@@ -130,7 +130,7 @@ export default function Applications() {
                       {app.loan_type.replace(/_/g, ' ')} Loan
                     </p>
                     <p className="mt-0.5 text-[13px] text-[var(--led-muted)]">
-                      <span className="font-medium text-[var(--led-ink)]">${Number(app.amount).toLocaleString()}</span>
+                      <span className="font-medium text-[var(--led-ink)]">${Number(app.amount).toLocaleString('en-AU')}</span>
                       {' · '}Applied {formatDate(app.created_at)}
                       {app.updated_at !== app.created_at && (
                         <> · Updated {formatDate(app.updated_at)}</>

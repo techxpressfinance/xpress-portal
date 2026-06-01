@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, DatePicker } from '../../components/ui';
+import { DatePicker } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
 
 const STATUS_TABS = [
@@ -13,18 +13,46 @@ const STATUS_TABS = [
   { label: 'Completed', value: 'completed' },
 ];
 
-function relativeDueDate(dateStr: string): { label: string; overdue: boolean } {
+function relativeDueDate(dateStr: string): { label: string; overdue: boolean; today: boolean } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dateStr);
   due.setHours(0, 0, 0, 0);
   const diff = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < -1) return { label: `${Math.abs(diff)}d overdue`, overdue: true };
-  if (diff === -1) return { label: 'Yesterday', overdue: true };
-  if (diff === 0) return { label: 'Today', overdue: true };
-  if (diff === 1) return { label: 'Tomorrow', overdue: false };
-  if (diff < 7) return { label: due.toLocaleDateString('en-AU', { weekday: 'short' }), overdue: false };
-  return { label: due.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), overdue: false };
+  if (diff < -1) return { label: `${Math.abs(diff)}d overdue`, overdue: true, today: false };
+  if (diff === -1) return { label: 'Yesterday', overdue: true, today: false };
+  if (diff === 0) return { label: 'Today', overdue: false, today: true };
+  if (diff === 1) return { label: 'Tomorrow', overdue: false, today: false };
+  if (diff < 7) return { label: due.toLocaleDateString('en-AU', { weekday: 'short' }), overdue: false, today: false };
+  return { label: due.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), overdue: false, today: false };
+}
+
+function CheckCircle({ priority, completed, toggling, onClick }: {
+  priority: string; completed: boolean; toggling: boolean; onClick: (e: React.MouseEvent) => void;
+}) {
+  const ring = completed
+    ? 'border-[var(--led-muted)] bg-[var(--led-muted)] text-white'
+    : priority === 'urgent'
+    ? 'border-red-500 hover:bg-red-500/10'
+    : priority === 'high'
+    ? 'border-orange-400 hover:bg-orange-400/10'
+    : priority === 'medium'
+    ? 'border-sky-400 hover:bg-sky-400/10'
+    : 'border-[var(--led-line-strong)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={toggling}
+      className={`flex-none flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 transition-all disabled:opacity-50 ${ring}`}
+    >
+      {completed && (
+        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 export default function Tasks() {
@@ -44,11 +72,13 @@ export default function Tasks() {
   const [newDueDate, setNewDueDate] = useState('');
   const [newAssignee, setNewAssignee] = useState('');
   const [adding, setAdding] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [completedCollapsed, setCompletedCollapsed] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
 
   const isAllTab = statusFilter === '';
   const perPage = isAllTab ? 100 : 25;
@@ -68,18 +98,9 @@ export default function Tasks() {
   };
 
   const fetchStaff = () => {
-    Promise.all([
-      api.get('/users?role=admin&per_page=100'),
-      api.get('/users?role=broker&per_page=100'),
-      api.get('/users?role=referrer&per_page=100'),
-    ]).then(([{ data: adminData }, { data: brokerData }, { data: referrerData }]) => {
-      const combined = [
-        ...(adminData.items || adminData),
-        ...(brokerData.items || brokerData),
-        ...(referrerData.items || referrerData),
-      ];
-      setStaff(combined.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i));
-    }).catch(() => {});
+    api.get('/users?role=broker&per_page=100')
+      .then(({ data }) => setStaff(data.items || data))
+      .catch(() => {});
   };
 
   useEffect(() => { fetchData(); }, [page, statusFilter, assigneeFilter]);
@@ -90,6 +111,9 @@ export default function Tasks() {
       editInputRef.current.select();
     }
   }, [editingId]);
+  useEffect(() => {
+    if (showAddForm && addInputRef.current) addInputRef.current.focus();
+  }, [showAddForm]);
 
   const handleTabChange = (value: string) => { setStatusFilter(value); setPage(1); };
 
@@ -98,8 +122,6 @@ export default function Tasks() {
     if (toggling) return;
     setToggling(task.id);
     const newStatus: TaskListItem['status'] = task.status === 'completed' ? 'todo' : 'completed';
-    // Optimistic: update the row instantly. In a filtered tab the row no longer
-    // matches, so drop it locally rather than waiting on a refetch.
     setTasks((prev) => {
       const updated = prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t));
       return statusFilter ? updated.filter((t) => t.status === statusFilter) : updated;
@@ -108,7 +130,7 @@ export default function Tasks() {
       await api.patch(`/tasks/${task.id}`, { status: newStatus });
     } catch {
       toast('Failed to update task', 'error');
-      fetchData(); // reconcile from server on failure
+      fetchData();
     } finally {
       setToggling(null);
     }
@@ -150,6 +172,7 @@ export default function Tasks() {
       setNewUrgent(false);
       setNewDueDate('');
       setNewAssignee('');
+      setShowAddForm(false);
       setPage(1);
       fetchData();
     } catch (err: unknown) {
@@ -161,42 +184,34 @@ export default function Tasks() {
 
   const renderTask = (task: TaskListItem) => {
     const isCompleted = task.status === 'completed';
-    const isUrgent = task.priority === 'urgent' && !isCompleted;
     const isEditing = editingId === task.id;
+    const due = task.due_date ? relativeDueDate(task.due_date) : null;
     const initials = task.assigned_to_name
       ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
       : null;
-    const due = task.due_date ? relativeDueDate(task.due_date) : null;
-    const dueOverdue = due?.overdue && !isCompleted;
+    const dueDateColor = due
+      ? due.overdue
+        ? 'text-red-500'
+        : due.today
+        ? 'text-amber-500'
+        : 'text-[var(--led-muted)]'
+      : '';
 
     return (
       <div
         key={task.id}
         onClick={() => { if (!isEditing) navigate(`/admin/tasks/${task.id}`); }}
-        className={`flex items-center gap-3 px-4 py-2.5 transition-colors group border-l-2 ${
-          isUrgent ? 'border-destructive bg-destructive/[0.03] hover:bg-destructive/[0.06]' : 'border-transparent hover:bg-secondary/40'
-        } ${isEditing ? 'cursor-default' : 'cursor-pointer'}`}
+        className={`group flex items-center gap-3 py-2 border-b border-[var(--led-line)] last:border-0 rounded-lg px-2 -mx-2 transition-colors ${
+          isEditing ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--led-surface-2)]/60'
+        }`}
       >
-        {/* Circle toggle */}
-        <button
+        <CheckCircle
+          priority={task.priority}
+          completed={isCompleted}
+          toggling={toggling === task.id}
           onClick={(e) => handleToggleComplete(task, e)}
-          disabled={toggling === task.id}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-            isCompleted
-              ? 'border-success bg-success text-white'
-              : isUrgent
-              ? 'border-destructive hover:bg-destructive/10'
-              : 'border-border hover:border-primary'
-          }`}
-        >
-          {isCompleted && (
-            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
-          )}
-        </button>
+        />
 
-        {/* Title */}
         <div className="flex-1 min-w-0">
           {isEditing ? (
             <input
@@ -209,45 +224,44 @@ export default function Tasks() {
                 if (e.key === 'Escape') setEditingId(null);
               }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-transparent text-[14px] text-foreground focus:outline-none border-b border-primary pb-px"
+              className="w-full bg-transparent text-[14px] text-foreground focus:outline-none border-b border-[var(--led-accent)] pb-px"
             />
           ) : (
-            <span
-              onClick={(e) => handleStartEdit(task, e)}
-              title="Click to rename"
-              className={`text-[14px] cursor-text ${isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}
-            >
-              {task.title}
-            </span>
-          )}
-          {task.application_label && !isEditing && (
-            <span className="ml-2 text-[12px] text-muted-foreground">{task.application_label}</span>
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span
+                onClick={(e) => handleStartEdit(task, e)}
+                title="Click to rename"
+                className={`text-[14px] leading-snug cursor-text truncate ${
+                  isCompleted ? 'line-through text-[var(--led-muted)]' : 'text-foreground'
+                }`}
+              >
+                {task.title}
+              </span>
+              {task.application_label && (
+                <span className="shrink-0 text-[11px] text-[var(--led-muted)]">{task.application_label}</span>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Checklist progress */}
         {task.checklist_total > 0 && (
-          <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-[12px] text-[var(--led-muted)] tabular-nums">
             {task.checklist_completed}/{task.checklist_total}
           </span>
         )}
 
-        {/* Due date */}
-        {due ? (
-          <span className={`shrink-0 text-[12px] font-medium ${dueOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
+        {due && (
+          <span className={`shrink-0 text-[12px] font-medium ${dueDateColor}`}>
             {due.label}
           </span>
-        ) : (
-          <span className="shrink-0 w-14" />
         )}
 
-        {/* Assignee initials */}
         {initials ? (
-          <div className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
+          <div className="shrink-0 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[var(--led-accent)]/15 text-[10px] font-semibold text-[var(--led-accent)]">
             {initials}
           </div>
         ) : (
-          <div className="shrink-0 w-6" />
+          <div className="shrink-0 w-[22px]" />
         )}
       </div>
     );
@@ -257,181 +271,205 @@ export default function Tasks() {
   const completedTasks = isAllTab ? tasks.filter((t) => t.status === 'completed') : [];
   const totalPages = Math.ceil(total / perPage);
 
+  const isBroker = currentUser?.role === 'broker';
+
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-[22px] font-semibold text-foreground">Tasks</h1>
-        <span className="text-[13px] text-muted-foreground">{total} task{total !== 1 ? 's' : ''}</span>
+      {/* Header */}
+      <div className="flex items-baseline justify-between mb-6">
+        <h1 className="text-[24px] font-bold text-foreground tracking-tight">Tasks</h1>
+        <span className="text-[13px] text-[var(--led-muted)]">{total} task{total !== 1 ? 's' : ''}</span>
       </div>
 
-      {/* Tab pills */}
-      <div className="flex gap-1 mb-4 p-1 bg-secondary rounded-xl w-fit">
+      {/* Tab bar + filters */}
+      <div className="flex items-center gap-1 mb-5 border-b border-[var(--led-line)]">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
             onClick={() => handleTabChange(tab.value)}
-            className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
+            className={`pb-2.5 px-1 mr-3 text-[14px] font-medium border-b-2 -mb-px transition-colors ${
               statusFilter === tab.value
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'border-[var(--led-accent)] text-[var(--led-accent)]'
+                : 'border-transparent text-[var(--led-muted)] hover:text-foreground'
             }`}
           >
             {tab.label}
           </button>
         ))}
+
+        <div className="ml-auto flex items-center gap-3 pb-2">
+          <select
+            value={assigneeFilter}
+            onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}
+            className="text-[13px] bg-transparent border-0 text-[var(--led-muted)] focus:outline-none focus:text-foreground cursor-pointer"
+          >
+            <option value="">All brokers</option>
+            {isBroker && currentUser && (
+              <option value={currentUser.id}>My tasks</option>
+            )}
+            {staff.filter((u) => u.id !== currentUser?.id || !isBroker).map((u) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchData(); } }}
+            placeholder="Search..."
+            className="text-[13px] bg-transparent border-b border-transparent focus:border-[var(--led-line-strong)] text-foreground placeholder:text-[var(--led-muted)] focus:outline-none w-24 transition-all pb-0.5"
+          />
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select
-          value={assigneeFilter}
-          onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}
-          className="text-[13px] rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="">All people</option>
-          {currentUser && <option value={currentUser.id}>My tasks</option>}
-          {staff.filter((u) => u.id !== currentUser?.id).map((u) => (
-            <option key={u.id} value={u.id}>{u.full_name}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchData(); } }}
-          placeholder="Search tasks..."
-          className="text-[13px] rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary flex-1 min-w-[140px]"
-        />
-      </div>
-
-      <GlassCard padding="none">
+      {/* Task list */}
+      <div>
         {loading ? (
-          <div className="p-4 space-y-3">
+          <div className="space-y-3 py-2">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="h-5 w-5 rounded-full shimmer shrink-0" />
-                <div className="h-4 rounded-lg shimmer flex-1" />
-                <div className="h-4 w-16 rounded-lg shimmer" />
+              <div key={i} className="flex items-center gap-3 py-1.5">
+                <div className="h-[18px] w-[18px] rounded-full shimmer shrink-0" />
+                <div className="h-4 rounded-lg shimmer" style={{ width: `${45 + i * 8}%` }} />
+                <div className="h-4 w-14 rounded-lg shimmer ml-auto" />
               </div>
             ))}
           </div>
         ) : isAllTab ? (
           <>
-            {/* To Do group */}
-            <div>
-              <div className="px-4 pt-3 pb-1.5">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  To Do · {todoTasks.length}
-                </span>
-              </div>
+            <div className="mb-5">
+              <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-widest mb-1.5">
+                To Do · {todoTasks.length}
+              </p>
               {todoTasks.length === 0 ? (
-                <p className="px-4 py-3 text-[13px] text-muted-foreground italic">All caught up!</p>
+                <p className="text-[14px] text-[var(--led-muted)] py-3">All caught up</p>
               ) : (
-                <div className="divide-y divide-border">{todoTasks.map(renderTask)}</div>
+                todoTasks.map(renderTask)
               )}
             </div>
 
-            {/* Completed group */}
             {completedTasks.length > 0 && (
-              <div className="border-t border-border">
+              <div>
                 <button
                   onClick={() => setCompletedCollapsed((c) => !c)}
-                  className="w-full flex items-center gap-2 px-4 pt-3 pb-1.5 text-left hover:bg-secondary/30 transition-colors"
+                  className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-widest mb-1.5 hover:text-foreground transition-colors"
                 >
                   <svg
-                    className={`h-3 w-3 text-muted-foreground transition-transform ${completedCollapsed ? '-rotate-90' : ''}`}
+                    className={`h-3 w-3 transition-transform ${completedCollapsed ? '-rotate-90' : ''}`}
                     fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                   </svg>
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Completed · {completedTasks.length}
-                  </span>
+                  Completed · {completedTasks.length}
                 </button>
-                {!completedCollapsed && (
-                  <div className="divide-y divide-border">{completedTasks.map(renderTask)}</div>
-                )}
+                {!completedCollapsed && completedTasks.map(renderTask)}
               </div>
             )}
           </>
         ) : tasks.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-[14px] text-muted-foreground italic">Nothing here</p>
-          </div>
+          <p className="text-[14px] text-[var(--led-muted)] py-10 text-center">Nothing here</p>
         ) : (
-          <div className="divide-y divide-border">{tasks.map(renderTask)}</div>
+          tasks.map(renderTask)
         )}
 
-        {/* Quick-add */}
-        <div className="border-t border-border px-4 py-3">
-          <form onSubmit={handleQuickAdd} className="flex items-center gap-2 flex-wrap">
-            <button
-              type="submit"
-              disabled={adding || !newTitle.trim()}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border hover:border-primary transition-colors text-muted-foreground hover:text-primary disabled:opacity-40"
-            >
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            </button>
-            <input
-              type="text"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="New task..."
-              disabled={adding}
-              className="flex-1 min-w-[120px] bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <DatePicker
-              value={newDueDate}
-              onChange={(v) => setNewDueDate(v)}
-              placeholder="Due date"
-              className="text-[12px] h-8 py-1"
-            />
-            <select
-              value={newAssignee}
-              onChange={(e) => setNewAssignee(e.target.value)}
-              title="Assign to"
-              className="text-[12px] rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Assign to...</option>
-              {staff.map((u) => (
-                <option key={u.id} value={u.id}>{u.full_name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setNewUrgent((u) => !u)}
-              className={`shrink-0 text-[12px] font-medium px-2 py-0.5 rounded transition-colors ${
-                newUrgent ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Urgent
-            </button>
-          </form>
-        </div>
-
-        {/* Pagination — only for To Do / Completed tabs */}
         {!isAllTab && totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
-            <span className="text-[12px] text-muted-foreground">
+          <div className="flex items-center justify-between pt-4 mt-2 border-t border-[var(--led-line)]">
+            <span className="text-[12px] text-[var(--led-muted)]">
               {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
             </span>
             <div className="flex gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1 rounded-lg text-[13px] text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-colors"
-              >←</button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1 rounded-lg text-[13px] text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-colors"
-              >→</button>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded-lg text-[13px] text-[var(--led-muted)] hover:text-foreground hover:bg-[var(--led-surface-2)] disabled:opacity-40 transition-colors">←</button>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded-lg text-[13px] text-[var(--led-muted)] hover:text-foreground hover:bg-[var(--led-surface-2)] disabled:opacity-40 transition-colors">→</button>
             </div>
           </div>
         )}
-      </GlassCard>
+
+        {/* Add task */}
+        <div className="mt-3">
+          {showAddForm ? (
+            <form
+              onSubmit={handleQuickAdd}
+              className="border border-[var(--led-line-strong)] rounded-xl p-4 space-y-3 bg-[var(--led-surface)]"
+            >
+              <input
+                ref={addInputRef}
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Task name"
+                disabled={adding}
+                className="w-full bg-transparent text-[14px] font-medium text-foreground placeholder:text-[var(--led-muted)] focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { setShowAddForm(false); setNewTitle(''); }
+                }}
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <DatePicker
+                  value={newDueDate}
+                  onChange={(v) => setNewDueDate(v)}
+                  placeholder="Due date"
+                  className="text-[12px] h-8 py-1"
+                />
+                <select
+                  value={newAssignee}
+                  onChange={(e) => setNewAssignee(e.target.value)}
+                  className="text-[12px] rounded-lg border border-[var(--led-line-strong)] bg-transparent px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)]"
+                >
+                  <option value="">Assignee</option>
+                  {staff.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setNewUrgent((u) => !u)}
+                  className={`text-[12px] font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
+                    newUrgent
+                      ? 'text-red-500 bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-900'
+                      : 'text-[var(--led-muted)] border-[var(--led-line-strong)] hover:text-foreground'
+                  }`}
+                >
+                  {newUrgent ? '● Urgent' : 'Priority'}
+                </button>
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-[var(--led-line)]">
+                <button
+                  type="submit"
+                  disabled={adding || !newTitle.trim()}
+                  className="text-[13px] font-semibold px-4 py-1.5 rounded-lg bg-[var(--led-accent)] text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  {adding ? 'Adding...' : 'Add task'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setNewTitle('');
+                    setNewDueDate('');
+                    setNewAssignee('');
+                    setNewUrgent(false);
+                  }}
+                  className="text-[13px] font-medium px-3 py-1.5 rounded-lg text-[var(--led-muted)] hover:text-foreground hover:bg-[var(--led-surface-2)] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-2 w-full py-2 px-2 -mx-2 text-[14px] text-[var(--led-muted)] hover:text-[var(--led-accent)] rounded-lg hover:bg-[var(--led-surface-2)]/60 transition-colors group"
+            >
+              <svg
+                className="h-4 w-4 transition-colors"
+                fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add task
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

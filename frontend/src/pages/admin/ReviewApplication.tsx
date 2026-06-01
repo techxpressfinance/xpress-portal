@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import ApplicationCalculators from '../../components/ApplicationCalculators';
+import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
@@ -713,15 +714,20 @@ export default function ReviewApplication() {
         <StatusTimeline currentStatus={application.status} />
       </GlassCard>
 
-      {/* Client not yet invited / awaiting account setup — top-level banner so it's always visible */}
-      {application.client_account_pending && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
+      {/* Client not yet released / invited — top-level banner so it's always visible */}
+      {(application.client_account_pending || application.hidden_from_client) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
         <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <svg className="h-5 w-5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
             </svg>
             <div>
-              {application.client_invite_sent_at ? (
+              {application.hidden_from_client ? (
+                <>
+                  <p className="text-[13px] font-semibold text-foreground">Hidden from the client's portal</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">The client can't see this application yet. Configure which form sections they should fill, then release it by inviting them.</p>
+                </>
+              ) : application.client_invite_sent_at ? (
                 <>
                   <p className="text-[13px] font-semibold text-foreground">Waiting for client to set up their account</p>
                   <p className="text-[12px] text-muted-foreground mt-0.5">Invite sent {formatDate(application.client_invite_sent_at)}. Resend if the client hasn't received it.</p>
@@ -735,7 +741,7 @@ export default function ReviewApplication() {
             </div>
           </div>
           <Button size="sm" onClick={handleInviteClient} loading={invitingClient}>
-            {application.client_invite_sent_at ? 'Resend Invite' : 'Invite Client'}
+            {application.hidden_from_client ? 'Release to Client' : application.client_invite_sent_at ? 'Resend Invite' : 'Invite Client'}
           </Button>
         </div>
       )}
@@ -1153,7 +1159,7 @@ export default function ReviewApplication() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="rounded-xl bg-secondary p-4">
                           <dt className="text-[13px] font-medium text-muted-foreground">Amount</dt>
-                          <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString()}</dd>
+                          <dd className="mt-1 text-[28px] font-semibold text-foreground tracking-tight">${Number(application.amount).toLocaleString('en-AU')}</dd>
                         </div>
                         <div className="rounded-xl bg-secondary p-4">
                           <dt className="text-[13px] font-medium text-muted-foreground">Loan Type</dt>
@@ -1334,7 +1340,7 @@ export default function ReviewApplication() {
                           <div>
                             <dt className="text-[12px] text-muted-foreground">Gross Income</dt>
                             <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                              {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString()}` : '—'}
+                              {application.gross_income != null ? `$${Number(application.gross_income).toLocaleString('en-AU')}` : '—'}
                             </dd>
                           </div>
                         </div>
@@ -1362,7 +1368,7 @@ export default function ReviewApplication() {
                           <div>
                             <dt className="text-[12px] text-muted-foreground">Monthly Sales</dt>
                             <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                              {application.business_monthly_sales != null ? `$${Number(application.business_monthly_sales).toLocaleString()}` : '—'}
+                              {application.business_monthly_sales != null ? `$${Number(application.business_monthly_sales).toLocaleString('en-AU')}` : '—'}
                             </dd>
                           </div>
                           <div>
@@ -1389,6 +1395,13 @@ export default function ReviewApplication() {
                           </div>
                         </div>
                       </div>
+
+                      <DirectorsSection
+                        application={application}
+                        onChange={refetchApplication}
+                        canManage
+                        canReconcile
+                      />
 
                       <div className="border-t border-border pt-5">
                         <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Declarations</h3>
@@ -1453,22 +1466,6 @@ export default function ReviewApplication() {
                             <dt className="text-[12px] text-muted-foreground">Lend Ref</dt>
                             <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_ref || '—'}</dd>
                           </div>
-                          <div>
-                            <dt className="text-[12px] text-muted-foreground">Sync Status</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.lend_sync_status || '—'}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-[12px] text-muted-foreground">Synced At</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                              {application.lend_synced_at ? formatDateTime(application.lend_synced_at) : '—'}
-                            </dd>
-                          </div>
-                          {application.lend_sync_error && (
-                            <div className="sm:col-span-3">
-                              <dt className="text-[12px] text-muted-foreground">Sync Error</dt>
-                              <dd className="mt-0.5 text-[14px] font-medium text-destructive">{application.lend_sync_error}</dd>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </dl>
@@ -1534,13 +1531,13 @@ export default function ReviewApplication() {
                                 {loanDetails.vehicle_details.price > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Price</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.vehicle_details.deposit > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Deposit</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                               </div>
@@ -1573,13 +1570,13 @@ export default function ReviewApplication() {
                                 {loanDetails.property_details.value > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Property Value</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.property_details.deposit > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Deposit</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.property_details.first_home_buyer !== undefined && (
@@ -1624,13 +1621,13 @@ export default function ReviewApplication() {
                                 {loanDetails.asset_details.price > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Price</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.asset_details.deposit > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Deposit</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.asset_details.vendor_type && (
@@ -1669,13 +1666,13 @@ export default function ReviewApplication() {
                                 {loanDetails.business_details.startup_costs > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Startup Costs</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.business_details.purchase_price > 0 && (
                                   <div>
                                     <p className="text-[12px] text-muted-foreground">Purchase Price</p>
-                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
                                 {loanDetails.business_details.industry && (
@@ -1731,7 +1728,7 @@ export default function ReviewApplication() {
                               {loanDetails.working_capital.loan_amount > 0 && (
                                 <div>
                                   <p className="text-[12px] text-muted-foreground">Loan Amount</p>
-                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString()}</p>
+                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString('en-AU')}</p>
                                 </div>
                               )}
                             </div>
@@ -1750,7 +1747,7 @@ export default function ReviewApplication() {
                               {loanDetails.personal_loan.amount > 0 && (
                                 <div>
                                   <p className="text-[12px] text-muted-foreground">Amount</p>
-                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString()}</p>
+                                  <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString('en-AU')}</p>
                                 </div>
                               )}
                               {loanDetails.personal_loan.term && (
@@ -1819,7 +1816,7 @@ export default function ReviewApplication() {
                               {incomes.map((inc, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
                                   <p className="text-[12px] text-muted-foreground">{i === 0 ? 'Primary Income' : `Additional Income ${i}`}</p>
-                                  <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                                  <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
                                 </div>
                               ))}
                             </div>
@@ -1831,10 +1828,10 @@ export default function ReviewApplication() {
                           <div className="border-b border-border pb-4">
                             <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Monthly Expenses</h3>
                             <div className="grid gap-3 sm:grid-cols-2">
-                              {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
-                              {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
-                              {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
-                              {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                              {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
+                              {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
+                              {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
+                              {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
                             </div>
                           </div>
                         )}
@@ -1849,10 +1846,10 @@ export default function ReviewApplication() {
                                   <p className="text-[13px] font-medium text-foreground">{String(asset.property_type || `Property ${i + 1}`)}</p>
                                   {asset.address && <p className="text-[13px] text-muted-foreground mt-0.5">{String(asset.address)}</p>}
                                   <div className="flex gap-4 flex-wrap mt-1.5">
-                                    {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                                    {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
                                     {asset.ownership_type && <span className="text-[12px] text-muted-foreground">Ownership: {String(asset.ownership_type)}</span>}
                                     {asset.is_financed === 'yes' && asset.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(asset.lender)}</span>}
-                                    {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span className="text-[12px] text-muted-foreground">Owing: ${Number(asset.amount_owing).toLocaleString()}</span>}
+                                    {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span className="text-[12px] text-muted-foreground">Owing: ${Number(asset.amount_owing).toLocaleString('en-AU')}</span>}
                                   </div>
                                 </div>
                               ))}
@@ -1868,7 +1865,7 @@ export default function ReviewApplication() {
                               {otherAssets.map((asset, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
                                   <p className="text-[12px] text-muted-foreground">{String(asset.asset_type || `Asset ${i + 1}`)}</p>
-                                  {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString()}</p>}
+                                  {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString('en-AU')}</p>}
                                 </div>
                               ))}
                             </div>
@@ -1885,8 +1882,8 @@ export default function ReviewApplication() {
                                   <p className="text-[13px] font-medium text-foreground">{String(liab.liability_type || `Liability ${i + 1}`)}</p>
                                   <div className="flex gap-4 flex-wrap mt-1.5">
                                     {liab.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(liab.lender)}</span>}
-                                    {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString()}</span>}
-                                    {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString()}/mo</span>}
+                                    {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString('en-AU')}</span>}
+                                    {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString('en-AU')}/mo</span>}
                                   </div>
                                 </div>
                               ))}
@@ -1898,64 +1895,6 @@ export default function ReviewApplication() {
                   );
                 })()}
 
-                {/* Client Info */}
-                {(() => {
-                  const isDirectLead = !client && !!application.applicant_first_name;
-                  const displayName = isDirectLead
-                    ? [application.applicant_first_name, application.applicant_last_name].filter(Boolean).join(' ')
-                    : client?.full_name;
-                  const displayEmail = isDirectLead
-                    ? (() => { try { return JSON.parse(application.lend_extra_data || '{}').applicant_email ?? null; } catch { return null; } })()
-                    : client?.email;
-                  const displayPhone = isDirectLead ? application.applicant_mobile : client?.phone;
-                  if (!displayName) return null;
-                  return (
-                    <GlassCard>
-                      <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
-                      <div className="flex items-center gap-4 mb-5">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-                          <span className="text-[15px] font-semibold text-primary-foreground">{displayName.charAt(0).toUpperCase()}</span>
-                        </div>
-                        <div>
-                          <p className="text-[14px] font-semibold text-foreground">{displayName}</p>
-                          {displayEmail && <p className="text-[13px] text-muted-foreground">{displayEmail}</p>}
-                        </div>
-                      </div>
-                      <dl className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <dt className="text-[13px] font-medium text-muted-foreground">Phone</dt>
-                          <dd className="mt-1 text-[14px] font-medium text-foreground">{displayPhone || 'Not provided'}</dd>
-                        </div>
-                      </dl>
-
-                      {/* Referrer Info */}
-                      {referrer && (
-                        <div className="mt-5 pt-5 border-t border-border">
-                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Referred By</h3>
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-chart-4/15">
-                              <span className="text-[12px] font-semibold text-chart-4">{referrer.full_name.charAt(0).toUpperCase()}</span>
-                            </div>
-                            <div>
-                              <p className="text-[13px] font-semibold text-foreground">{referrer.full_name}</p>
-                              <p className="text-[12px] text-muted-foreground">{referrer.email}</p>
-                            </div>
-                          </div>
-                          {application.client_engagement_model && (
-                            <div className="mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
-                              <p className="text-[11px] font-medium text-muted-foreground mb-0.5">Client Engagement</p>
-                              <p className="text-[13px] font-medium text-foreground">
-                                {application.client_engagement_model === 'self_managed'
-                                  ? 'Referrer will manage the client relationship'
-                                  : 'Broker may engage the client directly'}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </GlassCard>
-                  );
-                })()}
 
               </>
             )}
@@ -2450,7 +2389,7 @@ export default function ReviewApplication() {
                                 <div>Submitted: {formatDate(sub.submitted_at)}</div>
                                 {sub.responded_at && <div>Responded: {formatDate(sub.responded_at)}</div>}
                                 {sub.offered_rate != null && <div>Rate: {sub.offered_rate}%</div>}
-                                {sub.offered_amount != null && <div>Amount: ${Number(sub.offered_amount).toLocaleString()}</div>}
+                                {sub.offered_amount != null && <div>Amount: ${Number(sub.offered_amount).toLocaleString('en-AU')}</div>}
                                 {sub.conditions && <div className="sm:col-span-2">Conditions: {sub.conditions}</div>}
                                 {sub.notes && <div className="sm:col-span-2">Notes: {sub.notes}</div>}
                               </div>
@@ -3296,7 +3235,7 @@ export default function ReviewApplication() {
                       } else if (log.action === 'document_verified' && details.filename) {
                         description = `${details.filename}${details.doc_type ? ` (${details.doc_type})` : ''}`;
                       } else if (log.action === 'created' && details.loan_type) {
-                        description = `${details.loan_type} loan · $${Number(details.amount || 0).toLocaleString()}`;
+                        description = `${details.loan_type} loan · $${Number(details.amount || 0).toLocaleString('en-AU')}`;
                       }
                       const actionConfig = ACTION_ICON_CONFIG[log.action];
                       return (
@@ -3457,7 +3396,7 @@ export default function ReviewApplication() {
                 <div style={{ textAlign: 'right' }}>
                   <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Status</p>
                   <p style={{ fontSize: '13px', fontWeight: 700, textTransform: 'capitalize', color: '#111827' }}>{application.status.replace(/_/g, ' ')}</p>
-                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString()}</p>
+                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString('en-AU')}</p>
                 </div>
               </div>
 
@@ -3509,7 +3448,7 @@ export default function ReviewApplication() {
                     {empEntry?.start_date && <div style={S.cell}><p style={S.label}>Start Date</p><p style={S.value}>{empEntry.start_date}</p></div>}
                     {(application.employer_industry || empEntry?.industry) && <div style={S.cell}><p style={S.label}>Industry</p><p style={S.value}>{application.employer_industry || empEntry?.industry}</p></div>}
                     {application.income_frequency && <div style={S.cell}><p style={S.label}>Income Frequency</p><p style={S.value}>{application.income_frequency}</p></div>}
-                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString()}</p></div>}
+                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString('en-AU')}</p></div>}
                     {empEntry?.contact_details && <div style={S.cell}><p style={S.label}>Employer Contact</p><p style={S.value}>{empEntry.contact_details}</p></div>}
                     {application.business_name && <div style={S.cell}><p style={S.label}>Business Name</p><p style={S.value}>{application.business_name}</p></div>}
                     {application.business_abn && <div style={S.cell}><p style={S.label}>ABN</p><p style={S.value}>{application.business_abn}</p></div>}
@@ -3538,7 +3477,7 @@ export default function ReviewApplication() {
                           {entries.map(([k, v]) => (
                             <div key={k} style={S.cell}>
                               <p style={S.label}>{k.replace(/_/g, ' ')}</p>
-                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString()}` : String(v)}</p>
+                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString('en-AU')}` : String(v)}</p>
                             </div>
                           ))}
                         </div>
@@ -3556,7 +3495,7 @@ export default function ReviewApplication() {
                     {incomes.map((inc, idx) => (
                       <div key={idx} style={S.cell}>
                         <p style={S.label}>{idx === 0 ? 'Primary Income' : `Additional Income ${idx}`}</p>
-                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString()}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
+                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
                       </div>
                     ))}
                   </div>
@@ -3568,10 +3507,10 @@ export default function ReviewApplication() {
                 <div style={S.section}>
                   <h2 style={S.h2}>Monthly Expenses</h2>
                   <div style={S.grid}>
-                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString()}/mo</p></div>}
-                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString()}/mo</p></div>}
-                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString()}/mo</p></div>}
-                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString()}/mo</p></div>}
+                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
+                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
                   </div>
                 </div>
               )}
@@ -3585,10 +3524,10 @@ export default function ReviewApplication() {
                       <p style={{ ...S.label, marginBottom: '4px' }}>{String(asset.property_type || `Property ${idx + 1}`)}</p>
                       {asset.address && <p style={S.value}>{String(asset.address)}</p>}
                       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const, marginTop: '4px' }}>
-                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString()}</span>}
+                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
                         {asset.ownership_type && <span style={{ fontSize: '12px', color: '#374151' }}>Ownership: {String(asset.ownership_type)}</span>}
                         {asset.is_financed === 'yes' && asset.lender && <span style={{ fontSize: '12px', color: '#374151' }}>Lender: {String(asset.lender)}</span>}
-                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString()}</span>}
+                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString('en-AU')}</span>}
                       </div>
                     </div>
                   ))}
@@ -3603,7 +3542,7 @@ export default function ReviewApplication() {
                     {otherAssets.map((asset, idx) => (
                       <div key={idx} style={S.cell}>
                         <p style={S.label}>{String(asset.asset_type || `Asset ${idx + 1}`)}</p>
-                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString()}</p>}
+                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString('en-AU')}</p>}
                       </div>
                     ))}
                   </div>
@@ -3618,9 +3557,9 @@ export default function ReviewApplication() {
                     <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
                       <p style={{ ...S.label, marginBottom: '4px' }}>{String(lib.liability_type || `Liability ${idx + 1}`)}{lib.lender ? ` — ${lib.lender}` : ''}</p>
                       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const }}>
-                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString()}</span>}
-                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString()}</span>}
-                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString()}</span>}
+                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString('en-AU')}</span>}
+                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString('en-AU')}</span>}
+                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString('en-AU')}</span>}
                       </div>
                     </div>
                   ))}

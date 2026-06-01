@@ -160,6 +160,9 @@ def invite_to_complete_application(
     if client.email.endswith('@deleted.invalid'):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client has been deleted")
 
+    # Inviting the client releases the application onto their portal.
+    application.hidden_from_client = False
+
     if client.password_hash in ("!", "!invited"):
         # Placeholder client — hasn't been invited yet. Refresh setup token and send
         # an account-setup email that redirects them straight to this application.

@@ -17,7 +17,7 @@ const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: 
 function formatRepayments(amount: number | null, freq: RepaymentFrequency | null): string {
   if (amount == null) return '—';
   const short = REPAYMENT_FREQUENCIES.find(f => f.value === freq)?.short;
-  const amt = `$${Number(amount).toLocaleString()}`;
+  const amt = `$${Number(amount).toLocaleString('en-AU')}`;
   return short ? `${amt}/${short}` : amt;
 }
 
@@ -887,8 +887,8 @@ export default function ContactDetail() {
                           <div className="text-[12px] text-muted-foreground">via {e.other_broker_name}</div>
                         )}
                       </td>
-                      <td className="py-3">${Number(e.amount).toLocaleString()}</td>
-                      <td className="py-3 text-muted-foreground">{e.balloon != null ? `$${Number(e.balloon).toLocaleString()}` : '—'}</td>
+                      <td className="py-3">${Number(e.amount).toLocaleString('en-AU')}</td>
+                      <td className="py-3 text-muted-foreground">{e.balloon != null ? `$${Number(e.balloon).toLocaleString('en-AU')}` : '—'}</td>
                       <td className="py-3 text-muted-foreground">{formatRepayments(e.repayment_amount, e.repayment_frequency)}</td>
                       <td className="py-3 text-muted-foreground">{e.start_date ? formatDate(e.start_date) : '—'}</td>
                       <td className="py-3 text-muted-foreground">{e.identifier || '—'}</td>
@@ -936,7 +936,7 @@ export default function ContactDetail() {
                   {contact.applications.map(app => (
                     <tr key={app.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                       <td className="py-3 capitalize font-medium">{app.loan_type}</td>
-                      <td className="py-3">${Number(app.amount).toLocaleString()}</td>
+                      <td className="py-3">${Number(app.amount).toLocaleString('en-AU')}</td>
                       <td className="py-3">
                         <Badge value={app.status} />
                       </td>

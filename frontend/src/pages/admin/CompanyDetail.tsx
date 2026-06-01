@@ -398,7 +398,7 @@ export default function CompanyDetail() {
                 {company.applications.map(a => (
                   <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="py-3 capitalize font-medium">{a.loan_type.replace(/_/g, ' ')}</td>
-                    <td className="py-3">${Number(a.amount).toLocaleString()}</td>
+                    <td className="py-3">${Number(a.amount).toLocaleString('en-AU')}</td>
                     <td className="py-3"><Badge value={a.status} /></td>
                     <td className="py-3 text-muted-foreground">{a.user_name || '—'}</td>
                     <td className="py-3 text-muted-foreground">{formatDate(a.created_at)}</td>

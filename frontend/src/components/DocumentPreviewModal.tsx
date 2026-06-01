@@ -500,11 +500,11 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <span className="text-[12px] text-muted-foreground">
-                        {ocrLineCount.toLocaleString()} {ocrLineCount === 1 ? 'line' : 'lines'}
+                        {ocrLineCount.toLocaleString('en-AU')} {ocrLineCount === 1 ? 'line' : 'lines'}
                       </span>
                       <span className="text-[12px] text-muted-foreground/40">&middot;</span>
                       <span className="text-[12px] text-muted-foreground">
-                        {ocrCharCount.toLocaleString()} {ocrCharCount === 1 ? 'character' : 'characters'}
+                        {ocrCharCount.toLocaleString('en-AU')} {ocrCharCount === 1 ? 'character' : 'characters'}
                       </span>
                     </div>
                     <button

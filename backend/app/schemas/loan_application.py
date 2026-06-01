@@ -140,6 +140,56 @@ class AssignedBroker(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LoanApplicantBase(BaseModel):
+    role: Optional[str] = "director"
+    applicant_title: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    applicant_middle_name: Optional[str] = None
+    applicant_dob: Optional[str] = None
+    applicant_gender: Optional[str] = None
+    applicant_marital_status: Optional[str] = None
+    applicant_email: Optional[str] = None
+    applicant_mobile: Optional[str] = None
+    applicant_address: Optional[str] = None
+    applicant_suburb: Optional[str] = None
+    applicant_state: Optional[str] = None
+    applicant_postcode: Optional[str] = None
+    id_expiry_date: Optional[str] = None
+    applicant_residency_status: Optional[str] = None
+    employment_category: Optional[str] = None
+    employer_name: Optional[str] = None
+    employer_industry: Optional[str] = None
+    job_title: Optional[str] = None
+    income_frequency: Optional[str] = None
+    gross_income: Optional[Decimal] = Field(None, ge=0)
+    lend_extra_data: Optional[str] = None
+    previously_declined: Optional[bool] = None
+    change_of_circumstances: Optional[bool] = None
+    signature_name: Optional[str] = None
+
+
+class LoanApplicantCreate(LoanApplicantBase):
+    """Broker adds a director, optionally sending them an invite to self-complete."""
+
+    invite_email: Optional[str] = None
+
+
+class LoanApplicantOut(LoanApplicantBase):
+    id: str
+    application_id: str
+    contact_id: Optional[str] = None
+    is_primary: bool = False
+    signed_at: Optional[datetime] = None
+    invite_email: Optional[str] = None
+    invite_sent_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ReferrerInfoOut(BaseModel):
     id: str
     full_name: Optional[str] = None
@@ -202,11 +252,7 @@ class LoanApplicationOut(BaseModel):
     lend_owner_type: Optional[str] = None
     lend_send_type: Optional[str] = None
     lend_who_to_contact: Optional[str] = None
-    # Lend sync tracking
     lend_ref: Optional[str] = None
-    lend_sync_status: Optional[str] = None
-    lend_sync_error: Optional[str] = None
-    lend_synced_at: Optional[datetime] = None
     # Extended fields
     applicant_email: Optional[str] = None
     applicant_mobile: Optional[str] = None
@@ -237,6 +283,10 @@ class LoanApplicationOut(BaseModel):
     emergency_contact_phone: Optional[str] = None
     client_engagement_model: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
+    additional_applicants: list[LoanApplicantOut] = []
+    needs_reconciliation: bool = False
+    reconciliation_note: Optional[str] = None
+    hidden_from_client: bool = False
     is_locked: bool = False
     client_sections: Optional[str] = None
     client_account_pending: bool = False

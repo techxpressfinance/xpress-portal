@@ -25,6 +25,17 @@ class LoanType(str, enum.Enum):
     home_loan = "home_loan"
 
 
+# Loan types treated as "commercial" — these support multiple directors per
+# application (the LoanApplicant child table) and reconciliation of independent
+# applies. Personal/home/vehicle are single-applicant and unaffected.
+COMMERCIAL_LOAN_TYPES = frozenset({
+    LoanType.business,
+    LoanType.business_loan,
+    LoanType.commercial_property,
+    LoanType.equipment_finance,
+})
+
+
 class ApplicationStatus(str, enum.Enum):
     draft = "draft"
     application_received = "application_received"
@@ -155,19 +166,15 @@ class LoanApplication(Base):
     # Business / company linkage
     business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
 
-    # Lend sync tracking
     lend_ref: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    lend_sync_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Referrer-filled
     client_engagement_model: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    lend_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Client invite (magic-link token for unauthenticated form completion)
     client_invite_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     client_invite_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     client_invite_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    lend_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
     # Broker lock — prevents client from editing the draft
@@ -177,6 +184,15 @@ class LoanApplication(Base):
     # null = all sections visible.
     client_sections: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
 
+    # Commercial multi-director reconciliation: set when an independent director's
+    # loan details diverge from this application. Surfaced to the broker to resolve.
+    needs_reconciliation: Mapped[bool] = mapped_column(default=False, nullable=False)
+    reconciliation_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
+
+    # Hidden from the owning client's portal until the broker releases it (used for
+    # referrer direct-engagement leads — broker configures sections, then invites).
+    hidden_from_client: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
@@ -184,6 +200,14 @@ class LoanApplication(Base):
     # Legacy single-broker FK kept for backward compat / migration
     assigned_broker = relationship("User", back_populates="assigned_applications", foreign_keys=[assigned_broker_id])
     documents = relationship("Document", back_populates="application")
+
+    # Additional directors (commercial loans only). Primary applicant stays inline.
+    additional_applicants = relationship(
+        "LoanApplicant",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     # Many-to-many: multiple brokers per application
     brokers = relationship(

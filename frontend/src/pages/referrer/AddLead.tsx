@@ -421,6 +421,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (!email.trim()) { toast("Please enter the client's email", 'error'); return; }
     if (tab === 'commercial' && !subLoanType) { toast('Please select a loan purpose', 'error'); return; }
     if (tab === 'consumer' && !subLoanType) { toast('Please select a loan type', 'error'); return; }
+    // ABN is required for full commercial applications (broker/admin create). Quick
+    // referrer lead capture stays lenient — broker fills the ABN in later.
+    const commercialAbn = (comAbn.trim() || extra.business_abn.trim());
+    if (showFullDetails && tab === 'commercial' && !commercialAbn) {
+      toast('ABN is required for commercial loan applications', 'error');
+      return;
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) { toast('Please enter a valid amount', 'error'); return; }
 
     const effectiveLoanType = computeEffectiveLoanType(tab, subLoanType);
@@ -523,11 +530,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           applicant_mobile: mobile.trim() || null,
           notes: notes.trim() || null,
           status: 'application_received',
-          ...(tab === 'commercial' ? {
-            business_name: comBusinessName.trim() || null,
-            business_abn: comAbn.trim() || null,
-          } : {}),
           ...extraPayload,
+          // Commercial-tab values take priority, falling back to the detail-section
+          // business fields. Placed after extraPayload so they aren't nulled out.
+          ...(tab === 'commercial' ? {
+            business_name: (comBusinessName.trim() || extra.business_name.trim()) || null,
+            business_abn: (comAbn.trim() || extra.business_abn.trim()) || null,
+          } : {}),
         });
         appId = app.id;
       }
@@ -1643,7 +1652,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           </GlassCard>
 
           {/* Business Details */}
-          {(isBusinessLoan || extra.business_name || extra.business_abn) && (
+          {(tab === 'commercial' || isBusinessLoan || extra.business_name || extra.business_abn) && (
             <GlassCard className="space-y-4">
               <p className="text-[15px] font-semibold text-foreground">Business Details</p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1652,7 +1661,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   <input type="text" className="led-input" value={extra.business_name} onChange={e => setExtra('business_name', e.target.value)} />
                 </div>
                 <div>
-                  <label className={LBL}>ABN</label>
+                  <label className={LBL}>ABN{tab === 'commercial' ? ' *' : ''}</label>
                   <input type="text" className="led-input" value={extra.business_abn} onChange={e => setExtra('business_abn', e.target.value)} />
                 </div>
               </div>

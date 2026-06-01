@@ -368,7 +368,7 @@ export default function UserManagement() {
                   <option value="">Select an application...</option>
                   {draftApps.map(app => (
                     <option key={app.id} value={app.id}>
-                      {app.user_name || app.user_email || 'Unknown'} — {app.loan_type.charAt(0).toUpperCase() + app.loan_type.slice(1)} — ${Number(app.amount).toLocaleString()}
+                      {app.user_name || app.user_email || 'Unknown'} — {app.loan_type.charAt(0).toUpperCase() + app.loan_type.slice(1)} — ${Number(app.amount).toLocaleString('en-AU')}
                     </option>
                   ))}
                 </select>

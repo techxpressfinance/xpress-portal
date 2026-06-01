@@ -21,6 +21,8 @@ interface AppData {
   amount: number;
   notes?: string;
   client_invite_email?: string;
+  is_director?: boolean;
+  business_name?: string;
 }
 
 interface FormData {
@@ -206,7 +208,15 @@ export default function PublicApply() {
         {appData && (
           <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
             <p className="text-[13px] text-blue-700 dark:text-blue-300 font-medium">
-              Your application — <span className="capitalize">{appData.loan_type}</span> loan for <span className="font-bold">{fmt(appData.amount)}</span>
+              {appData.is_director ? (
+                <>
+                  You're applying as a director{appData.business_name ? <> for <span className="font-bold">{appData.business_name}</span></> : ''} — <span className="capitalize">{appData.loan_type}</span> loan for <span className="font-bold">{fmt(appData.amount)}</span>. Please complete your own details below.
+                </>
+              ) : (
+                <>
+                  Your application — <span className="capitalize">{appData.loan_type}</span> loan for <span className="font-bold">{fmt(appData.amount)}</span>
+                </>
+              )}
             </p>
           </div>
         )}

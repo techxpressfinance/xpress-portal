@@ -70,4 +70,10 @@ def app_with_user(app: LoanApplication) -> dict:
         finally:
             db.close()
     data["referrer"] = referrer_info
+    # Additional directors (commercial loans). Relationship isn't a column, so
+    # serialize it explicitly from each applicant row's columns.
+    data["additional_applicants"] = [
+        {c.name: getattr(a, c.name) for c in a.__table__.columns}
+        for a in app.additional_applicants
+    ]
     return data

@@ -18,8 +18,6 @@ export type OcrStatus = (typeof OCR_STATUSES)[number];
 export const ANALYSIS_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
 
-export const LEND_SYNC_STATUSES = ['pending', 'synced', 'failed'] as const;
-export type LendSyncStatus = (typeof LEND_SYNC_STATUSES)[number];
 
 export const SERVICE_REQUEST_STATUSES = ['pending', 'in_progress', 'resolved', 'closed'] as const;
 export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
@@ -136,11 +134,7 @@ export interface LoanApplication {
   lend_owner_type: string | null;
   lend_send_type: string | null;
   lend_who_to_contact: string | null;
-  // Lend sync tracking
   lend_ref: string | null;
-  lend_sync_status: LendSyncStatus | null;
-  lend_sync_error: string | null;
-  lend_synced_at: string | null;
   // Referrer-filled
   client_engagement_model: ClientEngagementModel | null;
   // Referrer info (populated from referral data)
@@ -155,8 +149,52 @@ export interface LoanApplication {
   client_account_pending?: boolean;
   // Set when broker has sent the client their setup/invite email
   client_invite_sent_at?: string | null;
+  // Commercial multi-director
+  additional_applicants?: LoanApplicant[];
+  needs_reconciliation?: boolean;
+  reconciliation_note?: string | null;
+  hidden_from_client?: boolean;
   // Nested user object (returned by serializer)
   user?: { id: string; full_name: string; email: string } | null;
+}
+
+// An additional director attached to a commercial loan application.
+export interface LoanApplicant {
+  id: string;
+  application_id: string;
+  contact_id: string | null;
+  role: string | null;
+  is_primary: boolean;
+  applicant_title: string | null;
+  applicant_first_name: string | null;
+  applicant_last_name: string | null;
+  applicant_middle_name: string | null;
+  applicant_dob: string | null;
+  applicant_gender: string | null;
+  applicant_marital_status: string | null;
+  applicant_email: string | null;
+  applicant_mobile: string | null;
+  applicant_address: string | null;
+  applicant_suburb: string | null;
+  applicant_state: string | null;
+  applicant_postcode: string | null;
+  id_expiry_date: string | null;
+  applicant_residency_status: string | null;
+  employment_category: string | null;
+  employer_name: string | null;
+  employer_industry: string | null;
+  job_title: string | null;
+  income_frequency: string | null;
+  gross_income: number | null;
+  previously_declined: boolean | null;
+  change_of_circumstances: boolean | null;
+  signature_name: string | null;
+  signed_at: string | null;
+  invite_email: string | null;
+  invite_sent_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AnalysisResult {

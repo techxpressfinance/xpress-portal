@@ -369,6 +369,9 @@ def create_direct_referral(
         business_abn=data.business_abn,
         lend_extra_data=data.lend_extra_data,
         tenant_id=tenant_id,
+        # Xpress will engage the client directly: keep it off the client's portal
+        # until the broker has configured sections and invited them.
+        hidden_from_client=True,
     )
     db.add(application)
     db.flush()

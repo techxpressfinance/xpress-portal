@@ -16,6 +16,9 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
     if current_user.role == UserRole.client:
         if app.user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        # Not yet released by the broker — invisible to the client until invited.
+        if getattr(app, "hidden_from_client", False):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
         return
     if current_user.role == UserRole.broker:
         # All drafts are visible to every broker in the tenant
