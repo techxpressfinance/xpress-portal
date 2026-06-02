@@ -151,11 +151,25 @@ export interface LoanApplication {
   client_invite_sent_at?: string | null;
   // Commercial multi-director
   additional_applicants?: LoanApplicant[];
+  // Corporate guarantors (a company guaranteeing this loan), each with its own signatories
+  corporate_guarantors?: CorporateGuarantor[];
+  // True when every invited party has self-completed and signed
+  parties_ready?: boolean;
   needs_reconciliation?: boolean;
   reconciliation_note?: string | null;
   hidden_from_client?: boolean;
   // Nested user object (returned by serializer)
   user?: { id: string; full_name: string; email: string } | null;
+}
+
+// A company guaranteeing a commercial loan; its directors each sign as signatories.
+export interface CorporateGuarantor {
+  id: string;
+  organization_id: string;
+  organization_name: string | null;
+  organization_abn: string | null;
+  signatories: LoanApplicant[];
+  ready: boolean;
 }
 
 // An additional director attached to a commercial loan application.

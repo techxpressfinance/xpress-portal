@@ -190,6 +190,24 @@ class LoanApplicantOut(LoanApplicantBase):
     model_config = {"from_attributes": True}
 
 
+class CorporateGuarantorCreate(BaseModel):
+    """Attach a company as a guarantor (identified by name and/or ABN)."""
+
+    business_name: Optional[str] = None
+    business_abn: Optional[str] = None
+
+
+class CorporateGuarantorOut(BaseModel):
+    id: str
+    organization_id: str
+    organization_name: Optional[str] = None
+    organization_abn: Optional[str] = None
+    signatories: list[LoanApplicantOut] = []
+    ready: bool = False
+
+    model_config = {"from_attributes": True}
+
+
 class ReferrerInfoOut(BaseModel):
     id: str
     full_name: Optional[str] = None
@@ -284,6 +302,8 @@ class LoanApplicationOut(BaseModel):
     client_engagement_model: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
     additional_applicants: list[LoanApplicantOut] = []
+    corporate_guarantors: list[CorporateGuarantorOut] = []
+    parties_ready: bool = False
     needs_reconciliation: bool = False
     reconciliation_note: Optional[str] = None
     hidden_from_client: bool = False

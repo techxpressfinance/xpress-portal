@@ -30,6 +30,12 @@ class LoanApplicant(Base):
     )
     contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=True)
 
+    # When set, this party is a director/signatory of a *corporate* guarantor on the
+    # application rather than a direct individual party on the borrowing entity.
+    application_guarantor_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("application_guarantors.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
     role: Mapped[str] = mapped_column(String(30), default="director", nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -89,3 +95,41 @@ class LoanApplicant(Base):
 
     application = relationship("LoanApplication", back_populates="additional_applicants")
     contact = relationship("Contact", foreign_keys=[contact_id])
+    guarantor = relationship("ApplicationGuarantor", back_populates="signatories", foreign_keys=[application_guarantor_id])
+
+
+class ApplicationGuarantor(Base):
+    """A *corporate* guarantor on a commercial loan application.
+
+    The guarantor is an ``Organization`` (its own company with an ABN). Every
+    director of that company signs the guarantee, so the directors are stored as
+    ``LoanApplicant`` signatory rows pointing back here via
+    ``application_guarantor_id`` — each independently invited and signed.
+    """
+
+    __tablename__ = "application_guarantors"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    application_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("loan_applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    application = relationship("LoanApplication", back_populates="corporate_guarantors")
+    organization = relationship("Organization", foreign_keys=[organization_id])
+    signatories = relationship(
+        "LoanApplicant",
+        back_populates="guarantor",
+        foreign_keys="LoanApplicant.application_guarantor_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )

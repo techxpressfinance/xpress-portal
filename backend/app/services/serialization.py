@@ -72,8 +72,43 @@ def app_with_user(app: LoanApplication) -> dict:
     data["referrer"] = referrer_info
     # Additional directors (commercial loans). Relationship isn't a column, so
     # serialize it explicitly from each applicant row's columns.
-    data["additional_applicants"] = [
-        {c.name: getattr(a, c.name) for c in a.__table__.columns}
-        for a in app.additional_applicants
-    ]
+    # additional_applicants holds both direct individual parties and corporate-
+    # guarantor signatories; split them by application_guarantor_id.
+    all_parties = app.additional_applicants
+    direct_parties = [a for a in all_parties if a.application_guarantor_id is None]
+    data["additional_applicants"] = [_applicant_dict(a) for a in direct_parties]
+
+    guarantors = [guarantor_dict(g) for g in app.corporate_guarantors]
+    data["corporate_guarantors"] = guarantors
+
+    # Entity-first commercial readiness: every direct party signed, and every
+    # corporate guarantor has at least one signatory and all of them signed.
+    # False when there is nothing to be ready for.
+    data["parties_ready"] = (
+        (bool(direct_parties) or bool(guarantors))
+        and all(_is_signed(a) for a in direct_parties)
+        and all(g["ready"] for g in guarantors)
+    )
     return data
+
+
+def _is_signed(applicant) -> bool:
+    return applicant.completed_at is not None and applicant.signed_at is not None
+
+
+def _applicant_dict(applicant) -> dict:
+    return {c.name: getattr(applicant, c.name) for c in applicant.__table__.columns}
+
+
+def guarantor_dict(guarantor) -> dict:
+    """Serialize a corporate guarantor with its company info and nested signatories."""
+    signatories = guarantor.signatories
+    org = guarantor.organization
+    return {
+        "id": guarantor.id,
+        "organization_id": guarantor.organization_id,
+        "organization_name": org.name if org else None,
+        "organization_abn": org.abn if org else None,
+        "signatories": [_applicant_dict(s) for s in signatories],
+        "ready": bool(signatories) and all(_is_signed(s) for s in signatories),
+    }

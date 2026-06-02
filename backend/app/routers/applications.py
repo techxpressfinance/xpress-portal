@@ -23,7 +23,8 @@ from app.models.loan_application import (
     LoanApplication,
     LoanType,
 )
-from app.models.loan_applicant import LoanApplicant
+from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
+from app.models.contact import ContactOrganization
 from app.models.application_note import ApplicationNote
 from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
@@ -55,6 +56,8 @@ from app.services.notification_service import create_notification
 from app.services.organizations import find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
+    CorporateGuarantorCreate,
+    CorporateGuarantorOut,
     LoanApplicantCreate,
     LoanApplicantOut,
     LoanApplicationCreate,
@@ -62,6 +65,7 @@ from app.schemas.loan_application import (
     LoanApplicationUpdate,
     PaginatedApplications,
 )
+from app.services.serialization import guarantor_dict
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -1018,6 +1022,59 @@ def _load_commercial_app(app_id: str, current_user: User, db: Session, tenant_id
     return application
 
 
+def _build_invited_party(
+    db: Session,
+    application: LoanApplication,
+    tenant_id: str,
+    data: LoanApplicantCreate,
+    *,
+    application_guarantor_id: Optional[str] = None,
+) -> LoanApplicant:
+    """Create a LoanApplicant row with a fresh magic-link invite token.
+
+    Caller commits. ``invite_email`` is required — every party self-completes.
+    """
+    invite_email = (data.invite_email or "").strip()
+    if not invite_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An email is required so the director/guarantor can be invited to complete their details",
+        )
+    applicant = LoanApplicant(
+        tenant_id=tenant_id,
+        application_id=application.id,
+        application_guarantor_id=application_guarantor_id,
+        is_primary=False,
+        **{k: v for k, v in data.model_dump(exclude_none=True).items() if k in _APPLICANT_FIELDS},
+    )
+    applicant.invite_token = secrets.token_urlsafe(32)
+    applicant.invite_email = invite_email
+    applicant.invite_sent_at = datetime.now(timezone.utc)
+    db.add(applicant)
+    return applicant
+
+
+def _send_party_invite(applicant: LoanApplicant, company_name: Optional[str]) -> None:
+    """Email a party the magic-link to self-complete their block."""
+    if not (EMAIL_ENABLED and applicant.invite_token and applicant.invite_email):
+        return
+    from app.services.email import _send_async
+    company = company_name or "your company"
+    party_label = "guarantor" if applicant.role == "guarantor" else "director"
+    invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{applicant.invite_token}"
+    body = (
+        f"Hi,\n\n"
+        f"You have been invited as a {party_label} to complete your part of a commercial "
+        f"loan application for {company} through Xpress Finance.\n\n"
+        f"Please click the link below to fill in your details:\n\n"
+        f"{invite_url}\n\n"
+        f"This link is unique to you — please do not share it.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    subject = f"Complete Your {party_label.capitalize()} Details — Xpress Finance"
+    _send_async(applicant.invite_email, subject, body)
+
+
 @router.post("/{app_id}/directors", response_model=LoanApplicantOut, status_code=status.HTTP_201_CREATED)
 def add_director(
     app_id: str,
@@ -1026,48 +1083,18 @@ def add_director(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Add an additional director to a commercial application.
+    """Add a direct individual director/guarantor to a commercial application.
 
-    If ``invite_email`` is provided, a magic-link invite is generated and emailed
-    so the director can self-complete their own block.
+    Every party is emailed a magic-link invite to self-complete their own block,
+    so ``invite_email`` is required.
     """
     application = _load_commercial_app(app_id, current_user, db, tenant_id)
-
-    applicant = LoanApplicant(
-        tenant_id=tenant_id,
-        application_id=application.id,
-        is_primary=False,
-        **{k: v for k, v in data.model_dump(exclude_none=True).items() if k in _APPLICANT_FIELDS},
-    )
-
-    invite_url = None
-    if data.invite_email:
-        token = secrets.token_urlsafe(32)
-        applicant.invite_token = token
-        applicant.invite_email = data.invite_email.strip()
-        applicant.invite_sent_at = datetime.now(timezone.utc)
-        invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{token}"
-
-    db.add(applicant)
+    applicant = _build_invited_party(db, application, tenant_id, data)
     log_activity(db, current_user.id, "director_added", "application", app_id,
-                 {"invited": bool(data.invite_email)}, tenant_id=tenant_id)
+                 {"role": applicant.role, "invited": True}, tenant_id=tenant_id)
     db.commit()
     db.refresh(applicant)
-
-    if invite_url and EMAIL_ENABLED:
-        from app.services.email import _send_async
-        company = application.business_name or "your company"
-        body = (
-            f"Hi,\n\n"
-            f"You have been invited as a director to complete your part of a commercial "
-            f"loan application for {company} through Xpress Finance.\n\n"
-            f"Please click the link below to fill in your details:\n\n"
-            f"{invite_url}\n\n"
-            f"This link is unique to you — please do not share it.\n\n"
-            f"Best regards,\nXpress Finance Team"
-        )
-        _send_async(applicant.invite_email, "Complete Your Director Details — Xpress Finance", body)
-
+    _send_party_invite(applicant, application.business_name)
     return applicant
 
 
@@ -1117,3 +1144,142 @@ def reconcile_application(
     db.commit()
     db.refresh(application)
     return _app_with_user(application)
+
+
+# ---------------------------------------------------------------------------
+# Corporate guarantor endpoints (a company guaranteeing a commercial loan)
+# ---------------------------------------------------------------------------
+
+def _load_guarantor(
+    application: LoanApplication, guarantor_id: str, db: Session
+) -> ApplicationGuarantor:
+    guarantor = db.query(ApplicationGuarantor).filter(
+        ApplicationGuarantor.id == guarantor_id,
+        ApplicationGuarantor.application_id == application.id,
+    ).first()
+    if not guarantor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Corporate guarantor not found")
+    return guarantor
+
+
+@router.post("/{app_id}/guarantors", response_model=CorporateGuarantorOut, status_code=status.HTTP_201_CREATED)
+def add_corporate_guarantor(
+    app_id: str,
+    data: CorporateGuarantorCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Attach a company as a guarantor. Its known directors (from the contact book)
+    are seeded as signatories and invited to sign; more can be added afterwards."""
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+
+    org = find_or_create_organization_by_abn(db, tenant_id, data.business_abn, data.business_name)
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A business name or ABN is required to add a corporate guarantor",
+        )
+    if org.id == application.business_organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The borrowing company cannot guarantee its own loan",
+        )
+    existing = db.query(ApplicationGuarantor).filter(
+        ApplicationGuarantor.application_id == application.id,
+        ApplicationGuarantor.organization_id == org.id,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="That company is already a guarantor on this application",
+        )
+
+    guarantor = ApplicationGuarantor(
+        tenant_id=tenant_id, application_id=application.id, organization_id=org.id
+    )
+    db.add(guarantor)
+    db.flush()  # need guarantor.id for the seeded signatories
+
+    # Seed signatories from the guarantor company's known directors. Only those
+    # with an email can be auto-invited; others are skipped (broker adds them).
+    seeded: list[LoanApplicant] = []
+    links = db.query(ContactOrganization).filter(
+        ContactOrganization.organization_id == org.id,
+        ContactOrganization.tenant_id == tenant_id,
+    ).all()
+    for link in links:
+        if (link.role or "").lower() not in ("director", "guarantor"):
+            continue
+        contact = link.contact
+        if not contact or not contact.email:
+            continue
+        applicant = LoanApplicant(
+            tenant_id=tenant_id,
+            application_id=application.id,
+            application_guarantor_id=guarantor.id,
+            contact_id=contact.id,
+            role="director",
+            applicant_first_name=contact.first_name,
+            applicant_last_name=contact.last_name,
+            applicant_email=contact.email,
+            invite_email=contact.email,
+            invite_token=secrets.token_urlsafe(32),
+            invite_sent_at=datetime.now(timezone.utc),
+        )
+        db.add(applicant)
+        seeded.append(applicant)
+
+    log_activity(db, current_user.id, "guarantor_added", "application", app_id,
+                 {"organization_id": org.id, "seeded_signatories": len(seeded)}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(guarantor)
+    for s in seeded:
+        _send_party_invite(s, org.name)
+    return guarantor_dict(guarantor)
+
+
+@router.post(
+    "/{app_id}/guarantors/{guarantor_id}/signatories",
+    response_model=LoanApplicantOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_guarantor_signatory(
+    app_id: str,
+    guarantor_id: str,
+    data: LoanApplicantCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Add a director of the guarantor company who must sign the guarantee."""
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    guarantor = _load_guarantor(application, guarantor_id, db)
+    applicant = _build_invited_party(
+        db, application, tenant_id, data, application_guarantor_id=guarantor.id
+    )
+    applicant.role = "director"  # signatories of a corporate guarantor are its directors
+    log_activity(db, current_user.id, "guarantor_signatory_added", "application", app_id,
+                 {"guarantor_id": guarantor.id}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(applicant)
+    company_name = guarantor.organization.name if guarantor.organization else application.business_name
+    _send_party_invite(applicant, company_name)
+    return applicant
+
+
+@router.delete("/{app_id}/guarantors/{guarantor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_corporate_guarantor(
+    app_id: str,
+    guarantor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    guarantor = _load_guarantor(application, guarantor_id, db)
+    db.delete(guarantor)  # cascades signatory rows
+    log_activity(db, current_user.id, "guarantor_removed", "application", app_id,
+                 {"guarantor_id": guarantor_id}, tenant_id=tenant_id)
+    db.commit()
+    return None

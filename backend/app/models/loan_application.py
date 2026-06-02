@@ -202,8 +202,19 @@ class LoanApplication(Base):
     documents = relationship("Document", back_populates="application")
 
     # Additional directors (commercial loans only). Primary applicant stays inline.
+    # Includes both direct individual parties and corporate-guarantor signatories;
+    # serialization splits them by application_guarantor_id.
     additional_applicants = relationship(
         "LoanApplicant",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    # Corporate guarantors (another company guaranteeing this loan). Each has its
+    # own director signatories nested via LoanApplicant.application_guarantor_id.
+    corporate_guarantors = relationship(
+        "ApplicationGuarantor",
         back_populates="application",
         cascade="all, delete-orphan",
         lazy="selectin",

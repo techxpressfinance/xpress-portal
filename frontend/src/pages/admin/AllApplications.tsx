@@ -260,6 +260,16 @@ export default function AllApplications() {
                 <Icon name="plus" size={12} /> New Application
               </button>
             )}
+            {view === 'active' && (
+              <button
+                type="button"
+                className="led-btn led-btn-outline led-btn-sm"
+                onClick={() => navigate('/admin/applications/new-entity')}
+                style={{ gap: 6 }}
+              >
+                <Icon name="plus" size={12} /> New Commercial Entity
+              </button>
+            )}
             <div className="led-segment">
               <button type="button" className="led-active"><Icon name="list" size={12} /> Table</button>
               <Link to="/admin/board" style={{ textDecoration: 'none' }}>

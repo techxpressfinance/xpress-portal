@@ -215,6 +215,8 @@ _MIGRATIONS = [
     ("loan_applications", "reconciliation_note", "TEXT"),
     # Referrer direct-engagement: hide from client portal until broker releases
     ("loan_applications", "hidden_from_client", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Corporate guarantors: a party can be a signatory of a guarantor company
+    ("loan_applicants", "application_guarantor_id", "VARCHAR(36) REFERENCES application_guarantors(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
