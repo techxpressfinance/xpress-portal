@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.config import EMAIL_ENABLED, FRONTEND_URL, LEND_ENABLED, LLM_ANALYSIS_ENABLED
+from app.config import EMAIL_ENABLED, FRONTEND_URL, LLM_ANALYSIS_ENABLED
 from app.database import SessionLocal, get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
@@ -498,7 +498,6 @@ def get_application(
 def update_application(
     app_id: str,
     data: LoanApplicationUpdate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
@@ -599,15 +598,7 @@ def update_application(
     if updates:
         log_activity(db, current_user.id, "updated", "application", app_id, {"fields": list(updates.keys())}, tenant_id=tenant_id)
 
-    # Detect if status just changed to application_received for Lend auto-sync
-    becoming_submitted = updates.get("status") == "application_received"
-
     db.commit()
-
-    # Auto-sync to Lend on submission
-    if becoming_submitted and LEND_ENABLED:
-        from app.services.lend import sync_to_lend_background
-        background_tasks.add_task(sync_to_lend_background, application_id=app_id, session_factory=SessionLocal)
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application)

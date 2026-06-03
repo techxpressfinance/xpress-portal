@@ -63,12 +63,6 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 # CORS origins - comma-separated list
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 
-# Lend.com.au API - optional, sync disabled if no API key
-LEND_API_KEY = os.getenv("LEND_API_KEY", "")
-LEND_API_SECRET = os.getenv("LEND_API_SECRET", "")
-LEND_ENVIRONMENT = os.getenv("LEND_ENVIRONMENT", "sandbox")
-LEND_ENABLED = bool(LEND_API_KEY and LEND_API_SECRET)
-
 # SMS / Twilio — optional, silently skipped if not configured
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")

@@ -313,7 +313,9 @@ export default function NewApplication() {
   const [searchParams] = useSearchParams();
   const completeId = searchParams.get('completeId') || '';
 
-  const [lendEnabled, setLendEnabled] = useState(false);
+  // Detailed multi-loan-type application form (formerly gated behind the Lend
+  // integration). Always on now that the Lend.com.au sync has been removed.
+  const lendEnabled: boolean = true;
   const [acknowledged, setAcknowledged] = useState(false);
   const [checked, setChecked] = useState(false);
   const [isOwnDraftEdit, setIsOwnDraftEdit] = useState(false);
@@ -429,10 +431,6 @@ export default function NewApplication() {
   const residencyStatus = watch('residency_status');
   const employmentCategory = watch('employment_category');
   const hasPartner = watch('has_partner');
-
-  useEffect(() => {
-    api.get('/lend/config').then(({ data }) => setLendEnabled(data.enabled)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (user?.full_name) {
