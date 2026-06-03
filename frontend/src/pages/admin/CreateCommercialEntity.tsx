@@ -21,7 +21,7 @@ const COMMERCIAL_TYPE_OPTIONS = [
  */
 export default function CreateCommercialEntity() {
   const navigate = useNavigate();
-  const toast = useToast();
+  const { toast } = useToast();
 
   const [businessName, setBusinessName] = useState('');
   const [abn, setAbn] = useState('');
@@ -54,7 +54,7 @@ export default function CreateCommercialEntity() {
       toast('Commercial entity created — now add directors & guarantors', 'success');
       navigate(`/admin/applications/${app.id}`);
     } catch (err) {
-      toast(getErrorMessage(err) || 'Failed to create entity', 'error');
+      toast(getErrorMessage(err, 'Failed to create entity'), 'error');
     } finally {
       setSubmitting(false);
     }
