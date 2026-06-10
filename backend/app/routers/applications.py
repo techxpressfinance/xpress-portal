@@ -43,7 +43,7 @@ from app.constants import VALID_TRANSITIONS
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
-from app.services.serialization import app_with_user as _app_with_user
+from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
 from app.services.email import (
     send_complete_application_email,
     send_direct_engagement_client_invite,
@@ -267,7 +267,7 @@ def create_application(
                 )
 
     db.refresh(app, attribute_names=["user"])
-    return _app_with_user(app)
+    return _app_with_user(app, db)
 
 
 CLOSED_STATUSES = [ApplicationStatus.settled, ApplicationStatus.rejected, ApplicationStatus.not_proceeding]
@@ -285,7 +285,7 @@ def list_applications(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
+    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by), selectinload(LoanApplication.additional_applicants), selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories), selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization)).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
         query = query.filter(
@@ -340,7 +340,8 @@ def list_applications(
     total = query.count()
     items = query.order_by(LoanApplication.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
-    return PaginatedApplications(items=[_app_with_user(app) for app in items], total=total, page=page, per_page=per_page)
+    referrer_map = referrer_info_map(db, (app.user_id for app in items))
+    return PaginatedApplications(items=[_app_with_user(app, db, referrer_map=referrer_map) for app in items], total=total, page=page, per_page=per_page)
 
 
 @router.get("/analytics")
@@ -449,12 +450,13 @@ def list_deleted_applications(
     """Admin-only: returns all soft-deleted applications."""
     apps = (
         db.query(LoanApplication)
-        .options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by))
+        .options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by), selectinload(LoanApplication.additional_applicants), selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories), selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization))
         .filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.isnot(None))
         .order_by(LoanApplication.deleted_at.desc())
         .all()
     )
-    return [_app_with_user(app) for app in apps]
+    referrer_map = referrer_info_map(db, (app.user_id for app in apps))
+    return [_app_with_user(app, db, referrer_map=referrer_map) for app in apps]
 
 
 @router.post("/{app_id}/restore", response_model=LoanApplicationOut)
@@ -477,7 +479,7 @@ def restore_application(
     log_activity(db, current_user.id, "restored", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.get("/{app_id}", response_model=LoanApplicationOut)
@@ -487,11 +489,11 @@ def get_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by)).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
+    application = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by), selectinload(LoanApplication.additional_applicants), selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories), selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization)).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.patch("/{app_id}", response_model=LoanApplicationOut)
@@ -601,7 +603,7 @@ def update_application(
     db.commit()
 
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.patch("/{app_id}/status", response_model=LoanApplicationOut)
@@ -653,7 +655,7 @@ def change_status(
         send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, new_status.value)
 
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.patch("/{app_id}/lock", response_model=LoanApplicationOut)
@@ -681,7 +683,7 @@ def set_application_lock(
     log_activity(db, current_user.id, action, "application", app_id, {}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 class ClientSectionsUpdate(BaseModel):
@@ -719,7 +721,7 @@ def set_client_sections(
     log_activity(db, current_user.id, "client_sections_set", "application", app_id, {"sections": selected}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.post("/{app_id}/assign", response_model=LoanApplicationOut)
@@ -758,7 +760,7 @@ def assign_broker(
     )
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.delete("/{app_id}/assign", response_model=LoanApplicationOut)
@@ -794,7 +796,7 @@ def unassign_broker(
     log_activity(db, current_user.id, "broker_unassigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.post("/{app_id}/assign-group", response_model=LoanApplicationOut)
@@ -829,7 +831,7 @@ def assign_broker_group(
                  {"group_id": group_id, "group_name": group.name, "brokers_added": added}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 @router.post("/{app_id}/analyze")
@@ -930,10 +932,19 @@ class ClientInviteRequest(BaseModel):
     @field_validator("portal_url")
     @classmethod
     def validate_portal_url(cls, v: str) -> str:
+        from urllib.parse import urlsplit
+
         from app.config import FRONTEND_URL
-        allowed = FRONTEND_URL.rstrip("/")
-        if not v.rstrip("/").startswith(allowed):
-            raise ValueError(f"portal_url must be within the configured frontend origin ({allowed})")
+        allowed = urlsplit(FRONTEND_URL)
+        got = urlsplit(v)
+        # Exact origin match, or a subdomain of it (tenant portals live on
+        # {slug}.<frontend-host>). A prefix check on the raw string would let
+        # e.g. https://<frontend-host>.evil.com through.
+        host_ok = got.netloc.lower() == allowed.netloc.lower() or got.netloc.lower().endswith(
+            "." + allowed.netloc.lower()
+        )
+        if got.scheme != allowed.scheme or not host_ok:
+            raise ValueError(f"portal_url must be on the configured frontend origin ({FRONTEND_URL})")
         return v
 
 
@@ -1134,7 +1145,7 @@ def reconcile_application(
                  {"note": data.note}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)
-    return _app_with_user(application)
+    return _app_with_user(application, db)
 
 
 # ---------------------------------------------------------------------------

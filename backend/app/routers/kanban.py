@@ -10,6 +10,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.kanban import KanbanBoard, KanbanColumn
+from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
 from app.schemas.kanban import (
@@ -27,7 +28,7 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.date_filter import apply_date_range_filter
 from app.services.query_utils import escape_like
-from app.services.serialization import app_with_user
+from app.services.serialization import app_with_user, referrer_info_map
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/kanban", tags=["kanban"])
@@ -306,6 +307,9 @@ def get_board_applications(
         joinedload(LoanApplication.user),
         selectinload(LoanApplication.brokers),
         joinedload(LoanApplication.completed_by),
+        selectinload(LoanApplication.additional_applicants),
+        selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories),
+        selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization),
     ).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     # Broker access: only their assigned applications
@@ -361,15 +365,16 @@ def get_board_applications(
 
     result: dict[str, list] = {col.id: [] for col in board.columns}
 
+    referrer_map = referrer_info_map(db, (app.user_id for app in apps))
     for app in apps:
         # Explicit kanban placement takes priority
         if app.kanban_column_id and app.kanban_column_id in board_col_ids:
-            result[app.kanban_column_id].append(app_with_user(app))
+            result[app.kanban_column_id].append(app_with_user(app, db, referrer_map=referrer_map))
         else:
             # Fall back to status-based placement
             fallback = status_to_col_id.get(app.status.value)
             if fallback:
-                result[fallback].append(app_with_user(app))
+                result[fallback].append(app_with_user(app, db, referrer_map=referrer_map))
 
     # Apply per_column limit
     for col_id in result:

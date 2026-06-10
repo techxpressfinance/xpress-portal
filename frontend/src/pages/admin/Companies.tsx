@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { Building2, X } from 'lucide-react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard } from '../../components/ui';
@@ -61,13 +62,35 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+        style={{ animation: 'fadeIn 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
+        onClick={onClose}
+      />
+      <div
+        className="relative w-full max-w-lg rounded-2xl bg-background border border-border shadow-xl overflow-hidden"
         style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
       >
-        <h3 className="text-[17px] font-semibold text-foreground mb-4">New Company</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-[17px] font-semibold leading-tight text-foreground">New Company</h3>
+              <p className="text-[13px] text-muted-foreground">Add a business to your portfolio</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-1.5 -mt-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
             <Input ref={nameRef} placeholder="Acme Pty Ltd" required {...field('name')} />
@@ -93,6 +116,11 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               }))}
             />
           )}
+          <div className="flex items-center gap-3 pt-1">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Additional details</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Address</label>
             <Input placeholder="123 Example St, Suburb, NSW 2000" {...field('address')} />

@@ -1,14 +1,73 @@
 from __future__ import annotations
 
-from app.database import SessionLocal
+from typing import Iterable, Optional
+
+from sqlalchemy.orm import Session, joinedload
+
 from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 
+# Magic-link tokens grant unauthenticated form access via /api/public/apply —
+# they must never appear in API responses, even to brokers/admins.
+_SECRET_COLUMNS = {"client_invite_token", "invite_token"}
 
-def app_with_user(app: LoanApplication) -> dict:
-    """Build response dict with user info and assigned brokers list."""
-    data = {c.name: getattr(app, c.name) for c in app.__table__.columns}
+
+def _referrer_dict(user) -> dict:
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "organization_name": getattr(user, "organization_name", None),
+    }
+
+
+def referrer_info_map(db: Session, user_ids: Iterable[Optional[str]]) -> dict[str, dict]:
+    """Batch-resolve referrer info for many application owners in two queries.
+
+    An ExternalReferral takes precedence over a Referral for the same owner,
+    matching the per-application lookup order in app_with_user.
+    """
+    ids = {uid for uid in user_ids if uid}
+    result: dict[str, dict] = {}
+    if not ids:
+        return result
+    ext_refs = (
+        db.query(ExternalReferral)
+        .options(joinedload(ExternalReferral.referrer))
+        .filter(ExternalReferral.referred_client_id.in_(ids))
+        .all()
+    )
+    for ext_ref in ext_refs:
+        if ext_ref.referrer and ext_ref.referred_client_id not in result:
+            result[ext_ref.referred_client_id] = _referrer_dict(ext_ref.referrer)
+    remaining = ids - result.keys()
+    if remaining:
+        refs = (
+            db.query(Referral)
+            .options(joinedload(Referral.referrer))
+            .filter(Referral.referred_user_id.in_(remaining))
+            .all()
+        )
+        for ref in refs:
+            if ref.referrer and ref.referred_user_id not in result:
+                result[ref.referred_user_id] = _referrer_dict(ref.referrer)
+    return result
+
+
+def app_with_user(
+    app: LoanApplication,
+    db: Session,
+    *,
+    referrer_map: Optional[dict[str, dict]] = None,
+) -> dict:
+    """Build response dict with user info and assigned brokers list.
+
+    For list endpoints, pass ``referrer_map`` from referrer_info_map() so the
+    referrer lookup is two batched queries instead of one per application.
+    """
+    data = {c.name: getattr(app, c.name) for c in app.__table__.columns if c.name not in _SECRET_COLUMNS}
     if app.user:
         data["user_name"] = app.user.full_name
         data["user_email"] = app.user.email
@@ -34,41 +93,22 @@ def app_with_user(app: LoanApplication) -> dict:
     # Referrer info
     referrer_info = None
     if app.user and app.user.role.value == "referrer":
-        referrer_info = {
-            "id": app.user.id,
-            "full_name": app.user.full_name,
-            "email": app.user.email,
-            "phone": app.user.phone,
-            "organization_name": getattr(app.user, "organization_name", None),
-        }
+        referrer_info = _referrer_dict(app.user)
     elif app.user:
-        db = SessionLocal()
-        try:
+        if referrer_map is not None:
+            referrer_info = referrer_map.get(app.user_id)
+        else:
             ext_ref = db.query(ExternalReferral).filter(
                 ExternalReferral.referred_client_id == app.user_id,
             ).first()
             if ext_ref and ext_ref.referrer:
-                referrer_info = {
-                    "id": ext_ref.referrer.id,
-                    "full_name": ext_ref.referrer.full_name,
-                    "email": ext_ref.referrer.email,
-                    "phone": ext_ref.referrer.phone,
-                    "organization_name": getattr(ext_ref.referrer, "organization_name", None),
-                }
+                referrer_info = _referrer_dict(ext_ref.referrer)
             else:
                 ref = db.query(Referral).filter(
                     Referral.referred_user_id == app.user_id,
                 ).first()
                 if ref and ref.referrer:
-                    referrer_info = {
-                        "id": ref.referrer.id,
-                        "full_name": ref.referrer.full_name,
-                        "email": ref.referrer.email,
-                        "phone": ref.referrer.phone,
-                        "organization_name": getattr(ref.referrer, "organization_name", None),
-                    }
-        finally:
-            db.close()
+                    referrer_info = _referrer_dict(ref.referrer)
     data["referrer"] = referrer_info
     # Additional directors (commercial loans). Relationship isn't a column, so
     # serialize it explicitly from each applicant row's columns.
@@ -97,7 +137,7 @@ def _is_signed(applicant) -> bool:
 
 
 def _applicant_dict(applicant) -> dict:
-    return {c.name: getattr(applicant, c.name) for c in applicant.__table__.columns}
+    return {c.name: getattr(applicant, c.name) for c in applicant.__table__.columns if c.name not in _SECRET_COLUMNS}
 
 
 def guarantor_dict(guarantor) -> dict:

@@ -64,7 +64,7 @@ def main() -> None:
     with engine.connect() as conn:
         total_users = conn.execute(text("SELECT count(*) FROM users")).scalar()
         keep_admins = conn.execute(
-            text("SELECT email, role FROM users WHERE role = ANY(:roles) ORDER BY role, email"),
+            text("SELECT email, role FROM users WHERE role::text = ANY(:roles) ORDER BY role, email"),
             {"roles": list(KEEP_ROLES)},
         ).fetchall()
 
@@ -96,7 +96,7 @@ def main() -> None:
         # Drop self-referential invite chains so deleting non-admins can't hit a FK.
         conn.execute(text("UPDATE users SET invited_by_id = NULL"))
         deleted = conn.execute(
-            text("DELETE FROM users WHERE NOT (role = ANY(:roles))"),
+            text("DELETE FROM users WHERE NOT (role::text = ANY(:roles))"),
             {"roles": list(KEEP_ROLES)},
         ).rowcount
 
