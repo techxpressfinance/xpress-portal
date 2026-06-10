@@ -15,6 +15,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { GlassCard, Button, Skeleton, EmptyState } from '../../components/ui';
+import { CopyButton } from '../../components/ui/CopyButton';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { formatShortDate, formatTime } from '../../lib/utils';
 import type { ActivityLog, DashboardStats, LoanApplication } from '../../types';
@@ -130,6 +131,7 @@ export default function AdminDashboard() {
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -149,6 +151,10 @@ export default function AdminDashboard() {
         if (failed.length) toast(`Failed to load: ${failed.join(', ')}`, 'error');
       })
       .finally(() => setLoading(false));
+
+    api.get('/referrals/my-link')
+      .then(({ data }) => setInviteLink(`${window.location.origin}/register?ref=${data.code}`))
+      .catch(() => { });
   }, [user?.role]);
 
   const counts = useMemo(() => ({
@@ -270,6 +276,17 @@ export default function AdminDashboard() {
               {loading ? <Skeleton width={60} height={28} /> : urgentActions}
             </p>
           </div>
+          {inviteLink && (
+            <div className="led-card px-4 py-3 max-w-[260px]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)]">Your Invite Link</p>
+              <div className="mt-1 flex items-center gap-2">
+                <p className="min-w-0 truncate text-[13px] font-medium text-[var(--led-ink)]" title={inviteLink}>
+                  {inviteLink.replace(/^https?:\/\//, '')}
+                </p>
+                <CopyButton text={inviteLink} size="sm" />
+              </div>
+            </div>
+          )}
           <Link to="/admin/applications">
             <Button size="lg" className="h-11 px-5">
               Open Live Queue

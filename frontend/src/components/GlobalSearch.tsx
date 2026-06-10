@@ -18,7 +18,8 @@ export default function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'broker' || user?.role === 'referrer';
+  // Backend /search is admin/broker only — don't offer the palette to other roles
+  const isAdmin = user?.role === 'admin' || user?.role === 'broker';
 
   // Keyboard shortcut to open
   useEffect(() => {
@@ -70,9 +71,11 @@ export default function GlobalSearch() {
   }, [query, doSearch]);
 
   const flatItems = useMemo(() => {
-    const items: { type: 'application' | 'user' | 'document'; id: string; appId?: string }[] = [];
+    const items: { type: 'application' | 'user' | 'contact' | 'organization' | 'document'; id: string; appId?: string }[] = [];
     if (results) {
       for (const app of results.applications) items.push({ type: 'application', id: app.id });
+      for (const c of results.contacts ?? []) items.push({ type: 'contact', id: c.id });
+      for (const o of results.organizations ?? []) items.push({ type: 'organization', id: o.id });
       for (const u of results.users) items.push({ type: 'user', id: u.id });
       for (const d of results.documents) items.push({ type: 'document', id: d.id, appId: d.application_id });
     }
@@ -98,6 +101,8 @@ export default function GlobalSearch() {
       const item = flatItems[selectedIndex];
       if (item.type === 'application') navigateTo(`/admin/applications/${item.id}`);
       else if (item.type === 'document') navigateTo(`/admin/applications/${item.appId}`);
+      else if (item.type === 'contact') navigateTo(`/admin/contacts/${item.id}`);
+      else if (item.type === 'organization') navigateTo(`/admin/companies/${item.id}`);
       else navigateTo('/admin/users');
     } else if (e.key === 'Escape') {
       setOpen(false);
@@ -136,7 +141,7 @@ export default function GlobalSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Search applications, clients, users..."
+              placeholder="Search applications, contacts, companies, documents..."
               className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/60 outline-none"
             />
             {loading && (
@@ -199,18 +204,86 @@ export default function GlobalSearch() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-[13px] font-medium text-foreground truncate">
-                              {app.user_name || 'Unknown'}{' '}
+                              {app.business_name || app.user_name || 'Unknown'}{' '}
                               <span className="text-muted-foreground font-normal capitalize">— {app.loan_type}</span>
                             </p>
                           </div>
                           <p className="text-[11px] text-muted-foreground truncate">
+                            {app.business_name && app.user_name && `${app.user_name} · `}
                             ${Number(app.amount).toLocaleString('en-AU')}
+                            {app.lend_ref && ` · ${app.lend_ref}`}
                             {app.created_at && ` · ${formatDate(app.created_at)}`}
                           </p>
                         </div>
                         <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_BADGE[app.status]}`}>
                           {app.status}
                         </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Contacts */}
+              {(results.contacts ?? []).length > 0 && (
+                <div>
+                  <p className="px-4 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Contacts
+                  </p>
+                  {results.contacts.map((c) => {
+                    const idx = currentFlatIndex++;
+                    const isSelected = idx === selectedIndex;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => navigateTo(`/admin/contacts/${c.id}`)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isSelected ? 'bg-secondary' : 'hover:bg-secondary/50'}`}
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-chart-2/10">
+                          <svg className="h-4 w-4 text-chart-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">{c.full_name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {[c.email, c.phone].filter(Boolean).join(' · ') || 'No contact details'}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Companies */}
+              {(results.organizations ?? []).length > 0 && (
+                <div>
+                  <p className="px-4 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Companies
+                  </p>
+                  {results.organizations.map((o) => {
+                    const idx = currentFlatIndex++;
+                    const isSelected = idx === selectedIndex;
+                    return (
+                      <button
+                        key={o.id}
+                        onClick={() => navigateTo(`/admin/companies/${o.id}`)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isSelected ? 'bg-secondary' : 'hover:bg-secondary/50'}`}
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-chart-4/10">
+                          <svg className="h-4 w-4 text-chart-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">{o.name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {[o.abn && `ABN ${o.abn}`, o.industry].filter(Boolean).join(' · ') || 'Company'}
+                          </p>
+                        </div>
                       </button>
                     );
                   })}

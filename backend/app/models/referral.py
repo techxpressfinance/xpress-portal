@@ -34,6 +34,8 @@ class Referral(Base):
     referral_code: Mapped[str] = mapped_column(String(20), unique=True, index=True, default=_generate_referral_code)
     referred_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     referred_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # Role granted on signup through this code (e.g. "broker"); NULL = client
+    invited_role: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     status: Mapped[ReferralStatus] = mapped_column(Enum(ReferralStatus), default=ReferralStatus.pending, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

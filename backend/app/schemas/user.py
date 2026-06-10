@@ -67,6 +67,16 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class InvitedUserOut(UserOut):
+    """Invite/create response — carries the setup link so the inviter can copy it.
+
+    Only returned from the POST that issues the invite; the token is never
+    exposed via GET endpoints.
+    """
+
+    invite_url: Optional[str] = None
+
+
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
@@ -211,6 +221,8 @@ class InvitationOut(BaseModel):
     setup_expired: bool = False
     created_at: datetime
     invited_by_name: Optional[str] = None
+    # Copyable setup link — only while the invite is pending and unexpired
+    invite_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

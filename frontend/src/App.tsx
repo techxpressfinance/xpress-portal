@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import ImpersonationBanner from './components/ImpersonationBanner';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ToastProvider } from './components/Toast';
@@ -77,6 +78,7 @@ export default function App() {
       <TenantProvider>
       <AuthProvider>
         <ToastProvider>
+          <ImpersonationBanner />
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
             <Route path="/platform-login" element={<PlatformLogin />} />

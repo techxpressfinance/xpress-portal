@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Button, GlassCard } from './ui';
 import type { QuoteSheet, QuoteInputParameters } from '../types';
 import api from '../api/client';
@@ -14,6 +14,16 @@ const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = {
 };
 
 const TERMS = [5, 4, 3, 2, 7]; // Display order matching Excel
+
+// ATO minimum residual values for vehicle leases, by term in years.
+// Used by the "Auto-fill standard" balloon button.
+const STANDARD_RESIDUALS: Record<string, number> = {
+  '2': 56.25,
+  '3': 46.88,
+  '4': 37.5,
+  '5': 28.13,
+  '7': 9.38, // extrapolated — ATO publishes 1–5yr only
+};
 
 const DEFAULT_INPUTS: QuoteInputParameters = {
   facility_type: 'chattel',
@@ -51,6 +61,25 @@ function pmt(rate: number, nper: number, pv: number, fv = 0, type: 0 | 1 = 0): n
 }
 
 const fmt2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── Money formatting helpers (thousands separators in text inputs) ───
+const formatMoney = (v: number | string | null): string => {
+  if (v === '' || v == null) return '';
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
+};
+// Insert thousands separators into a raw "digits[.digits]" string, keeping a
+// trailing decimal point the user may still be mid-typing (e.g. "1234.").
+const commaize = (raw: string): string => {
+  const [intPart, ...rest] = raw.split('.');
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return rest.length ? `${withCommas}.${rest.join('')}` : withCommas;
+};
+const moneyToNum = (s: string): number | null => {
+  if (s === '') return null;
+  const n = parseFloat(s.replace(/,/g, ''));
+  return isFinite(n) ? n : null;
+};
 
 // ── RATE — Excel-compatible Newton-Raphson solver ────────────────────
 // Excel B46: RATE(nper, pmt, pv, fv, type, guess) * 12
@@ -275,6 +304,39 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
 const fieldBase = "w-full h-9 rounded-lg bg-secondary text-[13px] text-foreground transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent";
 const labelBase = "block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1";
 
+// Text input that displays dollar amounts with thousands separators while
+// reporting a plain number (or null when cleared, if allowNull) to the parent.
+function MoneyInput({ value, onChange, placeholder, className, allowNull }: {
+  value: number | string | null;
+  onChange: (val: number | null) => void;
+  placeholder?: string;
+  className?: string;
+  allowNull?: boolean;
+}) {
+  const [text, setText] = useState(() => formatMoney(value));
+  // Resync from the parent only when the underlying number actually diverges,
+  // so a trailing "." or in-progress decimal the user is typing isn't clobbered.
+  useEffect(() => {
+    const propNum = value === '' || value == null ? null : Number(value);
+    if (moneyToNum(text) !== propNum) setText(formatMoney(value));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder}
+      value={text}
+      onChange={e => {
+        const cleaned = e.target.value.replace(/[^\d.]/g, '');
+        setText(commaize(cleaned));
+        const n = moneyToNum(cleaned);
+        onChange(n == null ? (allowNull ? null : 0) : Math.max(0, n));
+      }}
+      className={className}
+    />
+  );
+}
+
 function DollarInput({ label, value, onChange, placeholder }: {
   label: string;
   value: number | string;
@@ -286,13 +348,10 @@ function DollarInput({ label, value, onChange, placeholder }: {
       <label className={labelBase}>{label}</label>
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[13px]">$</span>
-        <input
-          type="number"
-          step="any"
-          min="0"
-          placeholder={placeholder}
+        <MoneyInput
           value={value}
-          onChange={e => onChange(Math.max(0, parseFloat(e.target.value)) || 0)}
+          onChange={v => onChange(v ?? 0)}
+          placeholder={placeholder}
           className={`${fieldBase} pl-6 pr-3`}
         />
       </div>
@@ -376,10 +435,44 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
     setInputs(prev => ({ ...prev, [key]: value }));
   };
 
+  // Editing % makes the percentage the source of truth — drop any $ override
+  // so the balloon $ is re-derived live from the balloon base.
   const updateBalloonPct = (term: string, value: number) => {
+    setInputs(prev => {
+      const amounts = { ...(prev.balloon_amounts ?? {}) };
+      delete amounts[term];
+      return {
+        ...prev,
+        balloon_percentages: { ...prev.balloon_percentages, [term]: value },
+        balloon_amounts: amounts,
+      };
+    });
+  };
+
+  // Editing $ stores a per-term override and back-computes the % off the base,
+  // mirroring the Deposit %/$ pair. Clearing the field reverts to %-driven.
+  const updateBalloonAmount = (term: string, value: number | null) => {
+    setInputs(prev => {
+      const base = computeFromInputs(prev).balloonBase;
+      const amounts = { ...(prev.balloon_amounts ?? {}) };
+      if (value == null) delete amounts[term]; else amounts[term] = value;
+      const pct = value != null && base > 0
+        ? fmt2((value / base) * 100)
+        : prev.balloon_percentages[term] ?? 0;
+      return {
+        ...prev,
+        balloon_amounts: amounts,
+        balloon_percentages: { ...prev.balloon_percentages, [term]: pct },
+      };
+    });
+  };
+
+  // Fill in ATO minimum residual values and clear any $ overrides.
+  const applyStandardResiduals = () => {
     setInputs(prev => ({
       ...prev,
-      balloon_percentages: { ...prev.balloon_percentages, [term]: value },
+      balloon_percentages: { ...prev.balloon_percentages, ...STANDARD_RESIDUALS },
+      balloon_amounts: {},
     }));
   };
 
@@ -552,16 +645,13 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[13px]">$</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
+                <MoneyInput
                   placeholder={fmtCurrency(inputs.asset_price * (inputs.deposit_percent / 100)).replace('$', '')}
                   value={inputs.deposit_amount ?? ''}
-                  onChange={e => {
-                    const amt = e.target.value ? Math.max(0, parseFloat(e.target.value)) : null;
-                    setInputs(prev => ({ ...prev, deposit_amount: amt, deposit_percent: amt != null && prev.asset_price > 0 ? fmt2((amt / prev.asset_price) * 100) : prev.deposit_percent }));
-                  }}
+                  allowNull
+                  onChange={amt =>
+                    setInputs(prev => ({ ...prev, deposit_amount: amt, deposit_percent: amt != null && prev.asset_price > 0 ? fmt2((amt / prev.asset_price) * 100) : prev.deposit_percent }))
+                  }
                   className={`${fieldBase} pl-6 pr-3`}
                 />
               </div>
@@ -696,24 +786,47 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
               <CalcField label="Balloon Base" value={fmtCurrency(derived.balloonBase)} />
             </div>
             <div>
-              <label className={labelBase}>Balloon % per Term</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className={labelBase}>Balloon % / $ per Term</label>
+                <button
+                  type="button"
+                  onClick={applyStandardResiduals}
+                  className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                >
+                  Auto-fill standard
+                </button>
+              </div>
               <div className="grid grid-cols-5 gap-2 mt-1">
-                {TERMS.map(t => (
-                  <div key={t}>
-                    <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{t}yr</div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        value={inputs.balloon_percentages[String(t)] ?? 0}
-                        onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0)}
-                        className={`${fieldBase} px-2 pr-5 text-center`}
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                {TERMS.map(t => {
+                  const pct = inputs.balloon_percentages[String(t)] ?? 0;
+                  const computedAmt = fmt2(derived.balloonBase * (pct / 100));
+                  return (
+                    <div key={t} className="space-y-1">
+                      <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{t}yr</div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={pct}
+                          onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0)}
+                          className={`${fieldBase} px-2 pr-5 text-center`}
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
+                        <MoneyInput
+                          placeholder={computedAmt > 0 ? formatMoney(Math.round(computedAmt)) : ''}
+                          value={inputs.balloon_amounts?.[String(t)] ?? ''}
+                          allowNull
+                          onChange={amt => updateBalloonAmount(String(t), amt)}
+                          className={`${fieldBase} pl-5 pr-1 text-center text-[11px]`}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -751,13 +864,11 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <div className="flex items-center gap-3">
                   <div className="relative w-36">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[12px] select-none">±$</span>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
+                    <MoneyInput
                       placeholder="e.g. 50"
                       value={inputs.repayment_range ?? ''}
-                      onChange={e => updateInput('repayment_range', Math.max(0, parseFloat(e.target.value)) || undefined)}
+                      allowNull
+                      onChange={v => updateInput('repayment_range', v ?? undefined)}
                       className={`${fieldBase} pl-8 pr-3`}
                     />
                   </div>

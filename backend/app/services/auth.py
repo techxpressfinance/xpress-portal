@@ -23,14 +23,13 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(user_id: str, role: str, tenant_id: str = "") -> str:
+def create_access_token(user_id: str, role: str, tenant_id: str = "", impersonator_id: Optional[str] = None) -> str:
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode(
-        {"sub": user_id, "role": role, "tenant_id": tenant_id, "exp": expire, "iat": now, "type": "access", "jti": str(uuid.uuid4())},
-        JWT_SECRET_KEY,
-        algorithm=JWT_ALGORITHM,
-    )
+    payload = {"sub": user_id, "role": role, "tenant_id": tenant_id, "exp": expire, "iat": now, "type": "access", "jti": str(uuid.uuid4())}
+    if impersonator_id:
+        payload["imp"] = impersonator_id
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def create_refresh_token(user_id: str, tenant_id: str = "") -> str:

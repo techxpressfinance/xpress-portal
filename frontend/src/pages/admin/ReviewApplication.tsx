@@ -14,7 +14,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
-import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
+import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -120,6 +120,7 @@ export default function ReviewApplication() {
   const [deletingApp, setDeletingApp] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
   const [invitingClient, setInvitingClient] = useState(false);
+  const [clientInviteLink, setClientInviteLink] = useState<string | null>(null);
   const [showSections, setShowSections] = useState(false);
   const [savingSections, setSavingSections] = useState(false);
   const [sectionDraft, setSectionDraft] = useState<string[]>([]);
@@ -574,9 +575,10 @@ export default function ReviewApplication() {
     if (!id) return;
     setInvitingClient(true);
     try {
-      await api.post('/invitations/complete-application', { application_id: id });
+      const { data: inviteData } = await api.post('/invitations/complete-application', { application_id: id });
       const isResend = !!application?.client_invite_sent_at;
       toast(isResend ? 'Invite resent to client' : 'Invite sent to client', 'success');
+      setClientInviteLink(inviteData.invite_url || null);
       // Refresh application so client_invite_sent_at and client_account_pending update
       const { data } = await api.get(`/applications/${id}`);
       setApplication(data);
@@ -743,6 +745,19 @@ export default function ReviewApplication() {
           <Button size="sm" onClick={handleInviteClient} loading={invitingClient}>
             {application.hidden_from_client ? 'Release to Client' : application.client_invite_sent_at ? 'Resend Invite' : 'Invite Client'}
           </Button>
+        </div>
+      )}
+
+      {(application.invite_url || clientInviteLink) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
+        <div className="mb-6">
+          <InviteLinkBox
+            url={(application.invite_url || clientInviteLink)!}
+            label="Client invite link"
+            hint={application.client_invite_sent_at
+              ? 'Also emailed to the client. Copy it to share another way (e.g. SMS or WhatsApp).'
+              : 'Share this link directly, or click Invite Client to email it — both use the same link.'}
+            onDismiss={application.invite_url ? undefined : () => setClientInviteLink(null)}
+          />
         </div>
       )}
 

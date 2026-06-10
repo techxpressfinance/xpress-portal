@@ -149,6 +149,8 @@ export interface LoanApplication {
   client_account_pending?: boolean;
   // Set when broker has sent the client their setup/invite email
   client_invite_sent_at?: string | null;
+  // Present only on the POST response that issued a direct-engagement invite
+  invite_url?: string | null;
   // Commercial multi-director
   additional_applicants?: LoanApplicant[];
   // Corporate guarantors (a company guaranteeing this loan), each with its own signatories
@@ -206,6 +208,8 @@ export interface LoanApplicant {
   signed_at: string | null;
   invite_email: string | null;
   invite_sent_at: string | null;
+  // Present only on the POST response that issued the invite
+  invite_url?: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -393,6 +397,8 @@ export interface Invitation {
   setup_expired: boolean;
   created_at: string;
   invited_by_name: string | null;
+  // Copyable setup link — present only while the invite is pending and unexpired
+  invite_url?: string | null;
 }
 
 export interface DeletedClient {
@@ -436,6 +442,8 @@ export interface SearchResultApplication {
   loan_type: LoanType;
   amount: number;
   status: ApplicationStatus;
+  business_name: string | null;
+  lend_ref: string | null;
   user_name: string | null;
   user_email: string | null;
   created_at: string | null;
@@ -460,9 +468,27 @@ export interface SearchResultDocument {
   user_name: string | null;
 }
 
+export interface SearchResultContact {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  created_at: string | null;
+}
+
+export interface SearchResultOrganization {
+  id: string;
+  name: string;
+  abn: string | null;
+  industry: string | null;
+  created_at: string | null;
+}
+
 export interface GlobalSearchResponse {
   applications: SearchResultApplication[];
   users: SearchResultUser[];
+  contacts: SearchResultContact[];
+  organizations: SearchResultOrganization[];
   documents: SearchResultDocument[];
   query: string;
 }

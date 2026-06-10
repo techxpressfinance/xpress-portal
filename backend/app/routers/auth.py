@@ -60,12 +60,19 @@ def register(
         token = None
         token_expires = None
 
+    # Resolve the referral code up front — standing invite links can grant a
+    # role on signup (e.g. an admin's broker invite link)
+    referral = db.query(Referral).filter(Referral.referral_code == ref).first() if ref else None
+    granted_role = referral.invited_role if referral and referral.invited_role in ("broker",) else None
+
     user = User(
         email=data.email,
         password_hash=hash_password(data.password),
         full_name=data.full_name,
         phone=data.phone,
         tenant_id=tenant_id,
+        role=granted_role or "client",
+        invited_by_id=referral.referrer_id if granted_role else None,
         email_verified=not EMAIL_ENABLED,
         email_verification_token=token,
         email_verification_token_expires_at=token_expires,
@@ -79,26 +86,41 @@ def register(
     if EMAIL_ENABLED and token:
         send_verification_email(data.email, data.full_name, token)
 
-    # Handle referral code if provided
-    if ref:
-        referral = db.query(Referral).filter(Referral.referral_code == ref).first()
-        if referral:
-            # If there's a specific invite for this email, update that record
-            email_referral = (
-                db.query(Referral)
-                .filter(
-                    Referral.referrer_id == referral.referrer_id,
-                    Referral.referred_email == data.email,
-                    Referral.referred_user_id == None,  # noqa: E711
-                )
-                .first()
+    # Record referral attribution if a valid code was used
+    if referral:
+        # If there's a specific invite for this email, update that record
+        email_referral = (
+            db.query(Referral)
+            .filter(
+                Referral.referrer_id == referral.referrer_id,
+                Referral.referred_email == data.email,
+                Referral.referred_user_id == None,  # noqa: E711
             )
-            target = email_referral or referral
-            if not target.referred_user_id:
-                target.referred_user_id = user.id
-                target.status = ReferralStatus.signed_up
-                target.converted_at = datetime.now(timezone.utc)
-                db.commit()
+            .first()
+        )
+        if email_referral:
+            email_referral.referred_user_id = user.id
+            email_referral.status = ReferralStatus.signed_up
+            email_referral.converted_at = datetime.now(timezone.utc)
+            db.commit()
+        elif referral.referred_email is None or referral.referred_user_id:
+            # Standing personal code (or an already-consumed one) — record
+            # each signup as its own referral so the code stays reusable
+            db.add(Referral(
+                tenant_id=tenant_id,
+                referrer_id=referral.referrer_id,
+                referred_email=data.email,
+                referred_user_id=user.id,
+                invited_role=referral.invited_role,
+                status=ReferralStatus.signed_up,
+                converted_at=datetime.now(timezone.utc),
+            ))
+            db.commit()
+        else:
+            referral.referred_user_id = user.id
+            referral.status = ReferralStatus.signed_up
+            referral.converted_at = datetime.now(timezone.utc)
+            db.commit()
 
     return user
 

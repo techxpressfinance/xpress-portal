@@ -14,9 +14,9 @@ from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
-from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
+from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
-from app.services.auth import blacklist_all_user_tokens, hash_password
+from app.services.auth import blacklist_all_user_tokens, create_access_token, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
@@ -124,7 +124,7 @@ def update_client_profile(
     return data
 
 
-@router.post("/brokers", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("/brokers", response_model=InvitedUserOut, status_code=status.HTTP_201_CREATED)
 def create_broker(
     data: BrokerCreate,
     db: Session = Depends(get_db),
@@ -166,10 +166,11 @@ def create_broker(
 
     setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
     send_setup_account_email(data.email, data.full_name, setup_url, role="broker")
+    user.invite_url = setup_url
     return user
 
 
-@router.post("/admins", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("/admins", response_model=InvitedUserOut, status_code=status.HTTP_201_CREATED)
 def create_admin(
     data: AdminCreate,
     db: Session = Depends(get_db),
@@ -208,6 +209,7 @@ def create_admin(
 
     setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
     send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="admin")
+    user.invite_url = setup_url
     return user
 
 
@@ -438,3 +440,54 @@ def delete_user(
     blacklist_all_user_tokens(user.id, db)
     log_activity(db, current_user.id, "user_deleted", "user", user_id, {"email": original_email, "role": original_role}, tenant_id=tenant_id)
     db.commit()
+
+
+@router.post("/{user_id}/impersonate")
+def impersonate_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Issue a short-lived, view-only access token for another user in the same tenant.
+
+    The token carries an `imp` claim with the admin's id; the auth middleware
+    rejects all state-changing requests made with it. The session lasts one
+    access-token lifetime and cannot be refreshed.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot impersonate yourself")
+
+    target = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == tenant_id,
+        User.deleted_at.is_(None),
+    ).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not target.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot impersonate an inactive user")
+    if target.role == UserRole.super_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot impersonate a super admin")
+
+    access_token = create_access_token(target.id, target.role.value, tenant_id, impersonator_id=current_user.id)
+    log_activity(
+        db,
+        current_user.id,
+        "impersonation_started",
+        "user",
+        target.id,
+        {"target_email": target.email, "target_role": target.role.value},
+        tenant_id=tenant_id,
+    )
+    db.commit()
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": target.id,
+            "full_name": target.full_name,
+            "email": target.email,
+            "role": target.role.value,
+        },
+    }

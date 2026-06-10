@@ -1,31 +1,45 @@
 import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react';
 import axios from 'axios';
-import api, { getCsrfToken, setAccessToken } from '../api/client';
+import api, {
+  endImpersonationSession,
+  getCsrfToken,
+  getImpersonationSession,
+  setAccessToken,
+  startImpersonationSession,
+  type ImpersonationSession,
+} from '../api/client';
 import type { User } from '../types';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
+  impersonation: ImpersonationSession | null;
   login: (email: string, password: string) => Promise<void>;
   superAdminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, phone: string, password: string, ref?: string) => Promise<User>;
   setupAccount: (token: string, password: string) => Promise<void>;
+  impersonate: (userId: string) => Promise<void>;
+  stopImpersonation: () => void;
   logout: () => void;
 }
 
 export const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
+  impersonation: null,
   login: async () => { },
   superAdminLogin: async () => { },
   register: async () => ({} as User),
   setupAccount: async () => { },
+  impersonate: async () => { },
+  stopImpersonation: () => { },
   logout: () => { },
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [impersonation, setImpersonation] = useState<ImpersonationSession | null>(() => getImpersonationSession());
 
   const fetchUser = useCallback(async (throwOnError = false) => {
     try {
@@ -41,6 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // An active impersonation session (admin viewing as another user) carries its
+    // own access token — restore it instead of refreshing the admin session.
+    const impSession = getImpersonationSession();
+    if (impSession) {
+      setAccessToken(impSession.token);
+      fetchUser(true).catch(() => {
+        endImpersonationSession();
+        setImpersonation(null);
+      });
+      return;
+    }
     // 1. Initialize CSRF cookie via a GET request
     // 2. Then attempt session refresh using the httpOnly refresh_token cookie
     api
@@ -107,7 +132,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const impersonate = async (userId: string) => {
+    const { data } = await api.post(`/users/${userId}/impersonate`);
+    startImpersonationSession({
+      token: data.access_token,
+      userName: data.user.full_name,
+      userRole: data.user.role,
+    });
+    // Full reload so the whole app (routes, tenant branding, polling) boots as the target user.
+    window.location.href = '/';
+  };
+
+  const stopImpersonation = () => {
+    endImpersonationSession();
+    // Reload back into the admin session restored from the refresh cookie.
+    window.location.href = '/admin';
+  };
+
   const logout = () => {
+    if (impersonation) {
+      stopImpersonation();
+      return;
+    }
     // Await the server blacklisting the refresh token before clearing local state,
     // but still clear state on failure to avoid trapping the user in a logged-in state.
     api.post('/auth/logout').catch(() => { }).finally(() => {
@@ -117,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, superAdminLogin, register, setupAccount, logout }}>
+    <AuthContext.Provider value={{ user, loading, impersonation, login, superAdminLogin, register, setupAccount, impersonate, stopImpersonation, logout }}>
       {children}
     </AuthContext.Provider>
   );

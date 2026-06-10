@@ -267,7 +267,11 @@ def create_application(
                 )
 
     db.refresh(app, attribute_names=["user"])
-    return _app_with_user(app, db)
+    result = _app_with_user(app, db)
+    if direct_engagement_invite_url:
+        # One-time disclosure to the inviter; the token never appears on GETs
+        result["invite_url"] = direct_engagement_invite_url
+    return result
 
 
 CLOSED_STATUSES = [ApplicationStatus.settled, ApplicationStatus.rejected, ApplicationStatus.not_proceeding]
@@ -493,7 +497,78 @@ def get_application(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    return _app_with_user(application, db)
+    result = _app_with_user(application, db)
+    if current_user.role in (UserRole.admin, UserRole.broker):
+        _ensure_client_invite_link(application, db)
+        _attach_invite_urls(result, application)
+    return result
+
+
+def _setup_token_valid(user: User) -> bool:
+    expires = user.email_verification_token_expires_at
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return bool(user.email_verification_token and expires and expires > datetime.now(timezone.utc))
+
+
+def _ensure_client_invite_link(application: LoanApplication, db: Session) -> None:
+    """Pre-mint the client invite link for draft apps so brokers can copy and
+    share it before (or instead of) clicking Invite — like a referral link.
+
+    Only mints the account-setup token for placeholder clients; the Invite
+    action emails this same link (send endpoints reuse live tokens).
+    """
+    if application.status.value != "draft":
+        return
+    user = application.user
+    if application.client_invite_token or not user:
+        return
+    if user.role.value != "client" or user.password_hash not in ("!", "!invited"):
+        return
+    if _setup_token_valid(user):
+        return
+    user.email_verification_token = secrets.token_urlsafe(32)
+    user.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+    db.commit()
+
+
+def _attach_invite_urls(result: dict, application: LoanApplication) -> None:
+    """Add copyable invite links for the broker/admin viewing the detail page.
+
+    Magic-link tokens stay out of every other response (see _SECRET_COLUMNS);
+    this is the deliberate exception so brokers can share an invite link
+    directly. Never called for client/referrer viewers or list endpoints.
+    """
+    base = FRONTEND_URL.rstrip("/")
+    user = application.user
+    if application.client_invite_token:
+        # Direct-engagement form link
+        result["invite_url"] = f"{base}/apply/{application.client_invite_token}"
+    elif user and user.role.value == "client" and user.password_hash in ("!", "!invited"):
+        # Placeholder client — their account-setup link, shown while valid
+        # (pre-minted on view for drafts, so it's visible before inviting)
+        if _setup_token_valid(user):
+            redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
+            result["invite_url"] = f"{base}/setup-account?token={user.email_verification_token}&redirect={redirect_target}"
+    elif user and user.role.value == "client" and application.status.value == "draft":
+        # Set-up client — no secret needed; the portal completion link is shareable
+        result["invite_url"] = f"{base}/applications/new?completeId={application.id}"
+
+    # Director / guarantor-signatory magic links (uncompleted parties only)
+    token_by_id = {
+        a.id: a.invite_token
+        for a in application.additional_applicants
+        if a.invite_token and a.completed_at is None
+    }
+    for party in result.get("additional_applicants", []):
+        token = token_by_id.get(party["id"])
+        if token:
+            party["invite_url"] = f"{base}/apply/{token}"
+    for guarantor in result.get("corporate_guarantors", []):
+        for sig in guarantor.get("signatories", []):
+            token = token_by_id.get(sig["id"])
+            if token:
+                sig["invite_url"] = f"{base}/apply/{token}"
 
 
 @router.patch("/{app_id}", response_model=LoanApplicationOut)
@@ -972,7 +1047,9 @@ def send_client_invite(
         if (datetime.now(timezone.utc) - sent_at).total_seconds() < 120:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Please wait at least 2 minutes before resending the invite")
 
-    token = secrets.token_urlsafe(32)
+    # Reuse an existing token (it may already be displayed/copied in the UI) so
+    # the shared link stays valid; resending bumps sent_at, refreshing the TTL.
+    token = application.client_invite_token or secrets.token_urlsafe(32)
     application.client_invite_token = token
     application.client_invite_email = data.email.strip()
     application.client_invite_sent_at = datetime.now(timezone.utc)
@@ -1097,6 +1174,8 @@ def add_director(
     db.commit()
     db.refresh(applicant)
     _send_party_invite(applicant, application.business_name)
+    # Transient attr: surfaces the copyable link on this response only
+    applicant.invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{applicant.invite_token}"
     return applicant
 
 
@@ -1236,9 +1315,15 @@ def add_corporate_guarantor(
                  {"organization_id": org.id, "seeded_signatories": len(seeded)}, tenant_id=tenant_id)
     db.commit()
     db.refresh(guarantor)
+    result = guarantor_dict(guarantor)
+    seeded_urls = {}
     for s in seeded:
         _send_party_invite(s, org.name)
-    return guarantor_dict(guarantor)
+        seeded_urls[s.id] = f"{FRONTEND_URL.rstrip('/')}/apply/{s.invite_token}"
+    for sig in result["signatories"]:
+        if sig["id"] in seeded_urls:
+            sig["invite_url"] = seeded_urls[sig["id"]]
+    return result
 
 
 @router.post(
@@ -1267,6 +1352,7 @@ def add_guarantor_signatory(
     db.refresh(applicant)
     company_name = guarantor.organization.name if guarantor.organization else application.business_name
     _send_party_invite(applicant, company_name)
+    applicant.invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{applicant.invite_token}"
     return applicant
 
 

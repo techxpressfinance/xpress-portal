@@ -217,6 +217,8 @@ _MIGRATIONS = [
     ("loan_applications", "hidden_from_client", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Corporate guarantors: a party can be a signatory of a guarantor company
     ("loan_applicants", "application_guarantor_id", "VARCHAR(36) REFERENCES application_guarantors(id)"),
+    # Standing invite links can grant a role on signup (e.g. broker); NULL = client
+    ("referrals", "invited_role", "VARCHAR(20)"),
 ]
 
 _logger = logging.getLogger(__name__)

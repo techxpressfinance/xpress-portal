@@ -22,6 +22,32 @@ export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
+const IMPERSONATION_KEY = 'impersonation-session';
+
+export interface ImpersonationSession {
+  token: string;
+  userName: string;
+  userRole: string;
+}
+
+export function getImpersonationSession(): ImpersonationSession | null {
+  const raw = sessionStorage.getItem(IMPERSONATION_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ImpersonationSession;
+  } catch {
+    return null;
+  }
+}
+
+export function startImpersonationSession(session: ImpersonationSession) {
+  sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
+}
+
+export function endImpersonationSession() {
+  sessionStorage.removeItem(IMPERSONATION_KEY);
+}
+
 export function getAccessToken() {
   return accessToken;
 }
@@ -76,6 +102,13 @@ api.interceptors.response.use(
     // Don't retry auth endpoints to prevent infinite loops
     const isAuthUrl = original.url?.startsWith('/auth/');
     if (error.response?.status === 401 && !original._retry && !isAuthUrl) {
+      // An expired impersonation token can't be refreshed — end the session
+      // and return to the admin view instead of refreshing into the admin token.
+      if (getImpersonationSession()) {
+        endImpersonationSession();
+        window.location.href = '/admin';
+        return Promise.reject(error);
+      }
       original._retry = true;
 
       if (isRefreshing) {

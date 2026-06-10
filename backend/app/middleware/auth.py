@@ -48,6 +48,10 @@ def get_current_user(
     if token_role != "super_admin" and request_tenant and token_tenant and token_tenant != request_tenant:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token does not match tenant")
 
+    # Impersonation tokens (admin viewing as another user) are strictly read-only
+    if payload.get("imp") and request.method not in ("GET", "HEAD", "OPTIONS"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Impersonation sessions are view-only")
+
     user = db.query(User).filter(User.id == payload["sub"]).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")

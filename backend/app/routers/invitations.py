@@ -15,7 +15,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User
-from app.schemas.user import InvitationCreate, InvitationOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient, UserOut
+from app.schemas.user import InvitationCreate, InvitationOut, InvitedUserOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient
 from app.models.application_broker import ApplicationBroker
 from app.schemas.common import normalize_email
 from app.services.email import notify_admins_new_account, send_complete_application_email, send_setup_account_email
@@ -69,12 +69,16 @@ def list_invitations(
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
             item.setup_expired = expires_at < now
+            # Surface the copyable setup link while it's still usable. Viewer is
+            # admin/broker (brokers only see their own invitees, filtered above).
+            if not item.setup_expired and user.email_verification_token:
+                item.invite_url = f"{FRONTEND_URL}/setup-account?token={user.email_verification_token}"
         items.append(item)
 
     return PaginatedInvitations(items=items, total=total, page=page, per_page=per_page)
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvitedUserOut, status_code=status.HTTP_201_CREATED)
 def invite_user(
     data: InvitationCreate,
     db: Session = Depends(get_db),
@@ -108,6 +112,7 @@ def invite_user(
         db.refresh(existing)
         setup_url = f"{FRONTEND_URL}/setup-account?token={token}"
         send_setup_account_email(data.email, existing.full_name, setup_url, current_user.full_name, role="client")
+        existing.invite_url = setup_url
         return existing
 
     # Create new invited user
@@ -137,6 +142,7 @@ def invite_user(
         db, tenant_id, "client", data.full_name, data.email, current_user.full_name or current_user.email,
         f"{FRONTEND_URL}/admin/contacts",
     )
+    user.invite_url = setup_url
     return user
 
 
@@ -164,19 +170,27 @@ def invite_to_complete_application(
     application.hidden_from_client = False
 
     if client.password_hash in ("!", "!invited"):
-        # Placeholder client — hasn't been invited yet. Refresh setup token and send
-        # an account-setup email that redirects them straight to this application.
-        token = secrets.token_urlsafe(32)
-        client.email_verification_token = token
+        # Placeholder client — send an account-setup email that redirects them
+        # straight to this application. Reuse a live token (it may already be
+        # displayed/copied in the UI) so the shared link stays valid; sending
+        # always guarantees a fresh 48h window.
+        expires = client.email_verification_token_expires_at
+        if expires is not None and expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        token = client.email_verification_token
+        if not token or not expires or expires <= datetime.now(timezone.utc):
+            token = secrets.token_urlsafe(32)
+            client.email_verification_token = token
         client.email_verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
         application.client_invite_sent_at = datetime.now(timezone.utc)
         db.commit()
         redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
-        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
-        send_setup_account_email(client.email, client.full_name, setup_url, current_user.full_name, role="client")
+        invite_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
+        send_setup_account_email(client.email, client.full_name, invite_url, current_user.full_name, role="client")
     else:
         application.client_invite_sent_at = datetime.now(timezone.utc)
         db.commit()
+        invite_url = f"{FRONTEND_URL}/applications/new?completeId={application.id}"
         send_complete_application_email(
             to_email=client.email,
             client_name=client.full_name,
@@ -186,7 +200,11 @@ def invite_to_complete_application(
             application_id=application.id,
         )
 
-    return {"detail": f"Invite sent to {client.email}", "client_invite_sent_at": application.client_invite_sent_at.isoformat()}
+    return {
+        "detail": f"Invite sent to {client.email}",
+        "client_invite_sent_at": application.client_invite_sent_at.isoformat(),
+        "invite_url": invite_url,
+    }
 
 
 @router.post("/start-application", status_code=status.HTTP_201_CREATED)
@@ -245,6 +263,7 @@ def start_application_for_client(
     return {
         "detail": f"Draft application created and invite sent to {client.email}",
         "application_id": application.id,
+        "invite_url": f"{FRONTEND_URL}/applications/new?completeId={application.id}",
     }
 
 
@@ -339,9 +358,10 @@ def invite_new_client_with_application(
 
     if is_new_user:
         redirect_target = quote(f"/applications/new?completeId={application.id}", safe="")
-        setup_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
-        send_setup_account_email(email, full_name, setup_url, current_user.full_name, role="client")
+        invite_url = f"{FRONTEND_URL}/setup-account?token={token}&redirect={redirect_target}"
+        send_setup_account_email(email, full_name, invite_url, current_user.full_name, role="client")
     else:
+        invite_url = f"{FRONTEND_URL}/applications/new?completeId={application.id}"
         send_complete_application_email(
             to_email=email,
             client_name=client.full_name,
@@ -356,4 +376,5 @@ def invite_new_client_with_application(
         "application_id": application.id,
         "client_id": client.id,
         "is_new_user": is_new_user,
+        "invite_url": invite_url,
     }

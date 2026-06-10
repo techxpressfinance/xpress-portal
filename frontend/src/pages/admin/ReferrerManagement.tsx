@@ -4,8 +4,9 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
+import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
@@ -92,12 +93,24 @@ type PendingAction =
 type SendingReset = string | null;
 
 export default function ReferrerManagement() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, impersonate } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const { toast } = useToast();
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+
+  const handleImpersonate = async (userId: string) => {
+    setImpersonatingId(userId);
+    try {
+      await impersonate(userId);
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to start view-as session'), 'error');
+      setImpersonatingId(null);
+    }
+  };
   const [form, setForm] = useState<ReferrerForm>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof ReferrerForm, string>>>({});
   const [referrers, setReferrers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,6 +163,7 @@ export default function ReferrerManagement() {
         organization_name: form.organization_name.trim() || null,
       });
       toast('Referrer created. Login credentials sent via email.', 'success');
+      setInviteLink(data.invite_url || null);
       setForm(INITIAL_FORM);
       setErrors({});
       setShowForm(false);
@@ -217,6 +231,8 @@ export default function ReferrerManagement() {
         action={<Button onClick={() => setShowForm(f => !f)}>+ Add Referrer</Button>}
       />
       <PeopleNav />
+
+      {inviteLink && <div className="mb-6"><InviteLinkBox url={inviteLink} label="Account setup link" onDismiss={() => setInviteLink(null)} /></div>}
 
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">
@@ -292,6 +308,9 @@ export default function ReferrerManagement() {
                         {isAdmin && (
                           <>
                             <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
+                            {referrer.is_active && (
+                              <Button size="sm" variant="secondary" loading={impersonatingId === referrer.id} onClick={() => handleImpersonate(referrer.id)}>Login as</Button>
+                            )}
                             <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: referrer.id, userName: referrer.full_name, isActive: referrer.is_active })}>
                               {referrer.is_active ? 'Deactivate' : 'Activate'}
                             </Button>
@@ -355,7 +374,10 @@ export default function ReferrerManagement() {
                       </td>
                       {isAdmin && (
                         <td className="px-4 sm:px-6 py-3">
+                          <div className="flex items-center gap-2">
                           <Button variant="secondary" size="sm" onClick={() => handleResendReferrerInvitation(inv)}>Resend</Button>
+                          {inv.invite_url && <CopyButton text={inv.invite_url} size="sm" />}
+                        </div>
                         </td>
                       )}
                     </tr>

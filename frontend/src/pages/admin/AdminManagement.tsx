@@ -4,8 +4,9 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
+import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
@@ -89,13 +90,25 @@ type PendingAction =
 
 export default function AdminManagement() {
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, impersonate } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<AdminForm>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof AdminForm, string>>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+
+  const handleImpersonate = async (userId: string) => {
+    setImpersonatingId(userId);
+    try {
+      await impersonate(userId);
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to start view-as session'), 'error');
+      setImpersonatingId(null);
+    }
+  };
   const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
 
   const [admins, setAdmins] = useState<User[]>([]);
@@ -145,6 +158,7 @@ export default function AdminManagement() {
         phone: form.phone.trim() || null,
       });
       toast('Admin created. Setup link sent via email.', 'success');
+      setInviteLink(data.invite_url || null);
       setForm(INITIAL_FORM);
       setErrors({});
       setShowForm(false);
@@ -212,6 +226,8 @@ export default function AdminManagement() {
         action={<Button onClick={() => setShowForm(f => !f)}>+ Add Admin</Button>}
       />
       <PeopleNav />
+
+      {inviteLink && <div className="mb-6"><InviteLinkBox url={inviteLink} label="Account setup link" onDismiss={() => setInviteLink(null)} /></div>}
 
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">
@@ -289,6 +305,9 @@ export default function AdminManagement() {
                           <Button size="sm" variant="secondary" onClick={() => setEditingAdmin(admin)}>Edit</Button>
                           {!isSelf && (
                             <>
+                              {admin.is_active && (
+                                <Button size="sm" variant="secondary" loading={impersonatingId === admin.id} onClick={() => handleImpersonate(admin.id)}>Login as</Button>
+                              )}
                               <Button size="sm" variant={admin.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: admin.id, userName: admin.full_name, isActive: admin.is_active })}>
                                 {admin.is_active ? 'Deactivate' : 'Activate'}
                               </Button>
@@ -348,7 +367,10 @@ export default function AdminManagement() {
                         </span>
                       </td>
                       <td className="px-4 sm:px-6 py-3">
-                        <Button variant="secondary" size="sm" onClick={() => handleResendInvitation(inv)}>Resend</Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => handleResendInvitation(inv)}>Resend</Button>
+                          {inv.invite_url && <CopyButton text={inv.invite_url} size="sm" />}
+                        </div>
                       </td>
                     </tr>
                   ))}

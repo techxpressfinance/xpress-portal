@@ -9,7 +9,9 @@ from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 
 # Magic-link tokens grant unauthenticated form access via /api/public/apply —
-# they must never appear in API responses, even to brokers/admins.
+# they must never appear in API responses. Single deliberate exception: the
+# application detail GET rebuilds invite URLs for admin/broker viewers only
+# (_attach_invite_urls in the applications router) so invites can be re-shared.
 _SECRET_COLUMNS = {"client_invite_token", "invite_token"}
 
 

@@ -17,7 +17,7 @@ from app.schemas.external_referrer import (
     ExternalReferrerStats,
     ReferrerCreate,
 )
-from app.schemas.user import UserOut
+from app.schemas.user import InvitedUserOut, UserOut
 from app.services.email import (
     notify_admins_new_account,
     send_referral_notification_email,
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/external-referrers", tags=["external-referrers"]
 # --- Admin endpoints ---
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvitedUserOut, status_code=status.HTTP_201_CREATED)
 def create_referrer(
     data: ReferrerCreate,
     db: Session = Depends(get_db),
@@ -75,6 +75,7 @@ def create_referrer(
         db, tenant_id, "referrer", data.full_name, data.email, current_user.full_name or current_user.email,
         f"{FRONTEND_URL}/admin/referrers",
     )
+    user.invite_url = setup_url
     return user
 
 

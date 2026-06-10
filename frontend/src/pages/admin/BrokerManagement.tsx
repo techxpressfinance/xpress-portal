@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
+import { CopyButton } from '../../components/ui/CopyButton';
 import type { BrokerGroup, Invitation, PaginatedResponse, User } from '../../types';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
@@ -113,9 +115,24 @@ type SendingReset = string | null; // userId
 
 export default function BrokerManagement() {
   const { toast } = useToast();
+  const { user: currentUser, impersonate } = useAuth();
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+
+  const handleImpersonate = async (userId: string) => {
+    setImpersonatingId(userId);
+    try {
+      await impersonate(userId);
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to start view-as session'), 'error');
+      setImpersonatingId(null);
+    }
+  };
   const [form, setForm] = useState<BrokerForm>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  // Standing broker invite link (admin only) — anyone who signs up through it becomes a broker
+  const [brokerInviteLink, setBrokerInviteLink] = useState<string | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof BrokerForm, string>>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
@@ -144,6 +161,10 @@ export default function BrokerManagement() {
   useEffect(() => {
     api.get('/users').then(({ data }) => setBrokers(data.filter((u: User) => u.role === 'broker' && !u.email.endsWith('@deleted.invalid')))).catch(() => { }).finally(() => setLoadingBrokers(false));
     api.get('/broker-groups').then(({ data }) => setGroups(data)).catch(() => { });
+    // 403 for non-admin viewers — just omit the box
+    api.get('/referrals/my-link', { params: { role: 'broker' } })
+      .then(({ data }) => setBrokerInviteLink(`${window.location.origin}/register?ref=${data.code}`))
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -181,6 +202,7 @@ export default function BrokerManagement() {
         license_number: form.license_number.trim() || null,
       });
       toast('Broker created. Login credentials sent via email.', 'success');
+      setInviteLink(data.invite_url || null);
       setForm(INITIAL_FORM);
       setErrors({});
       setShowForm(false);
@@ -311,6 +333,18 @@ export default function BrokerManagement() {
       />
       <PeopleNav />
 
+      {brokerInviteLink && (
+        <div className="mb-6">
+          <InviteLinkBox
+            url={brokerInviteLink}
+            label="Your broker invite link"
+            hint="Share with anyone you want on the team — they sign up, fill in their own details, and join as a broker. Treat it like a key: anyone with this link can register as a broker."
+          />
+        </div>
+      )}
+
+      {inviteLink && <div className="mb-6"><InviteLinkBox url={inviteLink} label="Account setup link" onDismiss={() => setInviteLink(null)} /></div>}
+
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-3 mb-8">
         <StatCard label="Total Brokers" value={brokers.length} loading={loadingBrokers} gradient="from-primary to-primary"
@@ -390,6 +424,9 @@ export default function BrokerManagement() {
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
                         <Button size="sm" variant="secondary" onClick={() => setEditingBroker(broker)}>Edit</Button>
+                        {currentUser?.role === 'admin' && broker.is_active && (
+                          <Button size="sm" variant="secondary" loading={impersonatingId === broker.id} onClick={() => handleImpersonate(broker.id)}>Login as</Button>
+                        )}
                         <Button size="sm" variant={broker.is_active ? 'danger' : 'success'} onClick={() => setPendingAction({ type: 'toggle_active', userId: broker.id, userName: broker.full_name, isActive: broker.is_active })}>
                           {broker.is_active ? 'Deactivate' : 'Activate'}
                         </Button>
@@ -575,7 +612,10 @@ export default function BrokerManagement() {
                         </span>
                       </td>
                       <td className="px-4 sm:px-6 py-3">
-                        <Button variant="secondary" size="sm" onClick={() => handleResendBrokerInvitation(inv)}>Resend</Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => handleResendBrokerInvitation(inv)}>Resend</Button>
+                          {inv.invite_url && <CopyButton text={inv.invite_url} size="sm" />}
+                        </div>
                       </td>
                     </tr>
                   ))}

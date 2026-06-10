@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import api from '../api/client';
+import { CopyButton } from './ui/CopyButton';
 import type { LoanApplication, LoanApplicant } from '../types';
 
 const COMMERCIAL_TYPES = ['business', 'business_loan', 'commercial_property', 'equipment_finance'];
@@ -147,11 +148,19 @@ export default function DirectorsSection({ application, onChange, canManage = fa
         {[d.applicant_first_name, d.applicant_last_name].filter(Boolean).join(' ') || d.invite_email || roleLabel(d.role)}
         <span className="ml-2 text-[12px] text-muted-foreground">{roleLabel(d.role)} · {partyStatus(d)}</span>
       </div>
-      {canManage && (
-        <button onClick={() => handleRemoveDirector(d.id)} className="text-[12px] text-destructive hover:underline">
-          Remove
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {d.invite_url && (
+          <span className="flex items-center gap-1 text-[12px] text-muted-foreground" title="Copy this party's invite link to share directly">
+            Invite link
+            <CopyButton text={d.invite_url} size="sm" />
+          </span>
+        )}
+        {canManage && (
+          <button onClick={() => handleRemoveDirector(d.id)} className="text-[12px] text-destructive hover:underline">
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 

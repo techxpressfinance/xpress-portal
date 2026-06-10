@@ -4,8 +4,9 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
+import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, LoanApplication, LoanType, PaginatedResponse, User } from '../../types';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
@@ -82,7 +83,7 @@ const LOAN_TYPES: { value: LoanType; label: string }[] = [
 const inputClass = 'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 sm:py-2 text-[16px] sm:text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 export default function UserManagement() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, impersonate } = useAuth();
   const { toast } = useToast();
 
   // Client list
@@ -90,6 +91,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Invite new client + start application
@@ -97,12 +99,18 @@ export default function UserManagement() {
     full_name: '', email: '', phone: '', loan_type: 'personal', amount: '', notes: '',
   });
   const [startingApp, setStartingApp] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
 
   // Invite to complete draft
   const [draftApps, setDraftApps] = useState<LoanApplication[]>([]);
   const [selectedAppId, setSelectedAppId] = useState('');
   const [sendingComplete, setSendingComplete] = useState(false);
+  const [reminderLink, setReminderLink] = useState<string | null>(null);
+  const [resendLink, setResendLink] = useState<string | null>(null);
   const [loadingDrafts, setLoadingDrafts] = useState(true);
+
+  // Personal standing invite link — exists before any client details are entered
+  const [personalLink, setPersonalLink] = useState<string | null>(null);
 
   // Invitation history
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -121,6 +129,10 @@ export default function UserManagement() {
       .then(({ data }) => { const items = data.items || data; setDraftApps(Array.isArray(items) ? items : []); })
       .catch(() => { })
       .finally(() => setLoadingDrafts(false));
+
+    api.get('/referrals/my-link')
+      .then(({ data }) => setPersonalLink(`${window.location.origin}/register?ref=${data.code}`))
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -133,6 +145,16 @@ export default function UserManagement() {
       .catch(() => toast('Failed to load invitation history', 'error'))
       .finally(() => setLoadingHistory(false));
   }, [historyPage]);
+
+  const handleImpersonate = async (userId: string) => {
+    setImpersonatingId(userId);
+    try {
+      await impersonate(userId);
+    } catch (err: any) {
+      toast(getErrorMessage(err, 'Failed to start view-as session'), 'error');
+      setImpersonatingId(null);
+    }
+  };
 
   const handleSendPasswordReset = async (userId: string) => {
     setSendingReset(userId);
@@ -187,6 +209,7 @@ export default function UserManagement() {
         notes: inviteForm.notes.trim() || null,
       });
       toast(data.detail || 'Client invited and application created', 'success');
+      setInviteLink(data.invite_url || null);
       setInviteForm({ full_name: '', email: '', phone: '', loan_type: 'personal', amount: '', notes: '' });
       api.get('/users')
         .then(({ data: ud }) => setUsers(ud.filter((u: User) => u.role === 'client')))
@@ -209,6 +232,7 @@ export default function UserManagement() {
     try {
       const { data } = await api.post('/invitations/complete-application', { application_id: selectedAppId });
       toast(data.detail || 'Invitation sent', 'success');
+      setReminderLink(data.invite_url || null);
       setSelectedAppId('');
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to send invitation'), 'error');
@@ -219,8 +243,9 @@ export default function UserManagement() {
 
   const handleResendInvitation = async (inv: Invitation) => {
     try {
-      await api.post('/invitations', { email: inv.email, full_name: inv.full_name, phone: inv.phone });
+      const { data } = await api.post('/invitations', { email: inv.email, full_name: inv.full_name, phone: inv.phone });
       toast('New code sent to ' + inv.email, 'success');
+      setResendLink(data.invite_url || null);
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to resend'), 'error');
     }
@@ -295,6 +320,9 @@ export default function UserManagement() {
                           <Button variant="secondary" size="sm" onClick={() => setEditingUser(user)}>Edit</Button>
                           {currentUser?.role === 'admin' && !isSelf && (
                             <>
+                              {user.is_active && (
+                                <Button variant="secondary" size="sm" loading={impersonatingId === user.id} onClick={() => handleImpersonate(user.id)}>Login as</Button>
+                              )}
                               <Button variant={user.is_active ? 'danger' : 'success'} size="sm" onClick={() => setPendingAction({ type: 'toggle_active', userId: user.id, userName: user.full_name, isActive: user.is_active })}>
                                 {user.is_active ? 'Deactivate' : 'Activate'}
                               </Button>
@@ -318,6 +346,15 @@ export default function UserManagement() {
 
       {/* Invite & Onboarding */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Invite & Onboarding</h3>
+      {personalLink && (
+        <div className="mb-6">
+          <InviteLinkBox
+            url={personalLink}
+            label="Your personal invite link"
+            hint="Share with anyone — no details needed up front. They sign up, fill in their own information, and appear here linked to you."
+          />
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
         <GlassCard>
           <h4 className="text-[14px] font-semibold text-foreground mb-1">Invite New Client</h4>
@@ -351,6 +388,7 @@ export default function UserManagement() {
             </div>
             <Button type="submit" size="sm" loading={startingApp} disabled={!inviteForm.full_name.trim() || !inviteForm.email.trim() || !inviteForm.amount} className="w-full">Invite & Create Application</Button>
           </form>
+          {inviteLink && <div className="mt-3"><InviteLinkBox url={inviteLink} onDismiss={() => setInviteLink(null)} /></div>}
         </GlassCard>
 
         <GlassCard>
@@ -376,6 +414,7 @@ export default function UserManagement() {
             </div>
             <Button type="submit" size="sm" variant="secondary" loading={sendingComplete} disabled={!selectedAppId} className="w-full">Send Reminder</Button>
           </form>
+          {reminderLink && <div className="mt-3"><InviteLinkBox url={reminderLink} onDismiss={() => setReminderLink(null)} /></div>}
         </GlassCard>
       </div>
 
@@ -384,6 +423,7 @@ export default function UserManagement() {
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited client{historyTotal !== 1 ? 's' : ''}</p>
+          {resendLink && <div className="mt-3"><InviteLinkBox url={resendLink} label="Setup link" onDismiss={() => setResendLink(null)} /></div>}
         </div>
         {loadingHistory ? (
           <div className="p-6 space-y-4">
@@ -439,7 +479,10 @@ export default function UserManagement() {
                         })()}
                       </td>
                       <td className="px-4 sm:px-6 py-3">
-                        <Button variant="secondary" size="sm" onClick={() => handleResendInvitation(inv)}>Resend</Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => handleResendInvitation(inv)}>Resend</Button>
+                          {inv.invite_url && <CopyButton text={inv.invite_url} size="sm" />}
+                        </div>
                       </td>
                     </tr>
                   ))}

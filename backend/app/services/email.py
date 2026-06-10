@@ -17,6 +17,14 @@ def _esc(value: str) -> str:
     """HTML-escape a string for safe interpolation into HTML email templates."""
     return html.escape(value, quote=True)
 
+
+def _fmt_amount(amount: str) -> str:
+    """Add thousands separators to a numeric amount string. e.g. "50000" → "50,000"."""
+    try:
+        return f"{float(amount):,.0f}"
+    except (TypeError, ValueError):
+        return amount
+
 logger = logging.getLogger(__name__)
 
 STATUS_MESSAGES = {
@@ -189,6 +197,7 @@ def send_complete_application_email(
         logger.debug("Email not configured, skipping complete-application email for %s", to_email)
         return
 
+    amount = _fmt_amount(amount)
     app_url = f"{FRONTEND_URL}/applications/new?completeId={application_id}"
     subject = "Complete Your Loan Application - Xpress Finance Portal"
     body = (
@@ -677,6 +686,7 @@ def send_new_lead_notification(
         logger.debug("Email not configured, skipping new lead notification for %s", to_email)
         return
 
+    amount = _fmt_amount(amount)
     subject = f"New Lead: {client_name} — Xpress Finance Portal"
     body = (
         f"Dear {admin_name},\n\n"

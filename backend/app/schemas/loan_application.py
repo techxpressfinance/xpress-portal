@@ -183,6 +183,8 @@ class LoanApplicantOut(LoanApplicantBase):
     signed_at: Optional[datetime] = None
     invite_email: Optional[str] = None
     invite_sent_at: Optional[datetime] = None
+    # Set only on the POST response that issues the invite — None on GETs
+    invite_url: Optional[str] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -311,6 +313,8 @@ class LoanApplicationOut(BaseModel):
     client_sections: Optional[str] = None
     client_account_pending: bool = False
     client_invite_sent_at: Optional[datetime] = None
+    # Set only on the POST response that issues a direct-engagement invite
+    invite_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
