@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { QuoteSheet, QuoteOption } from '../types';
 
 interface QuoteSheetComparisonProps {
@@ -262,9 +262,6 @@ export default function QuoteSheetComparison({
       return null;
     })();
 
-    const hasDualBalloon = termGroups.some(g => g.noBalloon && g.withBalloon);
-    const hasAnyBalloon  = options.some(o => (o.balloon_residual ?? 0) > 0);
-
     // Featured group for breakdown strip: prefer 5yr, else first
     const featured = termGroups.find(g => g.termYears === 5) ?? termGroups[0];
     const featOpt = prim(featured);
@@ -292,19 +289,8 @@ export default function QuoteSheetComparison({
     };
 
     const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
-    const colBg = (g: TermGroup): string => g.termYears === recommendedYears ? subtleBg : 'transparent';
 
     // Shared table cell styles
-    const thBase: CSSProperties = {
-      textAlign: 'right',
-      padding: '10px 12px',
-      fontFamily: sans,
-      fontWeight: 600,
-      fontSize: '11px',
-      color: ink,
-      borderBottom: `2px solid ${ink}`,
-      verticalAlign: 'bottom',
-    };
     const lbl: CSSProperties = {
       textAlign: 'left',
       fontFamily: sans,
@@ -326,23 +312,29 @@ export default function QuoteSheetComparison({
       verticalAlign: 'middle',
       fontVariantNumeric: 'tabular-nums',
     };
-    const sublbl: CSSProperties = {
+    // Term-block cell styles (Excel-style side-by-side tables)
+    const blkLbl: CSSProperties = {
       textAlign: 'left',
       fontFamily: sans,
-      fontSize: '10px',
+      fontSize: '9.5px',
+      fontWeight: 500,
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
       color: muted,
-      padding: '4px 12px 4px 24px',
-      borderBottom: 'none',
+      padding: '7px 10px',
+      borderBottom: `1px solid ${hairlineLight}`,
       verticalAlign: 'middle',
     };
-    const subval: CSSProperties = {
+    const blkVal: CSSProperties = {
       textAlign: 'right',
-      padding: '4px 12px',
-      fontSize: '10px',
-      color: muted,
-      borderBottom: 'none',
+      padding: '7px 10px',
+      borderBottom: `1px solid ${hairlineLight}`,
+      fontSize: '10.5px',
+      fontWeight: 500,
+      color: ink,
       verticalAlign: 'middle',
       fontVariantNumeric: 'tabular-nums',
+      whiteSpace: 'nowrap' as const,
     };
 
     return (
@@ -478,212 +470,134 @@ export default function QuoteSheetComparison({
           </div>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
-          <thead>
-            <tr>
-              <th style={{ ...thBase, textAlign: 'left', width: '140px', paddingLeft: '12px' }}>&nbsp;</th>
-              {termGroups.map(g => (
-                <th key={g.termYears} style={{
-                  ...thBase,
-                  background: colBg(g),
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
+          {termGroups.map(g => {
+            const cols: { key: string; head: string | null; opt: QuoteOption }[] = [];
+            if (g.noBalloon) cols.push({ key: 'nb', head: g.withBalloon ? 'No Balloon' : null, opt: g.noBalloon });
+            if (g.withBalloon) {
+              const m = g.withBalloon.lender_name.match(/(\d+)%\s*Balloon/i);
+              cols.push({ key: 'wb', head: g.noBalloon ? (m ? `${m[1]}% Balloon` : 'With Balloon') : null, opt: g.withBalloon });
+            }
+            const dual = cols.length === 2;
+            const recommended = g.termYears === recommendedYears;
+            const clientAmt = (o: QuoteOption) =>
+              (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0);
+            const showRateRow = (!isClientView || showInterestRate) && cols.some(c => rate(c.opt) != null);
+
+            const renderMonthly = (o: QuoteOption): ReactNode => {
+              const rng = fmtRepaymentClient(o.repayment_monthly);
+              if (rng) return <>{rng.lo} – {rng.hi}</>;
+              const [dol, cts] = splitAmt(o.repayment_monthly);
+              return <>{dol}<small style={{ fontSize: '9px', fontWeight: 400, color: muted }}>{cts}</small></>;
+            };
+
+            const tableRows: { label: string; bold?: boolean; render: (o: QuoteOption) => ReactNode }[] = [
+              { label: `${assetDescription} price`, render: o => fmtCurrency(o.purchase_price) },
+              { label: 'Deposit', render: o => fmtCurrency(o.deposit) },
+              { label: 'Amount financed', render: o => fmtCurrency(isClientView ? clientAmt(o) : o.loan_amount) },
+              { label: 'Balloon', render: o => fmtCurrency(o.balloon_residual ?? 0) },
+              { label: 'Monthly repayment', bold: true, render: renderMonthly },
+              { label: 'Weekly equivalent', render: o => fmtCurrency(o.repayment_weekly) },
+              ...(!isClientView
+                ? [{ label: 'Rate of interest', render: (o: QuoteOption) => fmtPercent(o.interest_rate) }]
+                : []),
+              ...(showRateRow
+                ? [{
+                    label: isClientView ? 'Interest rate' : 'All-up interest rate',
+                    render: (o: QuoteOption) => fmtPercent(rate(o)),
+                  }]
+                : []),
+              ...(!isClientView
+                ? [{ label: 'Total interest', bold: true, render: (o: QuoteOption) => fmtCurrency(o.total_interest) }]
+                : []),
+            ];
+
+            return (
+              <div
+                key={g.termYears}
+                className="break-inside-avoid"
+                style={{
+                  border: `1px solid ${hairline}`,
+                  background: recommended ? subtleBg : paper,
+                  boxSizing: 'border-box',
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  padding: '9px 10px',
+                  borderBottom: `2px solid ${ink}`,
                 }}>
-                  {g.termYears === recommendedYears && (
-                    <span style={{ display: 'block', fontSize: '8px', color: ink, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '3px' }}>
+                  <span style={{ fontFamily: sans, fontWeight: 700, fontSize: '12px', color: ink }}>
+                    {g.termYears} Year Term
+                    <span style={{ fontSize: '9px', color: muted, fontWeight: 400, marginLeft: '6px' }}>
+                      {g.termMonths} months
+                    </span>
+                  </span>
+                  {recommended && (
+                    <span style={{ fontSize: '8px', color: ink, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                       Recommended
                     </span>
                   )}
-                  {g.termYears} Year{g.termYears !== 1 ? 's' : ''}
-                  <span style={{ display: 'block', fontSize: '9px', color: muted, fontWeight: 400, marginTop: '2px' }}>
-                    {g.termMonths} months
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {/* Hero row: monthly repayment */}
-            <tr>
-              <td style={{
-                ...lbl,
-                borderTop: `1px solid ${ink}`,
-                borderBottom: `1px solid ${ink}`,
-                padding: '14px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: ink,
-                textTransform: 'none',
-                letterSpacing: '0',
-              }}>
-                Monthly repayment
-              </td>
-              {termGroups.map(g => {
-                const rng = fmtRepaymentClient(prim(g).repayment_monthly);
-                const [dol, cts] = splitAmt(prim(g).repayment_monthly);
-                return (
-                  <td key={g.termYears} style={{
-                    textAlign: 'right',
-                    padding: '14px 12px',
-                    borderTop: `1px solid ${ink}`,
-                    borderBottom: `1px solid ${ink}`,
-                    background: colBg(g),
-                    verticalAlign: 'middle',
-                  }}>
-                    {rng ? (
-                      <span style={{ fontWeight: 600, fontSize: '15px', letterSpacing: '-0.01em' }}>
-                        {rng.lo} – {rng.hi}
-                        <small style={{ display: 'block', fontSize: '9px', fontWeight: 400, color: muted, marginTop: '2px' }}>
-                          per month
-                        </small>
-                      </span>
-                    ) : (
-                      <span style={{ fontWeight: 600, fontSize: '18px', letterSpacing: '-0.01em' }}>
-                        {dol}<small style={{ fontSize: '10px', fontWeight: 400, color: muted, marginLeft: '1px' }}>{cts}</small>
-                      </span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-
-            {/* Sub-row: with-balloon repayment */}
-            {hasDualBalloon && (
-              <tr>
-                <td style={sublbl}>With balloon</td>
-                {termGroups.map(g => {
-                  const hasBoth = !!(g.noBalloon && g.withBalloon);
-                  if (!hasBoth) return <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>—</td>;
-                  const rng = fmtRepaymentClient(g.withBalloon!.repayment_monthly);
-                  const [dol, cts] = splitAmt(g.withBalloon!.repayment_monthly);
-                  return (
-                    <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                      {rng
-                        ? <>{rng.lo} – {rng.hi}</>
-                        : <>{dol}<small style={{ fontSize: '9px', color: muted }}>{cts}</small></>}
-                    </td>
-                  );
-                })}
-              </tr>
-            )}
-
-            {/* Weekly equivalent */}
-            <tr>
-              <td style={lbl}>Weekly equivalent</td>
-              {termGroups.map(g => (
-                <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
-                  {fmtCurrency(prim(g).repayment_weekly)}
-                </td>
-              ))}
-            </tr>
-            {hasDualBalloon && (
-              <tr>
-                <td style={sublbl}>With balloon</td>
-                {termGroups.map(g => (
-                  <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                    {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.repayment_weekly) : '—'}
-                  </td>
-                ))}
-              </tr>
-            )}
-
-            {/* Interest rate */}
-            {termGroups.some(g => rate(prim(g)) != null) && (!isClientView || showInterestRate) && (
-              <>
-                <tr>
-                  <td style={lbl}>Interest rate</td>
-                  {termGroups.map(g => (
-                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
-                      {fmtPercent(rate(prim(g)))}
-                    </td>
-                  ))}
-                </tr>
-                {hasDualBalloon && (
-                  <tr>
-                    <td style={sublbl}>With balloon</td>
-                    {termGroups.map(g => (
-                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                        {g.noBalloon && g.withBalloon ? fmtPercent(rate(g.withBalloon)) : '—'}
-                      </td>
-                    ))}
-                  </tr>
-                )}
-              </>
-            )}
-
-            {/* Balloon payment */}
-            {hasAnyBalloon && (
-              <>
-                <tr>
-                  <td style={lbl}>Balloon</td>
-                  {termGroups.map(g => (
-                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
-                      {fmtCurrency(prim(g).balloon_residual ?? 0)}
-                    </td>
-                  ))}
-                </tr>
-                {hasDualBalloon && (
-                  <tr>
-                    <td style={sublbl}>With balloon</td>
-                    {termGroups.map(g => (
-                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                        {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.balloon_residual ?? 0) : '—'}
-                      </td>
-                    ))}
-                  </tr>
-                )}
-              </>
-            )}
-
-            {/* Rate of interest — broker only */}
-            {!isClientView && (
-              <>
-                <tr>
-                  <td style={lbl}>Rate of interest</td>
-                  {termGroups.map(g => (
-                    <td key={g.termYears} style={{ ...val, background: colBg(g) }}>
-                      {fmtPercent(prim(g).interest_rate)}
-                    </td>
-                  ))}
-                </tr>
-                {hasDualBalloon && (
-                  <tr>
-                    <td style={sublbl}>With balloon</td>
-                    {termGroups.map(g => (
-                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                        {g.noBalloon && g.withBalloon ? fmtPercent(g.withBalloon.interest_rate) : '—'}
-                      </td>
-                    ))}
-                  </tr>
-                )}
-              </>
-            )}
-
-            {/* Total interest — broker only */}
-            {!isClientView && (
-              <>
-                <tr>
-                  <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', paddingTop: '10px' }}>
-                    Total interest
-                  </td>
-                  {termGroups.map(g => (
-                    <td key={g.termYears} style={{ ...val, fontWeight: 600, color: ink, paddingTop: '10px', background: colBg(g) }}>
-                      {fmtCurrency(prim(g).total_interest)}
-                    </td>
-                  ))}
-                </tr>
-                {hasDualBalloon && (
-                  <tr>
-                    <td style={{ ...sublbl, paddingTop: '2px' }}>With balloon</td>
-                    {termGroups.map(g => (
-                      <td key={g.termYears} style={{ ...subval, background: colBg(g) }}>
-                        {g.noBalloon && g.withBalloon ? fmtCurrency(g.withBalloon.total_interest) : '—'}
-                      </td>
-                    ))}
-                  </tr>
-                )}
-              </>
-            )}
-          </tbody>
-        </table>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
+                  <colgroup>
+                    <col style={{ width: dual ? '38%' : '50%' }} />
+                    {cols.map(c => <col key={c.key} />)}
+                  </colgroup>
+                  {dual && (
+                    <thead>
+                      <tr>
+                        <th style={{ borderBottom: `1px solid ${hairlineLight}` }} />
+                        {cols.map(c => (
+                          <th key={c.key} style={{
+                            textAlign: 'right',
+                            padding: '6px 10px',
+                            fontFamily: sans,
+                            fontSize: '8.5px',
+                            fontWeight: 600,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                            color: muted,
+                            borderBottom: `1px solid ${hairlineLight}`,
+                            verticalAlign: 'bottom',
+                          }}>
+                            {c.head}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                  )}
+                  <tbody>
+                    {tableRows.map((r, ri) => {
+                      const last = ri === tableRows.length - 1;
+                      const boldStyle: CSSProperties = r.bold
+                        ? { fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', fontSize: '10.5px' }
+                        : {};
+                      return (
+                        <tr key={r.label}>
+                          <td style={{ ...blkLbl, ...boldStyle, ...(last ? { borderBottom: 'none' } : {}) }}>
+                            {r.label}
+                          </td>
+                          {cols.map(c => (
+                            <td key={c.key} style={{
+                              ...blkVal,
+                              ...(r.bold ? { fontWeight: 700 } : {}),
+                              ...(last ? { borderBottom: 'none' } : {}),
+                            }}>
+                              {r.render(c.opt)}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
 
         {/* ── BREAKDOWN STRIP ─────────────────────────────────── */}
         <div style={{

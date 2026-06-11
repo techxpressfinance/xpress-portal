@@ -141,3 +141,17 @@ DB logs: **RDS Console → your DB → Logs & events**
 - **Storage**: currently 20 GB. If it fills up, RDS goes read-only. Monitor free storage in CloudWatch and expand via RDS Console → Storage → Modify if needed.
 nscx4p@#gebXhqLM
 psql -h xpress-db.ca3wk0oewgar.us-east-1.rds.amazonaws.com -U xpress_app -d xpress
+UPDATE users
+  SET password_hash = '$2b$12$LfiQ5Lge6mvaZssLTTkok.fMVtapLqDy1aPFe/KZkzl0ltG8kvlwK',
+      failed_login_attempts = 0,
+      locked_until = NULL
+  WHERE email = 'admin@xpressfinance.com.au';
+
+
+UPDATE users
+  SET password_hash = '$2b$12$LfiQ5Lge6mvaZssLTTkok.fMVtapLqDy1aPFe/KZkzl0ltG8kvlwK'',
+      failed_login_attempts = 0,
+      locked_until = NULL
+  WHERE email = 'admin@xpressfinance.com.au' AND tenant_id IS NOT NULL;
+admin@xpressfinance.com.au
+  Xpress123!
