@@ -25,6 +25,7 @@ export default function Register() {
   const [searchParams] = useSearchParams();
   const refCode = searchParams.get('ref') || '';
   const [error, setError] = useState('');
+  const [emailTaken, setEmailTaken] = useState(false);
   const [referrerName, setReferrerName] = useState('');
   const [invitedRole, setInvitedRole] = useState<string | null>(null);
   const {
@@ -53,6 +54,7 @@ export default function Register() {
 
   const onSubmit = async (data: RegisterForm) => {
     setError('');
+    setEmailTaken(false);
     try {
       const user = await registerUser(data.full_name, data.email, data.phone, data.password, refCode || undefined);
       if (user.email_verified) {
@@ -61,7 +63,12 @@ export default function Register() {
         navigate('/login?registered=true');
       }
     } catch (err: any) {
-      setError(getErrorMessage(err, 'Registration failed'));
+      if (err?.response?.status === 409) {
+        setEmailTaken(true);
+        setError(`An account with ${data.email} already exists.`);
+      } else {
+        setError(getErrorMessage(err, 'Registration failed'));
+      }
     }
   };
 
@@ -139,13 +146,28 @@ export default function Register() {
 
           {error && (
             <div
-              className="mb-6 flex items-center gap-3 rounded-xl bg-[#ff3b30]/8 px-4 py-3"
+              className="mb-6 flex items-start gap-3 rounded-xl bg-[#ff3b30]/8 px-4 py-3"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#ff3b30] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="h-4 w-4 text-[#ff3b30] shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
               </svg>
-              <span className="text-[13px] text-[#ff3b30]">{error}</span>
+              <span className="text-[13px] text-[#ff3b30]">
+                {error}
+                {emailTaken && (
+                  <>
+                    {' '}
+                    <Link to="/login" className="font-medium underline underline-offset-2 hover:opacity-70 transition-opacity">
+                      Sign in
+                    </Link>
+                    {' '}or{' '}
+                    <Link to="/forgot-password" className="font-medium underline underline-offset-2 hover:opacity-70 transition-opacity">
+                      reset your password
+                    </Link>
+                    {' '}if you've forgotten it.
+                  </>
+                )}
+              </span>
             </div>
           )}
 
