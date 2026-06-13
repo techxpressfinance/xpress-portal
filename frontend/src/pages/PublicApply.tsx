@@ -38,6 +38,10 @@ interface FormData {
   applicant_state: string;
   applicant_postcode: string;
   applicant_residency_status: string;
+  id_type: string;
+  id_number: string;
+  id_issuing_state_country: string;
+  id_expiry_date: string;
   residential_status: string;
   employment_category: string;
   employer_name: string;
@@ -95,6 +99,10 @@ export default function PublicApply() {
       applicant_state: '',
       applicant_postcode: '',
       applicant_residency_status: '',
+      id_type: 'license',
+      id_number: '',
+      id_issuing_state_country: '',
+      id_expiry_date: '',
       residential_status: '',
       employment_category: '',
       employer_name: '',
@@ -261,7 +269,7 @@ export default function PublicApply() {
               <div className="space-y-5">
                 <h2 className="text-[16px] font-semibold text-gray-900 dark:text-white mb-4">Your Details</h2>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="First Name" required>
                     <input {...register('applicant_first_name', { required: 'Required' })} className={inputClass} placeholder="Jane" />
                     {errors.applicant_first_name && <p className="text-red-500 text-[12px] mt-1">{errors.applicant_first_name.message}</p>}
@@ -276,7 +284,7 @@ export default function PublicApply() {
                   {errors.applicant_last_name && <p className="text-red-500 text-[12px] mt-1">{errors.applicant_last_name.message}</p>}
                 </Field>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Date of Birth">
                     <DatePicker
                       value={watch('applicant_dob') || ''}
@@ -366,6 +374,33 @@ export default function PublicApply() {
                   </select>
                 </Field>
 
+                <Field label="ID Type">
+                  <select {...register('id_type')} className={selectClass}>
+                    <option value="license">Driver Licence</option>
+                    <option value="passport">Passport</option>
+                  </select>
+                </Field>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Field label="ID Number">
+                    <input
+                      {...register('id_number')}
+                      className={inputClass}
+                      placeholder={watch('id_type') === 'passport' ? 'PA1234567' : '12345678'}
+                    />
+                  </Field>
+                  <Field label={watch('id_type') === 'passport' ? 'Issuing Country' : 'Issuing State'}>
+                    <input
+                      {...register('id_issuing_state_country')}
+                      className={inputClass}
+                      placeholder={watch('id_type') === 'passport' ? 'Australia' : 'NSW'}
+                    />
+                  </Field>
+                  <Field label="ID Expiry Date">
+                    <input type="date" {...register('id_expiry_date')} className={inputClass} />
+                  </Field>
+                </div>
+
                 <Field label="Residential Status">
                   <select {...register('residential_status')} className={selectClass}>
                     <option value="">Select…</option>
@@ -407,7 +442,7 @@ export default function PublicApply() {
                   <input {...register('job_title')} className={inputClass} placeholder="e.g. Software Engineer" />
                 </Field>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Income Frequency">
                     <select {...register('income_frequency')} className={selectClass}>
                       <option value="">Select…</option>

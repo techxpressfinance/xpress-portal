@@ -33,7 +33,7 @@ export default function ReviewApplication() {
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [client, setClient] = useState<User | null>(null);
-  const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null } | null>(null);
+  const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null; organization_name?: string | null } | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
@@ -54,6 +54,7 @@ export default function ReviewApplication() {
   const [sendingRefMsg, setSendingRefMsg] = useState(false);
   const [alerts, setAlerts] = useState<ClientAlert[]>([]);
   const [newAlertContent, setNewAlertContent] = useState('');
+  const [newAlertHighPriority, setNewAlertHighPriority] = useState(false);
   const [sendingAlert, setSendingAlert] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export default function ReviewApplication() {
     await new Promise(r => setTimeout(r, 100));
     try {
       const suffix = clientFacing ? 'client' : 'internal';
-      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}-${suffix}.pdf`);
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}-${suffix}.pdf`, [10, 0, 10, 0]);
     } catch (err) {
       console.error('Failed to generate PDF', err);
     } finally {
@@ -135,6 +136,7 @@ export default function ReviewApplication() {
     applicant_dob: '', applicant_gender: '', applicant_marital_status: '',
     applicant_email: '', applicant_mobile: '', preferred_contact_method: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
+    id_type: 'license', id_number: '', id_issuing_state_country: '',
     id_expiry_date: '', applicant_residency_status: '',
     residential_status: '', time_at_address: '', applicant_num_dependants: '',
     has_partner: '' as '' | 'true' | 'false', partner_working: '' as '' | 'true' | 'false',
@@ -179,8 +181,16 @@ export default function ReviewApplication() {
         setDocuments(docRes.data);
         setAppNotes(notesRes.data);
         const d = appRes.data;
+        let idEntry: Record<string, string> | null = null;
+        try {
+          const extra = d.lend_extra_data ? JSON.parse(d.lend_extra_data) : {};
+          idEntry = Array.isArray(extra.identification) ? extra.identification[0] : null;
+        } catch { /* ignore malformed extra data */ }
         resetEdit({
           loan_type: d.loan_type || 'personal', notes: d.notes || '', amount: d.amount ? String(d.amount) : '',
+          id_type: idEntry?.type === 'Passport' ? 'passport' : 'license',
+          id_number: idEntry?.number || '',
+          id_issuing_state_country: idEntry?.state || idEntry?.country || '',
           applicant_title: d.applicant_title || '', applicant_first_name: d.applicant_first_name || '',
           applicant_last_name: d.applicant_last_name || '', applicant_middle_name: d.applicant_middle_name || '',
           applicant_dob: d.applicant_dob || '', applicant_gender: d.applicant_gender || '',
@@ -189,7 +199,7 @@ export default function ReviewApplication() {
           preferred_contact_method: d.preferred_contact_method || '',
           applicant_address: d.applicant_address || '', applicant_suburb: d.applicant_suburb || '',
           applicant_state: d.applicant_state || '', applicant_postcode: d.applicant_postcode || '',
-          id_expiry_date: d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
+          id_expiry_date: idEntry?.expiry_date || d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
           residential_status: d.residential_status || '', time_at_address: d.time_at_address || '',
           applicant_num_dependants: d.applicant_num_dependants != null ? String(d.applicant_num_dependants) : '',
           has_partner: d.has_partner === null || d.has_partner === undefined ? '' : d.has_partner ? 'true' : 'false',
@@ -221,7 +231,7 @@ export default function ReviewApplication() {
         if (clientUser?.role === 'referrer') {
           // Direct referrer lead — user_id IS the referrer, client has no account
           setClient(null);
-          setReferrer({ id: clientUser.id, full_name: clientUser.full_name, email: clientUser.email, phone: clientUser.phone });
+          setReferrer({ id: clientUser.id, full_name: clientUser.full_name, email: clientUser.email, phone: clientUser.phone, organization_name: appRes.data.referrer?.organization_name ?? null });
         } else {
           setClient(clientUser || null);
           if (appRes.data.user_id) {
@@ -473,6 +483,23 @@ export default function ReviewApplication() {
         emergency_contact_relationship: fields.emergency_contact_relationship || null,
         emergency_contact_phone: fields.emergency_contact_phone || null,
       };
+
+      // ID details live in lend_extra_data.identification — merge them in while
+      // preserving every other key already stored there.
+      let extra: Record<string, unknown> = {};
+      try { extra = application?.lend_extra_data ? JSON.parse(application.lend_extra_data) : {}; } catch { extra = {}; }
+      if (fields.id_number) {
+        extra.identification = [{
+          type: fields.id_type === 'license' ? 'Drivers Licence' : 'Passport',
+          number: fields.id_number,
+          [fields.id_type === 'license' ? 'state' : 'country']: fields.id_issuing_state_country,
+          expiry_date: fields.id_expiry_date,
+        }];
+      } else {
+        delete extra.identification;
+      }
+      payload.lend_extra_data = JSON.stringify(extra);
+
       const { data } = await api.patch(`/applications/${id}`, payload);
       setApplication(data);
       setEditing(false);
@@ -663,6 +690,12 @@ export default function ReviewApplication() {
   const allowedTransitions = VALID_TRANSITIONS[application.status] || [];
   const pendingStatusLabel = pendingStatus ? (STATUS_LABEL[pendingStatus as keyof typeof STATUS_LABEL] || pendingStatus.replace(/_/g, ' ')) : '';
 
+  // The applicant's name as entered on the form; falls back to the account owner
+  // (user_name / client) so the name is consistent with the applications list and
+  // never blank on drafts that haven't been filled in yet.
+  const applicantFormName = [application.applicant_title, application.applicant_first_name, application.applicant_middle_name, application.applicant_last_name].filter(Boolean).join(' ');
+  const displayName = applicantFormName || application.user_name || client?.full_name || '—';
+
   return (
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs items={[
@@ -715,6 +748,24 @@ export default function ReviewApplication() {
         <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
         <StatusTimeline currentStatus={application.status} />
       </GlassCard>
+
+      {/* High alerts — broker/admin only, surfaced prominently at the top */}
+      {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && alerts.some((a) => a.is_high_priority) && (
+        <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/8 px-5 py-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="h-5 w-5 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+            <p className="text-[13px] font-semibold text-destructive">High alert{alerts.filter((a) => a.is_high_priority).length > 1 ? 's' : ''}</p>
+          </div>
+          <div className="space-y-2.5">
+            {alerts.filter((a) => a.is_high_priority).map((alert) => (
+              <div key={alert.id} className="rounded-xl bg-background/40 border border-destructive/15 px-3.5 py-2.5">
+                <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-wrap">{alert.content}</p>
+                <p className="text-[11px] text-muted-foreground mt-1.5">{alert.author_name || 'Staff'} · {formatDateTime(alert.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Client not yet released / invited — top-level banner so it's always visible */}
       {(application.client_account_pending || application.hidden_from_client) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
@@ -799,9 +850,14 @@ export default function ReviewApplication() {
                 {/* Application Info */}
                 <GlassCard>
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                    <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
-                      {application.loan_type} Loan
-                    </h1>
+                    <div>
+                      <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
+                        {application.loan_type} Loan
+                      </h1>
+                      <p className="mt-1 text-[14px] font-medium text-muted-foreground">
+                        {displayName}
+                      </p>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge value={application.status} />
                       {application.is_locked && (
@@ -945,6 +1001,23 @@ export default function ReviewApplication() {
 
                       {/* ID & Residency */}
                       <h3 className="text-[13px] font-medium text-muted-foreground">ID & Residency</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">ID Type</label>
+                          <select {...regEdit('id_type')} className="led-input">
+                            <option value="license">Driver Licence</option>
+                            <option value="passport">Passport</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">ID Number</label>
+                          <input type="text" className="led-input" {...regEdit('id_number')} placeholder={watchEdit('id_type') === 'passport' ? 'PA1234567' : '12345678'} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">{watchEdit('id_type') === 'passport' ? 'Issuing Country' : 'Issuing State'}</label>
+                          <input type="text" className="led-input" {...regEdit('id_issuing_state_country')} placeholder={watchEdit('id_type') === 'passport' ? 'Australia' : 'NSW'} />
+                        </div>
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">ID Expiry Date</label>
@@ -1285,19 +1358,40 @@ export default function ReviewApplication() {
                         </div>
                       </div>
 
-                      <div className="border-t border-border pt-5">
-                        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Identification & Residency</h3>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <dt className="text-[12px] text-muted-foreground">ID Expiry Date</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.id_expiry_date || '—'}</dd>
+                      {(() => {
+                        let idEntry: Record<string, string> | null = null;
+                        try {
+                          const extra = application.lend_extra_data ? JSON.parse(application.lend_extra_data) : {};
+                          idEntry = Array.isArray(extra.identification) ? extra.identification[0] : null;
+                        } catch { /* ignore malformed extra data */ }
+                        return (
+                          <div className="border-t border-border pt-5">
+                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Identification & Residency</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <dt className="text-[12px] text-muted-foreground">ID Type</dt>
+                                <dd className="mt-0.5 text-[14px] font-medium text-foreground">{idEntry?.type || '—'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-[12px] text-muted-foreground">ID Number</dt>
+                                <dd className="mt-0.5 text-[14px] font-medium text-foreground">{idEntry?.number || '—'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-[12px] text-muted-foreground">{idEntry?.country ? 'Issuing Country' : 'Issuing State'}</dt>
+                                <dd className="mt-0.5 text-[14px] font-medium text-foreground">{idEntry?.state || idEntry?.country || '—'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-[12px] text-muted-foreground">ID Expiry Date</dt>
+                                <dd className="mt-0.5 text-[14px] font-medium text-foreground">{idEntry?.expiry_date || application.id_expiry_date || '—'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-[12px] text-muted-foreground">Residency Status</dt>
+                                <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</dd>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <dt className="text-[12px] text-muted-foreground">Residency Status</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</dd>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       <div className="border-t border-border pt-5">
                         <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Living Situation</h3>
@@ -1781,52 +1875,36 @@ export default function ReviewApplication() {
                   }
                 })()}
 
-                {/* Financial Position */}
-                {application.lend_extra_data && (() => {
+                {/* Financial Position — always shown, with empty-state placeholders */}
+                {(() => {
                   let extra: Record<string, unknown> = {};
-                  try { extra = JSON.parse(application.lend_extra_data); } catch { return null; }
-                  const idEntry = Array.isArray(extra.identification) ? (extra.identification as Array<Record<string, string>>)[0] : null;
+                  try { extra = application.lend_extra_data ? JSON.parse(application.lend_extra_data) : {}; } catch { extra = {}; }
                   const empEntry = Array.isArray(extra.employments) ? (extra.employments as Array<Record<string, string>>)[0] : null;
                   const incomes = Array.isArray(extra.incomes) ? (extra.incomes as Array<{ income_type?: string; amount?: number; frequency?: string }>).filter(i => (i.amount ?? 0) > 0) : [];
                   const realEstateAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.real_estate) ? (extra.assets as Record<string, any[]>).real_estate as Array<Record<string, any>> : [];
                   const otherAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.other) ? (extra.assets as Record<string, any[]>).other as Array<Record<string, any>> : [];
                   const liabs: Array<Record<string, any>> = Array.isArray(extra.liabilities) ? extra.liabilities as Array<Record<string, any>> : [];
-                  const expenses = extra.expenses as Record<string, number> | undefined;
-                  const hasAny = idEntry || (empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details)) || incomes.length > 0 || realEstateAssets.length > 0 || otherAssets.length > 0 || liabs.length > 0 || (expenses && Object.values(expenses).some(v => v > 0));
-                  if (!hasAny) return null;
+                  const expenses = (extra.expenses as Record<string, number> | undefined) || {};
+                  const emptyHint = <p className="text-[13px] text-muted-foreground">Not provided</p>;
                   return (
                     <GlassCard>
                       <h2 className="text-[15px] font-semibold text-foreground mb-5">Financial Position</h2>
                       <div className="space-y-5">
 
-                        {/* ID Document */}
-                        {idEntry && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">ID Document</h3>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              {idEntry.type && <div><p className="text-[12px] text-muted-foreground">ID Type</p><p className="text-[14px] font-medium text-foreground">{idEntry.type}</p></div>}
-                              {idEntry.number && <div><p className="text-[12px] text-muted-foreground">ID Number</p><p className="text-[14px] font-medium text-foreground">{idEntry.number}</p></div>}
-                              {(idEntry.state || idEntry.country) && <div><p className="text-[12px] text-muted-foreground">{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p className="text-[14px] font-medium text-foreground">{idEntry.state || idEntry.country}</p></div>}
-                            </div>
-                          </div>
-                        )}
-
                         {/* Employment Details */}
-                        {empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details) && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Employment Details</h3>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              {empEntry.employment_type && <div><p className="text-[12px] text-muted-foreground">Employment Type</p><p className="text-[14px] font-medium text-foreground">{empEntry.employment_type}</p></div>}
-                              {empEntry.start_date && <div><p className="text-[12px] text-muted-foreground">Start Date</p><p className="text-[14px] font-medium text-foreground">{empEntry.start_date}</p></div>}
-                              {empEntry.contact_details && <div><p className="text-[12px] text-muted-foreground">Employer Contact</p><p className="text-[14px] font-medium text-foreground">{empEntry.contact_details}</p></div>}
-                            </div>
+                        <div className="border-b border-border pb-4">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Employment Details</h3>
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div><p className="text-[12px] text-muted-foreground">Employment Type</p><p className="text-[14px] font-medium text-foreground">{empEntry?.employment_type || '—'}</p></div>
+                            <div><p className="text-[12px] text-muted-foreground">Start Date</p><p className="text-[14px] font-medium text-foreground">{empEntry?.start_date || '—'}</p></div>
+                            <div><p className="text-[12px] text-muted-foreground">Employer Contact</p><p className="text-[14px] font-medium text-foreground">{empEntry?.contact_details || '—'}</p></div>
                           </div>
-                        )}
+                        </div>
 
                         {/* Income */}
-                        {incomes.length > 0 && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Income</h3>
+                        <div className="border-b border-border pb-4">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Income</h3>
+                          {incomes.length > 0 ? (
                             <div className="grid gap-3 sm:grid-cols-2">
                               {incomes.map((inc, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
@@ -1835,26 +1913,24 @@ export default function ReviewApplication() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : emptyHint}
+                        </div>
 
                         {/* Expenses */}
-                        {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Monthly Expenses</h3>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
-                              {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
-                              {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
-                              {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
-                            </div>
+                        <div className="border-b border-border pb-4">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Monthly Expenses</h3>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living || 0).toLocaleString('en-AU')}/mo</p></div>
+                            <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage || 0).toLocaleString('en-AU')}/mo</p></div>
+                            <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support || 0).toLocaleString('en-AU')}/mo</p></div>
+                            <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments || 0).toLocaleString('en-AU')}/mo</p></div>
                           </div>
-                        )}
+                        </div>
 
                         {/* Real Estate Assets */}
-                        {realEstateAssets.length > 0 && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Real Estate Assets</h3>
+                        <div className="border-b border-border pb-4">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Real Estate Assets</h3>
+                          {realEstateAssets.length > 0 ? (
                             <div className="space-y-2">
                               {realEstateAssets.map((asset, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
@@ -1869,13 +1945,13 @@ export default function ReviewApplication() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : emptyHint}
+                        </div>
 
                         {/* Other Assets */}
-                        {otherAssets.length > 0 && (
-                          <div className="border-b border-border pb-4">
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Other Assets</h3>
+                        <div className="border-b border-border pb-4">
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Other Assets</h3>
+                          {otherAssets.length > 0 ? (
                             <div className="grid gap-3 sm:grid-cols-2">
                               {otherAssets.map((asset, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
@@ -1884,13 +1960,13 @@ export default function ReviewApplication() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : emptyHint}
+                        </div>
 
                         {/* Liabilities */}
-                        {liabs.length > 0 && (
-                          <div>
-                            <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Liabilities</h3>
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-muted-foreground mb-3">Liabilities</h3>
+                          {liabs.length > 0 ? (
                             <div className="space-y-2">
                               {liabs.map((liab, i) => (
                                 <div key={i} className="rounded-xl bg-secondary/50 p-3">
@@ -1903,8 +1979,8 @@ export default function ReviewApplication() {
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : emptyHint}
+                        </div>
                       </div>
                     </GlassCard>
                   );
@@ -2198,14 +2274,14 @@ export default function ReviewApplication() {
             {activeTab === 'overview' && (
               <>
                 {/* Applicant Summary */}
-                {application.applicant_first_name && (
+                {displayName !== '—' && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
                     <dl className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl bg-secondary/50 p-3">
                         <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
                         <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
+                          {displayName}
                         </dd>
                       </div>
                       {application.applicant_dob && (
@@ -2248,6 +2324,37 @@ export default function ReviewApplication() {
                           )}
                         </>
                       )}
+                    </dl>
+                  </GlassCard>
+                )}
+
+                {/* Referrer — admin/broker only (this whole page is staff-gated) */}
+                {referrer && (
+                  <GlassCard>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrer</h2>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.full_name || '—'}</dd>
+                      </div>
+                      {referrer.organization_name && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
+                        </div>
+                      )}
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
+                        </dd>
+                      </div>
                     </dl>
                   </GlassCard>
                 )}
@@ -2857,6 +2964,9 @@ export default function ReviewApplication() {
                                   {alert.author_role && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{alert.author_role}</span>
                                   )}
+                                  {alert.is_high_priority && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive uppercase tracking-wider">High alert</span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
@@ -2893,7 +3003,24 @@ export default function ReviewApplication() {
                           className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
                           placeholder="Add a client alert (internal only)..."
                         />
-                        <div className="flex items-center justify-end px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => setNewAlertHighPriority((v) => !v)}
+                            aria-pressed={newAlertHighPriority}
+                            className={`flex items-center gap-2 text-[12px] font-medium pl-1.5 pr-2.5 py-1 rounded-lg border transition-colors ${newAlertHighPriority ? 'bg-destructive/15 text-destructive border-destructive/40' : 'bg-secondary/60 text-muted-foreground border-border/60 border-dashed hover:text-foreground hover:border-destructive/40'}`}
+                            title={newAlertHighPriority ? 'High alert on — shows as a banner on the application page. Click to turn off.' : 'Click to mark as a high alert — it will show as a banner at the top of the application page'}
+                          >
+                            <span className={`flex items-center justify-center h-4 w-4 rounded-[5px] border transition-colors ${newAlertHighPriority ? 'bg-destructive border-destructive text-white' : 'border-border bg-background'}`}>
+                              {newAlertHighPriority && (
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                              {newAlertHighPriority ? 'High alert' : 'Mark as high alert'}
+                            </span>
+                          </button>
                           <Button
                             size="sm"
                             variant="danger"
@@ -2904,9 +3031,10 @@ export default function ReviewApplication() {
                               if (!client?.id || !newAlertContent.trim()) return;
                               setSendingAlert(true);
                               try {
-                                const { data } = await api.post(`/clients/${client.id}/alerts`, { content: newAlertContent.trim() });
+                                const { data } = await api.post(`/clients/${client.id}/alerts`, { content: newAlertContent.trim(), is_high_priority: newAlertHighPriority });
                                 setAlerts((prev) => [...prev, data]);
                                 setNewAlertContent('');
+                                setNewAlertHighPriority(false);
                                 toast('Alert added', 'success');
                               } catch (err: unknown) {
                                 toast(getErrorMessage(err, 'Failed to add alert'), 'error');
@@ -3416,11 +3544,11 @@ export default function ReviewApplication() {
               </div>
 
               {/* Personal Details */}
-              {application.applicant_first_name && (
+              {displayName !== '—' && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Applicant Details</h2>
                   <div style={S.grid}>
-                    <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}</p></div>
+                    <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{displayName}</p></div>
                     {application.applicant_dob && <div style={S.cell}><p style={S.label}>Date of Birth</p><p style={S.value}>{application.applicant_dob}</p></div>}
                     {application.applicant_gender && <div style={S.cell}><p style={S.label}>Gender</p><p style={S.value}>{application.applicant_gender}</p></div>}
                     {application.applicant_marital_status && <div style={S.cell}><p style={S.label}>Marital Status</p><p style={S.value}>{application.applicant_marital_status}</p></div>}

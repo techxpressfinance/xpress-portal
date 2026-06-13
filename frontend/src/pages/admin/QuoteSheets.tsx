@@ -43,7 +43,7 @@ export default function QuoteSheets() {
     await new Promise(r => setTimeout(r, 500));
     try {
       const suffix = clientFacing ? 'client' : 'internal';
-      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-v${sheet.version}-${suffix}.pdf`);
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-v${sheet.version}-${suffix}.pdf`, [10, 0, 10, 0]);
     } finally {
       setPdfRenderSheet(null);
     }

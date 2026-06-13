@@ -98,8 +98,8 @@ export default function ReferrerServiceRequests() {
               {STATUS_LABEL[req.status]}
             </span>
           </div>
-          {req.assigned_broker_name && (
-            <p className="text-[12px] text-muted-foreground mt-0.5">Assigned to {req.assigned_broker_name}</p>
+          {(req.assigned_brokers?.length ?? 0) > 0 && (
+            <p className="text-[12px] text-muted-foreground mt-0.5">Assigned to {req.assigned_brokers.map((b) => b.full_name).join(', ')}</p>
           )}
           {req.description && (
             <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">{req.description}</p>

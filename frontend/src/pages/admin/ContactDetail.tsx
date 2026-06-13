@@ -118,7 +118,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Email</label>
               <Input type="email" placeholder="email@example.com" {...field('email')} />
@@ -129,7 +129,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <DatePicker label="Date of Birth" value={form.date_of_birth} onChange={(v) => setForm(f => ({ ...f, date_of_birth: v }))} />
             </div>
@@ -249,7 +249,7 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
       >
         <h3 className="text-[17px] font-semibold text-foreground mb-5">Edit Lending Entry</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Loan Type</label>
               <Select value={form.loan_type} onChange={e => setForm(f => ({ ...f, loan_type: e.target.value }))}>
@@ -280,7 +280,7 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Business Name</label>
               <Input

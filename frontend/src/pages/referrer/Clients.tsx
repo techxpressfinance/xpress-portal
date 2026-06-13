@@ -75,7 +75,7 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ReferrerClie
         <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Contact</h3>
         <p className="text-[13px] text-muted-foreground mb-4">{contact.email}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>First Name *</label>
               <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />
@@ -149,7 +149,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
       <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl">
         <h3 className="text-[17px] font-semibold text-foreground mb-4">New Contact</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>First Name *</label>
               <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />

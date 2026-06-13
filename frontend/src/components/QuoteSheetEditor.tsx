@@ -796,7 +796,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                   Auto-fill standard
                 </button>
               </div>
-              <div className="grid grid-cols-5 gap-2 mt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-1">
                 {TERMS.map(t => {
                   const pct = inputs.balloon_percentages[String(t)] ?? 0;
                   const computedAmt = fmt2(derived.balloonBase * (pct / 100));

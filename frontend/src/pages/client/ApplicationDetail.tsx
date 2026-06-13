@@ -68,7 +68,7 @@ export default function ApplicationDetail() {
     // Wait for React to mount the off-screen element
     await new Promise(r => setTimeout(r, 100));
     try {
-      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`);
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}.pdf`, [10, 0, 10, 0]);
     } catch (err) {
       console.error('Failed to generate PDF', err);
       toast('Failed to generate PDF', 'error');

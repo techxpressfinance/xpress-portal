@@ -4,7 +4,13 @@ import html2pdf from 'html2pdf.js';
  * Download a quote sheet as a landscape A4 PDF.
  * Captures the DOM element by its ID and renders it at 2x scale for crisp output.
  */
-export async function downloadQuoteSheetPdf(elementId: string, filename: string): Promise<void> {
+export async function downloadQuoteSheetPdf(
+  elementId: string,
+  filename: string,
+  // [top, left, bottom, right] page margins in mm. Vertical margins give multi-page
+  // exports breathing room at page edges when content is pushed to the next page.
+  margin: [number, number, number, number] = [0, 0, 0, 0],
+): Promise<void> {
   const el = document.getElementById(elementId);
   if (!el) {
     console.error(`PDF export: element #${elementId} not found`);
@@ -48,7 +54,7 @@ export async function downloadQuoteSheetPdf(elementId: string, filename: string)
       
       await pdfGenerator()
         .set({
-          margin: [0, 0, 0, 0], // Margins handled by padding on the clone now
+          margin,
           filename,
           pagebreak: { mode: 'css', avoid: '.break-inside-avoid' },
           image: { type: 'jpeg', quality: 1.0 },

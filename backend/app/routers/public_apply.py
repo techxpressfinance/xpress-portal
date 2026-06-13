@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, Union
@@ -49,6 +50,10 @@ class PublicApplySubmit(BaseModel):
     applicant_state: Optional[str] = None
     applicant_postcode: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    id_type: Optional[str] = None
+    id_number: Optional[str] = None
+    id_issuing_state_country: Optional[str] = None
+    id_expiry_date: Optional[str] = None
     residential_status: Optional[str] = None
     employment_category: Optional[str] = None
     employer_name: Optional[str] = None
@@ -109,6 +114,38 @@ _APPLICANT_SUBMIT_FIELDS = {
     "income_frequency", "gross_income", "previously_declined",
     "change_of_circumstances", "signature_name", "lend_extra_data",
 }
+
+# ID details are folded into lend_extra_data.identification rather than set as
+# columns, so they're handled separately from the generic field copy.
+_IDENTIFICATION_KEYS = {"id_type", "id_number", "id_issuing_state_country"}
+
+
+def _apply_identification(target, data: "PublicApplySubmit") -> None:
+    """Fold the applicant's ID details into ``target.lend_extra_data.identification``.
+
+    Mirrors how NewApplication stores identification (a single-entry list) and
+    preserves any other keys already present in lend_extra_data.
+    """
+    if not (data.id_number or data.id_type):
+        return
+    try:
+        extra = json.loads(target.lend_extra_data) if target.lend_extra_data else {}
+    except (ValueError, TypeError):
+        extra = {}
+    if not isinstance(extra, dict):
+        extra = {}
+
+    is_license = (data.id_type or "").lower() in ("license", "licence")
+    entry: dict = {
+        "type": "Drivers Licence" if is_license else "Passport",
+        "number": data.id_number or "",
+    }
+    if data.id_issuing_state_country:
+        entry["state" if is_license else "country"] = data.id_issuing_state_country
+    if data.id_expiry_date:
+        entry["expiry_date"] = data.id_expiry_date
+    extra["identification"] = [entry]
+    target.lend_extra_data = json.dumps(extra)
 
 
 @router.get("/{token}", response_model=PublicApplyOut)
@@ -171,6 +208,7 @@ def submit_public_application(
         for key, value in payload.items():
             if key in _APPLICANT_SUBMIT_FIELDS:
                 setattr(resolved, key, value)
+        _apply_identification(resolved, data)
         resolved.completed_at = datetime.now(timezone.utc)
         if resolved.signature_name:
             resolved.signed_at = datetime.now(timezone.utc)
@@ -188,7 +226,10 @@ def submit_public_application(
             detail="This application has already been submitted",
         )
     for key, value in data.model_dump(exclude_none=True).items():
+        if key in _IDENTIFICATION_KEYS:
+            continue
         setattr(resolved, key, value)
+    _apply_identification(resolved, data)
     resolved.status = ApplicationStatus.application_received
     log_activity(db, resolved.user_id, "submitted_public_form", "application", resolved.id, tenant_id=tenant_id)
     db.commit()

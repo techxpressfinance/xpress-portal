@@ -789,3 +789,48 @@ def notify_admins_new_account(
             added_by_name,
             portal_url,
         )
+
+
+def send_assignment_notification(
+    to_email: str,
+    recipient_name: str,
+    is_assigner: bool,
+    item_label: str,
+    counterparty_name: str,
+    link: str,
+) -> None:
+    """Notify a staff member about an assignment. Non-blocking.
+
+    ``is_assigner`` selects the wording: the person who made the assignment gets a
+    confirmation ("You assigned <counterparty> to <item>"), while the newly assigned
+    person gets a notification ("<counterparty> assigned you to <item>").
+    """
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping assignment notification for %s", to_email)
+        return
+
+    if is_assigner:
+        subject = "Assignment confirmed - Xpress Finance"
+        lead = f"You assigned <strong>{_esc(counterparty_name)}</strong> to <strong>{_esc(item_label)}</strong>."
+        lead_text = f"You assigned {counterparty_name} to {item_label}."
+    else:
+        subject = "You've been assigned - Xpress Finance"
+        lead = f"<strong>{_esc(counterparty_name)}</strong> assigned you to <strong>{_esc(item_label)}</strong>."
+        lead_text = f"{counterparty_name} assigned you to {item_label}."
+
+    body = (
+        f"Dear {recipient_name},\n\n"
+        f"{lead_text}\n\n"
+        f"View it here: {link}\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(recipient_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{lead}</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(link)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View Details</a>
+        </div>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)

@@ -219,6 +219,8 @@ _MIGRATIONS = [
     ("loan_applicants", "application_guarantor_id", "VARCHAR(36) REFERENCES application_guarantors(id)"),
     # Standing invite links can grant a role on signup (e.g. broker); NULL = client
     ("referrals", "invited_role", "VARCHAR(20)"),
+    # High-priority client alerts surface as a banner on the application page
+    ("client_alerts", "is_high_priority", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -337,6 +339,41 @@ if "application_brokers" in {t for t in _inspector.get_table_names()}:
         conn.execute(text(
             "UPDATE loan_applications SET assigned_broker_id = NULL "
             "WHERE assigned_broker_id IN (SELECT id FROM users WHERE role = 'admin')"
+        ))
+
+# Backfill: migrate existing service_requests.assigned_broker_id into service_request_brokers
+if "service_request_brokers" in {t for t in _inspector.get_table_names()}:
+    with engine.begin() as conn:
+        if _dialect == "sqlite":
+            conn.execute(text(
+                "INSERT OR IGNORE INTO service_request_brokers (tenant_id, service_request_id, broker_id, assigned_at) "
+                "SELECT sr.tenant_id, sr.id, sr.assigned_broker_id, sr.updated_at FROM service_requests sr "
+                "WHERE sr.assigned_broker_id IS NOT NULL "
+                "AND sr.id NOT IN (SELECT service_request_id FROM service_request_brokers)"
+            ))
+        else:
+            conn.execute(text(
+                "INSERT INTO service_request_brokers (tenant_id, service_request_id, broker_id, assigned_at) "
+                "SELECT sr.tenant_id, sr.id, sr.assigned_broker_id, sr.updated_at FROM service_requests sr "
+                "WHERE sr.assigned_broker_id IS NOT NULL "
+                "AND sr.id NOT IN (SELECT service_request_id FROM service_request_brokers) "
+                "ON CONFLICT DO NOTHING"
+            ))
+
+# Backfill: migrate existing service_requests.broker_notes into the notes thread
+# as a single authorless legacy note, so no data is lost on the switch.
+if "service_request_notes" in {t for t in _inspector.get_table_names()}:
+    with engine.begin() as conn:
+        _insert_prefix = "INSERT OR IGNORE INTO" if _dialect == "sqlite" else "INSERT INTO"
+        _conflict = "" if _dialect == "sqlite" else " ON CONFLICT DO NOTHING"
+        conn.execute(text(
+            f"{_insert_prefix} service_request_notes (id, tenant_id, service_request_id, author_id, content, created_at) "
+            "SELECT "
+            + ("lower(hex(randomblob(16)))" if _dialect == "sqlite" else "gen_random_uuid()::text")
+            + ", sr.tenant_id, sr.id, NULL, sr.broker_notes, sr.updated_at FROM service_requests sr "
+            "WHERE sr.broker_notes IS NOT NULL AND TRIM(sr.broker_notes) <> '' "
+            "AND sr.id NOT IN (SELECT service_request_id FROM service_request_notes)"
+            + _conflict
         ))
 
 # Backfill: migrate is_internal → visibility for application_notes

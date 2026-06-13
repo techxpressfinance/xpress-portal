@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Button, ConfirmDialog, GlassCard, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
-import { formatDate } from '../../lib/utils';
+import { formatDate, formatDateTime } from '../../lib/utils';
 import type { ServiceRequest, ServiceRequestStatus, User } from '../../types';
 
 const ACTIVE_STATUSES: ServiceRequestStatus[] = ['pending', 'in_progress'];
@@ -24,6 +24,128 @@ const STATUS_COLOR: Record<ServiceRequestStatus, string> = {
   closed: 'text-muted-foreground bg-secondary border-border',
 };
 
+const initials = (name: string) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+
+/** Multi-broker assignment control: avatar stack (inline) or chip box (field) that
+ *  opens a checkbox dropdown. */
+function BrokerPicker({
+  brokers,
+  selected,
+  onChange,
+  disabled,
+  variant = 'inline',
+}: {
+  brokers: User[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  disabled?: boolean;
+  variant?: 'inline' | 'field';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+
+  const selectedBrokers = brokers.filter((b) => selected.includes(b.id));
+
+  return (
+    <div className="relative" ref={ref}>
+      {variant === 'inline' ? (
+        <button
+          type="button"
+          onClick={() => !disabled && setOpen((v) => !v)}
+          disabled={disabled}
+          className="flex items-center gap-1.5 disabled:opacity-50"
+        >
+          {selectedBrokers.length > 0 ? (
+            <div className="flex -space-x-1.5">
+              {selectedBrokers.slice(0, 3).map((b) => (
+                <div
+                  key={b.id}
+                  title={b.full_name}
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary ring-2 ring-card"
+                >
+                  {initials(b.full_name)}
+                </div>
+              ))}
+              {selectedBrokers.length > 3 && (
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold text-muted-foreground ring-2 ring-card">
+                  +{selectedBrokers.length - 3}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-[12px] rounded-lg border border-dashed border-border px-2 py-0.5 text-muted-foreground">
+              Assign broker
+            </span>
+          )}
+          <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full flex-wrap items-center gap-1.5 min-h-[42px] rounded-lg border border-border bg-background px-3 py-2 text-left text-[14px] focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {selectedBrokers.length === 0 ? (
+            <span className="text-muted-foreground">Unassigned</span>
+          ) : (
+            selectedBrokers.map((b) => (
+              <span key={b.id} className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[12px] font-medium text-primary">
+                {b.full_name}
+              </span>
+            ))
+          )}
+          <svg className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute right-0 z-30 mt-1 w-56 max-h-64 overflow-auto rounded-xl border border-border bg-card p-1 shadow-xl">
+          {brokers.length === 0 ? (
+            <p className="px-3 py-2 text-[13px] text-muted-foreground">No brokers available</p>
+          ) : (
+            brokers.map((b) => {
+              const checked = selected.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => toggle(b.id)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-secondary"
+                >
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-primary bg-primary text-white' : 'border-border'}`}>
+                    {checked && (
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="truncate">{b.full_name}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminServiceRequests() {
   const { toast } = useToast();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -31,6 +153,8 @@ export default function AdminServiceRequests() {
   const [tab, setTab] = useState<'active' | 'completed'>('active');
   const [toggling, setToggling] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [clients, setClients] = useState<User[]>([]);
   const [completedCollapsed, setCompletedCollapsed] = useState(false);
@@ -38,10 +162,11 @@ export default function AdminServiceRequests() {
   const [editType, setEditType] = useState('');
   const [editCustom, setEditCustom] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editBrokerNotes, setEditBrokerNotes] = useState('');
+  const [newNote, setNewNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
   const [editStatus, setEditStatus] = useState<ServiceRequestStatus>('pending');
   const [editClientId, setEditClientId] = useState('');
-  const [editBrokerId, setEditBrokerId] = useState('');
+  const [editBrokerIds, setEditBrokerIds] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [confirmCompleteReq, setConfirmCompleteReq] = useState<ServiceRequest | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -49,7 +174,7 @@ export default function AdminServiceRequests() {
   const [createType, setCreateType] = useState('Status Update');
   const [createCustom, setCreateCustom] = useState('');
   const [createDesc, setCreateDesc] = useState('');
-  const [createBrokerId, setCreateBrokerId] = useState('');
+  const [createBrokerIds, setCreateBrokerIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -72,7 +197,7 @@ export default function AdminServiceRequests() {
     setCreateType('Status Update');
     setCreateCustom('');
     setCreateDesc('');
-    setCreateBrokerId('');
+    setCreateBrokerIds([]);
     setShowCreate(true);
   };
 
@@ -88,7 +213,7 @@ export default function AdminServiceRequests() {
         custom_request: createType === 'Other' ? createCustom.trim() : null,
         description: createDesc.trim() || null,
         client_id: createClientId || null,
-        assigned_broker_id: createBrokerId || null,
+        assigned_broker_ids: createBrokerIds,
       });
       setRequests((prev) => [data, ...prev]);
       setShowCreate(false);
@@ -122,10 +247,10 @@ export default function AdminServiceRequests() {
     }
   };
 
-  const assignBroker = async (req: ServiceRequest, brokerId: string) => {
+  const assignBrokers = async (req: ServiceRequest, brokerIds: string[]) => {
     setAssigningId(req.id);
     try {
-      const { data } = await api.patch(`/service-requests/${req.id}`, { assigned_broker_id: brokerId });
+      const { data } = await api.patch(`/service-requests/${req.id}`, { assigned_broker_ids: brokerIds });
       setRequests((prev) => prev.map((r) => (r.id === req.id ? data : r)));
     } catch {
       toast('Failed to assign', 'error');
@@ -138,10 +263,10 @@ export default function AdminServiceRequests() {
     setEditType(req.request_type);
     setEditCustom(req.custom_request ?? '');
     setEditDesc(req.description ?? '');
-    setEditBrokerNotes(req.broker_notes ?? '');
+    setNewNote('');
     setEditStatus(req.status);
     setEditClientId(req.client_id);
-    setEditBrokerId(req.assigned_broker_id ?? '');
+    setEditBrokerIds((req.assigned_brokers ?? []).map((b) => b.id));
     setEditingReq(req);
   };
 
@@ -156,11 +281,10 @@ export default function AdminServiceRequests() {
       const { data } = await api.patch(`/service-requests/${editingReq.id}`, {
         status: editStatus,
         client_id: editClientId || null,
-        assigned_broker_id: editBrokerId,
+        assigned_broker_ids: editBrokerIds,
         request_type: editType,
         custom_request: editType === 'Other' ? editCustom.trim() : null,
         description: editDesc.trim() || null,
-        broker_notes: editBrokerNotes.trim() || null,
       });
       setRequests((prev) => prev.map((r) => (r.id === editingReq.id ? data : r)));
       setEditingReq(null);
@@ -172,19 +296,70 @@ export default function AdminServiceRequests() {
     }
   };
 
-  const active = requests.filter((r) => ACTIVE_STATUSES.includes(r.status));
+  const addNote = async () => {
+    if (!editingReq || !newNote.trim()) return;
+    setAddingNote(true);
+    try {
+      const { data } = await api.post(`/service-requests/${editingReq.id}/notes`, { content: newNote.trim() });
+      setRequests((prev) => prev.map((r) => (r.id === data.id ? data : r)));
+      setEditingReq(data);
+      setNewNote('');
+    } catch {
+      toast('Failed to add note', 'error');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // Active list honors the user's manual drag order; unplaced requests sit on top, newest first.
+  const orderActive = (list: ServiceRequest[]) => {
+    const placed = list.filter((r) => r.sort_position != null).sort((a, b) => a.sort_position! - b.sort_position!);
+    const unplaced = list
+      .filter((r) => r.sort_position == null)
+      .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    return [...unplaced, ...placed];
+  };
+
+  const active = orderActive(requests.filter((r) => ACTIVE_STATUSES.includes(r.status)));
   const completed = requests.filter((r) => DONE_STATUSES.includes(r.status));
   const displayed = tab === 'active' ? active : completed;
 
-  const renderRow = (req: ServiceRequest) => {
+  const persistOrder = async (ids: string[]) => {
+    const pos = new Map(ids.map((id, i) => [id, i] as const));
+    setRequests((prev) => prev.map((r) => (pos.has(r.id) ? { ...r, sort_position: pos.get(r.id)! } : r)));
+    try {
+      await api.put('/service-requests/order', { ordered_ids: ids });
+    } catch {
+      toast('Failed to save order', 'error');
+    }
+  };
+
+  const handleDrop = (targetId: string) => {
+    const dragged = draggedId;
+    setDraggedId(null);
+    setDragOverId(null);
+    if (!dragged || dragged === targetId) return;
+    const ids = active.map((r) => r.id).filter((id) => id !== dragged);
+    ids.splice(ids.indexOf(targetId), 0, dragged);
+    persistOrder(ids);
+  };
+
+  const renderRow = (req: ServiceRequest, reorderable = false) => {
     const isDone = DONE_STATUSES.includes(req.status);
     const label = req.request_type === 'Other' && req.custom_request ? req.custom_request : req.request_type;
-    const isUnassigned = !req.assigned_broker_id;
+    const isUnassigned = (req.assigned_brokers?.length ?? 0) === 0;
+    const isOver = reorderable && dragOverId === req.id && draggedId !== null && draggedId !== req.id;
 
     return (
       <div
         key={req.id}
+        onDragOver={reorderable ? (e) => { e.preventDefault(); if (draggedId && dragOverId !== req.id) setDragOverId(req.id); } : undefined}
+        onDrop={reorderable ? (e) => { e.preventDefault(); handleDrop(req.id); } : undefined}
         className={`flex items-start gap-3 px-4 py-3 transition-colors border-l-2 ${
+          isOver ? 'border-t-2 border-t-primary' : ''
+        } ${
+          draggedId === req.id ? 'opacity-40 ' : ''
+        }${
           !isDone && isUnassigned
             ? 'border-amber-400 hover:bg-secondary/40'
             : isDone
@@ -192,6 +367,22 @@ export default function AdminServiceRequests() {
             : 'border-primary/50 hover:bg-secondary/40'
         }`}
       >
+        {/* Drag handle */}
+        {reorderable && (
+          <div
+            draggable
+            onDragStart={(e) => { setDraggedId(req.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', req.id); }}
+            onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
+            title="Drag to reorder"
+            className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
+              <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
+              <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
+            </svg>
+          </div>
+        )}
         {/* Circle toggle */}
         <button
           onClick={() => toggleComplete(req)}
@@ -236,9 +427,10 @@ export default function AdminServiceRequests() {
           {req.description && (
             <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-1">{req.description}</p>
           )}
-          {req.broker_notes && (
+          {req.notes.length > 0 && (
             <p className="text-[12px] text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-1">
-              <span className="font-medium">Note:</span> {req.broker_notes}
+              <span className="font-medium">Note:</span> {req.notes[req.notes.length - 1].content}
+              {req.notes.length > 1 && <span className="text-muted-foreground"> · +{req.notes.length - 1} more</span>}
             </p>
           )}
           <p className="text-[11px] text-muted-foreground mt-0.5">{formatDate(req.created_at)}</p>
@@ -258,37 +450,14 @@ export default function AdminServiceRequests() {
         )}
 
         {/* Broker assignment */}
-        <div className="shrink-0">
-          {req.assigned_broker_name ? (
-            <div className="flex items-center gap-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                {req.assigned_broker_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
-              <select
-                value={req.assigned_broker_id ?? ''}
-                onChange={(e) => assignBroker(req, e.target.value)}
-                disabled={assigningId === req.id}
-                className="text-[12px] bg-transparent text-muted-foreground border-none focus:outline-none focus:ring-0 cursor-pointer max-w-[100px] truncate"
-              >
-                <option value="">Unassign</option>
-                {brokers.map((b) => (
-                  <option key={b.id} value={b.id}>{b.full_name}</option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <select
-              value=""
-              onChange={(e) => { if (e.target.value) assignBroker(req, e.target.value); }}
-              disabled={assigningId === req.id}
-              className="text-[12px] rounded-lg border border-dashed border-border bg-transparent px-2 py-0.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
-            >
-              <option value="">Assign broker</option>
-              {brokers.map((b) => (
-                <option key={b.id} value={b.id}>{b.full_name}</option>
-              ))}
-            </select>
-          )}
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <BrokerPicker
+            variant="inline"
+            brokers={brokers}
+            selected={(req.assigned_brokers ?? []).map((b) => b.id)}
+            disabled={assigningId === req.id}
+            onChange={(ids) => assignBrokers(req, ids)}
+          />
         </div>
       </div>
     );
@@ -347,7 +516,7 @@ export default function AdminServiceRequests() {
       ) : tab === 'active' ? (
         <GlassCard padding="none">
           <div className="divide-y divide-border">
-            {displayed.map(renderRow)}
+            {displayed.map((r) => renderRow(r, true))}
           </div>
         </GlassCard>
       ) : (
@@ -363,7 +532,7 @@ export default function AdminServiceRequests() {
           </button>
           {!completedCollapsed && (
             <div className="divide-y divide-border border-t border-border">
-              {displayed.map(renderRow)}
+              {displayed.map((r) => renderRow(r))}
             </div>
           )}
         </GlassCard>
@@ -435,17 +604,13 @@ export default function AdminServiceRequests() {
               </div>
 
               <div>
-                <label className="block text-[13px] font-medium text-foreground mb-1.5">Assign to broker <span className="text-muted-foreground font-normal">(optional)</span></label>
-                <select
-                  value={createBrokerId}
-                  onChange={(e) => setCreateBrokerId(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">Unassigned</option>
-                  {brokers.map((b) => (
-                    <option key={b.id} value={b.id}>{b.full_name}</option>
-                  ))}
-                </select>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Assign to brokers <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <BrokerPicker
+                  variant="field"
+                  brokers={brokers}
+                  selected={createBrokerIds}
+                  onChange={setCreateBrokerIds}
+                />
               </div>
             </div>
 
@@ -487,7 +652,7 @@ export default function AdminServiceRequests() {
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[13px] font-medium text-foreground mb-1.5">Status</label>
                   <select
@@ -501,17 +666,13 @@ export default function AdminServiceRequests() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[13px] font-medium text-foreground mb-1.5">Assigned broker</label>
-                  <select
-                    value={editBrokerId}
-                    onChange={(e) => setEditBrokerId(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">Unassigned</option>
-                    {brokers.map((b) => (
-                      <option key={b.id} value={b.id}>{b.full_name}</option>
-                    ))}
-                  </select>
+                  <label className="block text-[13px] font-medium text-foreground mb-1.5">Assigned brokers</label>
+                  <BrokerPicker
+                    variant="field"
+                    brokers={brokers}
+                    selected={editBrokerIds}
+                    onChange={setEditBrokerIds}
+                  />
                 </div>
               </div>
 
@@ -570,13 +731,31 @@ export default function AdminServiceRequests() {
 
               <div>
                 <label className="block text-[13px] font-medium text-foreground mb-1.5">Broker notes <span className="text-muted-foreground font-normal">(internal)</span></label>
-                <textarea
-                  value={editBrokerNotes}
-                  onChange={(e) => setEditBrokerNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Internal notes visible only to brokers and admins..."
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                />
+
+                {(editingReq?.notes.length ?? 0) > 0 && (
+                  <div className="mb-2 space-y-2 max-h-48 overflow-auto">
+                    {editingReq?.notes.map((n) => (
+                      <div key={n.id} className="rounded-lg border border-border bg-secondary/40 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className="text-[12px] font-medium text-foreground">{n.author_name ?? 'Unknown'}</span>
+                          <span className="text-[11px] text-muted-foreground">{formatDateTime(n.created_at)}</span>
+                        </div>
+                        <p className="text-[13px] text-foreground whitespace-pre-wrap">{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    rows={2}
+                    placeholder="Add a note (visible only to brokers and admins)..."
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  />
+                  <Button variant="secondary" onClick={addNote} loading={addingNote} disabled={!newNote.trim()}>Add</Button>
+                </div>
               </div>
             </div>
 

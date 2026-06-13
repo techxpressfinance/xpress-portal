@@ -882,47 +882,6 @@ export default function NewApplication() {
         };
       }
       extraData.loan_type_details = loanTypeDetails;
-
-      const identification: Record<string, string>[] = [];
-      if (data.id_number) {
-        identification.push({
-          type: data.id_type === 'license' ? 'Drivers Licence' : 'Passport',
-          number: data.id_number,
-          [data.id_type === 'license' ? 'state' : 'country']: data.id_issuing_state_country,
-          expiry_date: data.id_expiry_date,
-        });
-      }
-      extraData.identification = identification;
-
-      extraData.employments = [{
-        employer_name: data.employer_name,
-        employment_type: data.employment_type_detail,
-        start_date: data.employment_start_date,
-        industry: data.employer_industry || data.business_industry,
-        job_title: data.job_title,
-        contact_details: data.employer_contact_details,
-      }];
-
-      const primaryIncome = { income_type: data.primary_income_type, amount: parseFloat(data.primary_income_amount) || 0, frequency: data.primary_income_frequency };
-      const extraIncomes = additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency }));
-      extraData.incomes = [primaryIncome, ...extraIncomes].filter(i => i.amount > 0);
-      extraData.additional_incomes = additionalIncomes;
-
-      extraData.dependants = parseInt(data.num_dependants) || 0;
-      extraData.credit_history = data.previously_declined === 'yes' ? 'Previously Declined' : 'Clear';
-      extraData.residency_status = data.residency_status;
-      extraData.living_status = data.residential_status;
-
-      extraData.assets = { real_estate: realEstateAssets, other: otherAssets };
-      extraData.liabilities = liabilities;
-      extraData.expenses = {
-        monthly_living: parseFloat(data.monthly_living_expenses) || 0,
-        rent_mortgage: parseFloat(data.rent_mortgage_payments) || 0,
-        child_support: parseFloat(data.child_support) || 0,
-        other_commitments: parseFloat(data.other_commitments) || 0,
-      };
-
-      if (data.other_directors) extraData.other_directors = data.other_directors;
     } else {
       // Add comprehensive loan type data for non-LEND mode
       const loanTypeDetails: Record<string, unknown> = {};
@@ -1041,6 +1000,48 @@ export default function NewApplication() {
 
       extraData.loan_type_details = loanTypeDetails;
     }
+
+    // Applicant data below is collected by sections that render in both LEND and
+    // non-LEND mode, so it must be serialized regardless of which loan-type branch
+    // ran above — otherwise it's silently dropped in non-LEND mode.
+    if (data.id_number) {
+      extraData.identification = [{
+        type: data.id_type === 'license' ? 'Drivers Licence' : 'Passport',
+        number: data.id_number,
+        [data.id_type === 'license' ? 'state' : 'country']: data.id_issuing_state_country,
+        expiry_date: data.id_expiry_date,
+      }];
+    }
+
+    extraData.employments = [{
+      employer_name: data.employer_name,
+      employment_type: data.employment_type_detail,
+      start_date: data.employment_start_date,
+      industry: data.employer_industry || data.business_industry,
+      job_title: data.job_title,
+      contact_details: data.employer_contact_details,
+    }];
+
+    const primaryIncome = { income_type: data.primary_income_type, amount: parseFloat(data.primary_income_amount) || 0, frequency: data.primary_income_frequency };
+    const extraIncomes = additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency }));
+    extraData.incomes = [primaryIncome, ...extraIncomes].filter(i => i.amount > 0);
+    extraData.additional_incomes = additionalIncomes;
+
+    extraData.dependants = parseInt(data.num_dependants) || 0;
+    extraData.credit_history = data.previously_declined === 'yes' ? 'Previously Declined' : 'Clear';
+    extraData.residency_status = data.residency_status;
+    extraData.living_status = data.residential_status;
+
+    extraData.assets = { real_estate: realEstateAssets, other: otherAssets };
+    extraData.liabilities = liabilities;
+    extraData.expenses = {
+      monthly_living: parseFloat(data.monthly_living_expenses) || 0,
+      rent_mortgage: parseFloat(data.rent_mortgage_payments) || 0,
+      child_support: parseFloat(data.child_support) || 0,
+      other_commitments: parseFloat(data.other_commitments) || 0,
+    };
+
+    if (data.other_directors) extraData.other_directors = data.other_directors;
 
     let mainAmount = 0;
     if (lendEnabled) {

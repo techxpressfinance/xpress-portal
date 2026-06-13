@@ -63,8 +63,8 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
         <h3 className="text-[17px] font-semibold text-foreground mb-1">Edit Broker</h3>
         <p className="text-[13px] text-muted-foreground mb-4">{broker.email}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
               <label className={LABEL}>Full Name *</label>
               <Input ref={ref} placeholder="Full name" required {...f('full_name')} />
             </div>

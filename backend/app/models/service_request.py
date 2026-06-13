@@ -38,4 +38,18 @@ class ServiceRequest(Base):
     broker_notes = Column(Text, nullable=True)
 
     client = relationship("User", foreign_keys=[client_id], backref="service_requests")
+    # Retained as the "primary" assignee (first of assigned_brokers) for backward compatibility.
     assigned_broker = relationship("User", foreign_keys=[assigned_broker_id])
+    # Many-to-many: a request can be assigned to multiple brokers.
+    assigned_brokers = relationship(
+        "User",
+        secondary="service_request_brokers",
+        lazy="selectin",
+    )
+    # Attributed, timestamped internal notes (oldest first).
+    notes = relationship(
+        "ServiceRequestNote",
+        order_by="ServiceRequestNote.created_at",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )

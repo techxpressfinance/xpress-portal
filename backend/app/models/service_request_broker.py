@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from typing import Optional
+
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+class ServiceRequestBroker(Base):
+    """Many-to-many: a service request can be assigned to multiple brokers."""
+
+    __tablename__ = "service_request_brokers"
+
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    service_request_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("service_requests.id", ondelete="CASCADE"), primary_key=True
+    )
+    broker_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

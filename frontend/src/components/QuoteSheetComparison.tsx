@@ -147,7 +147,7 @@ function TermBlock({ group, isClientView, showInterestRate, assetDescription, pa
       <div className="bg-muted/40 px-4 py-2 border-b border-border">
         <h4 className="text-sm font-semibold text-foreground">{termYears} Year Term</h4>
       </div>
-      <div className={`grid ${hasTwo ? 'grid-cols-2 divide-x divide-border' : 'grid-cols-1'}`}>
+      <div className={`grid ${hasTwo ? 'grid-cols-1 divide-y sm:grid-cols-2 sm:divide-y-0 sm:divide-x divide-border' : 'grid-cols-1'}`}>
         {noBalloon && (
           <div className="p-4">
             {hasTwo && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">No Balloon</p>}
@@ -337,12 +337,15 @@ export default function QuoteSheetComparison({
       whiteSpace: 'nowrap' as const,
     };
 
+    // 794px = 210mm at 96dpi. The PDF export adds 10mm top/bottom page margins,
+    // so the printable page height is ~1047px — minHeight must stay below that
+    // or a one-page sheet spills onto a blank second page.
     return (
       <div id={`quote-sheet-${quoteSheet.id}`} style={{
         width: '794px',
-        minHeight: '1123px',
+        minHeight: '1040px',
         background: paper,
-        padding: '48px 56px 64px',
+        padding: '12px 56px 26px',
         color: ink,
         fontFamily: sans,
         fontSize: '11px',
@@ -470,8 +473,22 @@ export default function QuoteSheetComparison({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
-          {termGroups.map(g => {
+        {/* Each row of term cards is a block-level wrapper: html2pdf's page-break
+            avoidance inserts a spacer before the element, which only works in
+            normal flow — never put break-inside-avoid on grid children. */}
+        {rows.map((row, ri) => (
+          <div
+            key={ri}
+            className="break-inside-avoid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '14px',
+              alignItems: 'start',
+              marginTop: ri > 0 ? '14px' : 0,
+            }}
+          >
+          {row.map(g => {
             const cols: { key: string; head: string | null; opt: QuoteOption }[] = [];
             if (g.noBalloon) cols.push({ key: 'nb', head: g.withBalloon ? 'No Balloon' : null, opt: g.noBalloon });
             if (g.withBalloon) {
@@ -515,7 +532,6 @@ export default function QuoteSheetComparison({
             return (
               <div
                 key={g.termYears}
-                className="break-inside-avoid"
                 style={{
                   border: `1px solid ${hairline}`,
                   background: recommended ? subtleBg : paper,
@@ -597,10 +613,11 @@ export default function QuoteSheetComparison({
               </div>
             );
           })}
-        </div>
+          </div>
+        ))}
 
         {/* ── BREAKDOWN STRIP ─────────────────────────────────── */}
-        <div style={{
+        <div className="break-inside-avoid" style={{
           marginTop: '20px',
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
@@ -734,7 +751,7 @@ export default function QuoteSheetComparison({
         )}
 
         {/* ── FOOTER ──────────────────────────────────────────── */}
-        <footer style={{
+        <footer className="break-inside-avoid" style={{
           marginTop: '32px',
           paddingTop: '12px',
           borderTop: `1px solid ${hairline}`,
@@ -748,7 +765,6 @@ export default function QuoteSheetComparison({
           <p style={{ margin: 0, maxWidth: '52ch' }}>
             This quote is indicative only and subject to full credit assessment and lender approval. Rates and fees may vary. Xpress Finance Group · ACL 000000 · 727 Collins St, Docklands VIC 3008 · (03) 8456 7996.
           </p>
-          <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>Page 1 of 1</span>
         </footer>
 
       </div>
@@ -757,7 +773,7 @@ export default function QuoteSheetComparison({
 
   // ── On-screen Layout ────────────────────────────────────────────────
   return (
-    <div id={`quote-sheet-${quoteSheet.id}`} className="bg-card rounded-lg border border-border space-y-5 p-5">
+    <div id={`quote-sheet-${quoteSheet.id}`} className="bg-card rounded-lg border border-border space-y-5 p-3 sm:p-5">
 
       {quoteSheet.title && (
         <h3 className="text-lg font-bold text-foreground tracking-tight">{quoteSheet.title}</h3>

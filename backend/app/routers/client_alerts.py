@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/clients", tags=["client-alerts"])
 
 class ClientAlertCreate(BaseModel):
     content: str
+    is_high_priority: bool = False
 
 
 def _alert_out(alert: ClientAlert) -> dict:
@@ -26,6 +27,7 @@ def _alert_out(alert: ClientAlert) -> dict:
         "author_name": alert.author.full_name if alert.author else None,
         "author_role": alert.author.role.value if alert.author else None,
         "content": alert.content,
+        "is_high_priority": alert.is_high_priority,
         "created_at": alert.created_at,
     }
 
@@ -60,6 +62,7 @@ def create_client_alert(
         client_id=client_id,
         author_id=current_user.id,
         content=data.content.strip(),
+        is_high_priority=data.is_high_priority,
         tenant_id=tenant_id,
     )
     db.add(alert)

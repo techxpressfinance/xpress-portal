@@ -45,6 +45,7 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
 from app.services.email import (
+    send_assignment_notification,
     send_complete_application_email,
     send_direct_engagement_client_invite,
     send_direct_engagement_referrer_thankyou,
@@ -835,6 +836,15 @@ def assign_broker(
     )
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
+
+    # Email both the newly assigned broker and the admin who assigned them.
+    item_label = f"{application.applicant_first_name or 'a new'} {application.loan_type.value} application"
+    link = f"{FRONTEND_URL}/admin/applications/{app_id}"
+    if broker.email:
+        send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
+    if current_user.email:
+        send_assignment_notification(current_user.email, current_user.full_name, True, item_label, broker.full_name, link)
+
     return _app_with_user(application, db)
 
 
@@ -897,15 +907,36 @@ def assign_broker_group(
     for broker in group.members:
         if not any(b.id == broker.id for b in application.brokers):
             application.brokers.append(broker)
-            added.append(broker.full_name)
+            added.append(broker)
+            create_notification(
+                db,
+                user_id=broker.id,
+                type="status_change",
+                title="Application assigned",
+                body=f"You have been assigned to {application.applicant_first_name or 'a new'} {application.loan_type.value} application.",
+                link=f"/admin/applications/{app_id}",
+                tenant_id=tenant_id,
+            )
 
     if not application.assigned_broker_id and application.brokers:
         application.assigned_broker_id = application.brokers[0].id
 
     log_activity(db, current_user.id, "broker_group_assigned", "application", app_id,
-                 {"group_id": group_id, "group_name": group.name, "brokers_added": added}, tenant_id=tenant_id)
+                 {"group_id": group_id, "group_name": group.name, "brokers_added": [b.full_name for b in added]}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
+
+    # Email each newly assigned broker, plus a single confirmation to the assigner.
+    if added:
+        item_label = f"{application.applicant_first_name or 'a new'} {application.loan_type.value} application"
+        link = f"{FRONTEND_URL}/admin/applications/{app_id}"
+        for broker in added:
+            if broker.email:
+                send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
+        if current_user.email:
+            assigned_names = ", ".join(b.full_name for b in added)
+            send_assignment_notification(current_user.email, current_user.full_name, True, item_label, assigned_names, link)
+
     return _app_with_user(application, db)
 
 

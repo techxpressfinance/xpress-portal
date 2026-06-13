@@ -67,7 +67,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
       >
         <h3 className="text-[17px] font-semibold text-foreground mb-4">New Contact</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">First Name *</label>
               <Input ref={firstRef} placeholder="First name" required {...field('first_name')} />

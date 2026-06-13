@@ -77,7 +77,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
             <Input ref={nameRef} required {...field('name')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">ABN</label>
               <Input placeholder="12 345 678 901" {...field('abn')} />

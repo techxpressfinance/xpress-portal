@@ -371,6 +371,7 @@ export interface ClientAlert {
   author_name: string | null;
   author_role: string | null;
   content: string;
+  is_high_priority: boolean;
   created_at: string;
 }
 
@@ -870,6 +871,14 @@ export interface KanbanBoardListItem {
   updated_at: string;
 }
 
+export interface ServiceRequestNote {
+  id: string;
+  author_id: string | null;
+  author_name: string | null;
+  content: string;
+  created_at: string;
+}
+
 export interface ServiceRequest {
   id: string;
   request_type: string;
@@ -881,7 +890,10 @@ export interface ServiceRequest {
   client_email: string | null;
   assigned_broker_id: string | null;
   assigned_broker_name: string | null;
+  assigned_brokers: AssignedBroker[];
   broker_notes: string | null;
+  notes: ServiceRequestNote[];
+  sort_position: number | null;
   created_at: string;
   updated_at: string;
 }
