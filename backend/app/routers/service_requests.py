@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
+from app.models.service_request_checklist import ServiceRequestChecklistItem
 from app.models.service_request_note import ServiceRequestNote
 from app.models.service_request_order import ServiceRequestOrder
 from app.models.user import User, UserRole
@@ -19,6 +21,9 @@ from app.schemas.service_request import (
     ServiceRequestOrderUpdate,
     ServiceRequestOut,
     ServiceRequestUpdate,
+    SRChecklistItemCreate,
+    SRChecklistItemUpdate,
+    SRChecklistReorderRequest,
     VALID_STATUSES,
 )
 from app.config import FRONTEND_URL
@@ -51,7 +56,8 @@ def _set_assignees(db: Session, sr: ServiceRequest, broker_ids: Optional[list[st
 
 
 def _email_assignment(sr: ServiceRequest, new_assignees: list[User], assigner: User) -> None:
-    """Email each newly assigned broker plus a confirmation to the assigner."""
+    """Email each newly assigned broker. The assigner performed the action in the UI
+    and doesn't need a confirmation email."""
     if not new_assignees:
         return
     item_label = f"service request: {sr.custom_request or sr.request_type}"
@@ -59,9 +65,6 @@ def _email_assignment(sr: ServiceRequest, new_assignees: list[User], assigner: U
     for broker in new_assignees:
         if broker.email:
             send_assignment_notification(broker.email, broker.full_name, False, item_label, assigner.full_name, link)
-    if assigner.email:
-        names = ", ".join(b.full_name for b in new_assignees)
-        send_assignment_notification(assigner.email, assigner.full_name, True, item_label, names, link)
 
 
 def _default_assignees_for_client(db: Session, client_id: str, tenant_id: str) -> list[str]:
@@ -136,6 +139,7 @@ def _to_out(sr: ServiceRequest, position: Optional[int] = None) -> dict:
         "custom_request": sr.custom_request,
         "description": sr.description,
         "status": sr.status,
+        "is_urgent": sr.is_urgent,
         "client_id": sr.client_id,
         "client_name": sr.client.full_name if sr.client else None,
         "client_email": sr.client.email if sr.client else None,
@@ -152,6 +156,17 @@ def _to_out(sr: ServiceRequest, position: Optional[int] = None) -> dict:
                 "created_at": n.created_at,
             }
             for n in sr.notes
+        ],
+        "checklist_items": [
+            {
+                "id": c.id,
+                "service_request_id": c.service_request_id,
+                "title": c.title,
+                "is_completed": c.is_completed,
+                "sort_order": c.sort_order,
+                "created_at": c.created_at,
+            }
+            for c in sr.checklist_items
         ],
         "created_at": sr.created_at,
         "updated_at": sr.updated_at,
@@ -174,6 +189,7 @@ def create_service_request(
         custom_request=data.custom_request,
         description=data.description,
         status=ServiceRequestStatus.pending.value,
+        is_urgent=data.is_urgent,
     )
     db.add(sr)
     db.flush()
@@ -214,16 +230,6 @@ def create_service_request(
             body=f"{current_user.full_name} submitted a service request: {request_label}",
             link="/admin/service-requests",
             tenant_id=tenant_id,
-        )
-
-    # When staff create-and-assign, send the assigner a confirmation. The assignees
-    # already get the "request received" email above, which serves as their notice.
-    if is_staff and sr.assigned_brokers and current_user.email:
-        item_label = f"service request: {sr.custom_request or sr.request_type}"
-        names = ", ".join(b.full_name for b in sr.assigned_brokers)
-        send_assignment_notification(
-            current_user.email, current_user.full_name, True, item_label, names,
-            f"{FRONTEND_URL}/admin/service-requests",
         )
 
     db.commit()
@@ -299,6 +305,28 @@ def list_service_requests(
     }
 
 
+@router.get("/{id}", response_model=ServiceRequestOut)
+def get_service_request(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = (
+        db.query(ServiceRequest)
+        .options(joinedload(ServiceRequest.client), joinedload(ServiceRequest.assigned_broker))
+        .filter(ServiceRequest.id == id, ServiceRequest.tenant_id == tenant_id)
+        .first()
+    )
+    if not sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    # Clients/referrers may only view their own requests.
+    if current_user.role in (UserRole.client.value, UserRole.referrer.value) and sr.client_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    position = _user_position(db, current_user.id, sr.id, tenant_id) if current_user.role in (UserRole.broker.value, UserRole.admin.value) else None
+    return _to_out(sr, position)
+
+
 @router.patch("/{id}", response_model=ServiceRequestOut)
 def update_service_request(
     id: str,
@@ -320,6 +348,8 @@ def update_service_request(
         if data.status not in VALID_STATUSES:
             raise HTTPException(status_code=422, detail=f"Invalid status: {data.status}")
         sr.status = data.status
+    if data.is_urgent is not None:
+        sr.is_urgent = data.is_urgent
     assignment_changed = data.assigned_broker_ids is not None or data.assigned_broker_id is not None
     prev_assignee_ids = {b.id for b in sr.assigned_brokers}
     if data.assigned_broker_ids is not None:
@@ -383,6 +413,164 @@ def add_service_request_note(
     log_activity(
         db, current_user.id, "noted", "service_request", sr.id, {}, tenant_id,
     )
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+# ── Checklist Items ──────────────────────────────────────────────────────────
+
+
+def _load_sr(db: Session, id: str, tenant_id: str) -> ServiceRequest:
+    sr = (
+        db.query(ServiceRequest)
+        .options(joinedload(ServiceRequest.client), joinedload(ServiceRequest.assigned_broker))
+        .filter(ServiceRequest.id == id, ServiceRequest.tenant_id == tenant_id)
+        .first()
+    )
+    if not sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    return sr
+
+
+@router.post("/{id}/checklist", response_model=ServiceRequestOut, status_code=201)
+def add_checklist_item(
+    id: str,
+    data: SRChecklistItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    max_order = (
+        db.query(func.max(ServiceRequestChecklistItem.sort_order))
+        .filter(ServiceRequestChecklistItem.service_request_id == sr.id)
+        .scalar()
+        or 0
+    )
+    item = ServiceRequestChecklistItem(
+        tenant_id=tenant_id,
+        service_request_id=sr.id,
+        title=data.title,
+        is_completed=data.is_completed,
+        sort_order=max_order + 1,
+    )
+    db.add(item)
+    log_activity(
+        db, current_user.id, "checklist_item_added", "service_request", sr.id,
+        {"item_title": data.title}, tenant_id,
+    )
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+@router.patch("/{id}/checklist/{item_id}", response_model=ServiceRequestOut)
+def update_checklist_item(
+    id: str,
+    item_id: str,
+    data: SRChecklistItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    item = (
+        db.query(ServiceRequestChecklistItem)
+        .filter(
+            ServiceRequestChecklistItem.id == item_id,
+            ServiceRequestChecklistItem.service_request_id == sr.id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    if data.title is not None:
+        title = data.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title cannot be empty")
+        item.title = title
+    if data.is_completed is not None:
+        item.is_completed = data.is_completed
+    if data.sort_order is not None:
+        item.sort_order = data.sort_order
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+@router.patch("/{id}/checklist/{item_id}/toggle", response_model=ServiceRequestOut)
+def toggle_checklist_item(
+    id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    item = (
+        db.query(ServiceRequestChecklistItem)
+        .filter(
+            ServiceRequestChecklistItem.id == item_id,
+            ServiceRequestChecklistItem.service_request_id == sr.id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    item.is_completed = not item.is_completed
+    log_activity(
+        db, current_user.id, "checklist_item_toggled", "service_request", sr.id,
+        {"item_title": item.title, "is_completed": item.is_completed}, tenant_id,
+    )
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+@router.delete("/{id}/checklist/{item_id}", response_model=ServiceRequestOut)
+def delete_checklist_item(
+    id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    item = (
+        db.query(ServiceRequestChecklistItem)
+        .filter(
+            ServiceRequestChecklistItem.id == item_id,
+            ServiceRequestChecklistItem.service_request_id == sr.id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    db.delete(item)
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+@router.put("/{id}/checklist/reorder", response_model=ServiceRequestOut)
+def reorder_checklist_items(
+    id: str,
+    data: SRChecklistReorderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    items = (
+        db.query(ServiceRequestChecklistItem)
+        .filter(ServiceRequestChecklistItem.service_request_id == sr.id)
+        .all()
+    )
+    item_map = {i.id: i for i in items}
+    for idx, item_id in enumerate(data.item_ids):
+        if item_id in item_map:
+            item_map[item_id].sort_order = idx
     db.commit()
     db.refresh(sr)
     return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))

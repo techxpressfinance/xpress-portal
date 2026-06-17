@@ -756,8 +756,35 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                     step="0.5"
                     min="0"
                     value={inputs.brokerage_percent || ''}
-                    onChange={e => updateInput('brokerage_percent', Math.max(0, parseFloat(e.target.value)) || 0)}
+                    onChange={e => {
+                      const pct = Math.max(0, parseFloat(e.target.value)) || 0;
+                      setInputs(prev => {
+                        const base = computeFromInputs(prev).amountBorrowed;
+                        return { ...prev, brokerage_percent: pct, brokerage_amount: base > 0 ? fmt2(base * (pct / 100)) : null };
+                      });
+                    }}
                     className={`${fieldBase} pl-7 pr-3`}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={`${labelBase} flex gap-1`}>
+                  Brokerage $
+                  <span className="text-[9px] font-semibold text-muted-foreground/50">OVERRIDE</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[13px]">$</span>
+                  <MoneyInput
+                    placeholder={fmtCurrency(derived.amountBorrowed * (inputs.brokerage_percent / 100)).replace('$', '')}
+                    value={inputs.brokerage_amount ?? ''}
+                    allowNull
+                    onChange={amt =>
+                      setInputs(prev => {
+                        const base = computeFromInputs(prev).amountBorrowed;
+                        return { ...prev, brokerage_amount: amt, brokerage_percent: amt != null && base > 0 ? fmt2((amt / base) * 100) : prev.brokerage_percent };
+                      })
+                    }
+                    className={`${fieldBase} pl-6 pr-3`}
                   />
                 </div>
               </div>
@@ -768,8 +795,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 inactiveLabel="Without GST"
                 onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
               />
-              <CalcField label="Brokerage Amount" value={fmtCurrency(derived.brokerage)} />
-              <CalcField label="GST Rate" value="10%" />
+              <CalcField label="Brokerage (incl. GST)" value={fmtCurrency(derived.brokerage)} />
             </div>
           </section>
 

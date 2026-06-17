@@ -56,7 +56,12 @@ export async function downloadQuoteSheetPdf(
         .set({
           margin,
           filename,
-          pagebreak: { mode: 'css', avoid: '.break-inside-avoid' },
+          // 'css' alone only reads break-* properties; it won't stop an overflowing
+          // table or heading from being sliced across the page boundary (overlapping
+          // numbers / cut-off headings). 'legacy' actively measures every element and
+          // inserts a break before any that would straddle a page; 'avoid-all' keeps
+          // each element whole. Together they keep term cards and headings intact.
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'], avoid: '.break-inside-avoid' },
           image: { type: 'jpeg', quality: 1.0 },
           html2canvas: { scale: 2, useCORS: true, logging: false },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },

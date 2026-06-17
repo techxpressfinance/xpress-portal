@@ -35,6 +35,7 @@ from app.models.document_request import DocumentRequest  # noqa: F401 — ensure
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.models.lending_history_entry import LendingHistoryEntry  # noqa: F401 — ensure table is created
 from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
+from app.models.service_request_checklist import ServiceRequestChecklistItem  # noqa: F401 — ensure table is created
 from app.models.application_calculator import ApplicationCalculator  # noqa: F401 — ensure table is created
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
@@ -183,6 +184,8 @@ _MIGRATIONS = [
     ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
     # Broker-side notes on service requests
     ("service_requests", "broker_notes", "TEXT"),
+    # Urgent flag on service requests
+    ("service_requests", "is_urgent", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Message visibility: who can read the message beyond the direct recipient
     ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
     # Soft delete: timestamp set when an admin/broker deletes an application

@@ -75,9 +75,6 @@ export default function Tasks() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [completedCollapsed, setCompletedCollapsed] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
-  const editInputRef = useRef<HTMLInputElement>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
 
   const isAllTab = statusFilter === '';
@@ -106,12 +103,6 @@ export default function Tasks() {
   useEffect(() => { fetchData(); }, [page, statusFilter, assigneeFilter]);
   useEffect(() => { fetchStaff(); }, []);
   useEffect(() => {
-    if (editingId && editInputRef.current) {
-      editInputRef.current.focus();
-      editInputRef.current.select();
-    }
-  }, [editingId]);
-  useEffect(() => {
     if (showAddForm && addInputRef.current) addInputRef.current.focus();
   }, [showAddForm]);
 
@@ -133,25 +124,6 @@ export default function Tasks() {
       fetchData();
     } finally {
       setToggling(null);
-    }
-  };
-
-  const handleStartEdit = (task: TaskListItem, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingId(task.id);
-    setEditingTitle(task.title);
-  };
-
-  const handleSaveEdit = async (taskId: string) => {
-    const trimmed = editingTitle.trim();
-    setEditingId(null);
-    if (!trimmed) return;
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: trimmed } : t));
-    try {
-      await api.patch(`/tasks/${taskId}`, { title: trimmed });
-    } catch {
-      toast('Failed to rename task', 'error');
-      fetchData();
     }
   };
 
@@ -184,7 +156,6 @@ export default function Tasks() {
 
   const renderTask = (task: TaskListItem) => {
     const isCompleted = task.status === 'completed';
-    const isEditing = editingId === task.id;
     const due = task.due_date ? relativeDueDate(task.due_date) : null;
     const initials = task.assigned_to_name
       ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -200,10 +171,8 @@ export default function Tasks() {
     return (
       <div
         key={task.id}
-        onClick={() => { if (!isEditing) navigate(`/admin/tasks/${task.id}`); }}
-        className={`group flex items-center gap-3 py-2 border-b border-[var(--led-line)] last:border-0 rounded-lg px-2 -mx-2 transition-colors ${
-          isEditing ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--led-surface-2)]/60'
-        }`}
+        onClick={() => navigate(`/admin/tasks/${task.id}`)}
+        className="group flex items-center gap-3 py-2 border-b border-[var(--led-line)] last:border-0 rounded-lg px-2 -mx-2 transition-colors cursor-pointer hover:bg-[var(--led-surface-2)]/60"
       >
         <CheckCircle
           priority={task.priority}
@@ -213,25 +182,9 @@ export default function Tasks() {
         />
 
         <div className="flex-1 min-w-0">
-          {isEditing ? (
-            <input
-              ref={editInputRef}
-              value={editingTitle}
-              onChange={(e) => setEditingTitle(e.target.value)}
-              onBlur={() => handleSaveEdit(task.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEdit(task.id);
-                if (e.key === 'Escape') setEditingId(null);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full bg-transparent text-[14px] text-foreground focus:outline-none border-b border-[var(--led-accent)] pb-px"
-            />
-          ) : (
             <div className="flex items-baseline gap-2 min-w-0">
               <span
-                onClick={(e) => handleStartEdit(task, e)}
-                title="Click to rename"
-                className={`text-[14px] leading-snug cursor-text truncate ${
+                className={`text-[14px] leading-snug truncate ${
                   isCompleted ? 'line-through text-[var(--led-muted)]' : 'text-foreground'
                 }`}
               >
@@ -241,7 +194,6 @@ export default function Tasks() {
                 <span className="shrink-0 text-[11px] text-[var(--led-muted)]">{task.application_label}</span>
               )}
             </div>
-          )}
         </div>
 
         {task.checklist_total > 0 && (

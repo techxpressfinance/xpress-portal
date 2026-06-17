@@ -47,6 +47,8 @@ export default function TaskDetail() {
   const [newItemTitle, setNewItemTitle] = useState('');
   const [addingItem, setAddingItem] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
 
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -106,6 +108,38 @@ export default function TaskDetail() {
       toast(getErrorMessage(err, 'Failed to update task'), 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startRename = () => {
+    if (!task) return;
+    setRenameValue(task.title);
+    setRenaming(true);
+  };
+
+  const saveRename = async () => {
+    if (!id || !task) return;
+    const trimmed = renameValue.trim();
+    setRenaming(false);
+    if (!trimmed || trimmed === task.title) return;
+    try {
+      const { data } = await api.patch(`/tasks/${id}`, { title: trimmed });
+      setTask(data);
+      populateEditForm(data);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to rename task'), 'error');
+    }
+  };
+
+  const toggleUrgent = async () => {
+    if (!id || !task) return;
+    const next = task.priority === 'urgent' ? 'low' : 'urgent';
+    try {
+      const { data } = await api.patch(`/tasks/${id}`, { priority: next });
+      setTask(data);
+      populateEditForm(data);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update task'), 'error');
     }
   };
 
@@ -248,11 +282,31 @@ export default function TaskDetail() {
               <div className={`h-3 w-3 rounded-full ${priorityDotClass(task.priority)}`} title={`Priority: ${task.priority}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className={`text-[22px] font-bold text-foreground leading-snug ${isCompleted ? 'line-through text-[var(--led-muted)]' : ''}`}>
-                {task.title}
-              </h1>
+              {renaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={saveRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveRename();
+                    if (e.key === 'Escape') setRenaming(false);
+                  }}
+                  className="w-full bg-transparent text-[22px] font-bold text-foreground leading-snug focus:outline-none border-b-2 border-[var(--led-accent)] pb-0.5"
+                />
+              ) : (
+                <h1
+                  onClick={startRename}
+                  title="Click to rename"
+                  className={`text-[22px] font-bold text-foreground leading-snug cursor-text ${isCompleted ? 'line-through text-[var(--led-muted)]' : ''}`}
+                >
+                  {task.title}
+                </h1>
+              )}
               {task.description && (
-                <p className="mt-1.5 text-[14px] text-[var(--led-muted)] leading-relaxed">{task.description}</p>
+                <div className="mt-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/50 px-4 py-3">
+                  <p className="text-[15px] font-medium text-foreground leading-relaxed whitespace-pre-wrap">{task.description}</p>
+                </div>
               )}
             </div>
           </div>
@@ -387,6 +441,9 @@ export default function TaskDetail() {
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2 border-t border-[var(--led-line)]">
             <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit task</Button>
+            <Button variant="secondary" size="sm" onClick={toggleUrgent}>
+              {task.priority === 'urgent' ? 'Clear urgent' : 'Mark urgent'}
+            </Button>
             <button
               onClick={handleDelete}
               disabled={deleting}

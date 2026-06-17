@@ -140,7 +140,7 @@ def invite_user(
 
     notify_admins_new_account(
         db, tenant_id, "client", data.full_name, data.email, current_user.full_name or current_user.email,
-        f"{FRONTEND_URL}/admin/contacts",
+        f"{FRONTEND_URL}/admin/contacts", exclude_user_id=current_user.id,
     )
     user.invite_url = setup_url
     return user

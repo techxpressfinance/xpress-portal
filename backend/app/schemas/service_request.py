@@ -54,11 +54,45 @@ class ServiceRequestNoteCreate(BaseModel):
         return v.strip()
 
 
+class SRChecklistItemCreate(BaseModel):
+    title: str
+    is_completed: bool = False
+
+    @field_validator("title")
+    @classmethod
+    def title_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Checklist item title cannot be empty")
+        return v.strip()
+
+
+class SRChecklistItemUpdate(BaseModel):
+    title: Optional[str] = None
+    is_completed: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class SRChecklistItemOut(BaseModel):
+    id: str
+    service_request_id: str
+    title: str
+    is_completed: bool
+    sort_order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SRChecklistReorderRequest(BaseModel):
+    item_ids: List[str]
+
+
 class ServiceRequestCreate(BaseModel):
     request_type: str
     custom_request: Optional[str] = None
     description: Optional[str] = None
     client_id: Optional[str] = None
+    is_urgent: bool = False
     assigned_broker_id: Optional[str] = None
     assigned_broker_ids: Optional[List[str]] = None
 
@@ -84,6 +118,7 @@ class ServiceRequestOrderUpdate(BaseModel):
 
 class ServiceRequestUpdate(BaseModel):
     status: Optional[str] = None
+    is_urgent: Optional[bool] = None
     assigned_broker_id: Optional[str] = None
     assigned_broker_ids: Optional[List[str]] = None
     client_id: Optional[str] = None
@@ -99,6 +134,7 @@ class ServiceRequestOut(BaseModel):
     custom_request: Optional[str] = None
     description: Optional[str] = None
     status: str
+    is_urgent: bool = False
     client_id: str
     client_name: Optional[str] = None
     client_email: Optional[str] = None
@@ -107,6 +143,7 @@ class ServiceRequestOut(BaseModel):
     assigned_brokers: List[AssignedBrokerOut] = []
     broker_notes: Optional[str] = None
     notes: List[ServiceRequestNoteOut] = []
+    checklist_items: List[SRChecklistItemOut] = []
     sort_position: Optional[int] = None
     created_at: datetime
     updated_at: datetime

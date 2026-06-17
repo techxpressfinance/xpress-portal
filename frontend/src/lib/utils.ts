@@ -2,18 +2,19 @@
  * Extract a user-friendly error message from an API error.
  */
 export function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) {
-    return err.message || fallback;
-  }
+  // Axios errors are Error instances, so check the API response detail first —
+  // otherwise we'd return the generic "Request failed with status code 409".
   if (err && typeof err === 'object' && 'response' in err) {
     const detail = (err as any).response?.data?.detail;
-    if (!detail) return fallback;
     // Pydantic v2 validation errors: array of {msg, loc, type, input}
     if (Array.isArray(detail)) {
       const msg = detail[0]?.msg;
-      return typeof msg === 'string' ? msg : fallback;
+      if (typeof msg === 'string') return msg;
     }
-    if (typeof detail === 'string') return detail;
+    if (typeof detail === 'string' && detail) return detail;
+  }
+  if (err instanceof Error) {
+    return err.message || fallback;
   }
   return fallback;
 }

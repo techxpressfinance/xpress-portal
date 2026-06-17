@@ -171,7 +171,7 @@ def create_referrer_client(
 
     notify_admins_new_account(
         db, tenant_id, "client", client_name, email, current_user.full_name or current_user.email,
-        f"{FRONTEND_URL}/admin/contacts",
+        f"{FRONTEND_URL}/admin/contacts", exclude_user_id=current_user.id,
     )
 
     name_parts = (data.first_name.strip(), data.last_name.strip())

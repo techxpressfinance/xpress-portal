@@ -857,6 +857,14 @@ export default function ReviewApplication() {
                       <p className="mt-1 text-[14px] font-medium text-muted-foreground">
                         {displayName}
                       </p>
+                      {referrer && (referrer.organization_name || referrer.full_name) && (
+                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[12px] font-semibold text-primary ring-1 ring-primary/20">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                          </svg>
+                          Referred by {referrer.organization_name || referrer.full_name}
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge value={application.status} />

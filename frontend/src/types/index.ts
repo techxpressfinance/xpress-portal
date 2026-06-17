@@ -879,12 +879,22 @@ export interface ServiceRequestNote {
   created_at: string;
 }
 
+export interface ServiceRequestChecklistItem {
+  id: string;
+  service_request_id: string;
+  title: string;
+  is_completed: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface ServiceRequest {
   id: string;
   request_type: string;
   custom_request: string | null;
   description: string | null;
   status: ServiceRequestStatus;
+  is_urgent: boolean;
   client_id: string;
   client_name: string | null;
   client_email: string | null;
@@ -893,6 +903,7 @@ export interface ServiceRequest {
   assigned_brokers: AssignedBroker[];
   broker_notes: string | null;
   notes: ServiceRequestNote[];
+  checklist_items: ServiceRequestChecklistItem[];
   sort_position: number | null;
   created_at: string;
   updated_at: string;

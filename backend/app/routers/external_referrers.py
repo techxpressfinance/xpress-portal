@@ -73,7 +73,7 @@ def create_referrer(
 
     notify_admins_new_account(
         db, tenant_id, "referrer", data.full_name, data.email, current_user.full_name or current_user.email,
-        f"{FRONTEND_URL}/admin/referrers",
+        f"{FRONTEND_URL}/admin/referrers", exclude_user_id=current_user.id,
     )
     user.invite_url = setup_url
     return user
@@ -185,7 +185,7 @@ def refer_client(
     client_name = (existing_user.full_name if existing_user else name) or email
     notify_admins_new_account(
         db, tenant_id, "client", client_name, email, current_user.full_name or current_user.email,
-        f"{FRONTEND_URL}/admin/contacts",
+        f"{FRONTEND_URL}/admin/contacts", exclude_user_id=current_user.id,
     )
 
     db.refresh(referral)

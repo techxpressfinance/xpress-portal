@@ -774,12 +774,19 @@ def notify_admins_new_account(
     account_email: str,
     added_by_name: str,
     portal_url: str,
+    exclude_user_id: Optional[str] = None,
 ) -> None:
-    """Email every admin in the tenant that a new referrer/client account was added. Non-blocking."""
+    """Email every admin in the tenant that a new referrer/client account was added. Non-blocking.
+
+    ``exclude_user_id`` skips the admin who performed the action so they don't get
+    notified about an account they just created themselves.
+    """
     from app.models.user import User, UserRole
 
     admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
     for admin in admins:
+        if exclude_user_id and admin.id == exclude_user_id:
+            continue
         send_new_account_notification(
             admin.email,
             admin.full_name or "Admin",

@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -27,6 +27,7 @@ class ServiceRequest(Base):
     custom_request = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default=ServiceRequestStatus.pending.value)
+    is_urgent = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
@@ -50,6 +51,14 @@ class ServiceRequest(Base):
     notes = relationship(
         "ServiceRequestNote",
         order_by="ServiceRequestNote.created_at",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    # Internal checklist items (manual sort order).
+    checklist_items = relationship(
+        "ServiceRequestChecklistItem",
+        back_populates="service_request",
+        order_by="ServiceRequestChecklistItem.sort_order",
         cascade="all, delete-orphan",
         lazy="selectin",
     )

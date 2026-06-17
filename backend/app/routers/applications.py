@@ -837,13 +837,12 @@ def assign_broker(
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
 
-    # Email both the newly assigned broker and the admin who assigned them.
+    # Email the newly assigned broker. The assigner performed the action in the UI
+    # and doesn't need a confirmation email.
     item_label = f"{application.applicant_first_name or 'a new'} {application.loan_type.value} application"
     link = f"{FRONTEND_URL}/admin/applications/{app_id}"
     if broker.email:
         send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
-    if current_user.email:
-        send_assignment_notification(current_user.email, current_user.full_name, True, item_label, broker.full_name, link)
 
     return _app_with_user(application, db)
 
@@ -926,16 +925,14 @@ def assign_broker_group(
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
 
-    # Email each newly assigned broker, plus a single confirmation to the assigner.
+    # Email each newly assigned broker. The assigner performed the action in the UI
+    # and doesn't need a confirmation email.
     if added:
         item_label = f"{application.applicant_first_name or 'a new'} {application.loan_type.value} application"
         link = f"{FRONTEND_URL}/admin/applications/{app_id}"
         for broker in added:
             if broker.email:
                 send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
-        if current_user.email:
-            assigned_names = ", ".join(b.full_name for b in added)
-            send_assignment_notification(current_user.email, current_user.full_name, True, item_label, assigned_names, link)
 
     return _app_with_user(application, db)
 

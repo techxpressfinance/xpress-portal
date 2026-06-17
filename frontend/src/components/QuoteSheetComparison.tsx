@@ -364,7 +364,13 @@ export default function QuoteSheetComparison({
           borderBottom: `1px solid ${hairline}`,
           marginBottom: '28px',
         }}>
-          <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '44px', objectFit: 'contain' }} />
+          {/* Logo cropped to its centre: the SVG carries whitespace around the mark,
+              so we render it oversized inside a fixed window and clip the margins.
+              Zoom = image height ÷ window height; widen/narrow the window to show
+              more/less of the centre horizontally. */}
+          <div style={{ height: '64px', width: '180px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '-16px' }}>
+            <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '110px', width: 'auto', maxWidth: 'none', objectFit: 'contain' }} />
+          </div>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'auto auto',
@@ -485,7 +491,11 @@ export default function QuoteSheetComparison({
               gridTemplateColumns: '1fr 1fr',
               gap: '14px',
               alignItems: 'start',
-              marginTop: ri > 0 ? '14px' : 0,
+              // Spacing is split: margin (collapses at a page top) plus padding (does
+              // not). The padding keeps the card's top border off the page-slice line
+              // when a row is pushed to the next page, so the border isn't clipped.
+              marginTop: ri > 0 ? '8px' : 0,
+              paddingTop: '6px',
             }}
           >
           {row.map(g => {
@@ -503,17 +513,25 @@ export default function QuoteSheetComparison({
 
             const renderMonthly = (o: QuoteOption): ReactNode => {
               const rng = fmtRepaymentClient(o.repayment_monthly);
-              if (rng) return <>{rng.lo} – {rng.hi}</>;
+              // A range ("lo – hi") is too wide for a dual-column cell. Keep each
+              // amount unbreakable but allow the pair to wrap to two lines so it
+              // never overflows into the neighbouring column.
+              if (rng) return (
+                <>
+                  <span style={{ whiteSpace: 'nowrap' }}>{rng.lo} –</span>{' '}
+                  <span style={{ whiteSpace: 'nowrap' }}>{rng.hi}</span>
+                </>
+              );
               const [dol, cts] = splitAmt(o.repayment_monthly);
               return <>{dol}<small style={{ fontSize: '9px', fontWeight: 400, color: muted }}>{cts}</small></>;
             };
 
-            const tableRows: { label: string; bold?: boolean; render: (o: QuoteOption) => ReactNode }[] = [
+            const tableRows: { label: string; bold?: boolean; wrap?: boolean; render: (o: QuoteOption) => ReactNode }[] = [
               { label: `${assetDescription} price`, render: o => fmtCurrency(o.purchase_price) },
               { label: 'Deposit', render: o => fmtCurrency(o.deposit) },
               { label: 'Amount financed', render: o => fmtCurrency(isClientView ? clientAmt(o) : o.loan_amount) },
               { label: 'Balloon', render: o => fmtCurrency(o.balloon_residual ?? 0) },
-              { label: 'Monthly repayment', bold: true, render: renderMonthly },
+              { label: 'Monthly repayment', bold: true, wrap: true, render: renderMonthly },
               { label: 'Weekly equivalent', render: o => fmtCurrency(o.repayment_weekly) },
               ...(!isClientView
                 ? [{ label: 'Rate of interest', render: (o: QuoteOption) => fmtPercent(o.interest_rate) }]
@@ -559,7 +577,7 @@ export default function QuoteSheetComparison({
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
                   <colgroup>
-                    <col style={{ width: dual ? '38%' : '50%' }} />
+                    <col style={{ width: dual ? '34%' : '50%' }} />
                     {cols.map(c => <col key={c.key} />)}
                   </colgroup>
                   {dual && (
@@ -600,6 +618,7 @@ export default function QuoteSheetComparison({
                             <td key={c.key} style={{
                               ...blkVal,
                               ...(r.bold ? { fontWeight: 700 } : {}),
+                              ...(r.wrap ? { whiteSpace: 'normal' as const } : {}),
                               ...(last ? { borderBottom: 'none' } : {}),
                             }}>
                               {r.render(c.opt)}

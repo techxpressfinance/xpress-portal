@@ -19,6 +19,7 @@ from app.models.service_request import ServiceRequest
 from app.models.service_request_broker import ServiceRequestBroker
 from app.models.service_request_note import ServiceRequestNote
 from app.models.service_request_order import ServiceRequestOrder
+from app.models.service_request_checklist import ServiceRequestChecklistItem
 from app.models.notification import Notification
 
-__all__ = ["Tenant", "User", "LoanApplication", "LoanApplicant", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization", "ServiceRequest", "ServiceRequestBroker", "ServiceRequestNote", "ServiceRequestOrder", "Notification"]
+__all__ = ["Tenant", "User", "LoanApplication", "LoanApplicant", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization", "ServiceRequest", "ServiceRequestBroker", "ServiceRequestNote", "ServiceRequestOrder", "ServiceRequestChecklistItem", "Notification"]
