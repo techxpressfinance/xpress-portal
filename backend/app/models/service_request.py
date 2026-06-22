@@ -28,6 +28,11 @@ class ServiceRequest(Base):
     description = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default=ServiceRequestStatus.pending.value)
     is_urgent = Column(Boolean, nullable=False, default=False)
+    # Optional due date/time (naive local datetime as set by staff).
+    due_at = Column(DateTime, nullable=True)
+    # When each due-date reminder was sent (null = not yet sent / re-armed on due edit).
+    reminder_midpoint_sent_at = Column(DateTime, nullable=True)
+    reminder_due_soon_sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,

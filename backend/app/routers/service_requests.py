@@ -30,6 +30,7 @@ from app.config import FRONTEND_URL
 from app.services.activity_log import log_activity
 from app.services.email import send_assignment_notification, send_service_request_notification
 from app.services.notification_service import create_notification
+from app.services.service_request_reminders import _resolve_notify_recipients
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/service-requests", tags=["service_requests"])
@@ -83,41 +84,6 @@ def _default_assignees_for_client(db: Session, client_id: str, tenant_id: str) -
     return [app.assigned_broker_id] if app.assigned_broker_id else []
 
 
-def _resolve_notify_recipients(db: Session, sr: ServiceRequest, tenant_id: str) -> list[User]:
-    """Who should be emailed/notified about a request.
-
-    The assigned brokers if any; otherwise the broker on the client's most recent
-    application; otherwise active admins so the request isn't silently dropped.
-    """
-    if sr.assigned_brokers:
-        return list(sr.assigned_brokers)
-
-    app = (
-        db.query(LoanApplication)
-        .filter(
-            LoanApplication.user_id == sr.client_id,
-            LoanApplication.tenant_id == tenant_id,
-            LoanApplication.assigned_broker_id.isnot(None),
-        )
-        .order_by(LoanApplication.created_at.desc())
-        .first()
-    )
-    if app and app.assigned_broker_id:
-        broker = (
-            db.query(User)
-            .filter(User.id == app.assigned_broker_id, User.tenant_id == tenant_id, User.is_active == True)
-            .first()
-        )
-        if broker:
-            return [broker]
-
-    return (
-        db.query(User)
-        .filter(User.tenant_id == tenant_id, User.role == UserRole.admin.value, User.is_active == True)
-        .all()
-    )
-
-
 def _user_position(db: Session, user_id: str, sr_id: str, tenant_id: str) -> Optional[int]:
     row = (
         db.query(ServiceRequestOrder)
@@ -140,6 +106,7 @@ def _to_out(sr: ServiceRequest, position: Optional[int] = None) -> dict:
         "description": sr.description,
         "status": sr.status,
         "is_urgent": sr.is_urgent,
+        "due_at": sr.due_at,
         "client_id": sr.client_id,
         "client_name": sr.client.full_name if sr.client else None,
         "client_email": sr.client.email if sr.client else None,
@@ -190,6 +157,7 @@ def create_service_request(
         description=data.description,
         status=ServiceRequestStatus.pending.value,
         is_urgent=data.is_urgent,
+        due_at=data.due_at,
     )
     db.add(sr)
     db.flush()
@@ -350,6 +318,12 @@ def update_service_request(
         sr.status = data.status
     if data.is_urgent is not None:
         sr.is_urgent = data.is_urgent
+    # due_at is nullable: a present field (even null) clears or sets it.
+    # Re-arm reminders whenever the due date changes/clears.
+    if "due_at" in data.model_fields_set:
+        sr.due_at = data.due_at
+        sr.reminder_midpoint_sent_at = None
+        sr.reminder_due_soon_sent_at = None
     assignment_changed = data.assigned_broker_ids is not None or data.assigned_broker_id is not None
     prev_assignee_ids = {b.id for b in sr.assigned_brokers}
     if data.assigned_broker_ids is not None:

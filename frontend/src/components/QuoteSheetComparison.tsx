@@ -98,8 +98,18 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
   return result;
 }
 
+// Per-term highlight accents — each term's figures are coloured, cycling
+// through orange, blue, green, purple, red.
+const TERM_ACCENTS = [
+  { accent: '#ea580c' }, // orange
+  { accent: '#2563eb' }, // blue
+  { accent: '#16a34a' }, // green
+  { accent: '#9333ea' }, // purple
+  { accent: '#dc2626' }, // red
+];
+
 // ── On-screen term block ────────────────────────────────────────────
-function TermBlock({ group, isClientView, showInterestRate, assetDescription, paymentType }: { group: TermGroup; isClientView: boolean; showInterestRate: boolean; assetDescription: string; paymentType: string }) {
+function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInterest, assetDescription, paymentType }: { group: TermGroup; accent: string; isClientView: boolean; showInterestRate: boolean; showTotalInterest: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -115,28 +125,31 @@ function TermBlock({ group, isClientView, showInterestRate, assetDescription, pa
     return (
       <div className="flex-1 w-full min-w-0">
         <div className="space-y-0">
-          <Row label={`${assetDescription} price`} value={fmtCurrency(opt.purchase_price)} />
-          <Row label="Deposit" value={fmtCurrency(opt.deposit)} />
+          <Row label={`${assetDescription} price`} value={fmtCurrency(opt.purchase_price)} color={accent} />
+          <Row label="Deposit" value={fmtCurrency(opt.deposit)} color={accent} />
           <Row
             label="Amount to be Financed"
             value={isClientView ? fmtCurrency(clientLoanAmount) : fmtCurrency(opt.loan_amount)}
+            color={accent}
           />
-          <Row label="Term (years)" value={String(termYears)} />
+          <Row label="Term (years)" value={String(termYears)} color={accent} />
           <Row
             label={(opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon'}
             value={fmtCurrency(opt.balloon_residual ?? 0)}
+            color={accent}
           />
-          <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold />
+          <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold color={accent} />
           {!isClientView && (
-            <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} />
+            <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} color={accent} />
           )}
           {allUpRate != null && (!isClientView || showInterestRate) && (
-            <Row label={isClientView ? 'Interest Rate' : 'All Up Interest Rate'} value={fmtPercent(allUpRate)} />
+            <Row label={isClientView ? 'Interest Rate' : 'All Up Interest Rate'} value={fmtPercent(allUpRate)} color={accent} />
           )}
-          <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} />
-          {!isClientView && (
-            <Row label="Total Interest (over term)" value={fmtCurrency(opt.total_interest)} />
+          <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} color={accent} />
+          {(!isClientView || showTotalInterest) && (
+            <Row label="Total Interest (over term)" value={fmtCurrency(opt.total_interest)} bold color={accent} />
           )}
+
         </div>
       </div>
     );
@@ -165,11 +178,14 @@ function TermBlock({ group, isClientView, showInterestRate, assetDescription, pa
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function Row({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
   return (
     <div className="flex w-full items-start justify-between py-1.5 border-b border-border/30 last:border-0">
       <div className={`text-[12px] leading-tight w-[60%] pr-2 break-words ${bold ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{label}</div>
-      <div className={`text-[12.5px] tabular-nums whitespace-nowrap text-right w-[40%] pl-2 ${bold ? 'font-semibold text-foreground' : 'font-medium text-foreground'}`}>{value}</div>
+      <div
+        className={`text-[12.5px] tabular-nums whitespace-nowrap text-right w-[40%] pl-2 ${bold ? 'font-semibold' : 'font-medium'} ${color ? '' : 'text-foreground'}`}
+        style={color ? { color } : undefined}
+      >{value}</div>
     </div>
   );
 }
@@ -192,6 +208,7 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       feesFinanced: params.fees_financed ?? true,
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
+      showTotalInterest: (params.show_total_interest as boolean | undefined) ?? true,
       repaymentRange: (params.repayment_range as number | undefined) ?? null,
     };
   } catch {
@@ -220,6 +237,7 @@ export default function QuoteSheetComparison({
   const selectedTerms = parsedParams?.selectedTerms;
   const paymentType = parsedParams?.paymentType ?? 'advance';
   const showInterestRate = parsedParams?.showInterestRate ?? false;
+  const showTotalInterest = parsedParams?.showTotalInterest ?? true;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -507,6 +525,7 @@ export default function QuoteSheetComparison({
             }
             const dual = cols.length === 2;
             const recommended = g.termYears === recommendedYears;
+            const { accent } = TERM_ACCENTS[termGroups.indexOf(g) % TERM_ACCENTS.length];
             const clientAmt = (o: QuoteOption) =>
               (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0);
             const showRateRow = (!isClientView || showInterestRate) && cols.some(c => rate(c.opt) != null);
@@ -542,7 +561,7 @@ export default function QuoteSheetComparison({
                     render: (o: QuoteOption) => fmtPercent(rate(o)),
                   }]
                 : []),
-              ...(!isClientView
+              ...((!isClientView || showTotalInterest)
                 ? [{ label: 'Total interest', bold: true, render: (o: QuoteOption) => fmtCurrency(o.total_interest) }]
                 : []),
             ];
@@ -617,6 +636,7 @@ export default function QuoteSheetComparison({
                           {cols.map(c => (
                             <td key={c.key} style={{
                               ...blkVal,
+                              color: accent,
                               ...(r.bold ? { fontWeight: 700 } : {}),
                               ...(r.wrap ? { whiteSpace: 'normal' as const } : {}),
                               ...(last ? { borderBottom: 'none' } : {}),
@@ -769,6 +789,33 @@ export default function QuoteSheetComparison({
           </div>
         )}
 
+        {/* ── WHY CHOOSE XPRESS ───────────────────────────────── */}
+        <div className="break-inside-avoid" style={{
+          marginTop: '28px',
+          padding: '16px 18px',
+          background: subtleBg,
+          border: `1px solid ${hairlineLight}`,
+          borderRadius: '8px',
+        }}>
+          <h3 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: '0 0 10px', color: ink }}>
+            Why choose Xpress Finance
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '10.5px', lineHeight: 1.5, color: inkLight }}>
+            <p style={{ margin: 0 }}>
+              We don't just arrange your finance; we manage it end-to-end for the life of the loan, so you're always supported.
+            </p>
+            <p style={{ margin: 0 }}>
+              One point of contact for everything from admin to payouts. No chasing banks, no stress, just seamless execution.
+            </p>
+            <p style={{ margin: 0 }}>
+              Come tax time, we've got you covered! Fast, simple, and on demand.
+            </p>
+            <p style={{ margin: 0, fontWeight: 600, color: ink }}>
+              We take on a limited number of clients to maintain this level of service — act now and secure your spot.
+            </p>
+          </div>
+        </div>
+
         {/* ── FOOTER ──────────────────────────────────────────── */}
         <footer className="break-inside-avoid" style={{
           marginTop: '32px',
@@ -802,9 +849,12 @@ export default function QuoteSheetComparison({
       <div className="space-y-5">
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 lg:grid-cols-2 gap-5 break-inside-avoid">
-            {row.map(group => (
-              <TermBlock key={group.termYears} group={group} isClientView={isClientView} showInterestRate={showInterestRate} assetDescription={assetDescription} paymentType={paymentType} />
-            ))}
+            {row.map(group => {
+              const { accent } = TERM_ACCENTS[termGroups.indexOf(group) % TERM_ACCENTS.length];
+              return (
+                <TermBlock key={group.termYears} group={group} accent={accent} isClientView={isClientView} showInterestRate={showInterestRate} showTotalInterest={showTotalInterest} assetDescription={assetDescription} paymentType={paymentType} />
+              );
+            })}
           </div>
         ))}
       </div>

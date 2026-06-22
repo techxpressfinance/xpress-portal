@@ -93,6 +93,7 @@ class ServiceRequestCreate(BaseModel):
     description: Optional[str] = None
     client_id: Optional[str] = None
     is_urgent: bool = False
+    due_at: Optional[datetime] = None
     assigned_broker_id: Optional[str] = None
     assigned_broker_ids: Optional[List[str]] = None
 
@@ -119,6 +120,7 @@ class ServiceRequestOrderUpdate(BaseModel):
 class ServiceRequestUpdate(BaseModel):
     status: Optional[str] = None
     is_urgent: Optional[bool] = None
+    due_at: Optional[datetime] = None
     assigned_broker_id: Optional[str] = None
     assigned_broker_ids: Optional[List[str]] = None
     client_id: Optional[str] = None
@@ -135,6 +137,7 @@ class ServiceRequestOut(BaseModel):
     description: Optional[str] = None
     status: str
     is_urgent: bool = False
+    due_at: Optional[datetime] = None
     client_id: str
     client_name: Optional[str] = None
     client_email: Optional[str] = None

@@ -37,6 +37,23 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   return parseAsUTC(date).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+/** Convert a stored (UTC) datetime into a value for <input type="datetime-local"> in local time. */
+export function toDateTimeLocalInput(date: string | Date | null | undefined): string {
+  if (!date) return '';
+  const d = parseAsUTC(date);
+  if (isNaN(d.getTime())) return '';
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+
+/** Convert a local <input type="datetime-local"> value into a UTC ISO string for the API. */
+export function dateTimeLocalToUTC(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export function formatTime(date: string | Date | null | undefined): string {
   if (!date) return '—';
   return parseAsUTC(date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });

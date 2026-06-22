@@ -224,6 +224,11 @@ _MIGRATIONS = [
     ("referrals", "invited_role", "VARCHAR(20)"),
     # High-priority client alerts surface as a banner on the application page
     ("client_alerts", "is_high_priority", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Optional due date/time on service requests
+    ("service_requests", "due_at", "TIMESTAMP"),
+    # Due-date reminder send tracking
+    ("service_requests", "reminder_midpoint_sent_at", "TIMESTAMP"),
+    ("service_requests", "reminder_due_soon_sent_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -593,3 +598,39 @@ app.include_router(public_apply.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# ── Background scheduler: service-request due-date reminders ──────────────────
+# In-process poller. Assumes a single uvicorn worker (true today); with multiple
+# workers each process would run its own scheduler and could double-send.
+import sys  # noqa: E402
+
+from app.config import REMINDER_POLL_MINUTES, SCHEDULER_ENABLED  # noqa: E402
+from app.services.service_request_reminders import process_due_reminders  # noqa: E402
+
+_scheduler = None
+_RUNNING_TESTS = "pytest" in sys.modules
+
+if SCHEDULER_ENABLED and not _RUNNING_TESTS:
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    _scheduler = BackgroundScheduler(daemon=True)
+    _scheduler.add_job(
+        process_due_reminders,
+        "interval",
+        minutes=REMINDER_POLL_MINUTES,
+        id="sr_due_reminders",
+        coalesce=True,
+        max_instances=1,
+    )
+
+    @app.on_event("startup")
+    def _start_scheduler() -> None:
+        if _scheduler and not _scheduler.running:
+            _scheduler.start()
+            _logger.info("Started due-date reminder scheduler (every %s min)", REMINDER_POLL_MINUTES)
+
+    @app.on_event("shutdown")
+    def _stop_scheduler() -> None:
+        if _scheduler and _scheduler.running:
+            _scheduler.shutdown(wait=False)

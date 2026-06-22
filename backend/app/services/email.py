@@ -672,6 +672,70 @@ def send_service_request_notification(
     _send_async(to_email, subject, body, html_body)
 
 
+def send_service_request_reminder(
+    to_email: str,
+    broker_name: str,
+    request_type: str,
+    custom_request: Optional[str],
+    due_display: str,
+    when_label: str,
+) -> None:
+    """Remind a broker/admin that an open service request is approaching its due date.
+
+    ``when_label`` describes the trigger, e.g. "is now halfway to its due date" or
+    "is due in about 2 hours". Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping service request reminder")
+        return
+
+    display_request = custom_request or request_type
+    subject = f"Reminder: {display_request} due {due_display} - Xpress Finance Portal"
+
+    body_lines = [
+        f"Dear {broker_name},",
+        "",
+        f"A service request {when_label}.",
+        "",
+        f"Request Type: {request_type}",
+    ]
+    if custom_request:
+        body_lines.append(f"Custom Request: {custom_request}")
+    body_lines += [
+        f"Due: {due_display}",
+        "",
+        "Please log in to the portal to action this request.",
+        "",
+        "Best regards,",
+        "Xpress Finance Team",
+    ]
+    body = "\n".join(body_lines)
+
+    details_rows = f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Request Type:</strong> {_esc(request_type)}</p>'
+    if custom_request:
+        details_rows += f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Custom Request:</strong> {_esc(custom_request)}</p>'
+    details_rows += f'<p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Due:</strong> {_esc(due_display)}</p>'
+
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(broker_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            A service request {_esc(when_label)}.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    {details_rows}
+                </td>
+            </tr>
+        </table>
+        <p style="margin: 0; font-size: 15px; color: #3f3f46;">
+            <a href="{FRONTEND_URL}/admin/service-requests" style="color: #2563eb;">Open the request in the portal</a> to action it.
+        </p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_new_lead_notification(
     to_email: str,
     admin_name: str,

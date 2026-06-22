@@ -219,6 +219,64 @@ export default function TaskDetail() {
     ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
     : null;
 
+  /* Checklist — shown in both view and edit modes (items save independently). */
+  const checklistSection = (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[13px] font-semibold text-foreground">Checklist</p>
+        {totalItems > 0 && (
+          <div className="flex items-center gap-2.5">
+            <div className="h-1.5 w-20 rounded-full bg-[var(--led-surface-2)] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[var(--led-success)] transition-all"
+                style={{ width: `${(completedCount / totalItems) * 100}%` }}
+              />
+            </div>
+            <span className="text-[12px] text-[var(--led-muted)] tabular-nums">{completedCount}/{totalItems}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-0.5 mb-3">
+        {task.checklist_items.map((item) => (
+          <div
+            key={item.id}
+            className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-[var(--led-surface-2)]/60 transition-colors -mx-2"
+          >
+            <CheckCircle completed={item.is_completed} onClick={() => handleToggleItem(item)} />
+            <span className={`flex-1 text-[14px] ${item.is_completed ? 'line-through text-[var(--led-muted)]' : 'text-foreground'}`}>
+              {item.title}
+            </span>
+            <button
+              onClick={() => handleDeleteItem(item.id)}
+              className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        {totalItems === 0 && (
+          <p className="text-[13px] text-[var(--led-muted)] px-2 py-1">No items yet.</p>
+        )}
+      </div>
+
+      <form onSubmit={handleAddItem} className="flex gap-2">
+        <Input
+          type="text"
+          value={newItemTitle}
+          onChange={(e) => setNewItemTitle(e.target.value)}
+          placeholder="Add an item..."
+          className="flex-1"
+        />
+        <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
+          {addingItem ? '...' : 'Add'}
+        </Button>
+      </form>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-2xl">
       <Breadcrumbs items={[
@@ -268,6 +326,9 @@ export default function TaskDetail() {
             </Select>
             <DatePicker label="Due Date" value={editDueDate} onChange={(v) => setEditDueDate(v)} />
           </div>
+
+          <div className="pt-2 border-t border-[var(--led-line)]">{checklistSection}</div>
+
           <div className="flex gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</Button>
             <Button variant="secondary" onClick={() => { setEditing(false); populateEditForm(task); }}>Cancel</Button>
@@ -383,60 +444,7 @@ export default function TaskDetail() {
           )}
 
           {/* Checklist */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[13px] font-semibold text-foreground">Checklist</p>
-              {totalItems > 0 && (
-                <div className="flex items-center gap-2.5">
-                  <div className="h-1.5 w-20 rounded-full bg-[var(--led-surface-2)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--led-success)] transition-all"
-                      style={{ width: `${(completedCount / totalItems) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-[12px] text-[var(--led-muted)] tabular-nums">{completedCount}/{totalItems}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-0.5 mb-3">
-              {task.checklist_items.map((item) => (
-                <div
-                  key={item.id}
-                  className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-[var(--led-surface-2)]/60 transition-colors -mx-2"
-                >
-                  <CheckCircle completed={item.is_completed} onClick={() => handleToggleItem(item)} />
-                  <span className={`flex-1 text-[14px] ${item.is_completed ? 'line-through text-[var(--led-muted)]' : 'text-foreground'}`}>
-                    {item.title}
-                  </span>
-                  <button
-                    onClick={() => handleDeleteItem(item.id)}
-                    className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              {totalItems === 0 && (
-                <p className="text-[13px] text-[var(--led-muted)] px-2 py-1">No items yet.</p>
-              )}
-            </div>
-
-            <form onSubmit={handleAddItem} className="flex gap-2">
-              <Input
-                type="text"
-                value={newItemTitle}
-                onChange={(e) => setNewItemTitle(e.target.value)}
-                placeholder="Add an item..."
-                className="flex-1"
-              />
-              <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
-                {addingItem ? '...' : 'Add'}
-              </Button>
-            </form>
-          </div>
+          {checklistSection}
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2 border-t border-[var(--led-line)]">

@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Button, ConfirmDialog, GlassCard, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
-import { formatDate } from '../../lib/utils';
+import { formatDate, formatDateTime, dateTimeLocalToUTC } from '../../lib/utils';
 import { BrokerPicker, ClientPicker } from '../../components/ServiceRequestPickers';
 import type { ServiceRequest, ServiceRequestStatus, User } from '../../types';
 
@@ -50,6 +50,7 @@ export default function AdminServiceRequests() {
   const [createDesc, setCreateDesc] = useState('');
   const [createBrokerIds, setCreateBrokerIds] = useState<string[]>([]);
   const [createUrgent, setCreateUrgent] = useState(false);
+  const [createDueAt, setCreateDueAt] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function AdminServiceRequests() {
     setCreateDesc('');
     setCreateBrokerIds([]);
     setCreateUrgent(false);
+    setCreateDueAt('');
     setShowCreate(true);
   };
 
@@ -111,6 +113,7 @@ export default function AdminServiceRequests() {
         description: createDesc.trim() || null,
         client_id: createClientId || null,
         is_urgent: createUrgent,
+        due_at: dateTimeLocalToUTC(createDueAt),
         assigned_broker_ids: createBrokerIds,
       });
       setRequests((prev) => [data, ...prev]);
@@ -304,6 +307,20 @@ export default function AdminServiceRequests() {
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded border ${STATUS_COLOR[req.status]}`}>
               {STATUS_LABEL[req.status]}
             </span>
+            {req.due_at && (
+              <span
+                className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border ${
+                  !isDone && new Date(req.due_at) < new Date()
+                    ? 'border-red-200 bg-red-50 text-red-600'
+                    : 'border-border bg-secondary text-muted-foreground'
+                }`}
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Due {formatDateTime(req.due_at)}
+              </span>
+            )}
           </div>
           {req.client_name && (
             <p className="text-[13px] text-muted-foreground mt-0.5">
@@ -483,6 +500,16 @@ export default function AdminServiceRequests() {
                   rows={3}
                   placeholder="Any additional context..."
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-foreground mb-1.5">Due date &amp; time <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <input
+                  type="datetime-local"
+                  value={createDueAt}
+                  onChange={(e) => setCreateDueAt(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 

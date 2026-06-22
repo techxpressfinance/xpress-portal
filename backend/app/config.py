@@ -60,6 +60,11 @@ S3_ENABLED = bool(S3_BUCKET_NAME)
 # Redis - optional; rate limiter uses in-memory fallback when not set
 REDIS_URL = os.getenv("REDIS_URL", "")
 
+# Service-request due-date reminders (in-process scheduler)
+REMINDER_DUE_SOON_HOURS = int(os.getenv("REMINDER_DUE_SOON_HOURS", "2"))
+REMINDER_POLL_MINUTES = int(os.getenv("REMINDER_POLL_MINUTES", "120"))
+SCHEDULER_ENABLED = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
+
 # CORS origins - comma-separated list
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 

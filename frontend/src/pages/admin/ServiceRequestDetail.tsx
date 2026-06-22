@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { formatDate, formatDateTime, getErrorMessage } from '../../lib/utils';
+import { formatDate, formatDateTime, getErrorMessage, toDateTimeLocalInput, dateTimeLocalToUTC } from '../../lib/utils';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { Button, Breadcrumbs } from '../../components/ui';
 import { BrokerPicker, ClientPicker } from '../../components/ServiceRequestPickers';
@@ -40,6 +40,7 @@ export default function ServiceRequestDetail() {
 
   const [editStatus, setEditStatus] = useState<ServiceRequestStatus>('pending');
   const [editUrgent, setEditUrgent] = useState(false);
+  const [editDueAt, setEditDueAt] = useState('');
   const [editClientId, setEditClientId] = useState('');
   const [editBrokerIds, setEditBrokerIds] = useState<string[]>([]);
   const [editType, setEditType] = useState('');
@@ -57,6 +58,7 @@ export default function ServiceRequestDetail() {
   const populate = (r: ServiceRequest) => {
     setEditStatus(r.status);
     setEditUrgent(r.is_urgent);
+    setEditDueAt(toDateTimeLocalInput(r.due_at));
     setEditClientId(r.client_id);
     setEditBrokerIds((r.assigned_brokers ?? []).map((b) => b.id));
     setEditType(r.request_type);
@@ -94,6 +96,7 @@ export default function ServiceRequestDetail() {
       const { data } = await api.patch(`/service-requests/${id}`, {
         status: editStatus,
         is_urgent: editUrgent,
+        due_at: dateTimeLocalToUTC(editDueAt),
         client_id: editClientId || null,
         assigned_broker_ids: editBrokerIds,
         request_type: editType,
@@ -250,140 +253,121 @@ export default function ServiceRequestDetail() {
         { label: requestLabel(req) },
       ]} />
 
-      {editing ? (
-        /* ── Edit form ── */
-        <div className="space-y-5 pb-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Status</label>
-              <select
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as ServiceRequestStatus)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                {(Object.keys(STATUS_LABEL) as ServiceRequestStatus[]).map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Assigned brokers</label>
-              <BrokerPicker variant="field" brokers={brokers} selected={editBrokerIds} onChange={setEditBrokerIds} />
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={editUrgent}
-              onChange={(e) => setEditUrgent(e.target.checked)}
-              className="h-4 w-4 rounded border-border accent-red-500"
-            />
-            <span className="text-[14px] text-foreground">Mark as urgent</span>
-          </label>
-
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Client</label>
-            <ClientPicker
-              clients={clients}
-              value={editClientId}
-              onChange={setEditClientId}
-              fallbackLabel={req.client_name
-                ? `${req.client_name}${req.client_email ? ` (${req.client_email})` : ''}`
-                : undefined}
-            />
-          </div>
-
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Request type</label>
-            <select
-              value={editType}
-              onChange={(e) => setEditType(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {SERVICE_REQUEST_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-
-          {editType === 'Other' && (
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">Describe the request <span className="text-destructive">*</span></label>
-              <input
-                type="text"
-                value={editCustom}
-                onChange={(e) => setEditCustom(e.target.value)}
-                placeholder="Briefly describe what is needed..."
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Additional details <span className="text-muted-foreground font-normal">(optional)</span></label>
-            <textarea
-              value={editDesc}
-              onChange={(e) => setEditDesc(e.target.value)}
-              rows={3}
-              placeholder="Any additional context..."
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-            />
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</Button>
-            <Button variant="secondary" onClick={() => { setEditing(false); populate(req); }}>Cancel</Button>
-          </div>
-        </div>
-      ) : (
-        /* ── View mode ── */
+      {(
+        /* ── In-place editable detail ── */
         <div className="space-y-6 pb-6">
           {/* Title row */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className={`text-[22px] font-bold text-foreground leading-snug ${isDone ? 'line-through text-muted-foreground' : ''}`}>
-                  {requestLabel(req)}
-                </h1>
-                {req.request_type === 'Other' && req.custom_request && (
-                  <span className="text-[13px] text-muted-foreground">({req.request_type})</span>
-                )}
-                {req.is_urgent && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-600">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Urgent
-                  </span>
-                )}
-              </div>
-              {req.description && (
-                <p className="mt-1.5 text-[14px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{req.description}</p>
+              {editing ? (
+                <div className="space-y-2">
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[18px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    {SERVICE_REQUEST_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  {editType === 'Other' && (
+                    <input
+                      type="text"
+                      value={editCustom}
+                      onChange={(e) => setEditCustom(e.target.value)}
+                      placeholder="Briefly describe what is needed..."
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className={`text-[22px] font-bold text-foreground leading-snug ${isDone ? 'line-through text-muted-foreground' : ''}`}>
+                    {requestLabel(req)}
+                  </h1>
+                  {req.request_type === 'Other' && req.custom_request && (
+                    <span className="text-[13px] text-muted-foreground">({req.request_type})</span>
+                  )}
+                  {req.is_urgent && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-600">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Urgent
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {editing ? (
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  rows={3}
+                  placeholder="Additional details (optional)..."
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+              ) : (
+                req.description && (
+                  <p className="mt-1.5 text-[14px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{req.description}</p>
+                )
               )}
             </div>
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit</Button>
+
+            {editing ? (
+              <div className="flex gap-2 shrink-0">
+                <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+                <Button variant="secondary" size="sm" onClick={() => { setEditing(false); populate(req); }}>Cancel</Button>
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit</Button>
+            )}
           </div>
 
           {/* Meta grid */}
           <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-[13px] border-y border-border py-4">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Status</p>
-              <span className={`inline-flex text-[12px] font-medium px-2 py-0.5 rounded border ${STATUS_COLOR[req.status]}`}>
-                {STATUS_LABEL[req.status]}
-              </span>
+              {editing ? (
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as ServiceRequestStatus)}
+                  className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {(Object.keys(STATUS_LABEL) as ServiceRequestStatus[]).map((s) => (
+                    <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`inline-flex text-[12px] font-medium px-2 py-0.5 rounded border ${STATUS_COLOR[req.status]}`}>
+                  {STATUS_LABEL[req.status]}
+                </span>
+              )}
             </div>
 
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Assigned brokers</p>
-              <BrokerPicker
-                variant="inline"
-                brokers={brokers}
-                selected={(req.assigned_brokers ?? []).map((b) => b.id)}
-                onChange={assignBrokers}
-              />
+              {editing ? (
+                <BrokerPicker variant="field" brokers={brokers} selected={editBrokerIds} onChange={setEditBrokerIds} />
+              ) : (
+                <BrokerPicker
+                  variant="inline"
+                  brokers={brokers}
+                  selected={(req.assigned_brokers ?? []).map((b) => b.id)}
+                  onChange={assignBrokers}
+                />
+              )}
             </div>
 
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Client</p>
-              {req.client_name ? (
+              {editing ? (
+                <ClientPicker
+                  clients={clients}
+                  value={editClientId}
+                  onChange={setEditClientId}
+                  fallbackLabel={req.client_name
+                    ? `${req.client_name}${req.client_email ? ` (${req.client_email})` : ''}`
+                    : undefined}
+                />
+              ) : req.client_name ? (
                 <div>
                   <span className="text-foreground font-medium">{req.client_name}</span>
                   {req.client_email && <span className="text-muted-foreground"> · {req.client_email}</span>}
@@ -397,19 +381,49 @@ export default function ServiceRequestDetail() {
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Created</p>
               <span className="text-foreground font-medium">{formatDate(req.created_at)}</span>
             </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Due</p>
+              {editing ? (
+                <input
+                  type="datetime-local"
+                  value={editDueAt}
+                  onChange={(e) => setEditDueAt(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              ) : req.due_at ? (
+                <span className={`font-medium ${!isDone && new Date(req.due_at) < new Date() ? 'text-red-600' : 'text-foreground'}`}>
+                  {formatDateTime(req.due_at)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground italic">No due date</span>
+              )}
+            </div>
           </div>
 
-          {/* Quick status action */}
-          <div className="flex items-center gap-2">
-            {isDone ? (
-              <Button variant="secondary" size="sm" onClick={() => changeStatus('in_progress')}>Reopen request</Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={() => changeStatus('resolved')}>Mark resolved</Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={toggleUrgent}>
-              {req.is_urgent ? 'Clear urgent' : 'Mark urgent'}
-            </Button>
-          </div>
+          {/* Urgent toggle (edit) / quick status actions (view) */}
+          {editing ? (
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={editUrgent}
+                onChange={(e) => setEditUrgent(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-red-500"
+              />
+              <span className="text-[14px] text-foreground">Mark as urgent</span>
+            </label>
+          ) : (
+            <div className="flex items-center gap-2">
+              {isDone ? (
+                <Button variant="secondary" size="sm" onClick={() => changeStatus('in_progress')}>Reopen request</Button>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={() => changeStatus('resolved')}>Mark resolved</Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={toggleUrgent}>
+                {req.is_urgent ? 'Clear urgent' : 'Mark urgent'}
+              </Button>
+            </div>
+          )}
 
           {/* Checklist */}
           <div>

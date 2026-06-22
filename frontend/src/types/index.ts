@@ -724,6 +724,7 @@ export interface QuoteInputParameters {
   fees_financed: boolean;              // true = fees added to loan amount, false = charged separately
   selected_terms?: number[];           // e.g. [5, 4, 3] — which terms to show client
   show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
+  show_total_interest?: boolean;       // show total interest to client (default: visible)
   repayment_range?: number;            // show client a ±$ range instead of exact repayment
 }
 
@@ -895,6 +896,7 @@ export interface ServiceRequest {
   description: string | null;
   status: ServiceRequestStatus;
   is_urgent: boolean;
+  due_at: string | null;
   client_id: string;
   client_name: string | null;
   client_email: string | null;
