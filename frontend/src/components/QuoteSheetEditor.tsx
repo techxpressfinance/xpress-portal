@@ -50,6 +50,9 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   selected_terms: [...TERMS],
   show_interest_rate: false,
   show_total_interest: true,
+  show_preferred_option: false,
+  preferred_term: 5,
+  preferred_balloon: false,
 };
 
 // ── PMT — Excel-compatible (supports type=0 arrears & type=1 advance) ─
@@ -929,6 +932,57 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <span className="text-[10px] text-muted-foreground">Controls total interest visibility on client quote.</span>
               </div>
             </div>
+          </div>
+
+          {/* ── Preferred option ──────────────────────────────── */}
+          <div className="mt-6 pt-5 border-t border-border/60">
+            <div className="flex items-center gap-3 mb-3">
+              <button
+                type="button"
+                onClick={() => updateInput('show_preferred_option', !inputs.show_preferred_option)}
+                className={`h-8 px-3 rounded-lg text-[12px] font-semibold transition-colors border whitespace-nowrap ${inputs.show_preferred_option
+                  ? 'bg-primary/10 text-primary border-primary/20'
+                  : 'bg-muted text-muted-foreground border-border/40'
+                }`}
+              >
+                {inputs.show_preferred_option ? 'Preferred option: shown' : 'Preferred option: hidden'}
+              </button>
+              <span className="text-[10px] text-muted-foreground">Adds a highlighted “Recommended for you” callout to the client quote.</span>
+            </div>
+            {inputs.show_preferred_option && (
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className={`${labelBase} mb-1.5`}>Preferred term</label>
+                  <select
+                    value={inputs.preferred_term ?? (inputs.selected_terms ?? TERMS)[0]}
+                    onChange={e => updateInput('preferred_term', Number(e.target.value))}
+                    className={`${fieldBase} px-3`}
+                  >
+                    {TERMS.filter(t => (inputs.selected_terms ?? TERMS).includes(t)).map(t => (
+                      <option key={t} value={t}>{t} Year</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={`${labelBase} mb-1.5`}>Balloon</label>
+                  <div className="flex gap-2">
+                    {([['No Balloon', false], ['With Balloon', true]] as [string, boolean][]).map(([lbl, val]) => (
+                      <button
+                        key={String(val)}
+                        type="button"
+                        onClick={() => updateInput('preferred_balloon', val)}
+                        className={`h-8 px-4 rounded-lg text-[12px] font-semibold transition-colors border ${(inputs.preferred_balloon ?? false) === val
+                          ? 'bg-primary/10 text-primary border-primary/20'
+                          : 'bg-muted text-muted-foreground border-border/40'
+                        }`}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

@@ -91,7 +91,9 @@ export default function ReviewApplication() {
     await new Promise(r => setTimeout(r, 100));
     try {
       const suffix = clientFacing ? 'client' : 'internal';
-      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}-${suffix}.pdf`, [10, 0, 10, 0]);
+      // Top margin 0 so the dark hero bleeds to the page's top edge; 10mm bottom
+      // keeps multi-page breathing room.
+      await downloadQuoteSheetPdf(`quote-sheet-pdf-${sheet.id}`, `quote-sheet-v${sheet.version}-${suffix}.pdf`, [0, 0, 10, 0]);
     } catch (err) {
       console.error('Failed to generate PDF', err);
     } finally {

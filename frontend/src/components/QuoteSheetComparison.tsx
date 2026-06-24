@@ -210,6 +210,9 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
       showTotalInterest: (params.show_total_interest as boolean | undefined) ?? true,
       repaymentRange: (params.repayment_range as number | undefined) ?? null,
+      showPreferredOption: (params.show_preferred_option as boolean | undefined) ?? false,
+      preferredTerm: (params.preferred_term as number | undefined) ?? null,
+      preferredBalloon: (params.preferred_balloon as boolean | undefined) ?? false,
     };
   } catch {
     return null;
@@ -238,6 +241,9 @@ export default function QuoteSheetComparison({
   const paymentType = parsedParams?.paymentType ?? 'advance';
   const showInterestRate = parsedParams?.showInterestRate ?? false;
   const showTotalInterest = parsedParams?.showTotalInterest ?? true;
+  const showPreferredOption = parsedParams?.showPreferredOption ?? false;
+  const preferredTerm = parsedParams?.preferredTerm ?? null;
+  const preferredBalloon = parsedParams?.preferredBalloon ?? false;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -260,7 +266,12 @@ export default function QuoteSheetComparison({
     const hairlineLight = '#e5e7eb';
     const paper = '#ffffff';
     const subtleBg = '#f8f9fa';
+    const gold = '#c8962e';      // brand gold
+    const navy = '#0d1f3c';      // brand navy
     const sans = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    // Instrument Serif (loaded app-wide via index.html) stands in for the
+    // approved design's Spectral; Georgia is the html2canvas-safe fallback.
+    const serif = "'Instrument Serif', Georgia, 'Times New Roman', serif";
 
     const first = options[0];
     const clientLoanAmt0 = (first.purchase_price ?? 0) - (first.deposit ?? 0)
@@ -273,7 +284,20 @@ export default function QuoteSheetComparison({
     const rate = (opt: QuoteOption) => opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
 
     // Recommended column: use is_recommended flag if set on any option
+    // Preferred option (broker-selected term + balloon choice). Only surfaced
+    // when the toggle is on and the chosen term is among the shown terms.
+    const preferredGroup = showPreferredOption && preferredTerm != null
+      ? termGroups.find(g => g.termYears === preferredTerm) ?? null
+      : null;
+    const preferredOpt: QuoteOption | null = preferredGroup
+      ? (preferredBalloon
+          ? (preferredGroup.withBalloon ?? preferredGroup.noBalloon)
+          : (preferredGroup.noBalloon ?? preferredGroup.withBalloon))
+      : null;
+
+    // The preferred term takes precedence over any is_recommended flag.
     const recommendedYears: number | null = (() => {
+      if (preferredGroup) return preferredGroup.termYears;
       for (const g of termGroups) {
         if (prim(g).is_recommended) return g.termYears;
       }
@@ -306,7 +330,17 @@ export default function QuoteSheetComparison({
       return { lo: fmt(lo), hi: fmt(hi) };
     };
 
-    const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    // Long-form date for the hero ("23 June 2026")
+    const quoteDate = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+    // Hero summary strip cells (CLIENT shown only when a recipient name exists)
+    const summaryCells: { label: string; value: string; gold?: boolean; wide?: boolean }[] = [
+      ...(clientName ? [{ label: 'Client', value: clientName, wide: true }] : []),
+      { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—', wide: true },
+      { label: 'Drive-away price', value: fmtCurrency(first.purchase_price) },
+      { label: 'Deposit', value: fmtCurrency(first.deposit) },
+      { label: 'Amount financed', value: fmtCurrency(isClientView ? clientLoanAmt0 : first.loan_amount), gold: true },
+      { label: 'Scenarios', value: `${options.length} Option${options.length !== 1 ? 's' : ''} · AUD` },
+    ];
 
     // Shared table cell styles
     const lbl: CSSProperties = {
@@ -373,112 +407,180 @@ export default function QuoteSheetComparison({
         boxSizing: 'border-box',
       }}>
 
-        {/* ── HEADER ──────────────────────────────────────────── */}
-        <header style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          paddingBottom: '16px',
-          borderBottom: `1px solid ${hairline}`,
-          marginBottom: '28px',
-        }}>
-          {/* Logo cropped to its centre: the SVG carries whitespace around the mark,
-              so we render it oversized inside a fixed window and clip the margins.
-              Zoom = image height ÷ window height; widen/narrow the window to show
-              more/less of the centre horizontally. */}
-          <div style={{ height: '64px', width: '180px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '-16px' }}>
-            <img src="/xpress-light.svg" alt="Xpress Finance" style={{ height: '110px', width: 'auto', maxWidth: 'none', objectFit: 'contain' }} />
-          </div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'auto auto',
-            columnGap: '16px',
-            rowGap: '2px',
-            fontSize: '10px',
-            color: muted,
-            textAlign: 'right',
-          }}>
-            {applicationRef && <>
-              <span style={{ fontWeight: 500 }}>Reference</span>
-              <span style={{ color: ink }}>{applicationRef}</span>
-            </>}
-            <span style={{ fontWeight: 500 }}>Date</span>
-            <span style={{ color: ink }}>{today}</span>
-          </div>
-        </header>
+        {/* ── HERO ──────────────────────────────────────────────
+            Full-bleed banner (approved design): a navy brand strip over a
+            white title block. Negative margins cancel the page's 12px top /
+            56px side padding so both bands reach the paper edges; inner
+            padding re-aligns content to the body's 56px column. */}
+        <div style={{ margin: '-12px -56px 22px' }}>
 
-        {/* ── TITLE BLOCK ─────────────────────────────────────── */}
-        <div style={{
-          marginBottom: '24px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          gap: '24px',
-        }}>
-          <div>
-            <div style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: muted,
-              marginBottom: '6px',
-            }}>
-              Indicative Finance Quote{assetDescription !== 'Asset' ? ` — ${assetDescription}` : ''}
+          {/* Navy brand strip — a subtle light dot grid (repeated inline-SVG) over
+              the navy. SVG data URIs are used (not CSS gradients) because html2canvas
+              renders them reliably. */}
+          <div style={{
+            backgroundColor: navy,
+            backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='2' cy='2' r='1.1' fill='%23ffffff' fill-opacity='0.14'/%3E%3C/svg%3E\")",
+            backgroundRepeat: 'repeat',
+            backgroundSize: '16px 16px',
+            padding: '26px 56px 30px',
+            color: '#ffffff',
+          }}>
+
+            {/* micro meta row — client / ref, divided by a thin gold rule */}
+            {(clientName || applicationRef) && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                paddingBottom: '16px', borderBottom: '1px solid rgba(200,150,46,0.32)',
+              }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.26em', textTransform: 'uppercase', color: gold, fontFamily: sans }}>
+                  {clientName ? `Prepared For · ${clientName}` : ''}
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', fontFamily: sans }}>
+                  {applicationRef ? `Ref · ${applicationRef}` : ''}
+                </span>
+              </div>
+            )}
+
+            {/* main brand row — wordmark (left) / quote date (right) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '32px', marginTop: (clientName || applicationRef) ? '24px' : 0 }}>
+
+              {/* wordmark: gold bar + company / tagline */}
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: '16px' }}>
+                <div style={{ width: '4px', background: gold, borderRadius: '2px', flex: 'none' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '32px', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#ffffff', lineHeight: 0.95, fontFamily: sans }}>
+                    Xpress Finance
+                  </div>
+                  <div style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.3em', textTransform: 'uppercase', color: gold, fontFamily: sans }}>
+                    Powering Ambition · Funding Growth
+                  </div>
+                </div>
+              </div>
+
+              {/* quote date */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', textAlign: 'right', flex: 'none', paddingTop: '2px' }}>
+                <span style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.22em', textTransform: 'uppercase', color: gold, fontFamily: sans }}>
+                  Quote Date
+                </span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#ffffff', fontFamily: serif }}>
+                  {quoteDate}
+                </span>
+              </div>
             </div>
-            <h1 style={{
-              fontFamily: sans,
-              fontWeight: 700,
-              fontSize: '22px',
-              lineHeight: 1.2,
-              margin: 0,
-              color: ink,
-              letterSpacing: '-0.01em',
-            }}>
-              Finance Quote
+
+            {/* abn line */}
+            <div style={{ marginTop: '18px', fontSize: '9.5px', fontWeight: 500, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', fontFamily: sans }}>
+              ABN 616 500 599 39
+            </div>
+          </div>
+
+          {/* White title block — eyebrow / serif title / asset line */}
+          <div style={{ background: paper, padding: '22px 56px 20px', borderBottom: `2px solid ${navy}` }}>
+
+            {/* eyebrow: gold diamond + status label */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span style={{ width: '7px', height: '7px', background: gold, transform: 'rotate(45deg)', flex: 'none', display: 'inline-block' }} />
+              <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.28em', textTransform: 'uppercase', color: gold, fontFamily: sans }}>
+                Indicative Finance Quote
+              </span>
+            </div>
+
+            {/* title */}
+            <h1 style={{ margin: '8px 0 0', fontFamily: serif, fontWeight: 500, fontSize: '30px', lineHeight: 1.02, letterSpacing: '-0.01em', color: navy }}>
+              Finance Scenarios
             </h1>
-            {quoteSheet.title && (
-              <div style={{ fontSize: '12px', color: inkLight, marginTop: '4px', fontWeight: 500 }}>
-                {quoteSheet.title}
+
+            {/* asset line */}
+            {assetDescription !== 'Asset' && (
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e7e2d6', fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#7c7363', lineHeight: 1.7 }}>
+                {assetDescription}
               </div>
             )}
           </div>
-          {clientName && (
-            <div style={{ textAlign: 'right', fontSize: '10px', color: muted }}>
-              <div style={{ color: ink, fontWeight: 600, fontSize: '12px', marginBottom: '2px' }}>
-                {clientName}
-              </div>
-              Prepared for
-            </div>
-          )}
         </div>
 
-        {/* ── ASSET SUMMARY ───────────────────────────────────── */}
+        {/* ── SUMMARY STRIP ─────────────────────────────────────
+            Sits on white below the navy hero (v3 reference): muted
+            labels, ink values, amount-financed in brand blue. Lives in
+            the page's normal flow so it aligns with the body content. */}
         <div style={{
-          marginBottom: '24px',
-          padding: '14px 16px',
-          background: subtleBg,
-          border: `1px solid ${hairlineLight}`,
+          margin: '0 0 24px',
+          borderTop: `1px solid ${hairlineLight}`,
+          borderBottom: `1px solid ${hairlineLight}`,
+          padding: '14px 0',
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '8px',
+          gridTemplateColumns: summaryCells.map(c => (c.wide ? '1.3fr' : '1fr')).join(' '),
         }}>
-          {([
-            { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—' },
-            { label: 'Drive-away price', value: fmtCurrency(first.purchase_price) },
-            { label: 'Deposit', value: fmtCurrency(first.deposit) },
-            { label: 'Amount financed', value: isClientView ? fmtCurrency(clientLoanAmt0) : fmtCurrency(first.loan_amount) },
-          ] as { label: string; value: string }[]).map(({ label, value }) => (
-            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <span style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: muted }}>
-                {label}
-              </span>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: ink, fontVariantNumeric: 'tabular-nums' }}>
-                {value}
-              </span>
+          {summaryCells.map((c, i) => (
+            <div key={c.label} style={{
+              padding: i === 0 ? '0 16px 0 0' : '0 16px',
+              borderLeft: i === 0 ? 'none' : `1px solid ${hairlineLight}`,
+            }}>
+              {/* Reserve exactly two lines (fixed px, not em) for every label so
+                  single- and two-line labels keep their values on one baseline. */}
+              <div style={{ fontSize: '8.5px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, lineHeight: '11px', height: '22px' }}>
+                {c.label}
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: c.gold ? '#2a5d9e' : ink, marginTop: '4px', lineHeight: 1.25, fontVariantNumeric: 'tabular-nums' }}>
+                {c.value}
+              </div>
             </div>
           ))}
         </div>
+
+        {/* ── PREFERRED OPTION CALLOUT ────────────────────────── */}
+        {preferredOpt && preferredGroup && (() => {
+          const o = preferredOpt;
+          const balloonAmt = o.balloon_residual ?? 0;
+          const m = o.lender_name.match(/(\d+)%\s*Balloon/i);
+          const balloonLabel = balloonAmt > 0 ? (m ? `${m[1]}% Balloon` : 'With Balloon') : 'No Balloon';
+          const amtFin = isClientView
+            ? (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0)
+            : o.loan_amount;
+          const rng = fmtRepaymentClient(o.repayment_monthly);
+          const monthly = rng ? `${rng.lo} – ${rng.hi}` : fmtCurrency(o.repayment_monthly);
+          const metrics: { label: string; value: string }[] = [
+            { label: 'Monthly Repayment', value: monthly },
+            { label: isClientView ? 'Amount Financed' : 'Principal Financed', value: fmtCurrency(amtFin) },
+            balloonAmt > 0
+              ? { label: `Balloon at Month ${o.loan_term_months ?? preferredGroup.termMonths}`, value: fmtCurrency(balloonAmt) }
+              : { label: 'Weekly Equivalent', value: fmtCurrency(o.repayment_weekly) },
+          ];
+          return (
+            <div className="break-inside-avoid" style={{
+              marginBottom: '20px',
+              background: navy,
+              borderRadius: '8px',
+              padding: '16px 18px',
+              color: '#ffffff',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <span style={{ width: '9px', height: '9px', background: gold, transform: 'rotate(45deg)', display: 'inline-block', flex: 'none' }} />
+                <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: gold, fontFamily: sans }}>
+                  Recommended For You
+                </span>
+              </div>
+              <div style={{ marginTop: '6px', fontSize: '18px', fontWeight: 700, fontFamily: serif, color: '#ffffff' }}>
+                {preferredGroup.termYears} Year Term · {balloonLabel}
+              </div>
+              <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                {metrics.map((mt, i) => (
+                  <div key={mt.label} style={{
+                    borderLeft: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.14)',
+                    paddingLeft: i === 0 ? 0 : '16px',
+                  }}>
+                    <div style={{ fontSize: '8.5px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>
+                      {mt.label}
+                    </div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '4px', color: i === 0 ? gold : '#ffffff', fontVariantNumeric: 'tabular-nums' }}>
+                      {mt.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── COMPARISON MATRIX ───────────────────────────────── */}
         <div style={{ marginBottom: '8px' }}>
@@ -510,10 +612,12 @@ export default function QuoteSheetComparison({
               gap: '14px',
               alignItems: 'start',
               // Spacing is split: margin (collapses at a page top) plus padding (does
-              // not). The padding keeps the card's top border off the page-slice line
-              // when a row is pushed to the next page, so the border isn't clipped.
-              marginTop: ri > 0 ? '8px' : 0,
-              paddingTop: '6px',
+              // not). The padding is the ONLY gap that survives the page slice, so it
+              // doubles as the breathing room above a row pushed to the next page —
+              // keep it generous so page 2+ doesn't start flush against the top edge.
+              // Margin handles the extra mid-page separation between rows.
+              marginTop: ri > 0 ? '4px' : 0,
+              paddingTop: '18px',
             }}
           >
           {row.map(g => {
@@ -580,16 +684,16 @@ export default function QuoteSheetComparison({
                   justifyContent: 'space-between',
                   alignItems: 'baseline',
                   padding: '9px 10px',
-                  borderBottom: `2px solid ${ink}`,
+                  background: navy,
                 }}>
-                  <span style={{ fontFamily: sans, fontWeight: 700, fontSize: '12px', color: ink }}>
+                  <span style={{ fontFamily: sans, fontWeight: 700, fontSize: '12px', color: '#ffffff' }}>
                     {g.termYears} Year Term
-                    <span style={{ fontSize: '9px', color: muted, fontWeight: 400, marginLeft: '6px' }}>
+                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', fontWeight: 400, marginLeft: '6px' }}>
                       {g.termMonths} months
                     </span>
                   </span>
                   {recommended && (
-                    <span style={{ fontSize: '8px', color: ink, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: '8px', color: gold, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                       Recommended
                     </span>
                   )}
@@ -657,7 +761,7 @@ export default function QuoteSheetComparison({
 
         {/* ── BREAKDOWN STRIP ─────────────────────────────────── */}
         <div className="break-inside-avoid" style={{
-          marginTop: '20px',
+          marginTop: '16px',
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '16px',
@@ -701,7 +805,7 @@ export default function QuoteSheetComparison({
 
         {/* ── NON-FINANCED FEES ───────────────────────────────── */}
         {!feesFinanced && parsedParams && (
-          <div style={{ marginTop: '20px' }} className="break-inside-avoid">
+          <div style={{ marginTop: '16px' }} className="break-inside-avoid">
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -742,7 +846,7 @@ export default function QuoteSheetComparison({
 
         {/* ── FEE & RATE SUMMARY — broker internal ────────────── */}
         {parsedParams && !isClientView && (
-          <div style={{ marginTop: '20px' }} className="break-inside-avoid">
+          <div style={{ marginTop: '16px' }} className="break-inside-avoid">
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -791,46 +895,98 @@ export default function QuoteSheetComparison({
 
         {/* ── WHY CHOOSE XPRESS ───────────────────────────────── */}
         <div className="break-inside-avoid" style={{
-          marginTop: '28px',
-          padding: '16px 18px',
+          marginTop: '18px',
+          padding: '13px 18px',
           background: subtleBg,
           border: `1px solid ${hairlineLight}`,
           borderRadius: '8px',
         }}>
-          <h3 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: '0 0 10px', color: ink }}>
-            Why choose Xpress Finance
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '10.5px', lineHeight: 1.5, color: inkLight }}>
-            <p style={{ margin: 0 }}>
-              We don't just arrange your finance; we manage it end-to-end for the life of the loan, so you're always supported.
-            </p>
-            <p style={{ margin: 0 }}>
-              One point of contact for everything from admin to payouts. No chasing banks, no stress, just seamless execution.
-            </p>
-            <p style={{ margin: 0 }}>
-              Come tax time, we've got you covered! Fast, simple, and on demand.
-            </p>
-            <p style={{ margin: 0, fontWeight: 600, color: ink }}>
-              We take on a limited number of clients to maintain this level of service — act now and secure your spot.
-            </p>
+          {/* Header: gold dot + navy title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+            <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: gold, flex: 'none', display: 'inline-block' }} />
+            <h3 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: 0, color: navy }}>
+              Why Choose Xpress Finance
+            </h3>
           </div>
+          <div style={{ borderTop: `1px solid ${hairlineLight}`, margin: '9px 0 11px' }} />
+
+          {/* Two-column benefit grid: gold diamond + bold lead + detail */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '28px', rowGap: '9px' }}>
+            {([
+              ['End-to-end management', 'we manage your finance from application to payout, so you never have to chase the bank.'],
+              ['One point of contact', 'no juggling multiple people. One call, one team, full accountability.'],
+              ['Tax-time ready', 'fast, simple documentation on demand. No surprises at EOFY.'],
+              ['Limited client capacity', 'we take on a selective number of clients to maintain this standard of service.'],
+            ] as [string, string][]).map(([lead, rest]) => (
+              <div key={lead} style={{ display: 'flex', gap: '8px', fontSize: '10.5px', lineHeight: 1.5, color: inkLight }}>
+                <span style={{ color: gold, fontWeight: 700, flex: 'none' }}>✦</span>
+                <span><strong style={{ color: ink, fontWeight: 700 }}>{lead}</strong> — {rest}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ borderTop: `1px solid ${hairlineLight}`, margin: '11px 0 10px' }} />
+
+          {/* CTA */}
+          <p style={{ margin: 0, fontStyle: 'italic', fontWeight: 600, fontSize: '10.5px', color: ink }}>
+            Act now and secure your spot — limited availability. enquiries@xpressfinance.com.au
+          </p>
         </div>
 
-        {/* ── FOOTER ──────────────────────────────────────────── */}
-        <footer className="break-inside-avoid" style={{
-          marginTop: '32px',
-          paddingTop: '12px',
-          borderTop: `1px solid ${hairline}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          fontSize: '9px',
-          color: muted,
-          lineHeight: 1.5,
+        {/* ── CONTACT STRIP ───────────────────────────────────── */}
+        <div className="break-inside-avoid" style={{
+          marginTop: '14px',
+          display: 'grid',
+          gridTemplateColumns: '1.6fr 1fr 1.4fr',
+          border: `1px solid ${hairlineLight}`,
+          borderRadius: '8px',
+          overflow: 'hidden',
         }}>
-          <p style={{ margin: 0, maxWidth: '52ch' }}>
-            This quote is indicative only and subject to full credit assessment and lender approval. Rates and fees may vary. Xpress Finance Group · ACL 000000 · 727 Collins St, Docklands VIC 3008 · (03) 8456 7996.
-          </p>
+          {([
+            ['Office', 'Tower 4, Level 17, 727 Collins St, Docklands VIC 3008'],
+            ['Phone', '(03) 8456 7996'],
+            ['Email', 'enquiries@xpressfinance.com.au'],
+          ] as [string, string][]).map(([label, value], i) => (
+            <div key={label} style={{ padding: '12px 16px', borderLeft: i === 0 ? 'none' : `1px solid ${hairlineLight}` }}>
+              <div style={{ fontSize: '8.5px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: gold }}>{label}</div>
+              <div style={{ fontSize: '10px', color: ink, marginTop: '4px', lineHeight: 1.4 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── FOOTER ──────────────────────────────────────────────
+            Full-bleed navy band: negative side/bottom margins cancel the
+            page's 56px side / 26px bottom padding so it reaches the edges. */}
+        <footer className="break-inside-avoid" style={{
+          margin: '14px -56px -26px',
+          background: navy,
+          color: 'rgba(255,255,255,0.6)',
+          padding: '20px 56px 22px',
+          fontFamily: sans,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '36px' }}>
+            <p style={{ margin: 0, maxWidth: '60ch', fontSize: '8px', lineHeight: 1.6 }}>
+              This quote is indicative only and subject to full credit assessment and lender approval. Rates, fees and charges may vary based on individual circumstances and final lender approval. This document does not constitute a credit contract or formal offer of finance. Always consider whether this product is appropriate for your financial situation.
+            </p>
+            <div style={{ textAlign: 'right', flex: 'none' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: '#ffffff' }}>Xpress Finance Pty Ltd</div>
+              <div style={{ fontSize: '8px', marginTop: '4px' }}>ABN 616 500 599 39 · ACN 650 059 939</div>
+              <div style={{ fontSize: '8px', marginTop: '2px' }}>Australian Credit Licence 389328</div>
+            </div>
+          </div>
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            marginTop: '16px',
+            paddingTop: '12px',
+            textAlign: 'center',
+            fontSize: '8px',
+            fontWeight: 600,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: gold,
+          }}>
+            Xpress Finance Pty Ltd · Xpressfinance.com.au · Powering Ambition, Funding Growth
+          </div>
         </footer>
 
       </div>

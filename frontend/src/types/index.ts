@@ -726,6 +726,9 @@ export interface QuoteInputParameters {
   show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
   show_total_interest?: boolean;       // show total interest to client (default: visible)
   repayment_range?: number;            // show client a ±$ range instead of exact repayment
+  show_preferred_option?: boolean;     // show a highlighted "recommended for you" callout
+  preferred_term?: number;             // term (years) of the preferred option, e.g. 5
+  preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
 }
 
 export interface QuoteSheet {
