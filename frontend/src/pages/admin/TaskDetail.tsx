@@ -262,18 +262,21 @@ export default function TaskDetail() {
         )}
       </div>
 
-      <form onSubmit={handleAddItem} className="flex gap-2">
-        <Input
-          type="text"
-          value={newItemTitle}
-          onChange={(e) => setNewItemTitle(e.target.value)}
-          placeholder="Add an item..."
-          className="flex-1"
-        />
-        <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
-          {addingItem ? '...' : 'Add'}
-        </Button>
-      </form>
+      {/* Adding items is only available in edit mode; view mode allows toggling. */}
+      {editing && (
+        <form onSubmit={handleAddItem} className="flex gap-2">
+          <Input
+            type="text"
+            value={newItemTitle}
+            onChange={(e) => setNewItemTitle(e.target.value)}
+            placeholder="Add an item..."
+            className="flex-1"
+          />
+          <Button type="submit" variant="secondary" size="sm" disabled={addingItem || !newItemTitle.trim()}>
+            {addingItem ? '...' : 'Add'}
+          </Button>
+        </form>
+      )}
     </div>
   );
 

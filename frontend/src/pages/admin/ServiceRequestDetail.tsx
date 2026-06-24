@@ -480,17 +480,20 @@ export default function ServiceRequestDetail() {
               )}
             </div>
 
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newChecklistItem}
-                onChange={(e) => setNewChecklistItem(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addChecklistItem(); } }}
-                placeholder="Add an item..."
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <Button variant="secondary" size="sm" onClick={addChecklistItem} loading={addingChecklistItem} disabled={!newChecklistItem.trim()}>Add</Button>
-            </div>
+            {/* Adding items is only available in edit mode; view mode allows toggling. */}
+            {editing && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newChecklistItem}
+                  onChange={(e) => setNewChecklistItem(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addChecklistItem(); } }}
+                  placeholder="Add an item..."
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <Button variant="secondary" size="sm" onClick={addChecklistItem} loading={addingChecklistItem} disabled={!newChecklistItem.trim()}>Add</Button>
+              </div>
+            )}
           </div>
 
           {/* Broker notes */}
