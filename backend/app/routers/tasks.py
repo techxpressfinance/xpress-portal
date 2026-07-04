@@ -21,10 +21,22 @@ from app.schemas.task import (
     TaskOut,
     TaskUpdate,
 )
+from app.config import FRONTEND_URL
 from app.services.activity_log import log_activity
+from app.services.email import send_assignment_notification
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+def _email_task_assignment(task: Task, assignee: User, assigner: User) -> None:
+    """Email a broker who was newly assigned to a task. The assigner performed the
+    action in the UI and doesn't need a confirmation, and self-assignment is silent."""
+    if not assignee.email or assignee.id == assigner.id:
+        return
+    item_label = f"task: {task.title}"
+    link = f"{FRONTEND_URL}/admin/tasks/{task.id}"
+    send_assignment_notification(assignee.email, assignee.full_name, False, item_label, assigner.full_name, link)
 
 
 def _task_to_out(task: Task) -> dict:
@@ -199,8 +211,9 @@ def create_task(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid priority: {data.priority}")
 
+    assignee: Optional[User] = None
     if data.assigned_to_id:
-        _validate_assignee(db, data.assigned_to_id, tenant_id)
+        assignee = _validate_assignee(db, data.assigned_to_id, tenant_id)
 
     if data.application_id:
         _validate_application(db, data.application_id, tenant_id)
@@ -232,6 +245,9 @@ def create_task(
 
     log_activity(db, current_user.id, "task_created", "task", task.id, {"title": task.title}, tenant_id=tenant_id)
     db.commit()
+
+    if assignee:
+        _email_task_assignment(task, assignee, current_user)
 
     task = _get_task(db, task.id, tenant_id)
     return _task_to_out(task)
@@ -288,9 +304,13 @@ def update_task(
         task.due_date = data.due_date
         changes["due_date"] = str(data.due_date)
 
+    new_assignee: Optional[User] = None
     if data.assigned_to_id is not None:
         if data.assigned_to_id:
-            _validate_assignee(db, data.assigned_to_id, tenant_id)
+            validated = _validate_assignee(db, data.assigned_to_id, tenant_id)
+            # Only notify when the assignee actually changes to a new broker.
+            if data.assigned_to_id != task.assigned_to_id:
+                new_assignee = validated
         task.assigned_to_id = data.assigned_to_id or None
         changes["assigned_to_id"] = data.assigned_to_id
 
@@ -302,6 +322,9 @@ def update_task(
 
     log_activity(db, current_user.id, "task_updated", "task", task.id, changes, tenant_id=tenant_id)
     db.commit()
+
+    if new_assignee:
+        _email_task_assignment(task, new_assignee, current_user)
 
     task = _get_task(db, task_id, tenant_id)
     return _task_to_out(task)

@@ -187,6 +187,13 @@ def download_all_documents(
             zf.writestr(name, contents)
     zip_buffer.seek(0)
 
+    # Bulk export of an applicant's entire document set — must leave an audit trail
+    log_activity(
+        db, current_user.id, "documents_downloaded_all", "application", application_id,
+        {"document_count": len(docs)}, tenant_id=tenant_id,
+    )
+    db.commit()
+
     first_name = application.applicant_first_name or ""
     last_name = application.applicant_last_name or ""
     applicant = f"{first_name} {last_name}".strip() or application.id[:8]

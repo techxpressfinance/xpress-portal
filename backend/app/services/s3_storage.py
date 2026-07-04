@@ -32,6 +32,7 @@ def upload_file(contents: bytes, stored_name: str) -> str:
             Bucket=S3_BUCKET_NAME,
             Key=key,
             Body=contents,
+            ServerSideEncryption="AES256",
         )
         logger.info("Uploaded %s to S3 bucket %s", key, S3_BUCKET_NAME)
         return key

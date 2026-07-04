@@ -12,6 +12,7 @@ S3_BUCKET="${S3_BACKUP_BUCKET:-}"
 KEEP_LOCAL_DAYS=7
 
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 
 # PostgreSQL backup using pg_dump (runs as postgres user)
 sudo -u postgres pg_dump --format=custom --compress=6 xpresstech > "$BACKUP_FILE"
@@ -21,7 +22,7 @@ echo "$(date) — Backup created: ${BACKUP_FILE}.gz"
 
 # Upload to S3 if bucket is configured
 if [ -n "$S3_BUCKET" ]; then
-    aws s3 cp "${BACKUP_FILE}.gz" "s3://${S3_BUCKET}/backups/xpress/xpresstech_${TIMESTAMP}.sql.gz"
+    aws s3 cp "${BACKUP_FILE}.gz" "s3://${S3_BUCKET}/backups/xpress/xpresstech_${TIMESTAMP}.sql.gz" --sse AES256
     echo "$(date) — Uploaded to s3://${S3_BUCKET}"
 fi
 

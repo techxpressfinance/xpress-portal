@@ -35,3 +35,7 @@ dist/
 
 #ssh
 login-ssh.pem
+
+kickbacks.vsix
+# curl session artifacts
+cookies.txt

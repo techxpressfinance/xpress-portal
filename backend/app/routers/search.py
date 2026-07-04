@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
@@ -10,11 +11,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
-from app.models.contact import Contact, Organization
+from app.models.contact import Organization
 from app.models.document import Document
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.services.query_utils import active_user_clauses, escape_like
+from app.services.search_cache import get_searchable_applications, get_searchable_contacts
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -23,9 +25,8 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 # Python, so over-fetch to avoid recency cutting off the best match).
 CANDIDATE_MULTIPLIER = 3
 
-# Cap for the in-Python contact scan (contact names/phones are encrypted at
-# rest, so they cannot be matched with SQL LIKE — same pattern as contacts.py).
-CONTACT_SCAN_CAP = 1000
+# Recency-tiebreak fallback for rows with no created_at
+_EPOCH = datetime.min
 
 
 def _tokenize(q: str) -> list[str]:
@@ -92,83 +93,70 @@ def global_search(
 
     broker_app_ids = None
     if current_user.role == UserRole.broker:
-        broker_app_ids = db.query(ApplicationBroker.application_id).filter(
-            ApplicationBroker.broker_id == current_user.id
-        )
+        broker_app_ids = {
+            row[0]
+            for row in db.query(ApplicationBroker.application_id)
+            .filter(ApplicationBroker.broker_id == current_user.id)
+            .all()
+        }
 
     # ── Applications ───────────────────────────────────────
-    app_query = db.query(LoanApplication).join(User, LoanApplication.user_id == User.id).filter(
-        LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)
-    )
+    # Applicant name/email/mobile are encrypted at rest, so SQL LIKE can't see
+    # them. Score decrypted values from the in-process search cache instead:
+    # one (id, updated_at) sweep per query, decryption only for changed rows.
+    app_fields = get_searchable_applications(db, tenant_id)
     if broker_app_ids is not None:
-        app_query = app_query.filter(LoanApplication.id.in_(broker_app_ids))
+        app_fields = {aid: f for aid, f in app_fields.items() if aid in broker_app_ids}
 
-    app_query = app_query.filter(
-        _token_filter(
-            tokens,
-            [
-                User.full_name,
-                User.email,
-                LoanApplication.business_name,
-                LoanApplication.trading_name,
-                LoanApplication.lend_ref,
-                LoanApplication.loan_type,
-                LoanApplication.id,
-                LoanApplication.notes,
-                LoanApplication.status,
-                LoanApplication.applicant_state,
-                LoanApplication.applicant_email,
-                LoanApplication.applicant_mobile,
-            ],
-        )
-    )
-
-    apps = app_query.order_by(LoanApplication.created_at.desc()).limit(candidate_limit).all()
-
-    # Batch-load user info for matched applications
-    user_ids = {a.user_id for a in apps}
-    users_map = {}
+    # Batch-load owner name/email for scoring and results
+    users_map: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    user_ids = {f["user_id"] for f in app_fields.values()}
     if user_ids:
-        for u in db.query(User).filter(User.id.in_(user_ids)).all():
-            users_map[u.id] = u
+        for uid, uname, uemail in (
+            db.query(User.id, User.full_name, User.email).filter(User.id.in_(user_ids)).all()
+        ):
+            users_map[uid] = (uname, uemail)
 
     scored_apps = []
-    for a in apps:
-        u = users_map.get(a.user_id)
+    for f in app_fields.values():
+        uname, uemail = users_map.get(f["user_id"], (None, None))
         score = _score(
             tokens,
             [
-                (u.full_name if u else None, 10),
-                (u.email if u else None, 8),
-                (a.business_name, 10),
-                (a.trading_name, 8),
-                (a.lend_ref, 10),
-                (a.applicant_email, 6),
-                (a.applicant_mobile, 6),
-                (a.id, 5),
-                (_enum_str(a.status), 3),
-                (_enum_str(a.loan_type), 3),
-                (a.applicant_state, 2),
-                (a.notes, 1),
+                (uname, 10),
+                (uemail, 8),
+                (f["applicant_name"], 10),
+                (f["business_name"], 10),
+                (f["trading_name"], 8),
+                (f["lend_ref"], 10),
+                (f["applicant_email"], 6),
+                (f["applicant_mobile"], 6),
+                (f["id"], 5),
+                (f["status"], 3),
+                (f["loan_type"], 3),
+                (f["applicant_state"], 2),
+                (f["notes"], 1),
             ],
         )
-        scored_apps.append((score, a, u))
-    # Candidates arrive newest-first; stable sort keeps recency as tiebreak
+        if score > 0:
+            scored_apps.append((score, f, uname, uemail))
+    # Newest-first before the stable score sort keeps recency as tiebreak
+    scored_apps.sort(key=lambda t: t[1]["created_at"] or _EPOCH, reverse=True)
     scored_apps.sort(key=lambda t: -t[0])
 
     app_results = [
         {
-            "id": a.id,
-            "loan_type": _enum_str(a.loan_type),
-            "amount": float(a.amount),
-            "status": _enum_str(a.status),
-            "business_name": a.business_name,
-            "lend_ref": a.lend_ref,
-            "user_name": u.full_name if u else None,
-            "user_email": u.email if u else None,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "id": f["id"],
+            "loan_type": f["loan_type"],
+            "amount": f["amount"],
+            "status": f["status"],
+            "business_name": f["business_name"],
+            "lend_ref": f["lend_ref"],
+            "user_name": uname,
+            "user_email": uemail,
+            "created_at": f["created_at"].isoformat() if f["created_at"] else None,
         }
-        for _, a, u in scored_apps[:limit]
+        for _, f, uname, uemail in scored_apps[:limit]
     ]
 
     # ── Users ──────────────────────────────────────────────
@@ -222,41 +210,35 @@ def global_search(
     ]
 
     # ── Contacts ───────────────────────────────────────────
-    # Names/phones are encrypted at rest, so SQL LIKE can't see them; scan a
-    # capped window of recent contacts and match decrypted values in Python.
-    contacts = (
-        db.query(Contact)
-        .filter(Contact.tenant_id == tenant_id)
-        .order_by(Contact.created_at.desc())
-        .limit(CONTACT_SCAN_CAP)
-        .all()
-    )
+    # Names/phones are encrypted at rest, so SQL LIKE can't see them; score
+    # decrypted values from the in-process search cache (same as applications).
+    contact_fields = get_searchable_contacts(db, tenant_id)
     scored_contacts = []
-    for c in contacts:
-        full_name = " ".join(p for p in [c.first_name, c.middle_name, c.last_name] if p)
+    for f in contact_fields.values():
         score = _score(
             tokens,
             [
-                (full_name, 10),
-                (c.email, 8),
-                (c.phone, 6),
-                (c.suburb, 2),
-                (c.state, 2),
+                (f["full_name"], 10),
+                (f["email"], 8),
+                (f["phone"], 6),
+                (f["suburb"], 2),
+                (f["state"], 2),
             ],
         )
         if score > 0:
-            scored_contacts.append((score, c, full_name))
+            scored_contacts.append((score, f))
+    scored_contacts.sort(key=lambda t: t[1]["created_at"] or _EPOCH, reverse=True)
     scored_contacts.sort(key=lambda t: -t[0])
 
     contact_results = [
         {
-            "id": c.id,
-            "full_name": full_name,
-            "email": c.email,
-            "phone": c.phone,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "id": f["id"],
+            "full_name": f["full_name"],
+            "email": f["email"],
+            "phone": f["phone"],
+            "created_at": f["created_at"].isoformat() if f["created_at"] else None,
         }
-        for _, c, full_name in scored_contacts[:limit]
+        for _, f in scored_contacts[:limit]
     ]
 
     # ── Companies ──────────────────────────────────────────

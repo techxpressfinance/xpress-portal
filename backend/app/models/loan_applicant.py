@@ -48,9 +48,9 @@ class LoanApplicant(Base):
     applicant_gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     applicant_marital_status: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
-    # Contact
-    applicant_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    applicant_mobile: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Contact (encrypted at rest)
+    applicant_email: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    applicant_mobile: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     # Address (encrypted at rest)
     applicant_address: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
@@ -70,8 +70,8 @@ class LoanApplicant(Base):
     income_frequency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     gross_income: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
 
-    # Overflow JSON (identification docs metadata, extra fields)
-    lend_extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Overflow JSON (identification incl. licence/passport numbers) — encrypted
+    lend_extra_data: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     # Declarations + per-director signature
     previously_declined: Mapped[Optional[bool]] = mapped_column(nullable=True)

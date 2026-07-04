@@ -84,7 +84,13 @@ def gather_ocr_text(application_id: str, session_factory) -> tuple[str, dict]:
 
 def call_openai_analysis(combined_text: str, metadata: dict) -> str:
     """Call OpenAI with the combined document text and return the JSON response."""
+    from app.services.tfn import redact_tfns
+
     client = OpenAI(api_key=OPENAI_API_KEY)
+
+    # Stored OCR text is already redacted; re-redact here so no TFN can ever
+    # cross the border to the LLM provider regardless of the text's origin.
+    combined_text = redact_tfns(combined_text)
 
     user_message = (
         f"Loan Application Details:\n"

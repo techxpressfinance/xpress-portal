@@ -7,9 +7,11 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
-# Resolve ENVIRONMENT first so every other guard agrees on it. Default to development
-# locally; ops must explicitly set ENVIRONMENT=production in deployed envs.
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+# Resolve ENVIRONMENT first so every other guard agrees on it. Defaults to
+# production so a deploy that forgets to set it fails closed (secret checks,
+# secure cookies, PII-encryption requirement all stay on). Local development
+# must opt out explicitly with ENVIRONMENT=development in backend/.env.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
 _DEFAULT_JWT_SECRET = "dev-secret-change-in-production"
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", _DEFAULT_JWT_SECRET)
@@ -81,9 +83,25 @@ ABR_ENABLED = bool(ABR_GUID)
 
 # Field-level encryption for PII data
 # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Rotation: comma-separated ring, NEWEST FIRST (FIELD_ENCRYPTION_KEY=<new>,<old>).
+# Writes use the first key, reads try all; startup re-encrypts old-key rows to
+# the first key. Never remove a key from the ring until a startup has completed
+# with its replacement first in the list.
 FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 if ENVIRONMENT == "production" and not FIELD_ENCRYPTION_KEY:
     raise RuntimeError(
         "FIELD_ENCRYPTION_KEY is required in production for PII encryption. "
         'Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
+if FIELD_ENCRYPTION_KEY:
+    # Fail at boot on a malformed key, not on the first PII write.
+    from cryptography.fernet import Fernet as _Fernet
+
+    for _key in FIELD_ENCRYPTION_KEY.split(","):
+        try:
+            _Fernet(_key.strip().encode())
+        except Exception as exc:
+            raise RuntimeError(
+                "FIELD_ENCRYPTION_KEY contains an invalid Fernet key. Expected one key or a "
+                "comma-separated ring of base64 Fernet keys (newest first)."
+            ) from exc

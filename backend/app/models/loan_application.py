@@ -107,12 +107,13 @@ class LoanApplication(Base):
     loan_purpose_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     loan_term_requested: Mapped[Optional[int]] = mapped_column(nullable=True)
 
-    # Client-filled — Overflow JSON (identification, employment, income, etc.)
-    lend_extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Client-filled — Overflow JSON (identification incl. licence/passport
+    # numbers, employment, income, etc.) — encrypted at rest
+    lend_extra_data: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
-    # Client-filled — Contact
-    applicant_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    applicant_mobile: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Client-filled — Contact (encrypted; not matchable with SQL LIKE)
+    applicant_email: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    applicant_mobile: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     preferred_contact_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Client-filled — Identification extra
@@ -146,10 +147,10 @@ class LoanApplication(Base):
     change_of_circumstances: Mapped[Optional[bool]] = mapped_column(nullable=True)
     signature_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
-    # Client-filled — Emergency contact
-    emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Client-filled — Emergency contact (third-party PII, encrypted)
+    emergency_contact_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     emergency_contact_relationship: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     # Broker-filled — Lend controls
     lend_product_type_id: Mapped[Optional[int]] = mapped_column(nullable=True)

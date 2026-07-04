@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import ENCODERS_BY_TYPE
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import inspect, text
+from sqlalchemy import bindparam, inspect, text
 
 # SQLite stores datetimes as timezone-naive text. Stamp UTC on every datetime
 # before JSON serialisation so JavaScript parses them correctly.
@@ -242,6 +242,120 @@ with engine.begin() as conn:
         if col not in _column_cache[table]:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
             _logger.info("Added column %s.%s", table, col)
+
+# ── Field-level encryption: re-encrypt legacy plaintext rows ──────────────────
+# Any EncryptedString column may hold plaintext written before encryption was
+# enabled (or before the column switched to EncryptedString). Discover them all
+# from the models so new encrypted columns are covered automatically.
+# Idempotent: values that already decrypt with the configured key are left
+# untouched. Runs only when FIELD_ENCRYPTION_KEY is configured.
+from app.models.encrypted_type import EncryptedString as _EncryptedString  # noqa: E402
+
+_ENCRYPTED_COLUMNS = sorted(
+    (table.name, column.name)
+    for table in Base.metadata.tables.values()
+    for column in table.columns
+    if isinstance(column.type, _EncryptedString)
+)
+
+from app.config import FIELD_ENCRYPTION_KEY as _FIELD_KEY  # noqa: E402
+
+if _FIELD_KEY:
+    from app.services.encryption import (
+        encrypt_value as _encrypt_value,
+        is_encrypted as _is_encrypted,
+        looks_like_fernet_token as _looks_like_fernet_token,
+        rotate_token as _rotate_token,
+    )
+
+    # Fernet ciphertext exceeds the original VARCHAR(20/200) limits — widen to
+    # TEXT on Postgres first (SQLite doesn't enforce lengths, no change needed).
+    # Only alter columns still typed VARCHAR so repeat startups take no locks.
+    if _dialect != "sqlite":
+        with engine.begin() as conn:
+            for _tbl, _col in _ENCRYPTED_COLUMNS:
+                _col_types = {c["name"]: str(c["type"]).upper() for c in _inspector.get_columns(_tbl)}
+                if _col_types.get(_col, "").startswith("VARCHAR"):
+                    conn.execute(text(f"ALTER TABLE {_tbl} ALTER COLUMN {_col} TYPE TEXT"))
+                    _logger.info("Widened %s.%s to TEXT for encrypted storage", _tbl, _col)
+
+    def _wrong_key_error(tbl: str, col: str, row_id) -> RuntimeError:
+        # Fernet-shaped but no configured key decrypts it: this is ciphertext
+        # under a missing key, not legacy plaintext. Re-encrypting it would bury
+        # the data a layer deeper and make it unrecoverable — refuse to start.
+        return RuntimeError(
+            f"{tbl}.{col} (id={row_id}) looks like Fernet ciphertext but none of the "
+            "configured FIELD_ENCRYPTION_KEY keys decrypt it. If the key was rotated, keep "
+            "the previous key in the ring: FIELD_ENCRYPTION_KEY=<new>,<old>. Aborting startup "
+            "so no data is re-encrypted under the wrong key."
+        )
+
+    def _batched_rows(conn, tbl: str, col: str, where: str, batch: int = 200):
+        """Yield (id, value) without holding a whole column in memory — ocr_text
+        alone can be 500KB per row."""
+        _ids = [r[0] for r in conn.execute(text(f"SELECT id FROM {tbl} WHERE {where}"))]
+        _stmt = text(f"SELECT id, {col} FROM {tbl} WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        for _i in range(0, len(_ids), batch):
+            yield from conn.execute(_stmt, {"ids": _ids[_i : _i + batch]})
+
+    with engine.begin() as conn:
+        _existing_tables = set(_inspector.get_table_names())
+        _ring_size = len([k for k in _FIELD_KEY.split(",") if k.strip()])
+        _total_encrypted = 0
+        _total_rotated = 0
+        for _tbl, _col in _ENCRYPTED_COLUMNS:
+            if _tbl not in _existing_tables:
+                continue
+
+            # Legacy plaintext pass. Fernet tokens always start with "gAAAAA",
+            # so the prefilter finds plaintext without fetching any ciphertext —
+            # a steady-state boot reads zero rows here.
+            for _row_id, _value in _batched_rows(
+                conn, _tbl, _col,
+                f"{_col} IS NOT NULL AND {_col} != '' AND {_col} NOT LIKE 'gAAAAA%'",
+            ):
+                if _looks_like_fernet_token(_value):
+                    continue  # SQLite LIKE is case-insensitive; never rewrite a real token here
+                conn.execute(
+                    text(f"UPDATE {_tbl} SET {_col} = :val WHERE id = :id"),
+                    {"val": _encrypt_value(_value), "id": _row_id},
+                )
+                _total_encrypted += 1
+
+            if _ring_size > 1:
+                # Rotation pass: rewrite tokens under older ring keys to the
+                # newest key. Only runs while a rotation is in flight (ring has
+                # more than one key), so normal boots never read ciphertext.
+                for _row_id, _value in _batched_rows(conn, _tbl, _col, f"{_col} LIKE 'gAAAAA%'"):
+                    if not _looks_like_fernet_token(_value):
+                        continue  # case-insensitive LIKE on SQLite can catch plaintext
+                    if not _is_encrypted(_value):
+                        raise _wrong_key_error(_tbl, _col, _row_id)
+                    _rotated = _rotate_token(_value)
+                    if _rotated:
+                        conn.execute(
+                            text(f"UPDATE {_tbl} SET {_col} = :val WHERE id = :id"),
+                            {"val": _rotated, "id": _row_id},
+                        )
+                        _total_rotated += 1
+            else:
+                # Single-key ring: keep the wrong-key tripwire without scanning —
+                # verify one sample token per column decrypts.
+                _sample = conn.execute(
+                    text(f"SELECT id, {_col} FROM {_tbl} WHERE {_col} LIKE 'gAAAAA%' LIMIT 1")
+                ).fetchone()
+                if (
+                    _sample is not None
+                    and _looks_like_fernet_token(_sample[1])
+                    and not _is_encrypted(_sample[1])
+                ):
+                    raise _wrong_key_error(_tbl, _col, _sample[0])
+        if _total_encrypted:
+            _logger.info("Encrypted %d legacy plaintext values across %d columns", _total_encrypted, len(_ENCRYPTED_COLUMNS))
+        if _total_rotated:
+            _logger.info("Rotated %d values to the newest encryption key", _total_rotated)
 
 # SQLite doesn't support ALTER COLUMN to drop NOT NULL.
 # Rebuild quote_sheets table to make application_id nullable.
@@ -537,7 +651,14 @@ try:
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
-app = FastAPI(title="Xpress Finance Portal", version="0.1.0")
+# API docs are only served in development — the OpenAPI schema enumerates the
+# full attack surface and has no business being public in production.
+_docs_kwargs = (
+    {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    if ENVIRONMENT == "production"
+    else {}
+)
+app = FastAPI(title="Xpress Finance Portal", version="0.1.0", **_docs_kwargs)
 
 
 # --- Global exception handler: hide stack traces in production ---
@@ -558,7 +679,8 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS.split(",") if o.strip()],
-    allow_origin_regex=r"https?://[\w-]+\.(localhost(:\d+)?|xpresstech\.com)",
+    # http only for *.localhost; real tenant subdomains must be https
+    allow_origin_regex=r"https?://[\w-]+\.localhost(:\d+)?|https://[\w-]+\.xpresstech\.com",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Tenant-Slug"],

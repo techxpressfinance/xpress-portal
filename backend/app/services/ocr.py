@@ -139,10 +139,13 @@ def run_ocr_background(document_id: str, file_path: str, session_factory) -> Non
 
     # Store result
     try:
+        from app.services.tfn import redact_tfns
+
         with background_session(session_factory) as db:
             doc = db.query(Document).filter(Document.id == document_id).first()
             if doc:
                 doc.ocr_status = OcrStatus.completed
-                doc.ocr_text = text[:500_000]  # Cap stored OCR text at 500KB
+                # TFNs must never be persisted (Privacy (TFN) Rule 2015)
+                doc.ocr_text = redact_tfns(text[:500_000])  # Cap stored OCR text at 500KB
     except Exception:
         logger.exception("Failed to store OCR result for document %s", document_id)
