@@ -2353,12 +2353,18 @@ export default function ReviewApplication() {
                 )}
 
                 {/* Referrer — admin/broker only (this whole page is staff-gated) */}
-                {!referrer && client?.role === 'client' && referrers.length > 0 && (
+                {!referrer && client?.role === 'client' && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
                     <p className="text-[13px] text-muted-foreground mb-4">
                       No referrer is linked to this client. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
                     </p>
+                    {referrers.length === 0 && (
+                      <p className="text-[13px] text-muted-foreground">
+                        No referrer accounts found — add referrers under Referrer Management first.
+                      </p>
+                    )}
+                    {referrers.length > 0 && (
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <select
                         value={linkReferrerId}
@@ -2376,6 +2382,7 @@ export default function ReviewApplication() {
                         {linkingReferrer ? 'Linking…' : 'Link Referrer'}
                       </Button>
                     </div>
+                    )}
                   </GlassCard>
                 )}
                 {referrer && (

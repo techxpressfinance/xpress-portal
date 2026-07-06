@@ -734,7 +734,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       </GlassCard>}
 
       {/* Referrer credit — staff form only */}
-      {skipEngagement && referrers.length > 0 && (
+      {skipEngagement && (
         <GlassCard className="space-y-3">
           <div>
             <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
@@ -742,12 +742,18 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               If this lead came from a referrer outside the portal (e.g. via WhatsApp), select them here so they're credited.
             </p>
           </div>
-          <select value={creditReferrerId} onChange={e => setCreditReferrerId(e.target.value)} className="led-input">
-            <option value="">No referrer</option>
-            {referrers.map(r => (
-              <option key={r.id} value={r.id}>{r.name}{r.organization ? ` — ${r.organization}` : ''}</option>
-            ))}
-          </select>
+          {referrers.length > 0 ? (
+            <select value={creditReferrerId} onChange={e => setCreditReferrerId(e.target.value)} className="led-input">
+              <option value="">No referrer</option>
+              {referrers.map(r => (
+                <option key={r.id} value={r.id}>{r.name}{r.organization ? ` — ${r.organization}` : ''}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">
+              No referrer accounts found — add referrers under Referrer Management to credit them here.
+            </p>
+          )}
         </GlassCard>
       )}
 
