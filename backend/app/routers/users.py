@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from app.config import FRONTEND_URL
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.external_referral import ExternalReferral
+from app.models.external_referral import ExternalReferral, ExternalReferralStatus
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
-from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
+from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, ReferrerAttach, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, create_access_token, hash_password
 from app.services.email import send_password_reset_email, send_setup_account_email
@@ -273,6 +273,59 @@ def get_user_referrer(
     referrer = db.query(User).filter(User.id == referral.referrer_id).first()
     if not referrer:
         return {"referrer": None}
+    return {
+        "referrer": {
+            "id": referrer.id,
+            "full_name": referrer.full_name,
+            "email": referrer.email,
+            "phone": referrer.phone,
+            "organization_name": getattr(referrer, "organization_name", None),
+        }
+    }
+
+
+@router.post("/{user_id}/referrer")
+def set_user_referrer(
+    user_id: str,
+    data: ReferrerAttach,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Credit a referrer for a client who has none — for leads that arrived
+    outside the portal (e.g. via WhatsApp) and were entered by staff."""
+    client = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == tenant_id,
+        User.deleted_at.is_(None),
+    ).first()
+    if not client or client.role != UserRole.client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    referrer = db.query(User).filter(
+        User.id == data.referrer_id,
+        User.tenant_id == tenant_id,
+        User.role == UserRole.referrer,
+        User.deleted_at.is_(None),
+    ).first()
+    if not referrer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Referrer not found")
+    existing = (
+        db.query(ExternalReferral).filter(ExternalReferral.referred_client_id == user_id).first()
+        or db.query(Referral).filter(Referral.referred_user_id == user_id).first()
+    )
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This client already has a referrer")
+    has_applied = db.query(LoanApplication.id).filter(LoanApplication.user_id == user_id).first() is not None
+    db.add(ExternalReferral(
+        tenant_id=tenant_id,
+        referrer_id=referrer.id,
+        referred_email=client.email,
+        referred_client_id=client.id,
+        status=ExternalReferralStatus.applied if has_applied else ExternalReferralStatus.signed_up,
+        converted_at=datetime.now(timezone.utc) if has_applied else None,
+    ))
+    log_activity(db, current_user.id, "referrer_attached", "user", client.id, {"referrer_id": referrer.id}, tenant_id=tenant_id)
+    db.commit()
     return {
         "referrer": {
             "id": referrer.id,

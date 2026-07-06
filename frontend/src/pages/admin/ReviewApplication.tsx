@@ -36,6 +36,10 @@ export default function ReviewApplication() {
   const [client, setClient] = useState<User | null>(null);
   const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null; organization_name?: string | null } | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
+  // Linking a referrer to a client who has none (lead arrived outside the portal)
+  const [referrers, setReferrers] = useState<User[]>([]);
+  const [linkReferrerId, setLinkReferrerId] = useState('');
+  const [linkingReferrer, setLinkingReferrer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [msgTab, setMsgTab] = useState<'referrer_messages' | 'client_messages' | 'deal_notes' | 'alerts'>('referrer_messages');
@@ -230,6 +234,7 @@ export default function ReviewApplication() {
 
         const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
         setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
+        setReferrers(usersRes.data.filter((u: User) => u.role === 'referrer'));
 
         if (clientUser?.role === 'referrer') {
           // Direct referrer lead — user_id IS the referrer, client has no account
@@ -270,6 +275,21 @@ export default function ReviewApplication() {
       const { data } = await api.get(`/applications/${id}`);
       setApplication(data);
     } catch { /* ignore */ }
+  };
+
+  const handleLinkReferrer = async () => {
+    if (!client || !linkReferrerId) return;
+    setLinkingReferrer(true);
+    try {
+      const { data } = await api.post(`/users/${client.id}/referrer`, { referrer_id: linkReferrerId });
+      setReferrer(data.referrer);
+      setLinkReferrerId('');
+      toast('Referrer linked', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to link referrer'), 'error');
+    } finally {
+      setLinkingReferrer(false);
+    }
   };
 
   const handleStatusChange = (newStatus: string) => {
@@ -2333,6 +2353,31 @@ export default function ReviewApplication() {
                 )}
 
                 {/* Referrer — admin/broker only (this whole page is staff-gated) */}
+                {!referrer && client?.role === 'client' && referrers.length > 0 && (
+                  <GlassCard>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
+                    <p className="text-[13px] text-muted-foreground mb-4">
+                      No referrer is linked to this client. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
+                    </p>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <select
+                        value={linkReferrerId}
+                        onChange={e => setLinkReferrerId(e.target.value)}
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 sm:flex-1"
+                      >
+                        <option value="">Select referrer...</option>
+                        {referrers.map(r => (
+                          <option key={r.id} value={r.id}>
+                            {(r.full_name || r.email)}{r.organization_name ? ` — ${r.organization_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <Button size="sm" onClick={handleLinkReferrer} disabled={!linkReferrerId || linkingReferrer} className="shrink-0">
+                        {linkingReferrer ? 'Linking…' : 'Link Referrer'}
+                      </Button>
+                    </div>
+                  </GlassCard>
+                )}
                 {referrer && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrer</h2>

@@ -259,6 +259,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [engagementModel, setEngagementModel] = useState<'direct_engagement' | 'self_managed' | ''>('');
   const [engagementError, setEngagementError] = useState('');
 
+  // Referrer credit (staff form only) — for leads that arrived outside the
+  // portal (e.g. WhatsApp) where the referrer never submitted through the app.
+  const [referrers, setReferrers] = useState<{ id: string; name: string; organization?: string | null }[]>([]);
+  const [creditReferrerId, setCreditReferrerId] = useState('');
+
   // Extra client detail fields (shown when self_managed)
   const [extra, setExtraFields] = useState(EXTRA_DEFAULTS);
   const setExtra = <K extends keyof typeof EXTRA_DEFAULTS>(key: K, value: typeof EXTRA_DEFAULTS[K]) =>
@@ -318,6 +323,17 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       .catch(() => { })
       .finally(() => setPrevClientsLoading(false));
   }, [clientMode, skipEngagement]);
+
+  // Staff form only: load the tenant's referrers so the lead can be credited.
+  useEffect(() => {
+    if (!skipEngagement) return;
+    api.get('/users', { params: { role: 'referrer' } })
+      .then(({ data }) => {
+        const raw: { id: string; full_name: string | null; email: string; organization_name?: string | null }[] = Array.isArray(data) ? data : [];
+        setReferrers(raw.map(u => ({ id: u.id, name: u.full_name || u.email, organization: u.organization_name })));
+      })
+      .catch(() => {});
+  }, [skipEngagement]);
 
   const deleteDraft = async (id: string) => {
     try { await api.delete(`/applications/${id}`); } catch { /* ignore */ }
@@ -529,6 +545,16 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           } : {}),
         });
         appId = app.id;
+
+        // Credit the selected referrer for this lead (staff form only). The
+        // application must have resolved to a client-owned account to attribute.
+        if (creditReferrerId && app.user_role === 'client' && app.user_id) {
+          try {
+            await api.post(`/users/${app.user_id}/referrer`, { referrer_id: creditReferrerId });
+          } catch {
+            toast('Application created, but the referrer could not be linked — this client may already have one.', 'error');
+          }
+        }
       }
 
       // Upload files
@@ -566,7 +592,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     }
     setClientMode('new'); setSelectedPrevClient(null); setPrevClientSearch('');
     setFirstName(''); setLastName(''); setEmail(''); setMobile('');
-    setEngagementModel(''); setEngagementError('');
+    setEngagementModel(''); setEngagementError(''); setCreditReferrerId('');
     setExtraFields(EXTRA_DEFAULTS);
     setAdditionalIncomes([]); setRealEstateAssets([]); setOtherAssets([]); setLiabilities([]);
     setLoanType(''); setAmount(''); setNotes(''); setCategory('asset_finance'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
@@ -706,6 +732,24 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         </label>
         {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
       </GlassCard>}
+
+      {/* Referrer credit — staff form only */}
+      {skipEngagement && referrers.length > 0 && (
+        <GlassCard className="space-y-3">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              If this lead came from a referrer outside the portal (e.g. via WhatsApp), select them here so they're credited.
+            </p>
+          </div>
+          <select value={creditReferrerId} onChange={e => setCreditReferrerId(e.target.value)} className="led-input">
+            <option value="">No referrer</option>
+            {referrers.map(r => (
+              <option key={r.id} value={r.id}>{r.name}{r.organization ? ` — ${r.organization}` : ''}</option>
+            ))}
+          </select>
+        </GlassCard>
+      )}
 
       {/* Tab switcher + Loan type section */}
       <GlassCard className="space-y-4">

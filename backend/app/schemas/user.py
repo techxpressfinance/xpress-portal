@@ -99,6 +99,11 @@ class UserProfileUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+class ReferrerAttach(BaseModel):
+    """Staff request to credit a referrer for a client whose lead arrived outside the portal."""
+    referrer_id: str
+
+
 class ClientProfile(BaseModel):
     """Saved constant personal details a client reuses to autofill new applications."""
     applicant_title: Optional[str] = None
