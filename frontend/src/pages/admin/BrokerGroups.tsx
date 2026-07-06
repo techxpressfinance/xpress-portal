@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Button } from '../../components/ui';
+import { GlassCard, Button, ListSkeleton } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import type { BrokerGroup, User } from '../../types';
 
@@ -132,8 +132,14 @@ export default function BrokerGroups() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-6">
+          <h1 className="text-[28px] font-semibold tracking-tight text-foreground">Broker Groups</h1>
+          <p className="mt-1 text-[14px] text-muted-foreground">
+            Organise brokers into groups for bulk application assignment.
+          </p>
+        </div>
+        <ListSkeleton rows={3} rowHeight={72} />
       </div>
     );
   }

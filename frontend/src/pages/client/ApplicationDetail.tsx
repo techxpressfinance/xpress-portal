@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
@@ -10,15 +10,15 @@ import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
-import { DOC_TYPE_LABELS, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LOAN_CATEGORIES, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, categoryForSubType, findLoanSubType } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { useAuth } from '../../hooks/useAuth';
+import { useTabParam } from '../../hooks/useTabParam';
 import type { ClientMessage, Document, DocumentRequest, LoanApplication, QuoteSheet } from '../../types';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { user } = useAuth();
   const [application, setApplication] = useState<LoanApplication | null>(null);
@@ -42,10 +42,7 @@ export default function ApplicationDetail() {
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [fulfillingRequestId, setFulfillingRequestId] = useState<string | null>(null);
   const [uploadingRequestId, setUploadingRequestId] = useState<string | null>(null);
-  const initialTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'overview' | 'details' | 'documents' | 'messages'>(
-    initialTab === 'documents' ? 'documents' : 'overview'
-  );
+  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'details', 'documents', 'messages'] as const);
 
   const handleDownloadAppPdf = async () => {
     if (!application) return;
@@ -563,18 +560,19 @@ export default function ApplicationDetail() {
                 <GlassCard>
                   <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-5">Loan Type Details</h2>
                   <div className="space-y-4">
-                    {loanDetails.consumer_loan_type && (
-                      <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
-                        <p className="text-[12px] text-[var(--led-muted)]">Consumer Loan Type</p>
-                        <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.consumer_loan_type.label || '—'}</p>
-                      </div>
-                    )}
-                    {loanDetails.commercial_loan_type && (
-                      <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
-                        <p className="text-[12px] text-[var(--led-muted)]">Commercial Loan Type</p>
-                        <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.commercial_loan_type.label || '—'}</p>
-                      </div>
-                    )}
+                    {(() => {
+                      const subType: string | undefined = loanDetails.consumer_loan_type?.type || loanDetails.commercial_loan_type?.type;
+                      if (!subType) return null;
+                      const categoryLabel = LOAN_CATEGORIES.find(c => c.value === categoryForSubType(subType))?.label;
+                      const storedLabel = loanDetails.consumer_loan_type?.label || loanDetails.commercial_loan_type?.label;
+                      const subTypeLabel = findLoanSubType(subType)?.label || storedLabel || subType.replace(/_/g, ' ');
+                      return (
+                        <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
+                          <p className="text-[12px] text-[var(--led-muted)]">{categoryLabel}</p>
+                          <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{subTypeLabel}</p>
+                        </div>
+                      );
+                    })()}
                     {loanDetails.vehicle_details && (
                       <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5 space-y-3">
                         <p className="text-[13px] font-semibold text-[var(--led-ink)]">Vehicle Information</p>
@@ -1056,15 +1054,20 @@ export default function ApplicationDetail() {
                   </div>
                   <div className="p-6">
                   <div className="space-y-4">
-                    {/* Consumer/Commercial loan type label */}
-                    {(loanDetails.consumer_loan_type || loanDetails.commercial_loan_type) && (
-                      <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
-                        <dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Category</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">
-                          {loanDetails.consumer_loan_type?.label || loanDetails.commercial_loan_type?.label}
-                        </dd>
-                      </div>
-                    )}
+                    {/* Category + selected loan type */}
+                    {(() => {
+                      const subType: string | undefined = loanDetails.consumer_loan_type?.type || loanDetails.commercial_loan_type?.type;
+                      if (!subType) return null;
+                      const categoryLabel = LOAN_CATEGORIES.find(c => c.value === categoryForSubType(subType))?.label;
+                      const storedLabel = loanDetails.consumer_loan_type?.label || loanDetails.commercial_loan_type?.label;
+                      const subTypeLabel = findLoanSubType(subType)?.label || storedLabel || subType.replace(/_/g, ' ');
+                      return (
+                        <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                          <dt className="text-[12px] font-medium text-[var(--led-muted)]">{categoryLabel}</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{subTypeLabel}</dd>
+                        </div>
+                      );
+                    })()}
 
                     {/* Vehicle Details */}
                     {loanDetails.vehicle_details && (

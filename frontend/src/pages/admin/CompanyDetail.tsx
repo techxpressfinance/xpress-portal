@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs, DetailSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import type { OrganizationDetail, OrganizationContactLite } from '../../types';
@@ -274,11 +274,7 @@ export default function CompanyDetail() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    return <DetailSkeleton blocks={3} />;
   }
 
   if (!company) return <p className="text-center py-20 text-muted-foreground">Company not found.</p>;

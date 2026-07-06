@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, X } from 'lucide-react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import type { Organization, PaginatedResponse } from '../../types';
@@ -194,13 +194,19 @@ export default function Companies() {
         </form>
 
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                <TableSkeleton rows={8} widths={[160, 110, 100, 40, 40, 90]} />
+              </tbody>
+            </table>
           </div>
         ) : companies.length === 0 ? (
-          <p className="text-center py-12 text-muted-foreground">
-            {search ? 'No companies match your search.' : 'No companies yet. Click "New Company" to add one.'}
-          </p>
+          search ? (
+            <p className="text-center py-12 text-muted-foreground">No companies match your search.</p>
+          ) : (
+            <EmptyState title="No companies yet" description='Click "New Company" to add one.' />
+          )
         ) : (
           <>
             <div className="overflow-x-auto">

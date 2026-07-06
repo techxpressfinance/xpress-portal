@@ -9,9 +9,11 @@ import { GlassCard, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } fro
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
-  CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES, VEHICLE_MAKES, PROPERTY_TYPES,
-  EQUIPMENT_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS
+  LOAN_CATEGORIES, VEHICLE_MAKES, PROPERTY_TYPES,
+  EQUIPMENT_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS,
+  isConsumerSubType, isBusinessSubType, categoryForSubType, subTypeToLoanType, findLoanSubType
 } from '../../lib/constants';
+import type { LoanCategory } from '../../lib/constants';
 import type { DocType } from '../../types';
 
 const SELECT_CLS = 'led-input';
@@ -60,6 +62,8 @@ function AbnHint({ match, onUseName }: { match: AbnCompanyMatch | null; onUseNam
   );
 }
 
+
+type PrefillSource = 'profile' | 'application';
 
 interface FormData {
   // Non-lend simple path
@@ -313,9 +317,10 @@ export default function NewApplication() {
   const [searchParams] = useSearchParams();
   const completeId = searchParams.get('completeId') || '';
 
-  // Detailed multi-loan-type application form (formerly gated behind the Lend
-  // integration). Always on now that the Lend.com.au sync has been removed.
-  const lendEnabled: boolean = true;
+  // Legacy multi-loan-type picker (formerly gated behind the Lend integration).
+  // Replaced by the category-based picker (Asset Finance / Home Loan / Commercial)
+  // shared with the broker/referrer forms.
+  const lendEnabled: boolean = false;
   const [acknowledged, setAcknowledged] = useState(false);
   const [checked, setChecked] = useState(false);
   const [isOwnDraftEdit, setIsOwnDraftEdit] = useState(false);
@@ -327,8 +332,9 @@ export default function NewApplication() {
   const performAutosaveRef = useRef<() => void>(() => {});
   const draftStorageKey = user?.id ? `application-draft-${user.id}` : null;
 
-  // Fields prefilled from the client's saved profile, for the "review" hint.
-  const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set());
+  // Fields prefilled from the client's saved profile or a previous application,
+  // keyed by field name → source, for the "review" hint.
+  const [prefilledFields, setPrefilledFields] = useState<Map<string, PrefillSource>>(new Map());
   const [showPrefillHint, setShowPrefillHint] = useState(false);
 
   const [selectedLoanTypes, setSelectedLoanTypes] = useState<string[]>([]);
@@ -343,7 +349,7 @@ export default function NewApplication() {
   const [otherAssets, setOtherAssets] = useState<OtherAsset[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
 
-  const [tab, setTab] = useState<'consumer' | 'commercial'>('consumer');
+  const [tab, setTab] = useState<LoanCategory>('asset_finance');
   const [comBusinessName, setComBusinessName] = useState('');
   const [comAbn, setComAbn] = useState('');
   const [parentIndustryId, setParentIndustryId] = useState<number | ''>('');
@@ -354,6 +360,18 @@ export default function NewApplication() {
   // Selected loan sub-types for comprehensive fields
   const [selectedConsumerLoanType, setSelectedConsumerLoanType] = useState<string>('');
   const [selectedCommercialLoanType, setSelectedCommercialLoanType] = useState<string>('');
+  const selectedSubType = selectedConsumerLoanType || selectedCommercialLoanType;
+  const businessSubType = isBusinessSubType(selectedSubType);
+
+  const selectSubType = (value: string) => {
+    if (isConsumerSubType(value)) {
+      setSelectedConsumerLoanType(value);
+      setSelectedCommercialLoanType('');
+    } else {
+      setSelectedCommercialLoanType(value);
+      setSelectedConsumerLoanType('');
+    }
+  };
 
   const purposeId: number | '' = CONSUMER_TYPE_TO_PURPOSE_ID[selectedConsumerLoanType] ?? '';
   const commercialPurposeId: number | '' = COMMERCIAL_TYPE_TO_PURPOSE_ID[selectedCommercialLoanType] ?? '';
@@ -477,16 +495,15 @@ export default function NewApplication() {
         const lt = data.loan_type as string | undefined;
         const COMMERCIAL_LTS = new Set(['equipment_finance', 'business_loan', 'commercial_property', 'business']);
         const isCommercial = lt ? COMMERCIAL_LTS.has(lt) : false;
-        setTab(isCommercial ? 'commercial' : 'consumer');
 
-        if (isCommercial) {
-          const cType = (loanTypeDetails.commercial_loan_type as { type?: string } | undefined)?.type;
-          if (cType) setSelectedCommercialLoanType(cType);
-        } else {
-          const cType = (loanTypeDetails.consumer_loan_type as { type?: string } | undefined)?.type;
-          if (cType) setSelectedConsumerLoanType(cType);
-          else if (lt === 'personal') setSelectedConsumerLoanType('personal');
-        }
+        const storedCommercial = (loanTypeDetails.commercial_loan_type as { type?: string } | undefined)?.type;
+        const storedConsumer = (loanTypeDetails.consumer_loan_type as { type?: string } | undefined)?.type;
+        const storedSub = storedCommercial || storedConsumer || (lt === 'personal' ? 'personal' : '');
+        if (storedCommercial) setSelectedCommercialLoanType(storedCommercial);
+        else if (storedSub) setSelectedConsumerLoanType(storedSub);
+        setTab(storedSub
+          ? categoryForSubType(storedSub)
+          : (lt === 'home_loan' || lt === 'home') ? 'home_loan' : isCommercial ? 'commercial' : 'asset_finance');
 
         if (lt) setSelectedLoanTypes([lt]);
 
@@ -637,7 +654,7 @@ export default function NewApplication() {
     try {
       const parsed = JSON.parse(raw) as {
         formData?: Partial<FormData>;
-        tab?: 'consumer' | 'commercial';
+        tab?: string;
         comBusinessName?: string;
         comAbn?: string;
         parentIndustryId?: number | '';
@@ -659,7 +676,16 @@ export default function NewApplication() {
           if (v !== undefined && v !== null) setValue(k as keyof FormData, v as never);
         });
       }
-      if (parsed.tab) setTab(parsed.tab);
+      if (parsed.tab) {
+        // Drafts saved before the category regroup stored 'consumer'/'commercial';
+        // derive the new category from the saved sub-type in that case.
+        if (['asset_finance', 'home_loan', 'commercial'].includes(parsed.tab)) {
+          setTab(parsed.tab as LoanCategory);
+        } else {
+          const savedSub = parsed.selectedCommercialLoanType || parsed.selectedConsumerLoanType || '';
+          setTab(savedSub ? categoryForSubType(savedSub) : 'asset_finance');
+        }
+      }
       if (parsed.comBusinessName) setComBusinessName(parsed.comBusinessName);
       if (parsed.comAbn) setComAbn(parsed.comAbn);
       if (parsed.parentIndustryId !== undefined) setParentIndustryId(parsed.parentIndustryId);
@@ -683,9 +709,11 @@ export default function NewApplication() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftStorageKey, completeId]);
 
-  // Prefill constant personal details from the client's saved profile on a fresh
-  // new application. Skipped when completing/editing an existing app, and when an
-  // in-progress local draft already exists (that draft takes precedence).
+  // Prefill constant personal details on a fresh new application — from the
+  // client's saved profile first, then from their most recent applications for
+  // anything the profile doesn't cover. Skipped when completing/editing an
+  // existing app, and when an in-progress local draft already exists (that
+  // draft takes precedence).
   useEffect(() => {
     if (completeId) return;
     if (!user?.id) return;
@@ -702,24 +730,85 @@ export default function NewApplication() {
       'id_type', 'id_number', 'id_issuing_state_country', 'id_expiry_date', 'residency_status',
       'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
     ];
-    api.get('/users/me/profile')
-      .then(({ data }) => {
-        if (cancelled || !data) return;
-        const filled = new Set<string>();
-        PROFILE_FIELDS.forEach((f) => {
-          const v = (data as Record<string, unknown>)[f];
-          if (v == null || v === '') return;
-          // Defer name fields to the account-derived values populated above.
-          if (NAME_FIELDS.has(f) && getValues(f)) return;
-          setValue(f, v as never);
-          filled.add(f);
+
+    // Personal details recoverable from a previously submitted application.
+    const fromApplication = (app: Record<string, unknown>): Partial<Record<keyof FormData, string>> => {
+      const lend = (() => {
+        if (typeof app.lend_extra_data !== 'string') return {} as Record<string, unknown>;
+        try { return JSON.parse(app.lend_extra_data) as Record<string, unknown>; }
+        catch { return {} as Record<string, unknown>; }
+      })();
+      const idDoc = (Array.isArray(lend.identification) ? lend.identification[0] : undefined) as Record<string, unknown> | undefined;
+      const str = (v: unknown) => (v == null ? '' : String(v));
+      const yesNo = (v: unknown) => (v == null ? '' : v ? 'yes' : 'no');
+      return {
+        applicant_title: str(app.applicant_title),
+        applicant_first_name: str(app.applicant_first_name),
+        applicant_middle_name: str(app.applicant_middle_name),
+        applicant_last_name: str(app.applicant_last_name),
+        applicant_dob: str(app.applicant_dob),
+        applicant_gender: str(app.applicant_gender),
+        applicant_marital_status: str(app.applicant_marital_status),
+        num_dependants: app.applicant_num_dependants ? String(app.applicant_num_dependants) : '',
+        applicant_mobile: str(app.applicant_mobile),
+        preferred_contact_method: str(app.preferred_contact_method),
+        residency_status: str(app.applicant_residency_status),
+        id_type: idDoc?.type === 'Drivers Licence' ? 'license' : idDoc?.type === 'Passport' ? 'passport' : '',
+        id_number: str(idDoc?.number),
+        id_issuing_state_country: str(idDoc?.state ?? idDoc?.country),
+        id_expiry_date: str(app.id_expiry_date ?? idDoc?.expiry_date),
+        applicant_address: str(app.applicant_address),
+        applicant_suburb: str(app.applicant_suburb),
+        applicant_state: str(app.applicant_state),
+        applicant_postcode: str(app.applicant_postcode),
+        residential_status: str(app.residential_status),
+        time_at_address: str(app.time_at_address),
+        has_partner: yesNo(app.has_partner),
+        partner_working: yesNo(app.partner_working),
+        emergency_contact_name: str(app.emergency_contact_name),
+        emergency_contact_relationship: str(app.emergency_contact_relationship),
+        emergency_contact_phone: str(app.emergency_contact_phone),
+      };
+    };
+
+    const profileReq = api.get('/users/me/profile')
+      .then(({ data }) => (data ?? {}) as Record<string, unknown>)
+      .catch(() => ({} as Record<string, unknown>));
+    const appsReq = api.get('/applications', { params: { per_page: 5 } })
+      .then(({ data }) => (Array.isArray(data?.items) ? data.items : []) as Record<string, unknown>[])
+      .catch(() => [] as Record<string, unknown>[]);
+
+    Promise.all([profileReq, appsReq]).then(([profile, apps]) => {
+      if (cancelled) return;
+
+      // Newest application wins among applications; the saved profile wins overall.
+      const merged = new Map<keyof FormData, { value: string; source: PrefillSource }>();
+      apps.reverse().forEach((app) => {
+        const values = fromApplication(app);
+        (Object.keys(values) as (keyof FormData)[]).forEach((f) => {
+          const v = values[f];
+          if (v) merged.set(f, { value: v, source: 'application' });
         });
-        if (filled.size > 0) {
-          setPrefilledFields(filled);
-          setShowPrefillHint(true);
-        }
-      })
-      .catch(() => {});
+      });
+      PROFILE_FIELDS.forEach((f) => {
+        const v = profile[f];
+        if (v != null && v !== '') merged.set(f, { value: String(v), source: 'profile' });
+      });
+
+      const filled = new Map<string, PrefillSource>();
+      merged.forEach(({ value, source }, f) => {
+        // Defer name fields to the account-derived values populated above.
+        if (NAME_FIELDS.has(f) && getValues(f)) return;
+        // Already holds this value (e.g. matches the form default) — nothing to flag.
+        if (getValues(f) === value) return;
+        setValue(f, value as never);
+        filled.set(f, source);
+      });
+      if (filled.size > 0) {
+        setPrefilledFields(filled);
+        setShowPrefillHint(true);
+      }
+    });
     return () => { cancelled = true; };
   }, [completeId, user?.id, draftStorageKey, getValues, setValue]);
 
@@ -886,8 +975,8 @@ export default function NewApplication() {
       // Add comprehensive loan type data for non-LEND mode
       const loanTypeDetails: Record<string, unknown> = {};
 
-      if (tab === 'consumer' && selectedConsumerLoanType) {
-        const consumerType = CONSUMER_LOAN_TYPES.find(t => t.value === selectedConsumerLoanType);
+      if (selectedConsumerLoanType) {
+        const consumerType = findLoanSubType(selectedConsumerLoanType);
         loanTypeDetails.consumer_loan_type = {
           type: selectedConsumerLoanType,
           label: consumerType?.label,
@@ -932,8 +1021,8 @@ export default function NewApplication() {
         }
       }
 
-      if (tab === 'commercial' && selectedCommercialLoanType) {
-        const commercialType = COMMERCIAL_LOAN_TYPES.find(t => t.value === selectedCommercialLoanType);
+      if (selectedCommercialLoanType) {
+        const commercialType = findLoanSubType(selectedCommercialLoanType);
         loanTypeDetails.commercial_loan_type = {
           type: selectedCommercialLoanType,
           label: commercialType?.label,
@@ -1055,15 +1144,20 @@ export default function NewApplication() {
     }
 
     const payload: Record<string, unknown> = {
-      loan_type: lendEnabled ? (selectedLoanTypes[0] || 'equipment_finance') : (tab === 'consumer' ? 'personal' : 'business_loan'),
       amount: mainAmount,
       notes: data.notes || null,
     };
 
+    const loanType = lendEnabled
+      ? (selectedLoanTypes[0] || 'equipment_finance')
+      : (selectedSubType ? subTypeToLoanType(selectedSubType) : null);
+    // Leave loan_type untouched on drafts where no sub-type was re-selected yet.
+    if (loanType) payload.loan_type = loanType;
+    else if (!completeId) payload.loan_type = 'personal';
+
       if (!lendEnabled) {
-        if (tab === 'consumer') {
-          if (purposeId) payload.loan_purpose_id = purposeId;
-        } else {
+        if (selectedConsumerLoanType && purposeId) payload.loan_purpose_id = purposeId;
+        if (selectedCommercialLoanType) {
           if (commercialPurposeId) payload.loan_purpose_id = commercialPurposeId;
           if (comBusinessName.trim()) payload.business_name = comBusinessName.trim();
           if (comAbn.trim()) payload.business_abn = comAbn.trim();
@@ -1130,6 +1224,10 @@ export default function NewApplication() {
   };
 
   const onSubmit = async (data: FormData) => {
+    if (!lendEnabled && isSectionVisible('loan_details') && !selectedSubType && !completeId) {
+      toast('Please select a loan type', 'error');
+      return;
+    }
     const payload = buildPayload(data);
     // ABN is required for commercial loan applications (keys company reconciliation).
     const COMMERCIAL_LOAN_TYPE_SET = ['business', 'business_loan', 'commercial_property', 'equipment_finance'];
@@ -1190,14 +1288,24 @@ export default function NewApplication() {
     );
   }
 
-  const currentPurposeLabel = tab === 'consumer'
+  const currentPurposeLabel = selectedConsumerLoanType
     ? CONSUMER_PURPOSES.find(p => p.id === purposeId)?.label
     : COMMERCIAL_PURPOSES.find(p => p.id === commercialPurposeId)?.label;
 
-  const prefillTag = (field: string) =>
-    prefilledFields.has(field) ? (
-      <span className="ml-2 inline-flex items-center rounded-full bg-[var(--led-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--led-accent)] align-middle">from profile</span>
-    ) : null;
+  const prefillTag = (field: string) => {
+    const source = prefilledFields.get(field);
+    if (!source) return null;
+    return (
+      <span className="ml-2 inline-flex items-center rounded-full bg-[var(--led-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--led-accent)] align-middle">
+        {source === 'profile' ? 'from profile' : 'from previous application'}
+      </span>
+    );
+  };
+
+  const prefillSources = new Set(prefilledFields.values());
+  const prefillSourceLabel = prefillSources.has('profile') && prefillSources.has('application')
+    ? 'your saved profile and a previous application'
+    : prefillSources.has('application') ? 'a previous application' : 'your saved profile';
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-8">
@@ -1247,7 +1355,7 @@ export default function NewApplication() {
           <div className="flex items-start gap-3 rounded-xl border border-[var(--led-accent)]/30 bg-[var(--led-accent)]/5 px-4 py-3">
             <svg className="mt-0.5 h-4 w-4 shrink-0 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
             <div className="flex-1">
-              <p className="text-[13px] font-medium text-[var(--led-ink)]">We filled in some details from your saved profile.</p>
+              <p className="text-[13px] font-medium text-[var(--led-ink)]">We filled in some details from {prefillSourceLabel}.</p>
               <p className="mt-0.5 text-[12px] leading-5 text-[var(--led-muted)]">Please review the highlighted fields before submitting — you can edit any of them here.</p>
             </div>
             <button type="button" onClick={() => setShowPrefillHint(false)} className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-[var(--led-muted)] hover:text-[var(--led-ink)]">Dismiss</button>
@@ -1432,108 +1540,33 @@ export default function NewApplication() {
                 )}
 
                 </>)}
-
-                {/* Document upload */}
-                {isSectionVisible('documents') && (
-                <GlassCard className="space-y-4">
-                  <div>
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
-                    <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files upload immediately.</p>
-                  </div>
-
-                  {uploadedDocs.length > 0 && (
-                    <ul className="space-y-2">
-                      {uploadedDocs.map((d, i) => (
-                        <li key={i} className="flex items-center gap-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/40 px-3 py-2.5">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--led-accent)]/10">
-                            <svg className="h-4 w-4 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
-                            <p className="text-[11px] text-[var(--led-muted)] truncate">{d.filename}</p>
-                          </div>
-                          <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {stagedFile ? (
-                    <div className="rounded-xl border border-primary/30 bg-[var(--led-accent)]/5 p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-[var(--led-accent)] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                        <span className="text-[13px] font-medium text-[var(--led-ink)] truncate">{stagedFile.name}</span>
-                        <span className="ml-auto shrink-0 text-[11px] text-[var(--led-muted)]">{(stagedFile.size / 1024).toFixed(0)} KB</span>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className={LABEL_CLS}>Document Type</label>
-                          <select value={stagedDocType} onChange={e => setStagedDocType(e.target.value as DocType)} className={SELECT_CLS}>
-                            {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
-                              <option key={value} value={value}>{label}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={LABEL_CLS}>Label <span className="font-normal">(optional)</span></label>
-                          <Input placeholder={DOC_TYPE_LABELS[stagedDocType] || 'e.g. June payslip'} value={stagedLabel} onChange={e => setStagedLabel(e.target.value)} />
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" onClick={handleConfirmStaged} disabled={uploading}>
-                          {uploading ? 'Uploading...' : 'Upload now'}
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => setStagedFile(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-[var(--led-accent)]/5' : 'border-[var(--led-line)] hover:border-primary/50 hover:bg-[var(--led-surface-2)]/40'}`}
-                      onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                      onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
-                      onDragLeave={() => setIsDragOver(false)}
-                      onDrop={handleDrop}
-                    >
-                      <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-[var(--led-accent)]/15' : 'bg-[var(--led-surface-2)]'}`}>
-                        <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-medium text-[var(--led-ink)]">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
-                        <p className="text-[12px] text-[var(--led-muted)] mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
-                      </div>
-                    </div>
-                  )}
-                </GlassCard>
-                )}
               </>
             )}
 
             {!lendEnabled && isSectionVisible('loan_details') && (
               <>
-                {/* Consumer / Commercial Tab Switcher */}
+                {/* Loan Category Switcher */}
                 <div className="flex rounded-xl bg-secondary p-1 gap-1">
-                  {(['consumer', 'commercial'] as const).map(t => (
+                  {LOAN_CATEGORIES.map(c => (
                     <button
-                      key={t}
+                      key={c.value}
                       type="button"
-                      onClick={() => setTab(t)}
-                      className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      onClick={() => { setTab(c.value); setSelectedConsumerLoanType(''); setSelectedCommercialLoanType(''); }}
+                      className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition-all ${tab === c.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                     >
-                      {t === 'consumer' ? 'Consumer' : 'Commercial'}
+                      {c.label}
                     </button>
                   ))}
                 </div>
 
-                {/* Consumer Loan Types with Comprehensive Fields */}
-                {tab === 'consumer' && (
+                {/* Loan types for the active category, with comprehensive fields */}
                   <GlassCard className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Select Loan Type</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {CONSUMER_LOAN_TYPES.map(type => {
-                        const active = selectedConsumerLoanType === type.value;
+                      {(LOAN_CATEGORIES.find(c => c.value === tab)?.types ?? []).map(type => {
+                        const active = selectedSubType === type.value;
                         return (
-                          <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => setSelectedConsumerLoanType(type.value)}>
+                          <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => selectSubType(type.value)}>
                             <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
                               {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
                             </div>
@@ -1688,54 +1721,27 @@ export default function NewApplication() {
                       </div>
                     )}
 
-                    <div>
-                      <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
-                      <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
-                    </div>
-                  </GlassCard>
-                )}
-
-                {tab === 'commercial' && (
-                  <GlassCard className="space-y-4">
-                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business & Loan Details</h3>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className={LABEL_CLS}>Business / Entity Name</label>
-                        <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+                    {/* Business identity for business-purpose sub-types */}
+                    {businessSubType && (
+                      <div className="grid gap-4 sm:grid-cols-2 pt-4 border-t border-[var(--led-line)]">
+                        <div>
+                          <label className={LABEL_CLS}>Business / Entity Name</label>
+                          <Input placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className={LABEL_CLS}>ABN *</label>
+                          <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
+                          <AbnHint match={commercialAbnMatch} onUseName={(n) => setComBusinessName(n)} />
+                          {!commercialAbnMatch && commercialAbr.enabled && (
+                            <AbrResultCard
+                              record={commercialAbr.record}
+                              loading={commercialAbr.loading}
+                              onApply={(r) => setComBusinessName(r.name)}
+                            />
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <label className={LABEL_CLS}>ABN *</label>
-                        <Input placeholder="12 345 678 901" value={comAbn} onChange={e => setComAbn(e.target.value)} />
-                        <AbnHint match={commercialAbnMatch} onUseName={(n) => setComBusinessName(n)} />
-                        {!commercialAbnMatch && commercialAbr.enabled && (
-                          <AbrResultCard
-                            record={commercialAbr.record}
-                            loading={commercialAbr.loading}
-                            onApply={(r) => setComBusinessName(r.name)}
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={LABEL_CLS}>Loan Purpose</label>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {COMMERCIAL_LOAN_TYPES.map(type => {
-                          const active = selectedCommercialLoanType === type.value;
-                          return (
-                            <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => setSelectedCommercialLoanType(type.value)}>
-                              <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
-                                {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <LoanTypeIcon type={type.value} className={`h-4 w-4 shrink-0 ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} />
-                                <p className={`text-[13px] font-semibold ${active ? 'text-[var(--led-accent)]' : 'text-[var(--led-ink)]'}`}>{type.label}</p>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Commercial Vehicle/Equipment Fields */}
                     {['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType) && (
@@ -1956,23 +1962,11 @@ export default function NewApplication() {
                       </div>
                     )}
 
-                    {/* Fallback for unselected or simple loan types */}
-                    {!selectedCommercialLoanType && (
-                      <div>
-                        <label className={LABEL_CLS}>Loan Amount *</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[14px] font-semibold text-[var(--led-muted)] pointer-events-none">$</span>
-                          <Input type="number" step="0.01" min="1" placeholder="100,000" style={{ paddingLeft: '2rem' }} {...register('amount')} />
-                        </div>
-                      </div>
-                    )}
-
                     <div>
                       <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
                       <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
                     </div>
             </GlassCard>
-            )}
 
             {/* ── Loan Amount ── */}
             <GlassCard className="space-y-4">
@@ -1996,6 +1990,80 @@ export default function NewApplication() {
             </>
           )}
 
+            {/* Document upload */}
+            {isSectionVisible('documents') && (
+                <GlassCard className="space-y-4">
+                  <div>
+                    <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
+                    <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files upload immediately.</p>
+                  </div>
+
+                  {uploadedDocs.length > 0 && (
+                    <ul className="space-y-2">
+                      {uploadedDocs.map((d, i) => (
+                        <li key={i} className="flex items-center gap-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/40 px-3 py-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--led-accent)]/10">
+                            <svg className="h-4 w-4 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
+                            <p className="text-[11px] text-[var(--led-muted)] truncate">{d.filename}</p>
+                          </div>
+                          <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {stagedFile ? (
+                    <div className="rounded-xl border border-primary/30 bg-[var(--led-accent)]/5 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 text-[var(--led-accent)] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <span className="text-[13px] font-medium text-[var(--led-ink)] truncate">{stagedFile.name}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-[var(--led-muted)]">{(stagedFile.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className={LABEL_CLS}>Document Type</label>
+                          <select value={stagedDocType} onChange={e => setStagedDocType(e.target.value as DocType)} className={SELECT_CLS}>
+                            {Object.entries(DOC_TYPE_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL_CLS}>Label <span className="font-normal">(optional)</span></label>
+                          <Input placeholder={DOC_TYPE_LABELS[stagedDocType] || 'e.g. June payslip'} value={stagedLabel} onChange={e => setStagedLabel(e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" onClick={handleConfirmStaged} disabled={uploading}>
+                          {uploading ? 'Uploading...' : 'Upload now'}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setStagedFile(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${isDragOver ? 'border-primary bg-[var(--led-accent)]/5' : 'border-[var(--led-line)] hover:border-primary/50 hover:bg-[var(--led-surface-2)]/40'}`}
+                      onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                      onDragEnter={e => { e.preventDefault(); setIsDragOver(true); }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={handleDrop}
+                    >
+                      <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-[var(--led-accent)]/15' : 'bg-[var(--led-surface-2)]'}`}>
+                        <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                      </div>
+                      <div>
+                        <p className="text-[13px] font-medium text-[var(--led-ink)]">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
+                        <p className="text-[12px] text-[var(--led-muted)] mt-0.5">PDF, JPG, PNG — up to 10 MB</p>
+                      </div>
+                    </div>
+                  )}
+                </GlassCard>
+                )}
+
         {/* ── Identification ── */}
           {isSectionVisible('personal') && (
           <GlassCard className="space-y-4">
@@ -2014,7 +2082,7 @@ export default function NewApplication() {
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Marital Status</label>
+                  <label className={LABEL_CLS}>Marital Status{prefillTag('applicant_marital_status')}</label>
                   <select {...register('applicant_marital_status')} className={SELECT_CLS}>
                     {MARITAL_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -2044,7 +2112,7 @@ export default function NewApplication() {
                   />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Number of Dependants</label>
+                  <label className={LABEL_CLS}>Number of Dependants{prefillTag('num_dependants')}</label>
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
                 </div>
               </div>
@@ -2105,7 +2173,7 @@ export default function NewApplication() {
             </GlassCard>
             </>)}
 
-            {!lendEnabled && tab === 'commercial' && isSectionVisible('business') && (
+            {!lendEnabled && businessSubType && isSectionVisible('business') && (
               <GlassCard className="space-y-4">
                 <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>
@@ -2162,13 +2230,13 @@ export default function NewApplication() {
             </GlassCard>)}
 
         {/* ── Living & Employment ── */}
-        {(tab === 'consumer' || lendEnabled) && (
+        {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('living') && (<>
             <GlassCard className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Living Situation</h3>
               <div>
-                <label className={LABEL_CLS}>Residential Status</label>
+                <label className={LABEL_CLS}>Residential Status{prefillTag('residential_status')}</label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {['Renting', 'Owner (Mortgage)', 'Owner (No Mortgage)', 'Living with Family'].map(r => (
                     <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${watch('residential_status') === r ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`}>
@@ -2179,27 +2247,27 @@ export default function NewApplication() {
                 </div>
               </div>
               <div>
-                <label className={LABEL_CLS}>Current Address *</label>
+                <label className={LABEL_CLS}>Current Address *{prefillTag('applicant_address')}</label>
                 <Input placeholder="123 Main Street" {...register('applicant_address')} />
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS}>Suburb</label>
+                  <label className={LABEL_CLS}>Suburb{prefillTag('applicant_suburb')}</label>
                   <Input placeholder="Sydney" {...register('applicant_suburb')} />
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>State</label>
+                  <label className={LABEL_CLS}>State{prefillTag('applicant_state')}</label>
                   <select {...register('applicant_state')} className={SELECT_CLS}>
                     {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Postcode</label>
+                  <label className={LABEL_CLS}>Postcode{prefillTag('applicant_postcode')}</label>
                   <Input placeholder="2000" maxLength={4} {...register('applicant_postcode', { pattern: { value: /^\d{4}$/, message: 'Invalid postcode' } })} error={errors.applicant_postcode?.message} />
                 </div>
               </div>
               <div>
-                <label className={LABEL_CLS}>Time at Current Address</label>
+                <label className={LABEL_CLS}>Time at Current Address{prefillTag('time_at_address')}</label>
                 <Input placeholder="e.g. 3 years" {...register('time_at_address')} />
               </div>
             </GlassCard>
@@ -2208,14 +2276,14 @@ export default function NewApplication() {
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Household</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS}>Partner / Spouse?</label>
+                  <label className={LABEL_CLS}>Partner / Spouse?{prefillTag('has_partner')}</label>
                   <select {...register('has_partner')} className={SELECT_CLS}>
                     <option value="no">No</option>
                     <option value="yes">Yes</option>
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL_CLS}>Number of Dependants</label>
+                  <label className={LABEL_CLS}>Number of Dependants{prefillTag('num_dependants')}</label>
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
                 </div>
                 {hasPartner === 'yes' && (
@@ -2423,7 +2491,7 @@ export default function NewApplication() {
         )}
 
         {/* ── Financial Position ── */}
-        {(tab === 'consumer' || lendEnabled) && (
+        {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('assets') && (<>
             <GlassCard className="space-y-4">
@@ -2647,7 +2715,7 @@ export default function NewApplication() {
                 <p className="text-[14px] font-semibold text-[var(--led-ink)] capitalize">
                   {lendEnabled
                     ? (selectedLoanTypes.map(t => t.replace(/_/g, ' ')).join(', ') || '—')
-                    : `${tab === 'consumer' ? 'Consumer' : 'Commercial'} · ${currentPurposeLabel || 'No purpose selected'}`}
+                    : `${LOAN_CATEGORIES.find(c => c.value === tab)?.label ?? ''} · ${(selectedSubType && findLoanSubType(selectedSubType)?.label) || currentPurposeLabel || 'No loan type selected'}`}
                 </p>
               </div>
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">

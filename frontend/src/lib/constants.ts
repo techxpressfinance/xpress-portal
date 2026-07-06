@@ -211,26 +211,66 @@ export const COLUMN_COLOR_OPTIONS = [
   { value: 'chart-5', label: 'Purple' },
 ] as const;
 
-// Comprehensive Loan Type Configurations
-export const CONSUMER_LOAN_TYPES = [
+// Comprehensive Loan Type Configurations — grouped into the three top-level
+// categories shown on application forms (Asset Finance / Home Loan / Commercial).
+export const ASSET_FINANCE_LOAN_TYPES = [
   { value: 'car', label: 'Car Loan', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
   { value: 'motorcycle', label: 'Motorcycle Loan', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
   { value: 'caravan', label: 'Caravan / RV Loan', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
   { value: 'other_vehicle', label: 'Other Vehicle', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
   { value: 'personal', label: 'Personal Loan', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
+  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
+  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
+] as const;
+
+export const HOME_LOAN_TYPES = [
   { value: 'purchase', label: 'Purchase', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
   { value: 'refinance', label: 'Refinance', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
 ] as const;
 
 export const COMMERCIAL_LOAN_TYPES = [
-  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
-  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
   { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
   { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
   { value: 'property', label: 'Development finance & Construction', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
   { value: 'new_business', label: 'Start a new business/ Purchase an existing business', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
   { value: 'other', label: 'Other', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
 ] as const;
+
+export type LoanCategory = 'asset_finance' | 'home_loan' | 'commercial';
+
+export const LOAN_CATEGORIES: { value: LoanCategory; label: string; types: readonly { value: string; label: string; description: string; fields: readonly string[] }[] }[] = [
+  { value: 'asset_finance', label: 'Asset Finance', types: ASSET_FINANCE_LOAN_TYPES },
+  { value: 'home_loan', label: 'Home Loan', types: HOME_LOAN_TYPES },
+  { value: 'commercial', label: 'Commercial Loans', types: COMMERCIAL_LOAN_TYPES },
+];
+
+// Sub-types whose details serialize under consumer_loan_type (individual borrower).
+// Everything else — including legacy values no longer offered as cards — is a
+// business-purpose loan serialized under commercial_loan_type and requiring ABN.
+const CONSUMER_SUB_TYPES = new Set(['car', 'motorcycle', 'caravan', 'other_vehicle', 'personal', 'purchase', 'refinance']);
+
+export const isConsumerSubType = (subType: string): boolean => CONSUMER_SUB_TYPES.has(subType);
+export const isBusinessSubType = (subType: string): boolean => !!subType && !CONSUMER_SUB_TYPES.has(subType);
+
+export const categoryForSubType = (subType: string): LoanCategory => {
+  if (subType === 'purchase' || subType === 'refinance') return 'home_loan';
+  if (CONSUMER_SUB_TYPES.has(subType) || ['day_to_day_capital', 'vehicles_or_transport'].includes(subType)) return 'asset_finance';
+  return 'commercial';
+};
+
+// Maps a form sub-type to the stored LoanType enum value. Includes legacy
+// sub-types (machinery_or_equipment, renovation, …) still present in old data.
+export const subTypeToLoanType = (subType: string): string => {
+  if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subType)) return 'vehicle';
+  if (['purchase', 'refinance'].includes(subType)) return 'home_loan';
+  if (subType === 'personal') return 'personal';
+  if (['vehicles_or_transport', 'machinery_or_equipment', 'new_fit_out', 'renovation', 'pay_suppliers'].includes(subType)) return 'equipment_finance';
+  if (['property', 'development_construction'].includes(subType)) return 'commercial_property';
+  return 'business_loan';
+};
+
+export const findLoanSubType = (value: string) =>
+  [...ASSET_FINANCE_LOAN_TYPES, ...HOME_LOAN_TYPES, ...COMMERCIAL_LOAN_TYPES].find(t => t.value === value);
 
 export const VEHICLE_MAKES = [
   'Toyota', 'Honda', 'Mazda', 'Ford', 'Holden', 'Hyundai', 'Kia', 'Mitsubishi', 'Nissan', 'Subaru',

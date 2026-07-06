@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, DatePicker } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import type { Contact, PaginatedResponse } from '../../types';
 
@@ -203,13 +203,22 @@ export default function Contacts() {
         </form>
 
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                <TableSkeleton rows={8} widths={[140, 180, 110, 90, 40, 90, 16]} />
+              </tbody>
+            </table>
           </div>
         ) : contacts.length === 0 ? (
-          <p className="text-center py-12 text-muted-foreground">
-            {search ? 'No contacts match your search.' : 'No contacts yet. Click "Auto-Create from Applications" to generate contacts from existing loan applications.'}
-          </p>
+          search ? (
+            <p className="text-center py-12 text-muted-foreground">No contacts match your search.</p>
+          ) : (
+            <EmptyState
+              title="No contacts yet"
+              description='Click "Auto-Create from Applications" to generate contacts from existing loan applications.'
+            />
+          )
         ) : (
           <>
             <div className="overflow-x-auto">

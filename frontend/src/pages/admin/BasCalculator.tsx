@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { GlassCard } from '../../components/ui';
+import { useTabParam } from '../../hooks/useTabParam';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -279,6 +280,9 @@ export function BASCalculator({ initialState, onStateChange }: {
   useEffect(() => { _onSC.current = onStateChange; });
 
   const [mode, setMode] = useState<BASMode>(initialState?.mode ?? 'quarterly');
+  // Component-local, not URL-backed: BASCalculator is also embedded inside
+  // ApplicationCalculators on application pages, where a ?subtab= param would
+  // pollute the host page's URL and history.
   const [tab, setTab] = useState<BASTab>('collator');
   const [oncostsRate, setOncostsRate] = useState(initialState?.oncostsRate ?? '15');
 
@@ -1284,7 +1288,7 @@ export function RatiosCalculator({ initialState, onStateChange }: {
 type TopTab = 'bas' | 'pay' | 'ratios';
 
 export default function Calculators() {
-  const [topTab, setTopTab] = useState<TopTab>('bas');
+  const [topTab, setTopTab] = useTabParam<TopTab>('bas', ['bas', 'pay', 'ratios']);
 
   const tabs: { value: TopTab; label: string }[] = [
     { value: 'bas', label: 'BAS Calculator' },

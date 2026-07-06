@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
-import { PageHeader, Badge, Button } from '../../components/ui';
+import { PageHeader, Badge, Button, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 
 interface Tenant {
@@ -69,16 +69,23 @@ export default function TenantManagement() {
 
       <div className="rounded-2xl bg-card text-card-foreground shadow-[0_0_0_1px_var(--border),0_1px_3px_0_rgba(0,0,0,0.04)] overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <tbody>
+                <TableSkeleton rows={5} widths={[140, 90, 60, 90, 60]} cellClassName="px-5 py-3.5" rowClassName="border-b border-border last:border-0" />
+              </tbody>
+            </table>
           </div>
         ) : tenants.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <p className="text-[15px]">No tenants yet</p>
-            <Link to="/platform/tenants/new" className="text-[#0071e3] text-[14px] mt-2 inline-block">
-              Create your first tenant
-            </Link>
-          </div>
+          <EmptyState
+            title="No tenants yet"
+            description="Create your first tenant to get started."
+            action={
+              <Link to="/platform/tenants/new" className="text-[#0071e3] text-[14px]">
+                Create your first tenant
+              </Link>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
           <table className="w-full text-left">

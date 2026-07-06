@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useTabParam } from '../../hooks/useTabParam';
+import { TableSkeleton } from '../../components/ui';
 import { relativeTime, fmtMoneyK } from '../../lib/utils';
 import { STATUS_LABEL } from '../../lib/constants';
 import type { LoanApplication, DeletedClient } from '../../types';
@@ -29,7 +31,7 @@ const LOAN_TYPE_ICON: Record<string, string> = { business: 'briefcase', vehicle:
 const LOAN_TYPE_LABEL: Record<string, string> = { business: 'Business', vehicle: 'Vehicle', home: 'Home', personal: 'Personal' };
 
 export default function DeletedApplications() {
-  const [activeTab, setActiveTab] = useState<'applications' | 'clients'>('applications');
+  const [activeTab, setActiveTab] = useTabParam('applications', ['applications', 'clients'] as const);
   const { toast } = useToast();
 
   // Applications state
@@ -114,9 +116,12 @@ export default function DeletedApplications() {
 
       {activeTab === 'applications' && (
         appsLoading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400">
-            <Icon name="loader" size={24} className="animate-spin mr-2" />
-            <span className="text-sm">Loading…</span>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                <TableSkeleton rows={6} widths={[150, 90, 70, 110, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-gray-100" />
+              </tbody>
+            </table>
           </div>
         ) : apps.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
@@ -186,9 +191,12 @@ export default function DeletedApplications() {
 
       {activeTab === 'clients' && (
         clientsLoading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400">
-            <Icon name="loader" size={24} className="animate-spin mr-2" />
-            <span className="text-sm">Loading…</span>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                <TableSkeleton rows={6} widths={[160, 180, 60, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-gray-100" />
+              </tbody>
+            </table>
           </div>
         ) : clients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">

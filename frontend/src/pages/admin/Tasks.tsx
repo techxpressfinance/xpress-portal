@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage } from '../../lib/utils';
-import { DatePicker } from '../../components/ui';
+import { DatePicker, EmptyState } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
 
 const STATUS_TABS = [
@@ -318,7 +318,10 @@ export default function Tasks() {
             )}
           </>
         ) : tasks.length === 0 ? (
-          <p className="text-[14px] text-[var(--led-muted)] py-10 text-center">Nothing here</p>
+          <EmptyState
+            title="No tasks"
+            description="Create a task, or adjust the status and broker filters above."
+          />
         ) : (
           tasks.map(renderTask)
         )}

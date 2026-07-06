@@ -10,9 +10,10 @@ import DocumentUploader from '../../components/DocumentUploader';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
+import { useTabParam } from '../../hooks/useTabParam';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LOAN_CATEGORIES, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, categoryForSubType, findLoanSubType } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
@@ -29,7 +30,7 @@ export default function ReferrerApplicationDetail() {
   const [client, setClient] = useState<User | null>(null);
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'details' | 'documents' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'details', 'documents', 'messages'] as const);
 
   const [downloadingAppPdf, setDownloadingAppPdf] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -1633,19 +1634,19 @@ export default function ReferrerApplicationDetail() {
                             <GlassCard>
                               <h2 className="text-[15px] font-semibold text-foreground mb-4">Loan Type Details</h2>
                               <div className="space-y-4">
-                                {loanDetails.consumer_loan_type && (
-                                  <div className="rounded-xl bg-secondary p-4">
-                                    <p className="text-[13px] font-medium text-muted-foreground">Consumer Loan Type</p>
-                                    <p className="mt-1 text-[16px] font-semibold text-foreground">{loanDetails.consumer_loan_type.label}</p>
-                                  </div>
-                                )}
-
-                                {loanDetails.commercial_loan_type && (
-                                  <div className="rounded-xl bg-secondary p-4">
-                                    <p className="text-[13px] font-medium text-muted-foreground">Commercial Loan Type</p>
-                                    <p className="mt-1 text-[16px] font-semibold text-foreground">{loanDetails.commercial_loan_type.label || loanDetails.commercial_loan_type.type?.replace(/_/g, ' ')}</p>
-                                  </div>
-                                )}
+                                {(() => {
+                                  const subType: string | undefined = loanDetails.consumer_loan_type?.type || loanDetails.commercial_loan_type?.type;
+                                  if (!subType) return null;
+                                  const categoryLabel = LOAN_CATEGORIES.find(c => c.value === categoryForSubType(subType))?.label;
+                                  const storedLabel = loanDetails.consumer_loan_type?.label || loanDetails.commercial_loan_type?.label;
+                                  const subTypeLabel = findLoanSubType(subType)?.label || storedLabel || subType.replace(/_/g, ' ');
+                                  return (
+                                    <div className="rounded-xl bg-secondary p-4">
+                                      <p className="text-[13px] font-medium text-muted-foreground">{categoryLabel}</p>
+                                      <p className="mt-1 text-[16px] font-semibold text-foreground">{subTypeLabel}</p>
+                                    </div>
+                                  );
+                                })()}
 
                                 {loanDetails.vehicle_details && (
                                   <div className="rounded-xl bg-secondary/50 p-4 space-y-3">

@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
 import { COLUMN_COLOR_OPTIONS } from '../../lib/constants';
-import { ConfirmDialog } from '../../components/ui';
+import { ConfirmDialog, EmptyState } from '../../components/ui';
 import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, User } from '../../types';
 
 // ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
@@ -1134,14 +1134,17 @@ export default function KanbanBoardPage() {
           </div>
         </div>
       ) : (
-        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <p style={{ color: 'var(--led-muted)', marginBottom: 16 }}>No boards found.</p>
-          {isAdmin && (
-            <button type="button" className="led-btn led-btn-accent" onClick={() => setShowCreateBoard(true)}>
-              <Icon name="plus" size={13} /> Create your first board
-            </button>
-          )}
-        </div>
+        <EmptyState
+          title="No boards found"
+          description="Boards group applications into pipeline stages."
+          action={
+            isAdmin ? (
+              <button type="button" className="led-btn led-btn-accent" onClick={() => setShowCreateBoard(true)}>
+                <Icon name="plus" size={13} /> Create your first board
+              </button>
+            ) : undefined
+          }
+        />
       )}
 
       {/* ── Create Board Modal ── */}

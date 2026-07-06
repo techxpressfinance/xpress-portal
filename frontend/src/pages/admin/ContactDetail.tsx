@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { LOAN_TYPES, APPLICATION_STATUSES } from '../../types';
 import type { ContactDetail as ContactDetailType, ContactApplication, LendingHistoryEntry, RepaymentFrequency } from '../../types';
@@ -706,11 +706,7 @@ export default function ContactDetail() {
   }, [id]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    return <DetailSkeleton blocks={3} />;
   }
 
   if (!contact) {

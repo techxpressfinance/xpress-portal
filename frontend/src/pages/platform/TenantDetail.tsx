@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
 import { getErrorMessage, formatDateTime } from '../../lib/utils';
-import { PageHeader, Badge, Button, Input } from '../../components/ui';
+import { PageHeader, Badge, Button, Input, DetailSkeleton } from '../../components/ui';
 
 interface Tenant {
   id: string;
@@ -66,7 +66,7 @@ export default function TenantDetail() {
       setTenant(updated);
       setSuccess('Tenant updated');
       setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
+    } catch (err) {
       setError(getErrorMessage(err, 'Failed to update'));
     }
   };
@@ -85,8 +85,8 @@ export default function TenantDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="p-4 sm:p-8 max-w-2xl mx-auto">
+        <DetailSkeleton blocks={2} />
       </div>
     );
   }

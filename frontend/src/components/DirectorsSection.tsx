@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import api from '../api/client';
+import { useToast } from './Toast';
+import { getErrorMessage } from '../lib/utils';
 import { CopyButton } from './ui/CopyButton';
 import type { LoanApplication, LoanApplicant } from '../types';
 
@@ -21,25 +23,30 @@ const partyStatus = (d: LoanApplicant) =>
   d.completed_at ? (d.signed_at ? 'Signed' : 'Completed, unsigned') : d.invite_sent_at ? 'Invite sent' : 'Pending';
 
 export default function DirectorsSection({ application, onChange, canManage = false, canReconcile = false }: Props) {
+  const { toast } = useToast();
   const [newDirectorEmail, setNewDirectorEmail] = useState('');
   const [newDirectorRole, setNewDirectorRole] = useState('director');
   const [addingDirector, setAddingDirector] = useState(false);
+  const [directorEmailError, setDirectorEmailError] = useState('');
   const [reconciling, setReconciling] = useState(false);
 
   // Corporate guarantor form
   const [gName, setGName] = useState('');
   const [gAbn, setGAbn] = useState('');
   const [addingGuarantor, setAddingGuarantor] = useState(false);
-  // Per-guarantor signatory email input + in-flight id
+  const [guarantorError, setGuarantorError] = useState('');
+  // Per-guarantor signatory email input, field error + in-flight id
   const [sigEmails, setSigEmails] = useState<Record<string, string>>({});
+  const [sigErrors, setSigErrors] = useState<Record<string, string>>({});
   const [busyGuarantor, setBusyGuarantor] = useState<string | null>(null);
 
   const handleAddDirector = useCallback(async () => {
     const email = newDirectorEmail.trim();
     if (!email) {
-      alert('An email is required — the director/guarantor is invited to complete their own details.');
+      setDirectorEmailError('An email is required — the director/guarantor is invited to complete their own details.');
       return;
     }
+    setDirectorEmailError('');
     setAddingDirector(true);
     try {
       await api.post(`/applications/${application.id}/directors`, {
@@ -49,42 +56,45 @@ export default function DirectorsSection({ application, onChange, canManage = fa
       setNewDirectorEmail('');
       setNewDirectorRole('director');
       await onChange();
-    } catch {
-      alert('Failed to add director');
+      toast(`Invite sent to ${email}`, 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to add director'), 'error');
     } finally {
       setAddingDirector(false);
     }
-  }, [application.id, newDirectorEmail, newDirectorRole, onChange]);
+  }, [application.id, newDirectorEmail, newDirectorRole, onChange, toast]);
 
   const handleRemoveDirector = useCallback(async (applicantId: string) => {
     if (!confirm('Remove this person from the application?')) return;
     try {
       await api.delete(`/applications/${application.id}/directors/${applicantId}`);
       await onChange();
-    } catch {
-      alert('Failed to remove');
+      toast('Removed from application', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove'), 'error');
     }
-  }, [application.id, onChange]);
+  }, [application.id, onChange, toast]);
 
   const handleReconcile = useCallback(async () => {
     setReconciling(true);
     try {
       await api.post(`/applications/${application.id}/reconcile`, {});
       await onChange();
-    } catch {
-      alert('Failed to resolve');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to resolve'), 'error');
     } finally {
       setReconciling(false);
     }
-  }, [application.id, onChange]);
+  }, [application.id, onChange, toast]);
 
   const handleAddGuarantor = useCallback(async () => {
     const name = gName.trim();
     const abn = gAbn.trim();
     if (!name && !abn) {
-      alert('Enter the guarantor company name or ABN.');
+      setGuarantorError('Enter the guarantor company name or ABN.');
       return;
     }
+    setGuarantorError('');
     setAddingGuarantor(true);
     try {
       await api.post(`/applications/${application.id}/guarantors`, {
@@ -94,29 +104,32 @@ export default function DirectorsSection({ application, onChange, canManage = fa
       setGName('');
       setGAbn('');
       await onChange();
-    } catch {
-      alert('Failed to add corporate guarantor');
+      toast('Corporate guarantor added', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to add corporate guarantor'), 'error');
     } finally {
       setAddingGuarantor(false);
     }
-  }, [application.id, gName, gAbn, onChange]);
+  }, [application.id, gName, gAbn, onChange, toast]);
 
   const handleRemoveGuarantor = useCallback(async (guarantorId: string) => {
     if (!confirm('Remove this corporate guarantor and all its signatories?')) return;
     try {
       await api.delete(`/applications/${application.id}/guarantors/${guarantorId}`);
       await onChange();
-    } catch {
-      alert('Failed to remove corporate guarantor');
+      toast('Corporate guarantor removed', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove corporate guarantor'), 'error');
     }
-  }, [application.id, onChange]);
+  }, [application.id, onChange, toast]);
 
   const handleAddSignatory = useCallback(async (guarantorId: string) => {
     const email = (sigEmails[guarantorId] || '').trim();
     if (!email) {
-      alert('An email is required — the director is invited to sign the guarantee.');
+      setSigErrors((prev) => ({ ...prev, [guarantorId]: 'An email is required — the director is invited to sign the guarantee.' }));
       return;
     }
+    setSigErrors((prev) => ({ ...prev, [guarantorId]: '' }));
     setBusyGuarantor(guarantorId);
     try {
       await api.post(`/applications/${application.id}/guarantors/${guarantorId}/signatories`, {
@@ -124,12 +137,13 @@ export default function DirectorsSection({ application, onChange, canManage = fa
       });
       setSigEmails((prev) => ({ ...prev, [guarantorId]: '' }));
       await onChange();
-    } catch {
-      alert('Failed to add signatory');
+      toast(`Invite sent to ${email}`, 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to add signatory'), 'error');
     } finally {
       setBusyGuarantor(null);
     }
-  }, [application.id, sigEmails, onChange]);
+  }, [application.id, sigEmails, onChange, toast]);
 
   if (!COMMERCIAL_TYPES.includes(application.loan_type)) return null;
 
@@ -225,29 +239,36 @@ export default function DirectorsSection({ application, onChange, canManage = fa
       </div>
 
       {canManage && (
-        <div className="mt-3 flex items-center gap-2">
-          <select
-            value={newDirectorRole}
-            onChange={(e) => setNewDirectorRole(e.target.value)}
-            className="shrink-0 rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
-          >
-            <option value="director">Director</option>
-            <option value="guarantor">Guarantor</option>
-          </select>
-          <input
-            type="email"
-            value={newDirectorEmail}
-            onChange={(e) => setNewDirectorEmail(e.target.value)}
-            placeholder="Email (required, sends invite)"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-[13px]"
-          />
-          <button
-            onClick={handleAddDirector}
-            disabled={addingDirector || !newDirectorEmail.trim()}
-            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            {addingDirector ? 'Adding…' : 'Add & invite'}
-          </button>
+        <div className="mt-3">
+          <div className="flex items-center gap-2">
+            <select
+              value={newDirectorRole}
+              onChange={(e) => setNewDirectorRole(e.target.value)}
+              className="shrink-0 rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
+            >
+              <option value="director">Director</option>
+              <option value="guarantor">Guarantor</option>
+            </select>
+            <input
+              type="email"
+              value={newDirectorEmail}
+              onChange={(e) => {
+                setNewDirectorEmail(e.target.value);
+                if (directorEmailError) setDirectorEmailError('');
+              }}
+              placeholder="Email (required, sends invite)"
+              aria-invalid={Boolean(directorEmailError)}
+              className={`flex-1 rounded-md border bg-background px-3 py-1.5 text-[13px] ${directorEmailError ? 'border-destructive' : 'border-border'}`}
+            />
+            <button
+              onClick={handleAddDirector}
+              disabled={addingDirector || !newDirectorEmail.trim()}
+              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {addingDirector ? 'Adding…' : 'Add & invite'}
+            </button>
+          </div>
+          {directorEmailError && <p className="mt-1 text-[12px] text-destructive">{directorEmailError}</p>}
         </div>
       )}
 
@@ -289,21 +310,28 @@ export default function DirectorsSection({ application, onChange, canManage = fa
               </div>
 
               {canManage && (
-                <div className="mt-2 flex items-center gap-2 pl-3">
-                  <input
-                    type="email"
-                    value={sigEmails[g.id] || ''}
-                    onChange={(e) => setSigEmails((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                    placeholder="Director email (required, sends invite)"
-                    className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-[13px]"
-                  />
-                  <button
-                    onClick={() => handleAddSignatory(g.id)}
-                    disabled={busyGuarantor === g.id || !(sigEmails[g.id] || '').trim()}
-                    className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {busyGuarantor === g.id ? 'Adding…' : 'Add & invite'}
-                  </button>
+                <div className="mt-2 pl-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="email"
+                      value={sigEmails[g.id] || ''}
+                      onChange={(e) => {
+                        setSigEmails((prev) => ({ ...prev, [g.id]: e.target.value }));
+                        if (sigErrors[g.id]) setSigErrors((prev) => ({ ...prev, [g.id]: '' }));
+                      }}
+                      placeholder="Director email (required, sends invite)"
+                      aria-invalid={Boolean(sigErrors[g.id])}
+                      className={`flex-1 rounded-md border bg-background px-3 py-1.5 text-[13px] ${sigErrors[g.id] ? 'border-destructive' : 'border-border'}`}
+                    />
+                    <button
+                      onClick={() => handleAddSignatory(g.id)}
+                      disabled={busyGuarantor === g.id || !(sigEmails[g.id] || '').trim()}
+                      className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busyGuarantor === g.id ? 'Adding…' : 'Add & invite'}
+                    </button>
+                  </div>
+                  {sigErrors[g.id] && <p className="mt-1 text-[12px] text-destructive">{sigErrors[g.id]}</p>}
                 </div>
               )}
             </div>
@@ -311,26 +339,37 @@ export default function DirectorsSection({ application, onChange, canManage = fa
         </div>
 
         {canManage && (
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              value={gName}
-              onChange={(e) => setGName(e.target.value)}
-              placeholder="Guarantor company name"
-              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-[13px]"
-            />
-            <input
-              value={gAbn}
-              onChange={(e) => setGAbn(e.target.value)}
-              placeholder="ABN"
-              className="w-40 rounded-md border border-border bg-background px-3 py-1.5 text-[13px]"
-            />
-            <button
-              onClick={handleAddGuarantor}
-              disabled={addingGuarantor || !(gName.trim() || gAbn.trim())}
-              className="shrink-0 rounded-md border border-primary px-3 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
-            >
-              {addingGuarantor ? 'Adding…' : 'Add company'}
-            </button>
+          <div className="mt-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={gName}
+                onChange={(e) => {
+                  setGName(e.target.value);
+                  if (guarantorError) setGuarantorError('');
+                }}
+                placeholder="Guarantor company name"
+                aria-invalid={Boolean(guarantorError)}
+                className={`flex-1 rounded-md border bg-background px-3 py-1.5 text-[13px] ${guarantorError ? 'border-destructive' : 'border-border'}`}
+              />
+              <input
+                value={gAbn}
+                onChange={(e) => {
+                  setGAbn(e.target.value);
+                  if (guarantorError) setGuarantorError('');
+                }}
+                placeholder="ABN"
+                aria-invalid={Boolean(guarantorError)}
+                className={`w-40 rounded-md border bg-background px-3 py-1.5 text-[13px] ${guarantorError ? 'border-destructive' : 'border-border'}`}
+              />
+              <button
+                onClick={handleAddGuarantor}
+                disabled={addingGuarantor || !(gName.trim() || gAbn.trim())}
+                className="shrink-0 rounded-md border border-primary px-3 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+              >
+                {addingGuarantor ? 'Adding…' : 'Add company'}
+              </button>
+            </div>
+            {guarantorError && <p className="mt-1 text-[12px] text-destructive">{guarantorError}</p>}
           </div>
         )}
       </div>

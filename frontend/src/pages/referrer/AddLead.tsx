@@ -4,7 +4,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
-import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, CONSUMER_LOAN_TYPES, COMMERCIAL_LOAN_TYPES } from '../../lib/constants';
+import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
+import type { LoanCategory } from '../../lib/constants';
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
@@ -148,21 +149,11 @@ interface AddLeadProps {
   showFullDetails?: boolean;
 }
 
-function computeEffectiveLoanType(tab: string, subLoanType: string): string {
-  if (tab === 'consumer') {
-    if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType)) return 'vehicle';
-    if (['purchase', 'refinance'].includes(subLoanType)) return 'home_loan';
-    return 'personal';
-  }
-  if (['vehicles_or_transport', 'machinery_or_equipment', 'new_fit_out', 'renovation', 'pay_suppliers'].includes(subLoanType)) return 'equipment_finance';
-  if (['property', 'development_construction'].includes(subLoanType)) return 'commercial_property';
-  return 'business_loan';
-}
-
-function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, tab: string, subLoanType: string): Record<string, unknown> {
+function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string): Record<string, unknown> {
   const details: Record<string, unknown> = {};
-  if (tab === 'consumer') {
-    details.consumer_loan_type = { type: subLoanType };
+  const label = findLoanSubType(subLoanType)?.label;
+  if (isConsumerSubType(subLoanType)) {
+    details.consumer_loan_type = { type: subLoanType, label };
     if (['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType)) {
       details.vehicle_details = {
         type: extra.vehicle_type,
@@ -195,7 +186,7 @@ function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, tab: string, subLoan
       };
     }
   } else {
-    details.commercial_loan_type = { type: subLoanType };
+    details.commercial_loan_type = { type: subLoanType, label };
     if (['vehicles_or_transport', 'machinery_or_equipment'].includes(subLoanType)) {
       details.asset_details = {
         equipment_type: extra.equipment_type,
@@ -283,7 +274,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [loanType, setLoanType] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
-  const [tab, setTab] = useState<'consumer' | 'commercial'>('consumer');
+  const [category, setCategory] = useState<LoanCategory>('asset_finance');
   const [subLoanType, setSubLoanType] = useState('');
   const [comBusinessName, setComBusinessName] = useState('');
   const [comAbn, setComAbn] = useState('');
@@ -299,6 +290,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
   const isBusinessLoan = loanType === 'business_loan';
+  const businessSubType = isBusinessSubType(subLoanType);
 
   useEffect(() => {
     if (clientMode !== 'existing') return;
@@ -341,7 +333,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (!subLoanType || !amount || parseFloat(amount) <= 0) return;
     if (draftAppId || draftCreatingRef.current) return;
 
-    const effectiveLoanType = computeEffectiveLoanType(tab, subLoanType);
+    const effectiveLoanType = subTypeToLoanType(subLoanType);
     const timer = setTimeout(async () => {
       if (draftAppId || draftCreatingRef.current) return;
       draftCreatingRef.current = true;
@@ -353,7 +345,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           applicant_last_name: lastName.trim(),
           ...(mobile.trim() && { applicant_mobile: mobile.trim() }),
           ...(notes.trim() && { notes: notes.trim() }),
-          ...(tab === 'commercial' && {
+          ...(isBusinessSubType(subLoanType) && {
             business_name: comBusinessName.trim() || null,
             business_abn: comAbn.trim() || null,
           }),
@@ -368,7 +360,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstName, lastName, email, subLoanType, tab, amount, engagementModel]);
+  }, [firstName, lastName, email, subLoanType, amount, engagementModel]);
 
   // Delete draft when referrer switches to direct_engagement (which creates its own application).
   useEffect(() => {
@@ -385,7 +377,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (!draftAppId) return;
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(async () => {
-      const effectiveLoanType = subLoanType ? computeEffectiveLoanType(tab, subLoanType) : null;
+      const effectiveLoanType = subLoanType ? subTypeToLoanType(subLoanType) : null;
       const patch: Record<string, unknown> = {
         applicant_first_name: firstName.trim() || null,
         applicant_last_name: lastName.trim() || null,
@@ -393,7 +385,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         notes: notes.trim() || null,
         ...(effectiveLoanType && { loan_type: effectiveLoanType }),
         ...(parseFloat(amount) > 0 && { amount: parseFloat(amount) }),
-        ...(tab === 'commercial' && {
+        ...(isBusinessSubType(subLoanType) && {
           business_name: comBusinessName.trim() || null,
           business_abn: comAbn.trim() || null,
         }),
@@ -405,8 +397,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       }
     }, 1500);
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, tab, subLoanType, comBusinessName, comAbn]);
+  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, subLoanType, comBusinessName, comAbn]);
 
   const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -419,18 +410,17 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (!skipEngagement && !engagementModel) { setEngagementError('Please select who will engage with the client'); return; }
     if (!firstName.trim() || !lastName.trim()) { toast("Please enter the client's name", 'error'); return; }
     if (!email.trim()) { toast("Please enter the client's email", 'error'); return; }
-    if (tab === 'commercial' && !subLoanType) { toast('Please select a loan purpose', 'error'); return; }
-    if (tab === 'consumer' && !subLoanType) { toast('Please select a loan type', 'error'); return; }
-    // ABN is required for full commercial applications (broker/admin create). Quick
-    // referrer lead capture stays lenient — broker fills the ABN in later.
+    if (!subLoanType) { toast('Please select a loan type', 'error'); return; }
+    // ABN is required for full business-purpose applications (broker/admin create).
+    // Quick referrer lead capture stays lenient — broker fills the ABN in later.
     const commercialAbn = (comAbn.trim() || extra.business_abn.trim());
-    if (showFullDetails && tab === 'commercial' && !commercialAbn) {
-      toast('ABN is required for commercial loan applications', 'error');
+    if (showFullDetails && businessSubType && !commercialAbn) {
+      toast('ABN is required for business loan applications', 'error');
       return;
     }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) { toast('Please enter a valid amount', 'error'); return; }
 
-    const effectiveLoanType = computeEffectiveLoanType(tab, subLoanType);
+    const effectiveLoanType = subTypeToLoanType(subLoanType);
 
     setSubmitting(true);
     try {
@@ -443,14 +433,14 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           last_name: lastName.trim(),
           email: email.trim(),
           mobile: mobile.trim() || null,
-          company_name: tab === 'commercial' ? comBusinessName.trim() || null : null,
+          company_name: businessSubType ? comBusinessName.trim() || null : null,
           loan_type: effectiveLoanType,
           amount: parseFloat(amount),
           notes: notes.trim() || null,
-          business_name: tab === 'commercial' ? comBusinessName.trim() || null : null,
-          business_abn: tab === 'commercial' ? comAbn.trim() || null : null,
+          business_name: businessSubType ? comBusinessName.trim() || null : null,
+          business_abn: businessSubType ? comAbn.trim() || null : null,
           lend_extra_data: JSON.stringify({
-            loan_type_details: buildLoanTypeDetails(extra, tab, subLoanType),
+            loan_type_details: buildLoanTypeDetails(extra, subLoanType),
           }),
         });
         appId = result.application_id;
@@ -516,7 +506,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             },
             assets: { real_estate: realEstateAssets, other: otherAssets },
             liabilities,
-            loan_type_details: buildLoanTypeDetails(extra, tab, subLoanType),
+            loan_type_details: buildLoanTypeDetails(extra, subLoanType),
           }),
         } : {};
 
@@ -531,9 +521,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           notes: notes.trim() || null,
           status: 'application_received',
           ...extraPayload,
-          // Commercial-tab values take priority, falling back to the detail-section
+          // Business-purpose values take priority, falling back to the detail-section
           // business fields. Placed after extraPayload so they aren't nulled out.
-          ...(tab === 'commercial' ? {
+          ...(businessSubType ? {
             business_name: (comBusinessName.trim() || extra.business_name.trim()) || null,
             business_abn: (comAbn.trim() || extra.business_abn.trim()) || null,
           } : {}),
@@ -579,7 +569,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     setEngagementModel(''); setEngagementError('');
     setExtraFields(EXTRA_DEFAULTS);
     setAdditionalIncomes([]); setRealEstateAssets([]); setOtherAssets([]); setLiabilities([]);
-    setLoanType(''); setAmount(''); setNotes(''); setTab('consumer'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
+    setLoanType(''); setAmount(''); setNotes(''); setCategory('asset_finance'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
     setDone(false);
   };
 
@@ -721,33 +711,39 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       <GlassCard className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">What does the client need?</p>
         <div className="flex rounded-xl bg-secondary p-1 gap-1">
-          {(['consumer', 'commercial'] as const).map(t => (
-            <button key={t} type="button" onClick={() => { setTab(t); setSubLoanType(''); }}
-              className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition-all ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >{t === 'consumer' ? 'Consumer' : 'Commercial'}</button>
+          {LOAN_CATEGORIES.map(c => (
+            <button key={c.value} type="button" onClick={() => { setCategory(c.value); setSubLoanType(''); }}
+              className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition-all ${category === c.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >{c.label}</button>
           ))}
         </div>
 
-        {/* Consumer sub-types */}
-        {tab === 'consumer' && (
-          <div className="grid grid-cols-2 gap-2">
-            {CONSUMER_LOAN_TYPES.map(type => {
-              const active = subLoanType === type.value;
-              return (
-                <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
-                  className={`rounded-xl border p-3 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
-                >
-                  <LoanTypeIcon type={type.value} className="h-5 w-5 text-muted-foreground" />
-                  <p className="text-[13px] font-medium text-foreground mt-1">{type.label}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{type.description}</p>
-                </button>
-              );
-            })}
+        {/* Sub-types for the active category */}
+        <div className="grid grid-cols-2 gap-2">
+          {(LOAN_CATEGORIES.find(c => c.value === category)?.types ?? []).map(type => {
+            const active = subLoanType === type.value;
+            return (
+              <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
+                className={`rounded-xl border p-3 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
+              >
+                <LoanTypeIcon type={type.value} className="h-5 w-5 text-muted-foreground" />
+                <p className="text-[13px] font-medium text-foreground mt-1">{type.label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{type.description}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Business identity for business-purpose sub-types */}
+        {businessSubType && (
+          <div>
+            <label className={LBL}>Business / Entity Name</label>
+            <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
           </div>
         )}
 
         {/* Consumer sub-forms */}
-        {tab === 'consumer' && subLoanType && (
+        {subLoanType && !businessSubType && (
           <>
             {/* Vehicle sub-types: car, motorcycle, caravan, other_vehicle */}
             {['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(subLoanType) && (
@@ -897,30 +893,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           </>
         )}
 
-        {/* Commercial business info */}
-        {tab === 'commercial' && (
+        {/* Business sub-forms */}
+        {businessSubType && (
           <>
-            <div>
-              <label className={LBL}>Business / Entity Name</label>
-              <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
-            </div>
-            <div>
-              <label className={LBL}>Loan Purpose</label>
-              <div className="grid grid-cols-2 gap-2">
-                {COMMERCIAL_LOAN_TYPES.map(type => {
-                  const active = subLoanType === type.value;
-                  return (
-                    <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
-                      className={`rounded-xl border p-2.5 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
-                    >
-                      <p className="flex items-center gap-2 text-[13px] font-medium text-foreground"><LoanTypeIcon type={type.value} className="h-4 w-4 shrink-0 text-muted-foreground" /> {type.label}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Commercial sub-forms */}
             {subLoanType && (
               <div className="space-y-3 border-t border-border pt-4">
                 {/* Vehicles or Transport / Machinery or Equipment */}
@@ -1652,7 +1627,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           </GlassCard>
 
           {/* Business Details */}
-          {(tab === 'commercial' || isBusinessLoan || extra.business_name || extra.business_abn) && (
+          {(businessSubType || isBusinessLoan || extra.business_name || extra.business_abn) && (
             <GlassCard className="space-y-4">
               <p className="text-[15px] font-semibold text-foreground">Business Details</p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1661,7 +1636,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   <input type="text" className="led-input" value={extra.business_name} onChange={e => setExtra('business_name', e.target.value)} />
                 </div>
                 <div>
-                  <label className={LBL}>ABN{tab === 'commercial' ? ' *' : ''}</label>
+                  <label className={LBL}>ABN{businessSubType ? ' *' : ''}</label>
                   <input type="text" className="led-input" value={extra.business_abn} onChange={e => setExtra('business_abn', e.target.value)} />
                 </div>
               </div>
