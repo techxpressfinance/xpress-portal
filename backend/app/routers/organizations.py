@@ -9,18 +9,27 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.organization import (
     OrganizationContactLink,
     OrganizationCreate,
     OrganizationDetailOut,
+    OrganizationDuplicateCheck,
+    OrganizationMergeRequest,
     OrganizationOut,
     OrganizationUpdate,
     PaginatedOrganizations,
 )
 from app.config import ABR_ENABLED
 from app.services.abr import lookup_abn as abr_lookup_abn
+from app.services.dedupe import (
+    find_org_duplicates,
+    match_candidate_orgs,
+    merge_organizations,
+    org_signals,
+)
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
 
@@ -173,6 +182,121 @@ def create_organization(
     return _org_with_counts(org, db)
 
 
+@router.get("/duplicates")
+def list_duplicate_organizations(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Find candidate duplicate companies, grouped, without changing anything.
+
+    Matches on ABN and normalized name ("high"), or name ignoring legal
+    suffixes like Pty Ltd ("review"). Companies with the same name but
+    different ABNs are treated as distinct entities and never grouped.
+    """
+    all_orgs = db.query(Organization).filter(Organization.tenant_id == tenant_id).all()
+    groups, high_groups = find_org_duplicates(all_orgs)
+    return {
+        "groups": [
+            {
+                "confidence": g["confidence"],
+                "matched_on": g["matched_on"],
+                "organizations": [_org_with_counts(o, db) for o in g["members"]],
+            }
+            for g in groups
+        ],
+        "total_duplicates": sum(len(g["members"]) - 1 for g in groups),
+        "auto_merge_groups": len(high_groups),
+    }
+
+
+@router.post("/check-duplicates")
+def check_duplicate_organizations(
+    data: OrganizationDuplicateCheck,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Screen partial form values against existing companies before creating one.
+
+    Returns possible matches with confidence + matched-on fields; never blocks.
+    """
+    candidate = org_signals(**data.model_dump())
+    if not any(candidate.values()):
+        return {"matches": []}
+    all_orgs = db.query(Organization).filter(Organization.tenant_id == tenant_id).all()
+    matches = match_candidate_orgs(candidate, all_orgs)
+    return {
+        "matches": [
+            {
+                "confidence": level,
+                "matched_on": reasons,
+                "organization": _org_with_counts(o, db),
+            }
+            for o, level, reasons in matches[:5]
+        ]
+    }
+
+
+@router.post("/merge", response_model=OrganizationOut)
+def merge_organization_group(
+    data: OrganizationMergeRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Merge specific duplicate companies into a chosen primary.
+
+    Applications, corporate guarantees, and contact links all move to the
+    primary; the duplicates are deleted.
+    """
+    if data.primary_id in data.duplicate_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary company cannot be in the duplicate list")
+    if not data.duplicate_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No duplicates to merge")
+
+    primary = _get_org_in_tenant(data.primary_id, tenant_id, db)
+    duplicates = db.query(Organization).filter(
+        Organization.id.in_(data.duplicate_ids), Organization.tenant_id == tenant_id
+    ).all()
+    if len(duplicates) != len(set(data.duplicate_ids)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more duplicate companies not found")
+
+    merge_organizations(db, primary, duplicates)
+    db.commit()
+    db.refresh(primary)
+    return _org_with_counts(primary, db)
+
+
+@router.post("/deduplicate", status_code=status.HTTP_200_OK)
+def deduplicate_organizations(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Auto-merge high-confidence duplicate companies (matching ABN or exact
+    normalized name with no ABN conflict). The oldest company in each group is
+    kept. Suffix-only name variations are left for manual review."""
+    all_orgs = db.query(Organization).filter(Organization.tenant_id == tenant_id).all()
+    _groups, high_groups = find_org_duplicates(all_orgs)
+
+    merged_count = 0
+    deleted_count = 0
+    for group in high_groups:
+        primary, duplicates = group[0], group[1:]
+        merge_organizations(db, primary, duplicates)
+        merged_count += 1
+        deleted_count += len(duplicates)
+
+    db.commit()
+    remaining = db.query(func.count(Organization.id)).filter(Organization.tenant_id == tenant_id).scalar()
+    return {
+        "groups_merged": merged_count,
+        "duplicates_removed": deleted_count,
+        "organizations_remaining": remaining,
+    }
+
+
 @router.get("/{org_id}", response_model=OrganizationDetailOut)
 def get_organization(
     org_id: str,
@@ -296,16 +420,42 @@ def delete_organization(
         .filter(ContactOrganization.organization_id == org_id)
         .scalar() or 0
     )
-    if linked_apps or linked_contacts:
+    linked_guarantees = (
+        db.query(func.count(ApplicationGuarantor.id))
+        .join(LoanApplication, ApplicationGuarantor.application_id == LoanApplication.id)
+        .filter(
+            ApplicationGuarantor.organization_id == org_id,
+            LoanApplication.deleted_at.is_(None),
+        )
+        .scalar() or 0
+    )
+    if linked_apps or linked_contacts or linked_guarantees:
         bits = []
         if linked_contacts:
             bits.append(f"{linked_contacts} contact{'s' if linked_contacts != 1 else ''}")
         if linked_apps:
             bits.append(f"{linked_apps} application{'s' if linked_apps != 1 else ''}")
+        if linked_guarantees:
+            bits.append(
+                f"guarantor on {linked_guarantees} application{'s' if linked_guarantees != 1 else ''}"
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot delete: still linked to {' and '.join(bits)}. Unlink first.",
         )
+
+    # Soft-deleted (trashed) applications still hold FK rows that would make the
+    # DELETE fail on Postgres, and there is no purge flow to clear them — detach.
+    db.query(LoanApplication).filter(
+        LoanApplication.business_organization_id == org_id,
+        LoanApplication.deleted_at.isnot(None),
+    ).update({"business_organization_id": None}, synchronize_session=False)
+    for guarantor in (
+        db.query(ApplicationGuarantor)
+        .filter(ApplicationGuarantor.organization_id == org_id)
+        .all()
+    ):
+        db.delete(guarantor)
 
     db.delete(org)
     db.commit()

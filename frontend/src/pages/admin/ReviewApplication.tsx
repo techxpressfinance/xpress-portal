@@ -40,6 +40,8 @@ export default function ReviewApplication() {
   const [referrers, setReferrers] = useState<User[]>([]);
   const [linkReferrerId, setLinkReferrerId] = useState('');
   const [linkingReferrer, setLinkingReferrer] = useState(false);
+  const [confirmUnlinkReferrer, setConfirmUnlinkReferrer] = useState(false);
+  const [unlinkingReferrer, setUnlinkingReferrer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [msgTab, setMsgTab] = useState<'referrer_messages' | 'client_messages' | 'deal_notes' | 'alerts'>('referrer_messages');
@@ -289,6 +291,21 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to link referrer'), 'error');
     } finally {
       setLinkingReferrer(false);
+    }
+  };
+
+  const handleUnlinkReferrer = async () => {
+    if (!client) return;
+    setUnlinkingReferrer(true);
+    try {
+      await api.delete(`/users/${client.id}/referrer`);
+      setReferrer(null);
+      setConfirmUnlinkReferrer(false);
+      toast('Referrer unlinked', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to unlink referrer'), 'error');
+    } finally {
+      setUnlinkingReferrer(false);
     }
   };
 
@@ -868,6 +885,76 @@ export default function ReviewApplication() {
                       Completed by {application.completed_by_name} on {formatDate(application.completed_at!)}
                     </p>
                   </div>
+                )}
+
+                {/* Referrer — admin/broker only (this whole page is staff-gated) */}
+                {!referrer && client?.role === 'client' && (
+                  <GlassCard>
+                    <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
+                    <p className="text-[13px] text-muted-foreground mb-4">
+                      No referrer is linked to this client. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
+                    </p>
+                    {referrers.length === 0 && (
+                      <p className="text-[13px] text-muted-foreground">
+                        No referrer accounts found — add referrers under Referrer Management first.
+                      </p>
+                    )}
+                    {referrers.length > 0 && (
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <select
+                        value={linkReferrerId}
+                        onChange={e => setLinkReferrerId(e.target.value)}
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 sm:flex-1"
+                      >
+                        <option value="">Select referrer...</option>
+                        {referrers.map(r => (
+                          <option key={r.id} value={r.id}>
+                            {(r.full_name || r.email)}{r.organization_name ? ` — ${r.organization_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <Button size="sm" onClick={handleLinkReferrer} disabled={!linkReferrerId || linkingReferrer} className="shrink-0">
+                        {linkingReferrer ? 'Linking…' : 'Link Referrer'}
+                      </Button>
+                    </div>
+                    )}
+                  </GlassCard>
+                )}
+                {referrer && (
+                  <GlassCard>
+                    <div className="flex items-center justify-between mb-5">
+                      <h2 className="text-[15px] font-semibold text-foreground">Referrer</h2>
+                      {client && (
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
+                          Unlink
+                        </Button>
+                      )}
+                    </div>
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.full_name || '—'}</dd>
+                      </div>
+                      {referrer.organization_name && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
+                        </div>
+                      )}
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl bg-secondary/50 p-3">
+                        <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
+                        </dd>
+                      </div>
+                    </dl>
+                  </GlassCard>
                 )}
 
                 {/* Comprehensive Loan Type Details */}
@@ -2348,69 +2435,6 @@ export default function ReviewApplication() {
                           )}
                         </>
                       )}
-                    </dl>
-                  </GlassCard>
-                )}
-
-                {/* Referrer — admin/broker only (this whole page is staff-gated) */}
-                {!referrer && client?.role === 'client' && (
-                  <GlassCard>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
-                    <p className="text-[13px] text-muted-foreground mb-4">
-                      No referrer is linked to this client. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
-                    </p>
-                    {referrers.length === 0 && (
-                      <p className="text-[13px] text-muted-foreground">
-                        No referrer accounts found — add referrers under Referrer Management first.
-                      </p>
-                    )}
-                    {referrers.length > 0 && (
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <select
-                        value={linkReferrerId}
-                        onChange={e => setLinkReferrerId(e.target.value)}
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 sm:flex-1"
-                      >
-                        <option value="">Select referrer...</option>
-                        {referrers.map(r => (
-                          <option key={r.id} value={r.id}>
-                            {(r.full_name || r.email)}{r.organization_name ? ` — ${r.organization_name}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <Button size="sm" onClick={handleLinkReferrer} disabled={!linkReferrerId || linkingReferrer} className="shrink-0">
-                        {linkingReferrer ? 'Linking…' : 'Link Referrer'}
-                      </Button>
-                    </div>
-                    )}
-                  </GlassCard>
-                )}
-                {referrer && (
-                  <GlassCard>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrer</h2>
-                    <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.full_name || '—'}</dd>
-                      </div>
-                      {referrer.organization_name && (
-                        <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
-                        </div>
-                      )}
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
-                        </dd>
-                      </div>
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
-                        </dd>
-                      </div>
                     </dl>
                   </GlassCard>
                 )}
@@ -3934,6 +3958,24 @@ export default function ReviewApplication() {
         onConfirm={confirmStatusChange}
         onCancel={() => {
           if (!changingStatus) setPendingStatus(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmUnlinkReferrer}
+        title="Unlink this referrer?"
+        message={referrer ? (
+          <>
+            <span className="font-semibold text-foreground">{referrer.organization_name || referrer.full_name}</span> will no longer be credited for this client or any of their applications.
+          </>
+        ) : null}
+        confirmText="Unlink Referrer"
+        cancelText="Cancel"
+        variant="danger"
+        loading={unlinkingReferrer}
+        onConfirm={handleUnlinkReferrer}
+        onCancel={() => {
+          if (!unlinkingReferrer) setConfirmUnlinkReferrer(false);
         }}
       />
 

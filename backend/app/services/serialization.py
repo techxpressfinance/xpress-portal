@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.external_referral import ExternalReferral
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
+from app.models.user import UserRole
 
 # Magic-link tokens grant unauthenticated form access via /api/public/apply —
 # they must never appear in API responses. Single deliberate exception: the
@@ -53,7 +54,9 @@ def referrer_info_map(db: Session, user_ids: Iterable[Optional[str]]) -> dict[st
             .all()
         )
         for ref in refs:
-            if ref.referrer and ref.referred_user_id not in result:
+            # Referral rows are also written for admin/broker invite links —
+            # only a referrer-role user counts as an actual referrer.
+            if ref.referrer and ref.referrer.role == UserRole.referrer and ref.referred_user_id not in result:
                 result[ref.referred_user_id] = _referrer_dict(ref.referrer)
     return result
 
@@ -109,7 +112,7 @@ def app_with_user(
                 ref = db.query(Referral).filter(
                     Referral.referred_user_id == app.user_id,
                 ).first()
-                if ref and ref.referrer:
+                if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
                     referrer_info = _referrer_dict(ref.referrer)
     data["referrer"] = referrer_info
     # Additional directors (commercial loans). Relationship isn't a column, so

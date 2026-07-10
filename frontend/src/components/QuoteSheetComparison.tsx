@@ -10,10 +10,19 @@ interface QuoteSheetComparisonProps {
   applicationRef?: string;
 }
 
-const fmtCurrency = (v: number | null) => {
-  if (v === null || v === undefined) return '—';
-  return `$${v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+// Currency with the decimal part rendered smaller than the whole dollars.
+// em-based so it scales with the surrounding cell's font size.
+function Money({ v }: { v: number | null }) {
+  if (v === null || v === undefined) return <>—</>;
+  const s = v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const dot = s.lastIndexOf('.');
+  return (
+    <>
+      {`$${s.slice(0, dot)}`}
+      <span style={{ fontSize: '0.75em', fontWeight: 400 }}>{s.slice(dot)}</span>
+    </>
+  );
+}
 
 const fmtPercent = (v: number | null) => {
   if (v === null || v === undefined) return '—';
@@ -125,29 +134,29 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
     return (
       <div className="flex-1 w-full min-w-0">
         <div className="space-y-0">
-          <Row label={`${assetDescription} price`} value={fmtCurrency(opt.purchase_price)} color={accent} />
-          <Row label="Deposit" value={fmtCurrency(opt.deposit)} color={accent} />
+          <Row label={`${assetDescription} price`} value={<Money v={opt.purchase_price} />} color={accent} />
+          <Row label="Deposit" value={<Money v={opt.deposit} />} color={accent} />
           <Row
             label="Amount to be Financed"
-            value={isClientView ? fmtCurrency(clientLoanAmount) : fmtCurrency(opt.loan_amount)}
+            value={<Money v={isClientView ? clientLoanAmount : opt.loan_amount} />}
             color={accent}
           />
           <Row label="Term (years)" value={String(termYears)} color={accent} />
           <Row
             label={(opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon'}
-            value={fmtCurrency(opt.balloon_residual ?? 0)}
+            value={<Money v={opt.balloon_residual ?? 0} />}
             color={accent}
           />
-          <Row label="Repayments (month)" value={fmtCurrency(opt.repayment_monthly)} bold color={accent} />
+          <Row label="Repayments (month)" value={<Money v={opt.repayment_monthly} />} bold color={accent} />
           {!isClientView && (
             <Row label="Rate of Interest" value={fmtPercent(opt.interest_rate)} color={accent} />
           )}
           {allUpRate != null && (!isClientView || showInterestRate) && (
             <Row label={isClientView ? 'Interest Rate' : 'All Up Interest Rate'} value={fmtPercent(allUpRate)} color={accent} />
           )}
-          <Row label="Weekly Equivalent" value={fmtCurrency(opt.repayment_weekly)} color={accent} />
+          <Row label="Weekly Equivalent" value={<Money v={opt.repayment_weekly} />} color={accent} />
           {(!isClientView || showTotalInterest) && (
-            <Row label="Total Interest (over term)" value={fmtCurrency(opt.total_interest)} bold color={accent} />
+            <Row label="Total Interest (over term)" value={<Money v={opt.total_interest} />} bold color={accent} />
           )}
 
         </div>
@@ -178,7 +187,7 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
   );
 }
 
-function Row({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
+function Row({ label, value, bold, color }: { label: string; value: ReactNode; bold?: boolean; color?: string }) {
   return (
     <div className="flex w-full items-start justify-between py-1.5 border-b border-border/30 last:border-0">
       <div className={`text-[12px] leading-tight w-[60%] pr-2 break-words ${bold ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{label}</div>
@@ -304,36 +313,30 @@ export default function QuoteSheetComparison({
       return null;
     })();
 
-    // Split a currency amount into dollar string and cents string
-    const splitAmt = (v: number | null): [string, string] => {
-      if (v == null) return ['—', ''];
-      const s = Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const dot = s.lastIndexOf('.');
-      return [`$${s.slice(0, dot)}`, s.slice(dot)];
-    };
-
     // Repayment range delta (broker-configured ±$ shown to client)
     const rangeDelta = isClientView ? (parsedParams?.repaymentRange ?? null) : null;
 
-    // Format a repayment for client view: range if delta set, else exact split
-    const fmtRepaymentClient = (v: number | null): { lo: string; hi: string } | null => {
+    // Repayment range for client view when a delta is set, else null (exact amount shown)
+    const fmtRepaymentClient = (v: number | null): { lo: number; hi: number } | null => {
       if (v == null || rangeDelta == null) return null;
-      const lo = Math.max(0, v - rangeDelta);
-      const hi = v + rangeDelta;
-      const fmt = (n: number) => `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      return { lo: fmt(lo), hi: fmt(hi) };
+      return { lo: Math.max(0, v - rangeDelta), hi: v + rangeDelta };
     };
 
     // Long-form date for the hero ("23 June 2026")
     const quoteDate = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+    // Scenario count must match the terms actually shown (client/PDF views can
+    // filter to the broker-selected terms) — not the sheet's full option list.
+    const shownOptionCount = termGroups.reduce(
+      (n, g) => n + (g.noBalloon ? 1 : 0) + (g.withBalloon ? 1 : 0), 0,
+    );
     // Hero summary strip cells (CLIENT shown only when a recipient name exists)
-    const summaryCells: { label: string; value: string; gold?: boolean; wide?: boolean }[] = [
+    const summaryCells: { label: string; value: ReactNode; gold?: boolean; wide?: boolean }[] = [
       ...(clientName ? [{ label: 'Client', value: clientName, wide: true }] : []),
       { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—', wide: true },
-      { label: 'Drive-away price', value: fmtCurrency(first.purchase_price) },
-      { label: 'Deposit', value: fmtCurrency(first.deposit) },
-      { label: 'Amount financed', value: fmtCurrency(isClientView ? clientLoanAmt0 : first.loan_amount), gold: true },
-      { label: 'Scenarios', value: `${options.length} Option${options.length !== 1 ? 's' : ''}` },
+      { label: 'Drive-away price', value: <Money v={first.purchase_price} /> },
+      { label: 'Deposit', value: <Money v={first.deposit} /> },
+      { label: 'Amount financed', value: <Money v={isClientView ? clientLoanAmt0 : first.loan_amount} />, gold: true },
+      { label: 'Scenarios', value: `${shownOptionCount} Option${shownOptionCount !== 1 ? 's' : ''}` },
     ];
 
     // Shared table cell styles
@@ -574,21 +577,20 @@ export default function QuoteSheetComparison({
               // never overflows into the neighbouring column.
               if (rng) return (
                 <>
-                  <span style={{ whiteSpace: 'nowrap' }}>{rng.lo} –</span>{' '}
-                  <span style={{ whiteSpace: 'nowrap' }}>{rng.hi}</span>
+                  <span style={{ whiteSpace: 'nowrap' }}><Money v={rng.lo} /> –</span>{' '}
+                  <span style={{ whiteSpace: 'nowrap' }}><Money v={rng.hi} /></span>
                 </>
               );
-              const [dol, cts] = splitAmt(o.repayment_monthly);
-              return <>{dol}<small style={{ fontSize: '9px', fontWeight: 400, color: muted }}>{cts}</small></>;
+              return <Money v={o.repayment_monthly} />;
             };
 
             const tableRows: { label: string; bold?: boolean; wrap?: boolean; render: (o: QuoteOption) => ReactNode }[] = [
-              { label: `${assetDescription} price`, render: o => fmtCurrency(o.purchase_price) },
-              { label: 'Deposit', render: o => fmtCurrency(o.deposit) },
-              { label: 'Amount financed', render: o => fmtCurrency(isClientView ? clientAmt(o) : o.loan_amount) },
-              { label: 'Balloon', render: o => fmtCurrency(o.balloon_residual ?? 0) },
+              { label: `${assetDescription} price`, render: o => <Money v={o.purchase_price} /> },
+              { label: 'Deposit', render: o => <Money v={o.deposit} /> },
+              { label: 'Amount financed', render: o => <Money v={isClientView ? clientAmt(o) : o.loan_amount} /> },
+              { label: 'Balloon', render: o => <Money v={o.balloon_residual ?? 0} /> },
               { label: 'Monthly repayment', bold: true, wrap: true, render: renderMonthly },
-              { label: 'Weekly equivalent', render: o => fmtCurrency(o.repayment_weekly) },
+              { label: 'Weekly equivalent', render: o => <Money v={o.repayment_weekly} /> },
               ...(!isClientView
                 ? [{ label: 'Rate of interest', render: (o: QuoteOption) => fmtPercent(o.interest_rate) }]
                 : []),
@@ -599,7 +601,7 @@ export default function QuoteSheetComparison({
                   }]
                 : []),
               ...((!isClientView || showTotalInterest)
-                ? [{ label: 'Total interest', bold: true, render: (o: QuoteOption) => fmtCurrency(o.total_interest) }]
+                ? [{ label: 'Total interest', bold: true, render: (o: QuoteOption) => <Money v={o.total_interest} /> }]
                 : []),
             ];
 
@@ -702,13 +704,15 @@ export default function QuoteSheetComparison({
             ? (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0)
             : o.loan_amount;
           const rng = fmtRepaymentClient(o.repayment_monthly);
-          const monthly = rng ? `${rng.lo} – ${rng.hi}` : fmtCurrency(o.repayment_monthly);
-          const metrics: { label: string; value: string }[] = [
+          const monthly: ReactNode = rng
+            ? <><Money v={rng.lo} /> – <Money v={rng.hi} /></>
+            : <Money v={o.repayment_monthly} />;
+          const metrics: { label: string; value: ReactNode }[] = [
             { label: 'Monthly Repayment', value: monthly },
-            { label: isClientView ? 'Amount Financed' : 'Principal Financed', value: fmtCurrency(amtFin) },
+            { label: isClientView ? 'Amount Financed' : 'Principal Financed', value: <Money v={amtFin} /> },
             balloonAmt > 0
-              ? { label: `Balloon at Month ${o.loan_term_months ?? preferredGroup.termMonths}`, value: fmtCurrency(balloonAmt) }
-              : { label: 'Weekly Equivalent', value: fmtCurrency(o.repayment_weekly) },
+              ? { label: `Balloon at Month ${o.loan_term_months ?? preferredGroup.termMonths}`, value: <Money v={balloonAmt} /> }
+              : { label: 'Weekly Equivalent', value: <Money v={o.repayment_weekly} /> },
           ];
           return (
             <div className="break-inside-avoid" style={{
@@ -766,20 +770,20 @@ export default function QuoteSheetComparison({
               <colgroup><col style={{ width: '70%' }} /><col style={{ width: '30%' }} /></colgroup>
               <tbody>
                 {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}>{fmtCurrency(parsedParams.establishmentFee)}</td></tr>
+                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}><Money v={parsedParams.establishmentFee} /></td></tr>
                 )}
                 {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-                  <tr><td style={lbl}>PPSR</td><td style={val}>{fmtCurrency(parsedParams.ppsrFee)}</td></tr>
+                  <tr><td style={lbl}>PPSR</td><td style={val}><Money v={parsedParams.ppsrFee} /></td></tr>
                 )}
                 {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-                  <tr><td style={lbl}>Origination fee</td><td style={val}>{fmtCurrency(parsedParams.originationFee)}</td></tr>
+                  <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.originationFee} /></td></tr>
                 )}
                 <tr>
                   <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '10px' }}>
                     Total fees
                   </td>
                   <td style={{ ...val, fontWeight: 600, color: ink, borderBottom: 'none', paddingTop: '10px' }}>
-                    {fmtCurrency((parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0))}
+                    <Money v={(parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0)} />
                   </td>
                 </tr>
               </tbody>
@@ -807,13 +811,13 @@ export default function QuoteSheetComparison({
               <colgroup><col style={{ width: '70%' }} /><col style={{ width: '30%' }} /></colgroup>
               <tbody>
                 {parsedParams.establishmentFee != null && (
-                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}>{fmtCurrency(parsedParams.establishmentFee)}</td></tr>
+                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}><Money v={parsedParams.establishmentFee} /></td></tr>
                 )}
                 {parsedParams.ppsrFee != null && (
-                  <tr><td style={lbl}>PPSR</td><td style={val}>{fmtCurrency(parsedParams.ppsrFee)}</td></tr>
+                  <tr><td style={lbl}>PPSR</td><td style={val}><Money v={parsedParams.ppsrFee} /></td></tr>
                 )}
                 {parsedParams.originationFee != null && (
-                  <tr><td style={lbl}>Origination fee</td><td style={val}>{fmtCurrency(parsedParams.originationFee)}</td></tr>
+                  <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.originationFee} /></td></tr>
                 )}
                 {parsedParams.interestRate != null && (
                   <tr><td style={lbl}>Lender's rate</td><td style={val}>{fmtPercent(parsedParams.interestRate)}</td></tr>
@@ -827,7 +831,7 @@ export default function QuoteSheetComparison({
                       Brokerage $
                     </td>
                     <td style={{ ...val, fontWeight: 600, color: ink, borderBottom: 'none', paddingTop: '10px' }}>
-                      {fmtCurrency(options[0].brokerage)}
+                      <Money v={options[0].brokerage} />
                     </td>
                   </tr>
                 )}
@@ -953,15 +957,15 @@ export default function QuoteSheetComparison({
           <p className="text-[12px] font-semibold text-warning uppercase tracking-wide mb-2">Fees Payable (Not Financed)</p>
           <p className="text-[11px] text-muted-foreground mb-3">These fees are charged separately and are not included in the loan amount.</p>
           {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-            <Row label="Loan Establishment Fee" value={fmtCurrency(parsedParams.establishmentFee)} />
+            <Row label="Loan Establishment Fee" value={<Money v={parsedParams.establishmentFee} />} />
           )}
           {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-            <Row label="PPSR" value={fmtCurrency(parsedParams.ppsrFee)} />
+            <Row label="PPSR" value={<Money v={parsedParams.ppsrFee} />} />
           )}
           {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-            <Row label="Origination Fee" value={fmtCurrency(parsedParams.originationFee)} />
+            <Row label="Origination Fee" value={<Money v={parsedParams.originationFee} />} />
           )}
-          <Row label="Total Fees" value={fmtCurrency((parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0))} bold />
+          <Row label="Total Fees" value={<Money v={(parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0)} />} bold />
         </div>
       )}
 
@@ -973,13 +977,13 @@ export default function QuoteSheetComparison({
             {!feesFinanced && <span className="ml-2 text-warning">(Fees Not Financed)</span>}
           </p>
           {parsedParams.establishmentFee != null && (
-            <Row label="Loan Establishment Fee" value={fmtCurrency(parsedParams.establishmentFee)} />
+            <Row label="Loan Establishment Fee" value={<Money v={parsedParams.establishmentFee} />} />
           )}
           {parsedParams.ppsrFee != null && (
-            <Row label="PPSR" value={fmtCurrency(parsedParams.ppsrFee)} />
+            <Row label="PPSR" value={<Money v={parsedParams.ppsrFee} />} />
           )}
           {parsedParams.originationFee != null && (
-            <Row label="Origination Fee" value={fmtCurrency(parsedParams.originationFee)} />
+            <Row label="Origination Fee" value={<Money v={parsedParams.originationFee} />} />
           )}
           {parsedParams.interestRate != null && (
             <Row label="Lender's Rate" value={fmtPercent(parsedParams.interestRate)} />
@@ -988,7 +992,7 @@ export default function QuoteSheetComparison({
             <Row label="Brokerage %" value={`${Number(parsedParams.brokeragePercent).toFixed(2)}%`} />
           )}
           {options[0]?.brokerage != null && (
-            <Row label="Brokerage $" value={fmtCurrency(options[0].brokerage)} bold />
+            <Row label="Brokerage $" value={<Money v={options[0].brokerage} />} bold />
           )}
         </div>
       )}

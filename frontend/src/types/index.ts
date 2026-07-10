@@ -587,6 +587,54 @@ export interface LenderAnalytics {
   };
 }
 
+export interface BrokerAnalyticsMonth {
+  month: string;
+  count: number;
+  volume: number;
+  settled_count: number;
+  settled_volume: number;
+  statuses: Partial<Record<ApplicationStatus, number>>;
+}
+
+export interface BrokerAnalyticsBroker {
+  broker_id: string | null;
+  broker_name: string;
+  total: number;
+  volume: number;
+  settled: number;
+  settled_volume: number;
+  active: number;
+  conversion_rate: number | null;
+}
+
+export interface BrokerAnalytics {
+  totals: {
+    total_deals: number;
+    total_volume: number;
+    settled_deals: number;
+    settled_volume: number;
+    active_deals: number;
+    active_volume: number;
+    conversion_rate: number | null;
+  };
+  monthly: BrokerAnalyticsMonth[];
+  by_status: Record<string, { count: number; volume: number }>;
+  by_loan_type: Record<string, { count: number; volume: number }>;
+  by_broker: BrokerAnalyticsBroker[];
+}
+
+export interface BrokerAnalyticsDeal {
+  id: string;
+  client_name: string;
+  business_name: string | null;
+  loan_type: LoanType;
+  amount: number;
+  status: ApplicationStatus;
+  created_at: string;
+  updated_at: string;
+  brokers: string[];
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;
@@ -863,6 +911,32 @@ export interface ContactDetail extends Contact {
   organizations: ContactOrganization[];
   applications: ContactApplication[];
   lending_history: LendingHistoryEntry[];
+}
+
+export type DuplicateConfidence = 'high' | 'review';
+
+export interface ContactDuplicateGroup {
+  confidence: DuplicateConfidence;
+  matched_on: string[];
+  contacts: Contact[];
+}
+
+export interface ContactDuplicatesResponse {
+  groups: ContactDuplicateGroup[];
+  total_duplicates: number;
+  auto_merge_groups: number;
+}
+
+export interface OrganizationDuplicateGroup {
+  confidence: DuplicateConfidence;
+  matched_on: string[];
+  organizations: Organization[];
+}
+
+export interface OrganizationDuplicatesResponse {
+  groups: OrganizationDuplicateGroup[];
+  total_duplicates: number;
+  auto_merge_groups: number;
 }
 
 export interface KanbanBoardListItem {

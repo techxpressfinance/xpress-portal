@@ -65,6 +65,18 @@ class OrganizationContactLink(BaseModel):
     role: Optional[str] = Field(default=None, max_length=100)
 
 
+class OrganizationMergeRequest(BaseModel):
+    primary_id: str
+    duplicate_ids: list[str]
+
+
+class OrganizationDuplicateCheck(BaseModel):
+    """Partial form values to screen for existing duplicates before creating."""
+    name: Optional[str] = None
+    abn: Optional[str] = None
+    address: Optional[str] = None
+
+
 class PaginatedOrganizations(BaseModel):
     items: list[OrganizationOut]
     total: int

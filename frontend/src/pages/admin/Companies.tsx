@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, X } from 'lucide-react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import DuplicateReviewModal from '../../components/DuplicateReviewModal';
+import { DuplicateWarning } from '../../components/DuplicateWarning';
+import { useOrganizationDuplicateCheck } from '../../hooks/useDuplicateCheck';
 import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
@@ -25,6 +28,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [form, setForm] = useState<NewCompanyForm>(EMPTY);
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
+  const possibleDuplicates = useOrganizationDuplicateCheck(form);
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -105,6 +109,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               <Input placeholder="Construction" {...field('industry')} />
             </div>
           </div>
+          <DuplicateWarning matches={possibleDuplicates} />
           {abr.enabled && (
             <AbrResultCard
               record={abr.record}
@@ -149,6 +154,7 @@ export default function Companies() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [showNew, setShowNew] = useState(false);
+  const [showDedupe, setShowDedupe] = useState(false);
   const perPage = 20;
 
   const fetchCompanies = (p = page, q = search) => {
@@ -179,7 +185,12 @@ export default function Companies() {
       <PageHeader
         title="Companies"
         subtitle={`${total} compan${total === 1 ? 'y' : 'ies'}`}
-        action={<Button onClick={() => setShowNew(true)} variant="primary" size="sm">New Company</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button onClick={() => setShowDedupe(true)} variant="secondary" size="sm">Find Duplicates</Button>
+            <Button onClick={() => setShowNew(true)} variant="primary" size="sm">New Company</Button>
+          </div>
+        }
       />
 
       <GlassCard>
@@ -256,6 +267,14 @@ export default function Companies() {
           </>
         )}
       </GlassCard>
+
+      {showDedupe && (
+        <DuplicateReviewModal
+          kind="organizations"
+          onClose={() => setShowDedupe(false)}
+          onChanged={() => fetchCompanies(1, search)}
+        />
+      )}
 
       {showNew && (
         <NewCompanyModal

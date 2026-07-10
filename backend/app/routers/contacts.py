@@ -16,6 +16,8 @@ from app.models.user import User
 from app.schemas.contact import (
     ContactCreate,
     ContactDetailOut,
+    ContactDuplicateCheck,
+    ContactMergeRequest,
     ContactOrganizationLink,
     ContactOut,
     ContactUpdate,
@@ -25,6 +27,12 @@ from app.schemas.lending_history import (
     LendingHistoryEntryCreate,
     LendingHistoryEntryOut,
     LendingHistoryEntryUpdate,
+)
+from app.services.dedupe import (
+    contact_signals,
+    find_contact_duplicates,
+    match_candidate_contacts,
+    merge_contacts,
 )
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
@@ -127,6 +135,92 @@ def create_contact(
     db.commit()
     db.refresh(contact)
     return _contact_with_count(contact, db)
+
+
+@router.get("/duplicates")
+def list_duplicate_contacts(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Find candidate duplicate contacts, grouped, without changing anything.
+
+    Matches on name, DOB, phone, email, address, and licence number (encrypted
+    fields compared post-decryption). "high" groups are safe to auto-merge;
+    "review" groups need a human decision.
+    """
+    all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).all()
+    groups, high_groups = find_contact_duplicates(all_contacts)
+    return {
+        "groups": [
+            {
+                "confidence": g["confidence"],
+                "matched_on": g["matched_on"],
+                "contacts": [_contact_with_count(c, db) for c in g["members"]],
+            }
+            for g in groups
+        ],
+        "total_duplicates": sum(len(g["members"]) - 1 for g in groups),
+        "auto_merge_groups": len(high_groups),
+    }
+
+
+@router.post("/check-duplicates")
+def check_duplicate_contacts(
+    data: ContactDuplicateCheck,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Screen partial form values against existing contacts before creating one.
+
+    Returns possible matches with confidence + matched-on fields; never blocks.
+    """
+    candidate = contact_signals(**data.model_dump())
+    if not any(candidate.values()):
+        return {"matches": []}
+    all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).all()
+    matches = match_candidate_contacts(candidate, all_contacts)
+    return {
+        "matches": [
+            {
+                "confidence": level,
+                "matched_on": reasons,
+                "contact": _contact_with_count(c, db),
+            }
+            for c, level, reasons in matches[:5]
+        ]
+    }
+
+
+@router.post("/merge", response_model=ContactOut)
+def merge_contact_group(
+    data: ContactMergeRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Merge specific duplicates into a chosen primary contact.
+
+    Applications, additional applicants, lending history, guarantees, and
+    company links all move to the primary; the duplicates are deleted.
+    """
+    if data.primary_id in data.duplicate_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary contact cannot be in the duplicate list")
+    if not data.duplicate_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No duplicates to merge")
+
+    primary = db.query(Contact).filter(Contact.id == data.primary_id, Contact.tenant_id == tenant_id).first()
+    if not primary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Primary contact not found")
+    duplicates = db.query(Contact).filter(Contact.id.in_(data.duplicate_ids), Contact.tenant_id == tenant_id).all()
+    if len(duplicates) != len(set(data.duplicate_ids)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more duplicate contacts not found")
+
+    merge_contacts(db, primary, duplicates)
+    db.commit()
+    db.refresh(primary)
+    return _contact_with_count(primary, db)
 
 
 @router.get("/{contact_id}", response_model=ContactDetailOut)
@@ -392,116 +486,31 @@ def auto_create_contacts(
     }
 
 
-def _pick_best_value(field: str, contacts: list[Contact]) -> Optional[str]:
-    """Pick the best value for a field across all duplicate contacts.
-
-    Prefers the longest non-empty value (most complete data wins).
-    For address fields, all four parts (address/suburb/state/postcode) are
-    scored together so we take the most complete address as a unit.
-    """
-    values = [(getattr(c, field) or "").strip() for c in contacts]
-    non_empty = [v for v in values if v]
-    if not non_empty:
-        return None
-    # Return the longest (most complete) value
-    return max(non_empty, key=len)
-
-
-def _pick_best_address(contacts: list[Contact]) -> dict[str, Optional[str]]:
-    """Pick the most complete address across all duplicate contacts.
-
-    Scores each contact's address by how many of the 4 fields are filled,
-    then takes all 4 fields from the winner.
-    """
-    best_idx = 0
-    best_score = 0
-    for i, c in enumerate(contacts):
-        score = sum(1 for f in ("address", "suburb", "state", "postcode") if (getattr(c, f) or "").strip())
-        if score > best_score:
-            best_score = score
-            best_idx = i
-    winner = contacts[best_idx]
-    return {
-        "address": (winner.address or "").strip() or None,
-        "suburb": (winner.suburb or "").strip() or None,
-        "state": (winner.state or "").strip() or None,
-        "postcode": (winner.postcode or "").strip() or None,
-    }
-
-
 @router.post("/deduplicate", status_code=status.HTTP_200_OK)
 def deduplicate_contacts(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Find and merge duplicate contacts.
+    """Auto-merge high-confidence duplicate contacts only.
 
-    Groups contacts by normalized (first_name + last_name). Keeps the oldest
-    contact as the primary, but picks the best (most complete) value for each
-    field across all duplicates. Address fields are picked as a unit so you
-    don't get a Frankenstein address.
+    High confidence = shared licence number, same name + a corroborating
+    identifier (DOB/phone/email), or matching phone + email. The oldest
+    contact in each group is kept; empty fields are filled from duplicates and
+    all related records (applications, applicants, lending history, guarantees,
+    company links) move to it. Name-only matches are left for manual review
+    via GET /contacts/duplicates.
     """
-    all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).order_by(Contact.created_at.asc()).all()
-
-    # Group by normalized name
-    name_groups: dict[str, list[Contact]] = {}
-    for c in all_contacts:
-        key = f"{(c.first_name or '').strip().lower()}|{(c.last_name or '').strip().lower()}"
-        name_groups.setdefault(key, []).append(c)
+    all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).all()
+    _groups, high_groups = find_contact_duplicates(all_contacts)
 
     merged_count = 0
     deleted_count = 0
-
-    for _key, group in name_groups.items():
-        if len(group) < 2:
-            continue
-
-        # The primary is the oldest (first created) — we keep this record
-        primary = group[0]
-        duplicates = group[1:]
-
-        # Pick the best value for each field across ALL contacts in the group
-        for field in ("email", "phone", "date_of_birth", "drivers_license_number", "middle_name"):
-            best = _pick_best_value(field, group)
-            if best:
-                setattr(primary, field, best)
-
-        # Pick address as a unit (most complete set of address fields wins)
-        best_addr = _pick_best_address(group)
-        for field, value in best_addr.items():
-            if value:
-                setattr(primary, field, value)
-
-        # Merge notes: concatenate any non-empty notes from duplicates
-        all_notes = [c.notes for c in group if c.notes and c.notes.strip()]
-        if all_notes:
-            primary.notes = "\n".join(dict.fromkeys(all_notes))  # dedupe identical notes
-
-        for dup in duplicates:
-            # Move all applications from dup to primary
-            db.query(LoanApplication).filter(
-                LoanApplication.contact_id == dup.id
-            ).update({"contact_id": primary.id}, synchronize_session="fetch")
-
-            # Move org links — skip if primary already has that org
-            dup_org_links = db.query(ContactOrganization).filter(
-                ContactOrganization.contact_id == dup.id
-            ).all()
-            for link in dup_org_links:
-                existing = db.query(ContactOrganization).filter(
-                    ContactOrganization.contact_id == primary.id,
-                    ContactOrganization.organization_id == link.organization_id,
-                ).first()
-                if not existing:
-                    link.contact_id = primary.id
-                else:
-                    db.delete(link)
-
-            db.delete(dup)
-            deleted_count += 1
-
+    for group in high_groups:
+        primary, duplicates = group[0], group[1:]
+        merge_contacts(db, primary, duplicates)
         merged_count += 1
+        deleted_count += len(duplicates)
 
     db.commit()
     remaining = db.query(func.count(Contact.id)).filter(Contact.tenant_id == tenant_id).scalar()

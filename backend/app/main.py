@@ -40,7 +40,7 @@ from app.models.application_calculator import ApplicationCalculator  # noqa: F40
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -701,6 +701,7 @@ app.include_router(referrals.router)
 app.include_router(referrer.router)
 app.include_router(activity_logs.router)
 app.include_router(dashboard.router)
+app.include_router(broker_analytics.router)
 app.include_router(kanban.router)
 app.include_router(search.router)
 app.include_router(broker_groups.router)

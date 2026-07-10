@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import DuplicateReviewModal from '../../components/DuplicateReviewModal';
+import { DuplicateWarning } from '../../components/DuplicateWarning';
+import { useContactDuplicateCheck } from '../../hooks/useDuplicateCheck';
 import { GlassCard, PageHeader, Button, Badge, Input, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import type { Contact, PaginatedResponse } from '../../types';
@@ -20,6 +23,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<NewContactForm>({ first_name: '', last_name: '', email: '', phone: '', date_of_birth: '' });
   const firstRef = useRef<HTMLInputElement>(null);
+  const possibleDuplicates = useContactDuplicateCheck(form);
 
   useEffect(() => {
     firstRef.current?.focus();
@@ -92,6 +96,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
               onChange={(v) => setForm(f => ({ ...f, date_of_birth: v }))}
             />
           </div>
+          <DuplicateWarning matches={possibleDuplicates} />
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="submit" variant="primary" size="md" loading={saving}>Create Contact</Button>
@@ -111,7 +116,7 @@ export default function Contacts() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [deduping, setDeduping] = useState(false);
+  const [showDedupe, setShowDedupe] = useState(false);
   const [showNewContact, setShowNewContact] = useState(false);
   const navigate = useNavigate();
   const perPage = 20;
@@ -153,22 +158,6 @@ export default function Contacts() {
     }
   };
 
-  const handleDeduplicate = async () => {
-    setDeduping(true);
-    try {
-      const { data } = await api.post('/contacts/deduplicate');
-      toast(
-        `Merged ${data.groups_merged} groups, removed ${data.duplicates_removed} duplicates. ${data.contacts_remaining} contacts remaining.`,
-        'success'
-      );
-      fetchContacts(1, search);
-    } catch {
-      toast('Failed to deduplicate contacts', 'error');
-    } finally {
-      setDeduping(false);
-    }
-  };
-
   const totalPages = Math.ceil(total / perPage);
 
   return (
@@ -178,8 +167,8 @@ export default function Contacts() {
         subtitle={`${total} contacts`}
         action={
           <div className="flex gap-2">
-            <Button onClick={handleDeduplicate} disabled={deduping} variant="secondary" size="sm">
-              {deduping ? 'Merging...' : 'Deduplicate'}
+            <Button onClick={() => setShowDedupe(true)} variant="secondary" size="sm">
+              Find Duplicates
             </Button>
             <Button onClick={handleAutoCreate} disabled={syncing} variant="secondary" size="sm">
               {syncing ? 'Syncing...' : 'Auto-Create from Applications'}
@@ -274,6 +263,14 @@ export default function Contacts() {
           </>
         )}
       </GlassCard>
+
+      {showDedupe && (
+        <DuplicateReviewModal
+          kind="contacts"
+          onClose={() => setShowDedupe(false)}
+          onChanged={() => fetchContacts(1, search)}
+        />
+      )}
 
       {showNewContact && (
         <NewContactModal

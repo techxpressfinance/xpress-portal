@@ -236,7 +236,7 @@ interface Liability {
   monthly_repayment: string;
 }
 
-interface UploadedDoc { id: string; filename: string; doc_type: string; label?: string; }
+interface PendingDoc { file: File; doc_type: DocType; label?: string; }
 
 interface Industry {
   id: number;
@@ -377,11 +377,10 @@ export default function NewApplication() {
   const commercialPurposeId: number | '' = COMMERCIAL_TYPE_TO_PURPOSE_ID[selectedCommercialLoanType] ?? '';
 
   const pendingFileInput = useRef<HTMLInputElement>(null);
-  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedDocType, setStagedDocType] = useState<DocType>('other');
   const [stagedLabel, setStagedLabel] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
   const selectedParent = INDUSTRIES.find(i => i.id === parentIndustryId);
@@ -908,22 +907,12 @@ export default function NewApplication() {
     if (file) stageFile(file);
   };
 
-  const handleConfirmStaged = async () => {
+  const handleConfirmStaged = () => {
     if (!stagedFile) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', stagedFile);
-      const { data: docData } = await api.post('/documents/upload?doc_type=' + stagedDocType + (stagedLabel.trim() ? '&label=' + encodeURIComponent(stagedLabel.trim()) : ''), fd);
-      setUploadedDocs(prev => [...prev, { id: docData.id, filename: docData.original_filename || docData.filename || stagedFile.name, doc_type: stagedDocType, label: stagedLabel.trim() || undefined }]);
-      setStagedFile(null);
-      setStagedLabel('');
-      toast('Document uploaded', 'success');
-    } catch {
-      toast('Failed to upload document', 'error');
-    } finally {
-      setUploading(false);
-    }
+    setPendingDocs(prev => [...prev, { file: stagedFile, doc_type: stagedDocType, label: stagedLabel.trim() || undefined }]);
+    setStagedFile(null);
+    setStagedLabel('');
+    toast('Document added — it will upload when you submit', 'success');
   };
 
 
@@ -1236,17 +1225,32 @@ export default function NewApplication() {
       return;
     }
     try {
-      if (completeId) {
-        const res = await api.patch(`/applications/${completeId}`, payload);
-        toast('Application saved! Please upload your supporting documents.', 'success');
-        clearLocalDraft();
-        navigate(`/applications/${res.data.id}?tab=documents`);
-      } else {
-        const res = await api.post('/applications', payload);
-        toast('Application saved! Please upload your supporting documents.', 'success');
-        clearLocalDraft();
-        navigate(`/applications/${res.data.id}?tab=documents`);
+      const res = completeId
+        ? await api.patch(`/applications/${completeId}`, payload)
+        : await api.post('/applications', payload);
+      const appId = res.data.id;
+      // Include a file that was picked but never confirmed with "Add document".
+      const docsToUpload = stagedFile
+        ? [...pendingDocs, { file: stagedFile, doc_type: stagedDocType, label: stagedLabel.trim() || undefined }]
+        : pendingDocs;
+      let failedUploads = 0;
+      for (const d of docsToUpload) {
+        try {
+          const fd = new FormData();
+          fd.append('file', d.file);
+          const q = `doc_type=${d.doc_type}` + (d.label ? `&label=${encodeURIComponent(d.label)}` : '');
+          await api.post(`/documents/upload/${appId}?${q}`, fd);
+        } catch {
+          failedUploads += 1;
+        }
       }
+      if (failedUploads > 0) {
+        toast(`Application saved, but ${failedUploads} document${failedUploads === 1 ? '' : 's'} failed to upload — you can add them from the Documents tab.`, 'error');
+      } else {
+        toast('Application saved! Please upload your supporting documents.', 'success');
+      }
+      clearLocalDraft();
+      navigate(`/applications/${appId}?tab=documents`);
     } catch (err: unknown) {
       toast(getErrorMessage(err, completeId ? 'Failed to update application' : 'Failed to create application'), 'error');
     }
@@ -1995,21 +1999,23 @@ export default function NewApplication() {
                 <GlassCard className="space-y-4">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
-                    <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files upload immediately.</p>
+                    <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files are uploaded when you submit.</p>
                   </div>
 
-                  {uploadedDocs.length > 0 && (
+                  {pendingDocs.length > 0 && (
                     <ul className="space-y-2">
-                      {uploadedDocs.map((d, i) => (
+                      {pendingDocs.map((d, i) => (
                         <li key={i} className="flex items-center gap-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/40 px-3 py-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--led-accent)]/10">
                             <svg className="h-4 w-4 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type as DocType] || d.doc_type}</p>
-                            <p className="text-[11px] text-[var(--led-muted)] truncate">{d.filename}</p>
+                            <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type] || d.doc_type}</p>
+                            <p className="text-[11px] text-[var(--led-muted)] truncate">{d.file.name}</p>
                           </div>
-                          <svg className="h-4 w-4 text-success shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                          <button type="button" aria-label="Remove document" onClick={() => setPendingDocs(prev => prev.filter((_, idx) => idx !== i))} className="shrink-0 rounded-md p-1 text-[var(--led-muted)] transition-colors hover:text-destructive">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -2037,9 +2043,7 @@ export default function NewApplication() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button type="button" size="sm" onClick={handleConfirmStaged} disabled={uploading}>
-                          {uploading ? 'Uploading...' : 'Upload now'}
-                        </Button>
+                        <Button type="button" size="sm" onClick={handleConfirmStaged}>Add document</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => setStagedFile(null)}>Cancel</Button>
                       </div>
                     </div>
@@ -2742,10 +2746,10 @@ export default function NewApplication() {
                   <p className="text-[14px] font-semibold text-[var(--led-ink)]">{liabilities.length} liabilit{liabilities.length === 1 ? 'y' : 'ies'} listed</p>
                 </div>
               )}
-              {uploadedDocs.length > 0 && (
+              {pendingDocs.length > 0 && (
                 <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                   <p className="text-[12px] font-medium text-[var(--led-muted)]">Documents</p>
-                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{uploadedDocs.length} uploaded</p>
+                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{pendingDocs.length} attached</p>
                 </div>
               )}
             </div>

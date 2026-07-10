@@ -16,7 +16,7 @@ from app.models.referral import Referral
 from app.models.user import User, UserRole
 from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, ReferrerAttach, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
-from app.services.auth import blacklist_all_user_tokens, create_access_token, hash_password
+from app.services.auth import blacklist_all_user_tokens, create_access_token
 from app.services.email import send_password_reset_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
@@ -265,13 +265,15 @@ def get_user_referrer(
                 "organization_name": getattr(ext_ref.referrer, "organization_name", None),
             }
         }
+    # Referral rows are also written for admin/broker invite links — only a
+    # referrer-role user counts as an actual referrer.
     referral = db.query(Referral).filter(
         Referral.referred_user_id == user_id,
     ).first()
     if not referral:
         return {"referrer": None}
     referrer = db.query(User).filter(User.id == referral.referrer_id).first()
-    if not referrer:
+    if not referrer or referrer.role != UserRole.referrer:
         return {"referrer": None}
     return {
         "referrer": {
@@ -335,6 +337,45 @@ def set_user_referrer(
             "organization_name": getattr(referrer, "organization_name", None),
         }
     }
+
+
+@router.delete("/{user_id}/referrer")
+def unlink_user_referrer(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Remove a client's referrer attribution. The referrer stops being credited
+    for the client (and their applications) and loses the client from their lists."""
+    client = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == tenant_id,
+        User.deleted_at.is_(None),
+    ).first()
+    if not client or client.role != UserRole.client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    removed_referrer_ids: set[str] = set()
+    for ext_ref in db.query(ExternalReferral).filter(ExternalReferral.referred_client_id == user_id).all():
+        removed_referrer_ids.add(ext_ref.referrer_id)
+        db.delete(ext_ref)
+    # Referral rows also record admin/broker invite-link signups — those aren't
+    # referrer attributions, so leave them as signup history.
+    referrals = (
+        db.query(Referral)
+        .join(User, User.id == Referral.referrer_id)
+        .filter(Referral.referred_user_id == user_id, User.role == UserRole.referrer)
+        .all()
+    )
+    for referral in referrals:
+        removed_referrer_ids.add(referral.referrer_id)
+        db.delete(referral)
+    if not removed_referrer_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This client has no referrer linked")
+    log_activity(db, current_user.id, "referrer_detached", "user", client.id,
+                 {"referrer_ids": sorted(removed_referrer_ids)}, tenant_id=tenant_id)
+    db.commit()
+    return {"referrer": None}
 
 
 @router.get("/{user_id}", response_model=UserOut)

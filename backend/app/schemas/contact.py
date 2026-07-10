@@ -99,6 +99,25 @@ class ContactOrganizationLink(BaseModel):
     role: Optional[str] = None
 
 
+class ContactMergeRequest(BaseModel):
+    primary_id: str
+    duplicate_ids: list[str]
+
+
+class ContactDuplicateCheck(BaseModel):
+    """Partial form values to screen for existing duplicates before creating."""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    drivers_license_number: Optional[str] = None
+    address: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+
+
 class PaginatedContacts(BaseModel):
     items: list[ContactOut]
     total: int

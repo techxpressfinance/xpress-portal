@@ -16,7 +16,7 @@ from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User, UserRole
 from app.schemas.common import normalize_email
 from app.services.activity_log import log_activity
-from app.services.email import notify_admins_new_account, send_new_lead_notification
+from app.services.email import notify_admins_new_account, send_new_lead_notification, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
