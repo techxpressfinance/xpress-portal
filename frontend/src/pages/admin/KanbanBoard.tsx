@@ -469,6 +469,8 @@ export default function KanbanBoardPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'broker';
+  // Board creation is admin-only on the backend; brokers manage columns/cards
+  const canCreateBoard = user?.role === 'admin';
 
   // Board state
   const [boards, setBoards] = useState<KanbanBoardListItem[]>([]);
@@ -946,9 +948,11 @@ export default function KanbanBoardPage() {
             </div>
             {isAdmin && (
               <>
-                <button type="button" className="led-btn led-btn-outline led-btn-sm" onClick={() => setShowCreateBoard(true)}>
-                  <Icon name="plus" size={12} /> Board
-                </button>
+                {canCreateBoard && (
+                  <button type="button" className="led-btn led-btn-outline led-btn-sm" onClick={() => setShowCreateBoard(true)}>
+                    <Icon name="plus" size={12} /> Board
+                  </button>
+                )}
                 {activeBoard && (
                   <button
                     type="button"
@@ -1234,7 +1238,7 @@ export default function KanbanBoardPage() {
           title="No boards found"
           description="Boards group applications into pipeline stages."
           action={
-            isAdmin ? (
+            canCreateBoard ? (
               <button type="button" className="led-btn led-btn-accent" onClick={() => setShowCreateBoard(true)}>
                 <Icon name="plus" size={13} /> Create your first board
               </button>
