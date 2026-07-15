@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
+import { loanTypeOptions } from '../../lib/constants';
 import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
@@ -72,13 +73,6 @@ type PendingAction =
   | { type: 'role'; userId: string; userName: string; from: string; to: string }
   | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean }
   | { type: 'delete'; userId: string; userName: string };
-
-const LOAN_TYPES: { value: LoanType; label: string }[] = [
-  { value: 'personal', label: 'Personal' },
-  { value: 'home', label: 'Home' },
-  { value: 'business', label: 'Business' },
-  { value: 'vehicle', label: 'Vehicle' },
-];
 
 const inputClass = 'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 sm:py-2 text-[16px] sm:text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30';
 
@@ -375,7 +369,7 @@ export default function UserManagement() {
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">Loan Type *</label>
               <select required value={inviteForm.loan_type} onChange={e => setInviteForm(f => ({ ...f, loan_type: e.target.value as LoanType }))} className={inputClass}>
-                {LOAN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {loanTypeOptions().map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>

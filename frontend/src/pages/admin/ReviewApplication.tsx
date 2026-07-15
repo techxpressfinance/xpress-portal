@@ -17,7 +17,7 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
-import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType } from '../../lib/constants';
+import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
@@ -1298,10 +1298,9 @@ export default function ReviewApplication() {
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
                           <select {...regEdit('loan_type')} className="led-input">
-                            <option value="personal">Personal</option>
-                            <option value="home">Home</option>
-                            <option value="business">Business</option>
-                            <option value="vehicle">Vehicle</option>
+                            {loanTypeOptions(application.loan_type).map(({ value, label }) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
                           </select>
                         </div>
                         <div>

@@ -229,6 +229,8 @@ _MIGRATIONS = [
     # Due-date reminder send tracking
     ("service_requests", "reminder_midpoint_sent_at", "TIMESTAMP"),
     ("service_requests", "reminder_due_soon_sent_at", "TIMESTAMP"),
+    # Kanban boards scoped to a loan category (asset_finance | home_loan | commercial)
+    ("kanban_boards", "loan_category", "VARCHAR(20)"),
 ]
 
 _logger = logging.getLogger(__name__)

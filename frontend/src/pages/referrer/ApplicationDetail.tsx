@@ -13,7 +13,7 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LOAN_CATEGORIES, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, categoryForSubType, findLoanSubType } from '../../lib/constants';
+import { DOC_TYPE_LABELS, LOAN_CATEGORIES, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
@@ -1040,7 +1040,7 @@ export default function ReferrerApplicationDetail() {
                         <div>
                           <label className="block text-[13px] font-medium text-muted-foreground mb-2">Loan Type</label>
                           <select {...regEdit('loan_type')} className="led-input">
-                            {Object.entries(LOAN_TYPE_LABELS).map(([value, label]) => (
+                            {loanTypeOptions(application.loan_type).map(({ value, label }) => (
                               <option key={value} value={value}>{label}</option>
                             ))}
                           </select>

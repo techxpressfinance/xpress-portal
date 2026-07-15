@@ -118,7 +118,7 @@ const TERM_ACCENTS = [
 ];
 
 // ── On-screen term block ────────────────────────────────────────────
-function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInterest, assetDescription, paymentType }: { group: TermGroup; accent: string; isClientView: boolean; showInterestRate: boolean; showTotalInterest: boolean; assetDescription: string; paymentType: string }) {
+function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInterest, showWeekly, assetDescription, paymentType }: { group: TermGroup; accent: string; isClientView: boolean; showInterestRate: boolean; showTotalInterest: boolean; showWeekly: boolean; assetDescription: string; paymentType: string }) {
   const { termYears, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
@@ -154,7 +154,9 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
           {allUpRate != null && (!isClientView || showInterestRate) && (
             <Row label={isClientView ? 'Interest Rate' : 'All Up Interest Rate'} value={fmtPercent(allUpRate)} color={accent} />
           )}
-          <Row label="Weekly Equivalent" value={<Money v={opt.repayment_weekly} />} color={accent} />
+          {showWeekly && (
+            <Row label="Weekly Equivalent" value={<Money v={opt.repayment_weekly} />} color={accent} />
+          )}
           {(!isClientView || showTotalInterest) && (
             <Row label="Total Interest (over term)" value={<Money v={opt.total_interest} />} bold color={accent} />
           )}
@@ -218,6 +220,7 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
       showTotalInterest: (params.show_total_interest as boolean | undefined) ?? true,
+      showWeekly: (params.show_weekly as boolean | undefined) ?? true,
       repaymentRange: (params.repayment_range as number | undefined) ?? null,
       showPreferredOption: (params.show_preferred_option as boolean | undefined) ?? false,
       preferredTerm: (params.preferred_term as number | undefined) ?? null,
@@ -250,6 +253,7 @@ export default function QuoteSheetComparison({
   const paymentType = parsedParams?.paymentType ?? 'advance';
   const showInterestRate = parsedParams?.showInterestRate ?? false;
   const showTotalInterest = parsedParams?.showTotalInterest ?? true;
+  const showWeekly = parsedParams?.showWeekly ?? true;
   const showPreferredOption = parsedParams?.showPreferredOption ?? false;
   const preferredTerm = parsedParams?.preferredTerm ?? null;
   const preferredBalloon = parsedParams?.preferredBalloon ?? false;
@@ -590,7 +594,9 @@ export default function QuoteSheetComparison({
               { label: 'Amount financed', render: o => <Money v={isClientView ? clientAmt(o) : o.loan_amount} /> },
               { label: 'Balloon', render: o => <Money v={o.balloon_residual ?? 0} /> },
               { label: 'Monthly repayment', bold: true, wrap: true, render: renderMonthly },
-              { label: 'Weekly equivalent', render: o => <Money v={o.repayment_weekly} /> },
+              ...(showWeekly
+                ? [{ label: 'Weekly equivalent', render: (o: QuoteOption) => <Money v={o.repayment_weekly} /> }]
+                : []),
               ...(!isClientView
                 ? [{ label: 'Rate of interest', render: (o: QuoteOption) => fmtPercent(o.interest_rate) }]
                 : []),
@@ -707,12 +713,17 @@ export default function QuoteSheetComparison({
           const monthly: ReactNode = rng
             ? <><Money v={rng.lo} /> – <Money v={rng.hi} /></>
             : <Money v={o.repayment_monthly} />;
+          // Third metric: balloon if present, else weekly (when shown), else
+          // fall back to total interest so the callout keeps three columns.
+          const thirdMetric = balloonAmt > 0
+            ? { label: `Balloon at Month ${o.loan_term_months ?? preferredGroup.termMonths}`, value: <Money v={balloonAmt} /> }
+            : showWeekly
+              ? { label: 'Weekly Equivalent', value: <Money v={o.repayment_weekly} /> }
+              : { label: 'Total Interest', value: <Money v={o.total_interest} /> };
           const metrics: { label: string; value: ReactNode }[] = [
             { label: 'Monthly Repayment', value: monthly },
             { label: isClientView ? 'Amount Financed' : 'Principal Financed', value: <Money v={amtFin} /> },
-            balloonAmt > 0
-              ? { label: `Balloon at Month ${o.loan_term_months ?? preferredGroup.termMonths}`, value: <Money v={balloonAmt} /> }
-              : { label: 'Weekly Equivalent', value: <Money v={o.repayment_weekly} /> },
+            thirdMetric,
           ];
           return (
             <div className="break-inside-avoid" style={{
@@ -944,7 +955,7 @@ export default function QuoteSheetComparison({
             {row.map(group => {
               const { accent } = TERM_ACCENTS[termGroups.indexOf(group) % TERM_ACCENTS.length];
               return (
-                <TermBlock key={group.termYears} group={group} accent={accent} isClientView={isClientView} showInterestRate={showInterestRate} showTotalInterest={showTotalInterest} assetDescription={assetDescription} paymentType={paymentType} />
+                <TermBlock key={group.termYears} group={group} accent={accent} isClientView={isClientView} showInterestRate={showInterestRate} showTotalInterest={showTotalInterest} showWeekly={showWeekly} assetDescription={assetDescription} paymentType={paymentType} />
               );
             })}
           </div>

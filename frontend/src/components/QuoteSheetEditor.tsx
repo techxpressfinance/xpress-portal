@@ -50,6 +50,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   selected_terms: [...TERMS],
   show_interest_rate: false,
   show_total_interest: true,
+  show_weekly: true,
   show_preferred_option: false,
   preferred_term: 5,
   preferred_balloon: false,
@@ -930,6 +931,19 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                   {(inputs.show_total_interest ?? true) ? 'Total interest: visible' : 'Total interest: hidden'}
                 </button>
                 <span className="text-[10px] text-muted-foreground">Controls total interest visibility on client quote.</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateInput('show_weekly', !(inputs.show_weekly ?? true))}
+                  className={`h-8 px-3 rounded-lg text-[12px] font-semibold transition-colors border whitespace-nowrap ${(inputs.show_weekly ?? true)
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'bg-muted text-muted-foreground border-border/40'
+                  }`}
+                >
+                  {(inputs.show_weekly ?? true) ? 'Weekly payment: visible' : 'Weekly payment: hidden'}
+                </button>
+                <span className="text-[10px] text-muted-foreground">Controls weekly repayment visibility on the quote sheet.</span>
               </div>
             </div>
           </div>

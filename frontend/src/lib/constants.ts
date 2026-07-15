@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -97,6 +97,18 @@ export const LOAN_TYPE_LABELS: Record<string, string> = {
   business_loan: 'Business Loan',
   commercial_property: 'Commercial Property',
   home_loan: 'Home Loan',
+};
+
+// Loan types the current category/sub-type flow can still produce (see
+// subTypeToLoanType). 'home' and 'business' survive only on old applications.
+export const ASSIGNABLE_LOAN_TYPES: readonly LoanType[] = ['personal', 'vehicle', 'home_loan', 'equipment_finance', 'business_loan', 'commercial_property'];
+
+export const loanTypeOptions = (current?: string): { value: string; label: string }[] => {
+  const options: { value: string; label: string }[] = ASSIGNABLE_LOAN_TYPES.map(value => ({ value, label: LOAN_TYPE_LABELS[value] }));
+  if (current && !ASSIGNABLE_LOAN_TYPES.includes(current as LoanType)) {
+    options.push({ value: current, label: `${LOAN_TYPE_LABELS[current] ?? current} (legacy)` });
+  }
+  return options;
 };
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -214,31 +226,31 @@ export const COLUMN_COLOR_OPTIONS = [
 // Comprehensive Loan Type Configurations — grouped into the three top-level
 // categories shown on application forms (Asset Finance / Home Loan / Commercial).
 export const ASSET_FINANCE_LOAN_TYPES = [
-  { value: 'car', label: 'Car Loan', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'motorcycle', label: 'Motorcycle Loan', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'caravan', label: 'Caravan / RV Loan', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'other_vehicle', label: 'Other Vehicle', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
-  { value: 'personal', label: 'Personal Loan', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
-  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
-  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
+  { value: 'car', label: 'Car Loan', short: 'Car', description: 'Finance a new or used car', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'motorcycle', label: 'Motorcycle Loan', short: 'Motorcycle', description: 'Finance a new or used motorcycle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_vin', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'caravan', label: 'Caravan / RV Loan', short: 'Caravan / RV', description: 'Finance a caravan or recreational vehicle', fields: ['vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'other_vehicle', label: 'Other Vehicle', short: 'Other Vehicle', description: 'Boat, jet ski, or other vehicle', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'vehicle_condition'] },
+  { value: 'personal', label: 'Personal Loan', short: 'Personal', description: 'Unsecured personal loan for any purpose', fields: ['loan_purpose', 'loan_amount', 'loan_term'] },
+  { value: 'day_to_day_capital', label: 'Working capital/ overdraft', short: 'Working Capital', description: 'Working capital for daily operations', fields: ['loan_amount', 'loan_term', 'business_purpose'] },
+  { value: 'vehicles_or_transport', label: 'Vehicle/car/ transport/ Equipment / Machinery', short: 'Vehicle / Equipment', description: 'Commercial vehicle, equipment & machinery finance', fields: ['vehicle_type', 'vehicle_make', 'vehicle_model', 'vehicle_year', 'vehicle_price', 'deposit_amount', 'loan_term', 'business_use_pct'] },
 ] as const;
 
 export const HOME_LOAN_TYPES = [
-  { value: 'purchase', label: 'Purchase', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
-  { value: 'refinance', label: 'Refinance', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
+  { value: 'purchase', label: 'Purchase', short: 'Purchase', description: 'Property purchase', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'first_home_buyer'] },
+  { value: 'refinance', label: 'Refinance', short: 'Refinance', description: 'Refinance existing loan', fields: ['current_lender', 'current_balance', 'property_address', 'property_value', 'loan_term', 'refinance_reason'] },
 ] as const;
 
 export const COMMERCIAL_LOAN_TYPES = [
-  { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
-  { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
-  { value: 'property', label: 'Development finance & Construction', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
-  { value: 'new_business', label: 'Start a new business/ Purchase an existing business', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
-  { value: 'other', label: 'Other', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
+  { value: 'new_fit_out', label: 'Fitouts / Biz Expansion/grow staff', short: 'Fit-out / Expansion', description: 'Shop or office fit-out, business expansion or staff growth', fields: ['fit_out_description', 'property_address', 'estimated_cost', 'loan_term'] },
+  { value: 'waiting_for_invoices', label: 'Invoice financing/ pay to international suppliers', short: 'Invoice Finance', description: 'Invoice factoring or supplier payment financing', fields: ['outstanding_invoices', 'total_amount', 'loan_term'] },
+  { value: 'property', label: 'Development finance & Construction', short: 'Development', description: 'Construction and development finance', fields: ['property_address', 'property_type', 'property_value', 'deposit_amount', 'loan_term', 'property_use'] },
+  { value: 'new_business', label: 'Start a new business/ Purchase an existing business', short: 'New Business', description: 'Startup funding or business acquisition', fields: ['business_plan', 'startup_costs', 'loan_amount', 'loan_term', 'industry'] },
+  { value: 'other', label: 'Other', short: 'Other', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
 ] as const;
 
 export type LoanCategory = 'asset_finance' | 'home_loan' | 'commercial';
 
-export const LOAN_CATEGORIES: { value: LoanCategory; label: string; types: readonly { value: string; label: string; description: string; fields: readonly string[] }[] }[] = [
+export const LOAN_CATEGORIES: { value: LoanCategory; label: string; types: readonly { value: string; label: string; short: string; description: string; fields: readonly string[] }[] }[] = [
   { value: 'asset_finance', label: 'Asset Finance', types: ASSET_FINANCE_LOAN_TYPES },
   { value: 'home_loan', label: 'Home Loan', types: HOME_LOAN_TYPES },
   { value: 'commercial', label: 'Commercial Loans', types: COMMERCIAL_LOAN_TYPES },

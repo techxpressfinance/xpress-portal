@@ -829,6 +829,8 @@ table {
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 16px;
+  height: 100%;
+  align-items: flex-start;
 }
 
 .led-kanban-col {
@@ -841,6 +843,7 @@ table {
   transition: background 140ms ease;
   display: flex;
   flex-direction: column;
+  max-height: 100%;
 }
 
 .led-kanban-col.led-drop-valid {
@@ -878,7 +881,7 @@ table {
   gap: 6px;
   min-height: 40px;
   overflow-y: auto;
-  max-height: calc(100vh - 360px);
+  flex: 1;
 }
 
 .led-kanban-card {
@@ -927,6 +930,14 @@ table {
   gap: 4px;
   color: var(--led-ink-2);
   font-size: 10.5px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.led-kanban-card-lt svg {
+  flex-shrink: 0;
 }
 
 .led-kanban-card-title {

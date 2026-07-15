@@ -5,7 +5,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { LOAN_TYPES, APPLICATION_STATUSES } from '../../types';
+import { APPLICATION_STATUSES } from '../../types';
+import { loanTypeOptions } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, LendingHistoryEntry, RepaymentFrequency } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -253,8 +254,8 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
             <div>
               <label className={LABEL}>Loan Type</label>
               <Select value={form.loan_type} onChange={e => setForm(f => ({ ...f, loan_type: e.target.value }))}>
-                {LOAN_TYPES.map(t => (
-                  <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+                {loanTypeOptions(app.loan_type).map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </Select>
             </div>

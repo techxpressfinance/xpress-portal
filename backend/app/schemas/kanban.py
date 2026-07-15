@@ -33,18 +33,21 @@ class KanbanColumnOut(BaseModel):
 class KanbanBoardCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    loan_category: Optional[str] = None
     columns: Optional[list[KanbanColumnCreate]] = None
 
 
 class KanbanBoardUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    loan_category: Optional[str] = None
 
 
 class KanbanBoardOut(BaseModel):
     id: str
     name: str
     description: Optional[str]
+    loan_category: Optional[str] = None
     is_default: bool
     created_by_id: str
     created_by_name: Optional[str] = None
@@ -59,6 +62,7 @@ class KanbanBoardListOut(BaseModel):
     id: str
     name: str
     description: Optional[str]
+    loan_category: Optional[str] = None
     is_default: bool
     column_count: int = 0
     created_at: str

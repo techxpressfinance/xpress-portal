@@ -649,6 +649,7 @@ export interface KanbanBoard {
   id: string;
   name: string;
   description: string | null;
+  loan_category: 'asset_finance' | 'home_loan' | 'commercial' | null;
   is_default: boolean;
   created_by_id: string;
   created_by_name: string | null;
@@ -773,6 +774,7 @@ export interface QuoteInputParameters {
   selected_terms?: number[];           // e.g. [5, 4, 3] — which terms to show client
   show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
   show_total_interest?: boolean;       // show total interest to client (default: visible)
+  show_weekly?: boolean;               // show weekly repayment on quote sheet (default: visible)
   repayment_range?: number;            // show client a ±$ range instead of exact repayment
   show_preferred_option?: boolean;     // show a highlighted "recommended for you" callout
   preferred_term?: number;             // term (years) of the preferred option, e.g. 5
@@ -943,6 +945,7 @@ export interface KanbanBoardListItem {
   id: string;
   name: string;
   description: string | null;
+  loan_category: 'asset_finance' | 'home_loan' | 'commercial' | null;
   is_default: boolean;
   column_count: number;
   created_at: string;

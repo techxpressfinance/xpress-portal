@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.loan_applicant import ApplicationGuarantor
@@ -27,6 +27,12 @@ from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.date_filter import apply_date_range_filter
+from app.services.loan_category import (
+    CATEGORY_LOAN_TYPES,
+    LOAN_CATEGORIES,
+    application_loan_category,
+    application_sub_type,
+)
 from app.services.query_utils import escape_like
 from app.services.serialization import app_with_user, referrer_info_map
 from app.services.tenant_scope import get_tenant_id
@@ -39,6 +45,11 @@ _VALID_STATUSES = {s.value for s in ApplicationStatus}
 def _validate_mapped_status(status: str) -> None:
     if status not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {status}")
+
+
+def _validate_loan_category(category: str) -> None:
+    if category not in LOAN_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Invalid loan_category: {category}")
 
 
 def _board_to_dict(board: KanbanBoard, db: Session) -> dict:
@@ -58,6 +69,7 @@ def _board_to_dict(board: KanbanBoard, db: Session) -> dict:
         "id": board.id,
         "name": board.name,
         "description": board.description,
+        "loan_category": board.loan_category,
         "is_default": board.is_default,
         "created_by_id": board.created_by_id,
         "created_by_name": board.created_by.full_name if board.created_by else None,
@@ -81,6 +93,7 @@ def list_boards(
             "id": b.id,
             "name": b.name,
             "description": b.description,
+            "loan_category": b.loan_category,
             "is_default": b.is_default,
             "column_count": len(b.columns),
             "created_at": b.created_at.isoformat() if b.created_at else None,
@@ -97,7 +110,9 @@ def create_board(
     current_user: User = Depends(require_role("admin")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    board = KanbanBoard(name=data.name, description=data.description, created_by_id=current_user.id, tenant_id=tenant_id)
+    if data.loan_category:
+        _validate_loan_category(data.loan_category)
+    board = KanbanBoard(name=data.name, description=data.description, loan_category=data.loan_category, created_by_id=current_user.id, tenant_id=tenant_id)
     db.add(board)
     db.flush()
 
@@ -146,6 +161,8 @@ def update_board(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     updates = data.model_dump(exclude_unset=True)
+    if updates.get("loan_category"):
+        _validate_loan_category(updates["loan_category"])
     for key, value in updates.items():
         setattr(board, key, value)
     log_activity(db, current_user.id, "board_updated", "kanban_board", board.id, updates, tenant_id=tenant_id)
@@ -289,6 +306,8 @@ def get_board_applications(
     board_id: str,
     search: Optional[str] = None,
     loan_type: Optional[str] = None,
+    category: Optional[str] = None,
+    sub_type: Optional[str] = None,
     broker_id: Optional[str] = None,
     client_id: Optional[str] = None,
     date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
@@ -331,6 +350,15 @@ def get_board_applications(
         )
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
+    # Category scope: the board's own category and/or the request filter.
+    # Narrow in SQL by the loan_type values the category can produce, then
+    # refine by the recorded sub-type below (the sub-type lives in encrypted
+    # JSON, so it can't be matched in SQL).
+    if category:
+        _validate_loan_category(category)
+    categories = {c for c in (board.loan_category, category) if c}
+    for cat in categories:
+        query = query.filter(LoanApplication.loan_type.in_(CATEGORY_LOAN_TYPES[cat]))
     if broker_id:
         query = query.filter(
             LoanApplication.id.in_(
@@ -354,6 +382,11 @@ def get_board_applications(
         query = query.filter(LoanApplication.updated_at <= cutoff)
 
     apps = query.order_by(LoanApplication.created_at.desc()).all()
+
+    for cat in categories:
+        apps = [a for a in apps if application_loan_category(a) == cat]
+    if sub_type:
+        apps = [a for a in apps if application_sub_type(a) == sub_type]
 
     # Build set of valid column IDs on this board for quick lookup
     board_col_ids = {col.id for col in board.columns}

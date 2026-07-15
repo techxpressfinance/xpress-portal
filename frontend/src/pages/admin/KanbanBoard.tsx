@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
-import { COLUMN_COLOR_OPTIONS } from '../../lib/constants';
+import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, findLoanSubType } from '../../lib/constants';
 import { ConfirmDialog, EmptyState } from '../../components/ui';
 import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, User } from '../../types';
 
@@ -57,17 +57,46 @@ function Icon({ name, size = 14, className = '' }: { name: string; size?: number
 
 const LOAN_TYPE_ICON: Record<string, string> = {
   business: 'briefcase',
+  business_loan: 'briefcase',
+  equipment_finance: 'briefcase',
+  commercial_property: 'briefcase',
   vehicle: 'car',
   home: 'home',
+  home_loan: 'home',
   personal: 'user',
 };
 
-const LOAN_TYPE_LABEL: Record<string, string> = {
-  business: 'Business',
-  vehicle: 'Vehicle',
-  home: 'Home',
-  personal: 'Personal',
+const LOAN_TYPE_LABEL: Record<string, string> = LOAN_TYPE_LABELS;
+
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(LOAN_CATEGORIES.map((c) => [c.value, c.label]));
+
+// Segment control labels — "Commercial Loans" → "Commercial" etc.
+const CATEGORY_SHORT: Record<string, string> = {
+  asset_finance: 'Asset Finance',
+  home_loan: 'Home Loan',
+  commercial: 'Commercial',
 };
+
+// The form sub-type recorded at submission (inside the lend_extra_data JSON),
+// or null for LEND-mode/legacy applications.
+function appSubType(app: LoanApplication): string | null {
+  if (!app.lend_extra_data) return null;
+  try {
+    const details = JSON.parse(app.lend_extra_data)?.loan_type_details;
+    return details?.consumer_loan_type?.type || details?.commercial_loan_type?.type || null;
+  } catch {
+    return null;
+  }
+}
+
+function loanTypeChip(app: LoanApplication): { icon: string; label: string } {
+  const sub = appSubType(app);
+  const subDef = sub ? findLoanSubType(sub) : undefined;
+  return {
+    icon: LOAN_TYPE_ICON[app.loan_type] || 'user',
+    label: subDef?.short || LOAN_TYPE_LABEL[app.loan_type] || app.loan_type,
+  };
+}
 
 // ── Avatar ──
 
@@ -118,7 +147,7 @@ function FilterPill({
       >
         {icon && <Icon name={icon} size={12} />}
         <span className="led-pill-label">{label}:</span>
-        <span>{value}</span>
+        <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
         <Icon name="chevronDown" size={11} />
       </button>
       {open && (
@@ -145,8 +174,7 @@ function KanbanCard({
 }) {
   const navigate = useNavigate();
   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
-  const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
-  const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
+  const { icon: ltIcon, label: ltLabel } = loanTypeChip(app);
   const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
   const clientName = isDirectLead
     ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
@@ -450,7 +478,8 @@ export default function KanbanBoardPage() {
   const [search, setSearch] = useState('');
 
   // Filter state
-  const [loanTypeFilter, setLoanTypeFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [subTypeFilter, setSubTypeFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [dateRangeFilter, setDateRangeFilter] = useState('');
@@ -484,6 +513,7 @@ export default function KanbanBoardPage() {
   // Form state
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDesc, setNewBoardDesc] = useState('');
+  const [newBoardCategory, setNewBoardCategory] = useState('');
   const [colTitle, setColTitle] = useState('');
   const [colMappedStatus, setColMappedStatus] = useState('');
   const [colColor, setColColor] = useState('muted-foreground');
@@ -504,11 +534,12 @@ export default function KanbanBoardPage() {
 
   const fetchApplications = useCallback(async (
     boardId: string,
-    filters: { search?: string; loan_type?: string; broker_id?: string; client_id?: string; date_range?: string; updated_range?: string; min_days_in_stage?: string } = {},
+    filters: { search?: string; category?: string; sub_type?: string; broker_id?: string; client_id?: string; date_range?: string; updated_range?: string; min_days_in_stage?: string } = {},
   ) => {
     const params = new URLSearchParams();
     if (filters.search) params.set('search', filters.search);
-    if (filters.loan_type) params.set('loan_type', filters.loan_type);
+    if (filters.category) params.set('category', filters.category);
+    if (filters.sub_type) params.set('sub_type', filters.sub_type);
     if (filters.broker_id) params.set('broker_id', filters.broker_id);
     if (filters.client_id) params.set('client_id', filters.client_id);
     if (filters.date_range) params.set('date_range', filters.date_range);
@@ -522,13 +553,13 @@ export default function KanbanBoardPage() {
     setLoading(true);
     try {
       await fetchBoard(boardId);
-      await fetchApplications(boardId, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
+      await fetchApplications(boardId, { search, category: categoryFilter, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
     } catch {
       toast('Failed to load board', 'error');
     } finally {
       setLoading(false);
     }
-  }, [fetchBoard, fetchApplications, search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
+  }, [fetchBoard, fetchApplications, search, categoryFilter, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -565,10 +596,24 @@ export default function KanbanBoardPage() {
   useEffect(() => {
     if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
-      fetchApplications(activeBoard.id, { search, loan_type: loanTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
+      fetchApplications(activeBoard.id, { search, category: categoryFilter, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
+  }, [search, categoryFilter, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
+
+  // Category scope: the board's own category (category boards) or the primary
+  // category segment (unscoped boards). The Type filter lists that category's
+  // sub-types, or every category's sub-types (grouped) when viewing All.
+  // Drop a sub-type filter that falls outside the scope being viewed.
+  const boardCategory = activeBoard?.loan_category || null;
+  const effectiveCategory = boardCategory || categoryFilter || null;
+  const categoryTypes = effectiveCategory ? (LOAN_CATEGORIES.find((c) => c.value === effectiveCategory)?.types ?? []) : [];
+  useEffect(() => {
+    if (effectiveCategory && subTypeFilter && !categoryTypes.some((t) => t.value === subTypeFilter)) {
+      setSubTypeFilter('');
+    }
+    if (boardCategory) setCategoryFilter('');
+  }, [effectiveCategory, boardCategory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Drag and drop ──
 
@@ -717,10 +762,11 @@ export default function KanbanBoardPage() {
   const handleCreateBoard = async () => {
     if (!newBoardName.trim()) return;
     try {
-      const { data } = await api.post('/kanban/boards', { name: newBoardName, description: newBoardDesc || null });
+      const { data } = await api.post('/kanban/boards', { name: newBoardName, description: newBoardDesc || null, loan_category: newBoardCategory || null });
       setShowCreateBoard(false);
       setNewBoardName('');
       setNewBoardDesc('');
+      setNewBoardCategory('');
       await fetchBoards();
       await loadBoard(data.id);
       toast('Board created', 'success');
@@ -746,7 +792,7 @@ export default function KanbanBoardPage() {
   const handleSaveBoardSettings = async () => {
     if (!activeBoard) return;
     try {
-      await api.patch(`/kanban/boards/${activeBoard.id}`, { name: newBoardName, description: newBoardDesc });
+      await api.patch(`/kanban/boards/${activeBoard.id}`, { name: newBoardName, description: newBoardDesc, loan_category: newBoardCategory || null });
       setShowBoardSettings(false);
       await fetchBoards();
       await fetchBoard(activeBoard.id);
@@ -848,9 +894,10 @@ export default function KanbanBoardPage() {
 
   const getColumnApps = (colId: string): LoanApplication[] => appsByColumn[colId] || [];
 
-  const activeFilterCount = [loanTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter].filter(Boolean).length;
+  const activeFilterCount = [categoryFilter, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter].filter(Boolean).length;
   const clearAllFilters = () => {
-    setLoanTypeFilter('');
+    setCategoryFilter('');
+    setSubTypeFilter('');
     setBrokerFilter('');
     setClientFilter('');
     setDateRangeFilter('');
@@ -859,7 +906,7 @@ export default function KanbanBoardPage() {
   };
 
   // Filter pill values
-  const loanTypePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
+  const subTypePill = subTypeFilter ? (findLoanSubType(subTypeFilter)?.short || subTypeFilter) : 'All';
   const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'All';
   const clientPill = clientFilter ? (clientsList.find((c) => c.id === clientFilter)?.full_name.split(' ')[0] || 'All') : 'All';
   const DATE_RANGE_LABELS: Record<string, string> = { this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter', last_quarter: 'Last quarter', this_year: 'This year' };
@@ -871,14 +918,23 @@ export default function KanbanBoardPage() {
   // ── Render ──
 
   return (
-    <div className="ledger-theme led-fade-up" style={{ minHeight: '100%', background: 'var(--led-bg)', margin: -24, padding: 0 }}>
+    // Escape <main>'s responsive padding exactly and pin the page to the
+    // viewport: the toolbar stays put and each column scrolls its own cards,
+    // so the page itself never scrolls vertically.
+    <div
+      className="ledger-theme led-fade-up -m-4 sm:-m-6 lg:-m-10 flex flex-col h-[calc(100dvh-3rem)] lg:h-dvh"
+      style={{ background: 'var(--led-bg)' }}
+    >
       {/* Header */}
-      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20 }}>
+      {/* Not sticky: the page is viewport-pinned (columns scroll internally), and
+          sticky would get force-shifted into <main>'s padding box, overlapping the
+          columns. relative+zIndex keeps filter popovers above the board. */}
+      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'relative', zIndex: 20, borderBottom: '1px solid var(--led-line)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, paddingBottom: 14 }}>
           <div style={{ minWidth: 0 }}>
             <h1 className="led-h-page" style={{ margin: 0 }}>{activeBoard?.name || 'Pipeline'}</h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--led-muted)' }}>
-              Drag cards between stages · live sync
+              {boardCategory ? `${CATEGORY_LABEL[boardCategory]} only · ` : ''}Drag cards between stages · live sync
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -900,6 +956,7 @@ export default function KanbanBoardPage() {
                     onClick={() => {
                       setNewBoardName(activeBoard.name);
                       setNewBoardDesc(activeBoard.description || '');
+                      setNewBoardCategory(activeBoard.loan_category || '');
                       setShowBoardSettings(true);
                     }}
                     title="Board settings"
@@ -927,37 +984,74 @@ export default function KanbanBoardPage() {
             ))}
           </div>
         )}
-      </header>
 
-      {/* Filter bar */}
-      <div style={{ padding: '40px 24px 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div className="led-search">
-          <Icon name="search" size={13} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search clients…"
-          />
-        </div>
-
-        <FilterPill label="Type" value={loanTypePill} active={!!loanTypeFilter} icon="filter">
-          {(close) => (
-            <>
-              <button type="button" className={`led-popover-item ${!loanTypeFilter ? 'led-active' : ''}`} onClick={() => { setLoanTypeFilter(''); close(); }}>All types</button>
-              {['personal', 'home', 'business', 'vehicle'].map((t) => (
+        {/* Filter bar — row 1: primary category scope + search; row 2: refinements.
+            Lives inside the sticky header so filters never slide under it. */}
+        <div style={{ padding: '14px 0 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {!boardCategory && (
+            <div className="led-segment">
+              <button
+                type="button"
+                className={!categoryFilter ? 'led-active' : ''}
+                onClick={() => setCategoryFilter('')}
+              >
+                All
+              </button>
+              {LOAN_CATEGORIES.map((c) => (
                 <button
-                  key={t}
+                  key={c.value}
                   type="button"
-                  className={`led-popover-item ${loanTypeFilter === t ? 'led-active' : ''}`}
-                  onClick={() => { setLoanTypeFilter(t); close(); }}
+                  className={categoryFilter === c.value ? 'led-active' : ''}
+                  onClick={() => setCategoryFilter(c.value)}
                 >
-                  <Icon name={LOAN_TYPE_ICON[t]} size={13} />
-                  {LOAN_TYPE_LABEL[t]}
+                  {CATEGORY_SHORT[c.value] || c.label}
                 </button>
               ))}
-            </>
+            </div>
           )}
+          <div className="led-search">
+            <Icon name="search" size={13} />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search clients…"
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+
+        <FilterPill label="Type" value={subTypePill} active={!!subTypeFilter} icon="filter">
+          {(close) => {
+            const typeButton = (t: { value: string; label: string; short: string }) => (
+              <button
+                key={t.value}
+                type="button"
+                className={`led-popover-item ${subTypeFilter === t.value ? 'led-active' : ''}`}
+                onClick={() => { setSubTypeFilter(t.value); close(); }}
+                title={t.label}
+              >
+                {t.short}
+              </button>
+            );
+            return (
+              <div style={{ maxHeight: 360, overflowY: 'auto', minWidth: 180 }}>
+                <button type="button" className={`led-popover-item ${!subTypeFilter ? 'led-active' : ''}`} onClick={() => { setSubTypeFilter(''); close(); }}>All types</button>
+                {effectiveCategory
+                  ? categoryTypes.map(typeButton)
+                  : LOAN_CATEGORIES.map((c) => (
+                    <div key={c.value}>
+                      <div style={{ padding: '8px 10px 3px', fontSize: 10.5, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--led-muted)' }}>
+                        {CATEGORY_SHORT[c.value] || c.label}
+                      </div>
+                      {c.types.map(typeButton)}
+                    </div>
+                  ))}
+              </div>
+            );
+          }}
         </FilterPill>
 
         {brokersList.length > 0 && (
@@ -1081,11 +1175,13 @@ export default function KanbanBoardPage() {
             Clear filters
           </button>
         )}
-      </div>
+        </div>
+        </div>
+      </header>
 
       {/* Board canvas */}
       {loading ? (
-        <div style={{ padding: '4px 24px 32px' }}>
+        <div style={{ padding: '14px 24px 20px', flex: 1, minHeight: 0 }}>
           <div className="led-kanban-scroller">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="led-kanban-col">
@@ -1099,7 +1195,7 @@ export default function KanbanBoardPage() {
           </div>
         </div>
       ) : activeBoard ? (
-        <div style={{ padding: '4px 24px 32px' }}>
+        <div style={{ padding: '14px 24px 20px', flex: 1, minHeight: 0 }}>
           <div className="led-kanban-scroller">
             {[...activeBoard.columns].sort((a, b) => a.position - b.position).map((col, idx, sorted) => (
               <BoardColumn
@@ -1152,6 +1248,14 @@ export default function KanbanBoardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input className="led-input" placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} autoFocus />
           <input className="led-input" placeholder="Description (optional)" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
+          <div>
+            <div className="led-label" style={{ marginBottom: 6 }}>Loan category</div>
+            <select className="led-input" value={newBoardCategory} onChange={(e) => setNewBoardCategory(e.target.value)} style={{ cursor: 'pointer' }}>
+              <option value="">All applications</option>
+              {LOAN_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <p className="led-caption" style={{ margin: '6px 0 0' }}>Category boards only show applications of that category.</p>
+          </div>
           <p className="led-caption" style={{ margin: 0 }}>Default columns will be created automatically.</p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
             <button type="button" className="led-btn led-btn-ghost" onClick={() => setShowCreateBoard(false)}>Cancel</button>
@@ -1167,6 +1271,13 @@ export default function KanbanBoardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input className="led-input" placeholder="Board name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
           <input className="led-input" placeholder="Description" value={newBoardDesc} onChange={(e) => setNewBoardDesc(e.target.value)} />
+          <div>
+            <div className="led-label" style={{ marginBottom: 6 }}>Loan category</div>
+            <select className="led-input" value={newBoardCategory} onChange={(e) => setNewBoardCategory(e.target.value)} style={{ cursor: 'pointer' }}>
+              <option value="">All applications</option>
+              {LOAN_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
             <button type="button" className="led-btn led-btn-danger" onClick={handleDeleteBoard}>
               <Icon name="trash" size={12} /> Delete
@@ -1228,8 +1339,8 @@ export default function KanbanBoardPage() {
                   APP-{draggedApp.id.replace(/-/g, '').slice(-6).toUpperCase()}
                 </span>
                 <span style={{ fontSize: 10.5, color: 'var(--led-ink-2)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Icon name={LOAN_TYPE_ICON[draggedApp.loan_type] || 'user'} size={11} />
-                  {LOAN_TYPE_LABEL[draggedApp.loan_type] || draggedApp.loan_type}
+                  <Icon name={loanTypeChip(draggedApp).icon} size={11} />
+                  {loanTypeChip(draggedApp).label}
                 </span>
               </div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
