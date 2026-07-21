@@ -43,6 +43,7 @@ from app.constants import VALID_TRANSITIONS
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.loan_category import category_filtered_ids, parse_categories
 from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
 from app.services.email import (
     send_assignment_notification,
@@ -284,6 +285,7 @@ def list_applications(
     per_page: int = Query(20, ge=1, le=100),
     status_filter: Optional[ApplicationStatus] = Query(None, alias="status"),
     loan_type: Optional[LoanType] = None,
+    category: Optional[str] = Query(None, description="Loan category slug(s), comma-separated"),
     search: Optional[str] = None,
     closed: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
@@ -336,6 +338,17 @@ def list_applications(
         query = query.filter(LoanApplication.status.in_(CLOSED_STATUSES))
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
+    # Category scope. Resolved to an ID set before the search join below, so the
+    # whereclause handed to the helper only references loan_applications.
+    if category:
+        try:
+            categories = parse_categories(category)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if categories:
+            query = query.filter(
+                LoanApplication.id.in_(category_filtered_ids(db, query.whereclause, categories))
+            )
     if search:
         safe_search = escape_like(search)
         query = query.join(User, LoanApplication.user_id == User.id).filter(

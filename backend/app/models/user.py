@@ -55,6 +55,11 @@ class User(Base):
     employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     license_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Loan categories this broker specialises in — comma-separated slugs from
+    # LOAN_CATEGORIES (services/loan_category.py). Advisory only: it defaults
+    # the broker's board/application views to their categories, it does not
+    # restrict what they can open or be assigned.
+    specialties: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Referrer-specific fields
     organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

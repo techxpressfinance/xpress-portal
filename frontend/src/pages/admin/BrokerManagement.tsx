@@ -4,10 +4,13 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
-import type { BrokerGroup, Invitation, PaginatedResponse, User } from '../../types';
+import { LOAN_CATEGORIES } from '../../lib/constants';
+import type { BrokerGroup, Invitation, LoanCategory, PaginatedResponse, User } from '../../types';
+
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(LOAN_CATEGORIES.map((c) => [c.value, c.label]));
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
@@ -21,6 +24,7 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
     department: broker.department ?? '',
     license_number: broker.license_number ?? '',
   });
+  const [specialties, setSpecialties] = useState<LoanCategory[]>(broker.specialties ?? []);
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -46,6 +50,7 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
         employee_id: form.employee_id.trim() || null,
         department: form.department.trim() || null,
         license_number: form.license_number.trim() || null,
+        specialties,
       });
       toast('Broker updated', 'success');
       onSaved(data);
@@ -84,6 +89,11 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
               <label className={LABEL}>License Number</label>
               <Input placeholder="ACR-123456" {...f('license_number')} />
             </div>
+            <div className="sm:col-span-2">
+              <label className={LABEL}>Specialties</label>
+              <SpecialtyPicker value={specialties} onChange={setSpecialties} />
+              <p className="mt-1.5 text-[12px] text-muted-foreground">Defaults their boards and applications to these categories. They can still view and work on any loan.</p>
+            </div>
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -103,9 +113,10 @@ interface BrokerForm {
   employee_id: string;
   department: string;
   license_number: string;
+  specialties: LoanCategory[];
 }
 
-const INITIAL_FORM: BrokerForm = { full_name: '', email: '', phone: '', employee_id: '', department: '', license_number: '' };
+const INITIAL_FORM: BrokerForm = { full_name: '', email: '', phone: '', employee_id: '', department: '', license_number: '', specialties: [] };
 
 type PendingAction =
   | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean }
@@ -200,6 +211,7 @@ export default function BrokerManagement() {
         employee_id: form.employee_id.trim(),
         department: form.department.trim() || null,
         license_number: form.license_number.trim() || null,
+        specialties: form.specialties,
       });
       toast('Broker created. Login credentials sent via email.', 'success');
       setInviteLink(data.invite_url || null);
@@ -371,6 +383,11 @@ export default function BrokerManagement() {
               <Input label="Department" placeholder="Lending" value={form.department} onChange={e => update('department', e.target.value)} />
               <Input label="License Number" placeholder="ACR-123456" value={form.license_number} onChange={e => update('license_number', e.target.value)} />
             </div>
+            <div>
+              <label className={LABEL}>Specialties</label>
+              <SpecialtyPicker value={form.specialties} onChange={next => setForm(prev => ({ ...prev, specialties: next }))} />
+              <p className="mt-1.5 text-[12px] text-muted-foreground">Defaults their boards and applications to these categories. They can still view and work on any loan.</p>
+            </div>
             <div className="flex gap-2">
               <Button type="submit" loading={submitting}>Create Broker</Button>
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
@@ -393,6 +410,7 @@ export default function BrokerManagement() {
                   <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Broker</th>
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Employee ID</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Department</th>
+                  <th className="hidden lg:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Specialties</th>
                   <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                   <th className="hidden md:table-cell px-6 py-4 text-[12px] font-medium text-muted-foreground">Joined</th>
                   <th className="px-6 py-4 text-[12px] font-medium text-muted-foreground">Actions</th>
@@ -414,6 +432,11 @@ export default function BrokerManagement() {
                     </td>
                     <td className="hidden sm:table-cell px-6 py-4 text-[13px] text-muted-foreground">{broker.employee_id || '—'}</td>
                     <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{broker.department || '—'}</td>
+                    <td className="hidden lg:table-cell px-6 py-4 text-[13px] text-muted-foreground">
+                      {broker.specialties?.length
+                        ? <div className="flex flex-wrap gap-1">{broker.specialties.map(s => <span key={s} className="led-chip">{CATEGORY_LABEL[s] || s}</span>)}</div>
+                        : '—'}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${broker.is_active ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${broker.is_active ? 'bg-success' : 'bg-destructive'}`} />

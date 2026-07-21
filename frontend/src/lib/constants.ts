@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -248,7 +248,10 @@ export const COMMERCIAL_LOAN_TYPES = [
   { value: 'other', label: 'Other', short: 'Other', description: 'Other business purpose', fields: ['purpose_description', 'loan_amount', 'loan_term'] },
 ] as const;
 
-export type LoanCategory = 'asset_finance' | 'home_loan' | 'commercial';
+// Declared in ../types (User.specialties needs it and types must not import
+// from here) and re-exported so existing `from '../../lib/constants'` imports
+// keep working.
+export type { LoanCategory };
 
 export const LOAN_CATEGORIES: { value: LoanCategory; label: string; types: readonly { value: string; label: string; short: string; description: string; fields: readonly string[] }[] }[] = [
   { value: 'asset_finance', label: 'Asset Finance', types: ASSET_FINANCE_LOAN_TYPES },

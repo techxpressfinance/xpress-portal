@@ -18,6 +18,7 @@ from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedCl
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, create_access_token
 from app.services.email import send_password_reset_email, send_setup_account_email
+from app.services.loan_category import serialize_categories
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -93,6 +94,10 @@ def update_profile(
         current_user.full_name = data.full_name
     if data.phone is not None:
         current_user.phone = data.phone
+    if data.specialties is not None:
+        if current_user.role not in (UserRole.broker, UserRole.admin):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only brokers and admins have loan specialties")
+        current_user.specialties = serialize_categories(data.specialties)
     if changes:
         log_activity(db, current_user.id, "profile_updated", "user", current_user.id, {"fields": list(changes.keys())}, tenant_id=current_user.tenant_id)
     db.commit()
@@ -153,6 +158,7 @@ def create_broker(
         employee_id=data.employee_id,
         department=data.department,
         license_number=data.license_number,
+        specialties=serialize_categories(data.specialties),
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
         email_verification_token=setup_token,
@@ -422,6 +428,8 @@ def update_user(
         user.department = data.department.strip() or None
     if data.license_number is not None:
         user.license_number = data.license_number.strip() or None
+    if data.specialties is not None:
+        user.specialties = serialize_categories(data.specialties)
     if data.organization_name is not None:
         user.organization_name = data.organization_name.strip() or None
     log_activity(db, current_user.id, "user_updated", "user", user_id, {"fields": list(data.model_dump(exclude_unset=True).keys())}, tenant_id=tenant_id)
@@ -529,6 +537,7 @@ def delete_user(
     user.locked_until = None
     user.employee_id = None
     user.license_number = None
+    user.specialties = None
     user.organization_name = None
 
     blacklist_all_user_tokens(user.id, db)

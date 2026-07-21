@@ -9,7 +9,9 @@ frontend/src/lib/constants.ts.
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import Iterable, Optional
+
+from sqlalchemy.orm import Session
 
 from app.models.loan_application import LoanApplication, LoanType
 
@@ -74,3 +76,66 @@ def application_loan_category(app: LoanApplication) -> Optional[str]:
     if sub_type:
         return category_for_sub_type(sub_type)
     return _LOAN_TYPE_FALLBACK.get(app.loan_type)
+
+
+def parse_categories(value: Optional[str]) -> list[str]:
+    """Parse a comma-separated category filter, dropping blanks and duplicates.
+
+    Raises ValueError naming the first unknown slug.
+    """
+    if not value:
+        return []
+    out: list[str] = []
+    for raw in value.split(","):
+        slug = raw.strip()
+        if not slug:
+            continue
+        if slug not in LOAN_CATEGORIES:
+            raise ValueError(f"Invalid loan_category: {slug}")
+        if slug not in out:
+            out.append(slug)
+    return out
+
+
+def serialize_categories(values: Optional[Iterable[str]]) -> Optional[str]:
+    """Normalise a list of category slugs for storage on users.specialties."""
+    if values is None:
+        return None
+    out: list[str] = []
+    for raw in values:
+        slug = (raw or "").strip()
+        if not slug:
+            continue
+        if slug not in LOAN_CATEGORIES:
+            raise ValueError(f"Invalid loan category: {slug}")
+        if slug not in out:
+            out.append(slug)
+    return ",".join(out) or None
+
+
+def category_loan_types(categories: Iterable[str]) -> set[LoanType]:
+    """Union of the loan_type values the given categories can be stored as."""
+    types: set[LoanType] = set()
+    for cat in categories:
+        types.update(CATEGORY_LOAN_TYPES[cat])
+    return types
+
+
+def category_filtered_ids(db: Session, whereclause, categories: Iterable[str]) -> list[str]:
+    """IDs of applications matching `whereclause` that fall in any of `categories`.
+
+    Sub-types live in encrypted JSON so they can't be matched in SQL. Prefilter
+    by loan_type, refine in Python, and hand back IDs so the caller can still
+    paginate/count in SQL. `whereclause` must only reference loan_applications
+    (apply it before any join).
+    """
+    wanted = set(categories)
+    query = db.query(
+        LoanApplication.id,
+        LoanApplication.loan_type,
+        LoanApplication.lend_extra_data,
+    ).filter(LoanApplication.loan_type.in_(category_loan_types(wanted)))
+    if whereclause is not None:
+        query = query.filter(whereclause)
+    # Rows expose loan_type/lend_extra_data, which is all the derivation reads.
+    return [row.id for row in query if application_loan_category(row) in wanted]

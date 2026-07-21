@@ -107,6 +107,7 @@ _MIGRATIONS = [
     ("users", "employee_id", "VARCHAR(50)"),
     ("users", "department", "VARCHAR(100)"),
     ("users", "license_number", "VARCHAR(100)"),
+    ("users", "specialties", "VARCHAR(100)"),
     # Referrer-specific fields
     ("users", "organization_name", "VARCHAR(255)"),
     ("external_referrals", "client_engagement_model", "VARCHAR(20)"),

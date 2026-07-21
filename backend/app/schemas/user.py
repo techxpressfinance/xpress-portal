@@ -7,6 +7,25 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models.user import UserRole
 from app.schemas.common import normalize_email
+from app.services.loan_category import LOAN_CATEGORIES
+
+
+def _validate_specialties(v):
+    """Accept the stored comma-separated form or a list; emit a list of slugs."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        v = [part.strip() for part in v.split(",")]
+    out: list[str] = []
+    for slug in v:
+        slug = (slug or "").strip()
+        if not slug:
+            continue
+        if slug not in LOAN_CATEGORIES:
+            raise ValueError(f"Invalid loan category: {slug}")
+        if slug not in out:
+            out.append(slug)
+    return out
 
 
 def _validate_password(v: str) -> str:
@@ -59,10 +78,13 @@ class UserOut(BaseModel):
     employee_id: Optional[str] = None
     department: Optional[str] = None
     license_number: Optional[str] = None
+    specialties: list[str] = []
     organization_name: Optional[str] = None
     tenant_id: Optional[str] = None
     invited_by_id: Optional[str] = None
     created_at: datetime
+
+    _parse_specialties = field_validator("specialties", mode="before")(_validate_specialties)
 
     model_config = {"from_attributes": True}
 
@@ -97,6 +119,10 @@ class AccessTokenResponse(BaseModel):
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
+    # Brokers/admins may set their own loan-category specialties.
+    specialties: Optional[list[str]] = None
+
+    _parse_specialties = field_validator("specialties", mode="before")(_validate_specialties)
 
 
 class ReferrerAttach(BaseModel):
@@ -131,7 +157,10 @@ class UserUpdate(BaseModel):
     employee_id: Optional[str] = None
     department: Optional[str] = None
     license_number: Optional[str] = None
+    specialties: Optional[list[str]] = None
     organization_name: Optional[str] = None
+
+    _parse_specialties = field_validator("specialties", mode="before")(_validate_specialties)
 
 
 class UserRoleUpdate(BaseModel):
@@ -168,8 +197,10 @@ class BrokerCreate(BaseModel):
     employee_id: str
     department: Optional[str] = None
     license_number: Optional[str] = None
+    specialties: list[str] = []
 
     _normalize_email = field_validator("email", mode="before")(normalize_email)
+    _parse_specialties = field_validator("specialties", mode="before")(_validate_specialties)
 
     @field_validator("full_name")
     @classmethod

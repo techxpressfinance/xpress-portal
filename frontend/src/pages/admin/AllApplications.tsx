@@ -3,9 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
-import { STATUS_LABEL } from '../../lib/constants';
+import { useAuth } from '../../hooks/useAuth';
+import { LOAN_CATEGORIES, STATUS_LABEL } from '../../lib/constants';
 import type { LoanApplication, ApplicationStatus, User } from '../../types';
 import { Skeleton, EmptyState } from '../../components/ui';
+
+// Category filter: 'mine' resolves to the signed-in broker's specialties (sent
+// as a comma-separated list), '' means every category.
+const MY_FOCUS = 'mine';
 
 // ── Icons ──
 
@@ -113,6 +118,8 @@ type SortDir = 'asc' | 'desc';
 export default function AllApplications() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const mySpecialties = useMemo(() => user?.specialties ?? [], [user?.specialties]);
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -120,6 +127,9 @@ export default function AllApplications() {
   const [view, setView] = useState<'active' | 'closed'>('active');
   const [statusFilter, setStatusFilter] = useState('');
   const [loanTypeFilter, setLoanTypeFilter] = useState('');
+  // Brokers open on their own specialties; clearing the filter sticks. `user` is
+  // resolved before this route renders (ProtectedRoute blocks on auth loading).
+  const [categoryFilter, setCategoryFilter] = useState(() => (mySpecialties.length ? MY_FOCUS : ''));
   const [brokerFilter, setBrokerFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
@@ -138,6 +148,8 @@ export default function AllApplications() {
     if (statusFilter) params.set('status', statusFilter);
     else params.set('closed', view === 'closed' ? 'true' : 'false');
     if (loanTypeFilter) params.set('loan_type', loanTypeFilter);
+    const categoryParam = categoryFilter === MY_FOCUS ? mySpecialties.join(',') : categoryFilter;
+    if (categoryParam) params.set('category', categoryParam);
     if (search) params.set('search', search);
 
     api
@@ -152,7 +164,7 @@ export default function AllApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, view, statusFilter, loanTypeFilter, search]);
+  }, [page, view, statusFilter, loanTypeFilter, categoryFilter, search]);
 
   useEffect(() => {
     api.get('/users')
@@ -194,7 +206,7 @@ export default function AllApplications() {
   }, [applications, brokerFilter, sort]);
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const activeFilterCount = [statusFilter, loanTypeFilter, brokerFilter, search].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, loanTypeFilter, categoryFilter, brokerFilter, search].filter(Boolean).length;
   const viewStatuses = view === 'active' ? ACTIVE_STATUSES : CLOSED_STATUSES;
 
   const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
@@ -202,6 +214,7 @@ export default function AllApplications() {
   const clearFilters = () => {
     setStatusFilter('');
     setLoanTypeFilter('');
+    setCategoryFilter('');
     setBrokerFilter('');
     setSearchDraft('');
     setSearch('');
@@ -212,6 +225,9 @@ export default function AllApplications() {
   const statusPill = statusFilter ? (STATUS_LABEL[statusFilter as ApplicationStatus] || statusFilter) : 'All';
   const typePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
   const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'Any';
+  const categoryPill = categoryFilter === MY_FOCUS
+    ? 'My focus'
+    : (LOAN_CATEGORIES.find((c) => c.value === categoryFilter)?.label || 'All');
 
   const SortHead = ({ k, children, align = 'left' }: { k: SortKey; children: ReactNode; align?: 'left' | 'right' }) => (
     <th style={{ textAlign: align }}>
@@ -309,6 +325,27 @@ export default function AllApplications() {
                 >
                   <span className="led-sdot" style={{ background: STATUS_CHIP[s].dot, width: 6, height: 6 }} />
                   {STATUS_LABEL[s]}
+                </button>
+              ))}
+            </>
+          )}
+        </FilterPill>
+
+        <FilterPill label="Category" value={categoryPill} active={!!categoryFilter} icon="filter">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!categoryFilter ? 'led-active' : ''}`} onClick={() => { setCategoryFilter(''); setPage(1); close(); }}>All categories</button>
+              {mySpecialties.length > 0 && (
+                <button type="button" className={`led-popover-item ${categoryFilter === MY_FOCUS ? 'led-active' : ''}`} onClick={() => { setCategoryFilter(MY_FOCUS); setPage(1); close(); }}>My focus</button>
+              )}
+              {LOAN_CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  className={`led-popover-item ${categoryFilter === c.value ? 'led-active' : ''}`}
+                  onClick={() => { setCategoryFilter(c.value); setPage(1); close(); }}
+                >
+                  {c.label}
                 </button>
               ))}
             </>

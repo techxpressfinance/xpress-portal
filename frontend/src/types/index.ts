@@ -22,6 +22,9 @@ export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
 export const SERVICE_REQUEST_STATUSES = ['pending', 'in_progress', 'resolved', 'closed'] as const;
 export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
 
+/** Top-level loan grouping. Labels + sub-types live in LOAN_CATEGORIES (lib/constants). */
+export type LoanCategory = 'asset_finance' | 'home_loan' | 'commercial';
+
 export interface User {
   id: string;
   email: string;
@@ -34,6 +37,8 @@ export interface User {
   employee_id: string | null;
   department: string | null;
   license_number: string | null;
+  /** Loan categories a broker specialises in — defaults their board/application views. */
+  specialties: LoanCategory[];
   organization_name: string | null;
   tenant_id: string;
   invited_by_id: string | null;

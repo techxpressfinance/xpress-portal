@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker } from '../../components/ui';
+import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker, SpecialtyPicker } from '../../components/ui';
 import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
+import type { LoanCategory } from '../../types';
 
 interface FormData {
   full_name: string;
@@ -41,8 +42,11 @@ const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'Temporar
 const CONTACT_METHOD_OPTIONS = ['Email', 'Mobile', 'Either'];
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const { toast } = useToast();
+  const isStaff = user?.role === 'broker' || user?.role === 'admin';
+  const [specialties, setSpecialties] = useState<LoanCategory[]>(user?.specialties ?? []);
+  const [savingSpecialties, setSavingSpecialties] = useState(false);
 
   const {
     register,
@@ -82,6 +86,24 @@ export default function Profile() {
       })
       .catch(() => {});
   }, [resetDetails]);
+
+  // `user` resolves after the first render, so seed the picker once it arrives.
+  useEffect(() => {
+    if (user?.specialties) setSpecialties(user.specialties);
+  }, [user?.specialties]);
+
+  const onSaveSpecialties = async () => {
+    setSavingSpecialties(true);
+    try {
+      await api.patch('/users/me', { specialties });
+      await refreshUser();
+      toast('Specialties saved. Your boards and applications now default to these.', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save specialties'), 'error');
+    } finally {
+      setSavingSpecialties(false);
+    }
+  };
 
   const onSaveDetails = async (data: ClientProfileData) => {
     try {
@@ -195,6 +217,22 @@ export default function Profile() {
             </div>
           </form>
         </GlassCard>
+
+        {isStaff && (
+          <GlassCard padding="none">
+            <div className="border-b border-[var(--led-line)] px-6 py-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Focus</p>
+              <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Loan Specialties</h2>
+              <p className="mt-1.5 text-[13px] leading-5 text-[var(--led-muted)]">Your boards and application list open on these categories. You can still switch to any other category at any time.</p>
+            </div>
+            <div className="p-6 space-y-5">
+              <SpecialtyPicker value={specialties} onChange={setSpecialties} disabled={savingSpecialties} />
+              <Button type="button" size="lg" loading={savingSpecialties} onClick={onSaveSpecialties}>
+                {savingSpecialties ? 'Saving...' : 'Save Specialties'}
+              </Button>
+            </div>
+          </GlassCard>
+        )}
 
         <GlassCard padding="none">
           <div className="border-b border-[var(--led-line)] px-6 py-5">

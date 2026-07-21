@@ -6,8 +6,11 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
 import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, findLoanSubType } from '../../lib/constants';
+
+// Category scope value meaning "the signed-in broker's specialties".
+const MY_FOCUS = 'mine';
 import { ConfirmDialog, EmptyState } from '../../components/ui';
-import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, User } from '../../types';
+import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, User } from '../../types';
 
 // ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
 
@@ -479,8 +482,13 @@ export default function KanbanBoardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // Loan-category specialties: boards and cards open scoped to them, and every
+  // scope stays switchable from the filters below.
+  const mySpecialties = user?.specialties ?? [];
+  const [showAllBoards, setShowAllBoards] = useState(false);
+
   // Filter state
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(() => (mySpecialties.length ? MY_FOCUS : ''));
   const [subTypeFilter, setSubTypeFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
@@ -489,6 +497,18 @@ export default function KanbanBoardPage() {
   const [stageAgeFilter, setStageAgeFilter] = useState('');
   const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
   const [clientsList, setClientsList] = useState<{ id: string; full_name: string; email: string }[]>([]);
+  // 'mine' is a UI-only scope; the API takes explicit category slugs.
+  const categoryParam = categoryFilter === MY_FOCUS ? mySpecialties.join(',') : categoryFilter;
+  // Boards outside the broker's specialties are collapsed behind a toggle;
+  // uncategorised boards are always shown. The active board stays visible even
+  // if it is off-specialty, so switching to it never makes its tab disappear.
+  const boardInScope = useCallback(
+    (b: KanbanBoardListItem) =>
+      showAllBoards || !mySpecialties.length || !b.loan_category || mySpecialties.includes(b.loan_category as LoanCategory),
+    [showAllBoards, mySpecialties.join(',')], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const visibleBoards = boards.filter((b) => boardInScope(b) || b.id === activeBoard?.id);
+  const hiddenBoardCount = showAllBoards ? 0 : boards.length - boards.filter(boardInScope).length;
 
   // Drag state
   const [draggedApp, setDraggedApp] = useState<LoanApplication | null>(null);
@@ -555,13 +575,13 @@ export default function KanbanBoardPage() {
     setLoading(true);
     try {
       await fetchBoard(boardId);
-      await fetchApplications(boardId, { search, category: categoryFilter, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
+      await fetchApplications(boardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
     } catch {
       toast('Failed to load board', 'error');
     } finally {
       setLoading(false);
     }
-  }, [fetchBoard, fetchApplications, search, categoryFilter, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
+  }, [fetchBoard, fetchApplications, search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -580,7 +600,12 @@ export default function KanbanBoardPage() {
         if (cancelled) return;
         fetchFilterOptions();
         if (boardList.length > 0) {
-          const defaultBoard = boardList.find((b) => b.is_default) || boardList[0];
+          // Prefer a board scoped to one of the broker's specialties, then any
+          // board they can see, then whatever exists.
+          const onSpecialty = boardList.filter((b) => b.loan_category && mySpecialties.includes(b.loan_category as LoanCategory));
+          const inScope = boardList.filter(boardInScope);
+          const pool = onSpecialty.length ? onSpecialty : inScope.length ? inScope : boardList;
+          const defaultBoard = pool.find((b) => b.is_default) || pool[0];
           await loadBoard(defaultBoard.id);
         }
       } catch {
@@ -598,10 +623,10 @@ export default function KanbanBoardPage() {
   useEffect(() => {
     if (!activeBoard || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
-      fetchApplications(activeBoard.id, { search, category: categoryFilter, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
+      fetchApplications(activeBoard.id, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, categoryFilter, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
+  }, [search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
 
   // Category scope: the board's own category (category boards) or the primary
   // category segment (unscoped boards). The Type filter lists that category's
@@ -973,10 +998,10 @@ export default function KanbanBoardPage() {
           </div>
         </div>
 
-        {/* Board tabs */}
-        {boards.length > 1 && (
+        {/* Board tabs — scoped to the broker's specialties unless they opt out */}
+        {(visibleBoards.length > 1 || hiddenBoardCount > 0) && (
           <div className="led-tabs">
-            {boards.map((b) => (
+            {visibleBoards.map((b) => (
               <button
                 key={b.id}
                 type="button"
@@ -986,6 +1011,21 @@ export default function KanbanBoardPage() {
                 {b.name}
               </button>
             ))}
+            {hiddenBoardCount > 0 && (
+              <button
+                type="button"
+                className="led-tab"
+                onClick={() => setShowAllBoards(true)}
+                title="Show boards outside your specialties"
+              >
+                Show all boards ({hiddenBoardCount})
+              </button>
+            )}
+            {showAllBoards && mySpecialties.length > 0 && (
+              <button type="button" className="led-tab" onClick={() => setShowAllBoards(false)}>
+                Show my boards
+              </button>
+            )}
           </div>
         )}
 
@@ -1002,6 +1042,16 @@ export default function KanbanBoardPage() {
               >
                 All
               </button>
+              {mySpecialties.length > 0 && (
+                <button
+                  type="button"
+                  className={categoryFilter === MY_FOCUS ? 'led-active' : ''}
+                  onClick={() => setCategoryFilter(MY_FOCUS)}
+                  title={`My specialties: ${mySpecialties.map((s) => CATEGORY_LABEL[s] || s).join(', ')}`}
+                >
+                  Mine
+                </button>
+              )}
               {LOAN_CATEGORIES.map((c) => (
                 <button
                   key={c.value}

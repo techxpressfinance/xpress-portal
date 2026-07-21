@@ -28,10 +28,11 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.date_filter import apply_date_range_filter
 from app.services.loan_category import (
-    CATEGORY_LOAN_TYPES,
     LOAN_CATEGORIES,
     application_loan_category,
     application_sub_type,
+    category_loan_types,
+    parse_categories,
 )
 from app.services.query_utils import escape_like
 from app.services.serialization import app_with_user, referrer_info_map
@@ -306,7 +307,7 @@ def get_board_applications(
     board_id: str,
     search: Optional[str] = None,
     loan_type: Optional[str] = None,
-    category: Optional[str] = None,
+    category: Optional[str] = Query(None, description="Loan category slug(s), comma-separated"),
     sub_type: Optional[str] = None,
     broker_id: Optional[str] = None,
     client_id: Optional[str] = None,
@@ -350,15 +351,20 @@ def get_board_applications(
         )
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
-    # Category scope: the board's own category and/or the request filter.
-    # Narrow in SQL by the loan_type values the category can produce, then
+    # Category scope: the request filter (one or more categories, e.g. a broker
+    # viewing their specialties) intersected with the board's own category.
+    # Narrow in SQL by the loan_type values those categories can produce, then
     # refine by the recorded sub-type below (the sub-type lives in encrypted
     # JSON, so it can't be matched in SQL).
-    if category:
-        _validate_loan_category(category)
-    categories = {c for c in (board.loan_category, category) if c}
-    for cat in categories:
-        query = query.filter(LoanApplication.loan_type.in_(CATEGORY_LOAN_TYPES[cat]))
+    try:
+        requested = set(parse_categories(category))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    categories = requested or set(LOAN_CATEGORIES)
+    if board.loan_category:
+        categories &= {board.loan_category}
+    if categories != set(LOAN_CATEGORIES):
+        query = query.filter(LoanApplication.loan_type.in_(category_loan_types(categories)))
     if broker_id:
         query = query.filter(
             LoanApplication.id.in_(
@@ -383,8 +389,8 @@ def get_board_applications(
 
     apps = query.order_by(LoanApplication.created_at.desc()).all()
 
-    for cat in categories:
-        apps = [a for a in apps if application_loan_category(a) == cat]
+    if categories != set(LOAN_CATEGORIES):
+        apps = [a for a in apps if application_loan_category(a) in categories]
     if sub_type:
         apps = [a for a in apps if application_sub_type(a) == sub_type]
 

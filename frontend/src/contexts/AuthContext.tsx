@@ -21,6 +21,8 @@ interface AuthState {
   impersonate: (userId: string) => Promise<void>;
   stopImpersonation: () => void;
   logout: () => void;
+  /** Re-fetch the signed-in user after a self-service profile change. */
+  refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthState>({
@@ -34,6 +36,7 @@ export const AuthContext = createContext<AuthState>({
   impersonate: async () => { },
   stopImpersonation: () => { },
   logout: () => { },
+  refreshUser: async () => { },
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -163,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, impersonation, login, superAdminLogin, register, setupAccount, impersonate, stopImpersonation, logout }}>
+    <AuthContext.Provider value={{ user, loading, impersonation, login, superAdminLogin, register, setupAccount, impersonate, stopImpersonation, logout, refreshUser: () => fetchUser() }}>
       {children}
     </AuthContext.Provider>
   );
