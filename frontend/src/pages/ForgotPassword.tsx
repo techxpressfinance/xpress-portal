@@ -33,7 +33,7 @@ export default function ForgotPassword() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
+      className="ledger-theme min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">

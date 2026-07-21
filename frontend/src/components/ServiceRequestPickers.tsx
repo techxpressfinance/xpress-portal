@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { User } from '../types';
 
@@ -28,23 +28,22 @@ export function BrokerPicker({
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
     const menuWidth = 224; // w-56
-    const menuHeight = 256; // max-h-64
+    // Measure the actual rendered menu (it's mounted by the time this runs
+    // inside the layout effect below); fall back to the max-h-64 cap as an
+    // estimate before the menu has ever been measured.
+    const menuHeight = menuRef.current?.offsetHeight || 256;
     const spaceBelow = window.innerHeight - rect.bottom;
     const top = spaceBelow >= menuHeight || spaceBelow >= rect.top
-      ? rect.bottom + window.scrollY + 4
-      : rect.top + window.scrollY - menuHeight - 4;
-    setMenuStyle({
-      position: 'absolute',
-      top,
-      // Align the menu's right edge with the trigger's right edge.
-      left: rect.right + window.scrollX - menuWidth,
-      width: menuWidth,
-      zIndex: 9999,
-    });
+      ? rect.bottom + 4
+      : Math.max(4, rect.top - menuHeight - 4);
+    // Align the menu's right edge with the trigger's right edge, clamped to stay on-screen.
+    const left = Math.min(Math.max(4, rect.right - menuWidth), window.innerWidth - menuWidth - 4);
+    setMenuStyle({ position: 'fixed', top, left, width: menuWidth, zIndex: 9999 });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
+    updatePosition();
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
@@ -60,7 +59,7 @@ export function BrokerPicker({
     };
   }, [open]);
 
-  const openMenu = () => { updatePosition(); setOpen((v) => !v); };
+  const openMenu = () => setOpen((v) => !v);
 
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
@@ -187,21 +186,24 @@ export function ClientPicker({
   const updatePosition = () => {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
-    const menuHeight = 300;
+    // Measure the actual rendered menu (it's mounted by the time this runs
+    // inside the layout effect below); fall back to the max-h-[300px] cap as
+    // an estimate before the menu has ever been measured.
+    const menuHeight = menuRef.current?.offsetHeight || 300;
     const spaceBelow = window.innerHeight - rect.bottom;
     const top = spaceBelow >= menuHeight || spaceBelow >= rect.top
-      ? rect.bottom + window.scrollY + 4
-      : rect.top + window.scrollY - menuHeight - 4;
+      ? rect.bottom + 4
+      : Math.max(4, rect.top - menuHeight - 4);
     setMenuStyle({
-      position: 'absolute',
+      position: 'fixed',
       top,
-      left: rect.left + window.scrollX,
+      left: rect.left,
       width: rect.width,
       zIndex: 9999,
     });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     updatePosition();
     inputRef.current?.focus();

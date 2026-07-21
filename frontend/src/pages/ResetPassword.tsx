@@ -34,7 +34,7 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="ledger-theme min-h-screen flex items-center justify-center p-4 bg-background">
         <p className="text-muted-foreground text-[15px]">
           Invalid reset link.{' '}
           <Link to="/forgot-password" className="text-primary hover:text-primary/70">
@@ -58,7 +58,7 @@ export default function ResetPassword() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
+      className="ledger-theme min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">

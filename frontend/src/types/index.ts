@@ -673,6 +673,15 @@ export interface ChecklistItem {
   created_at: string;
 }
 
+export interface TaskAttachment {
+  id: string;
+  task_id: string;
+  original_filename: string;
+  uploaded_by_id: string | null;
+  uploaded_by_name: string | null;
+  uploaded_at: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -687,6 +696,7 @@ export interface Task {
   created_by_id: string;
   created_by_name: string | null;
   checklist_items: ChecklistItem[];
+  attachments: TaskAttachment[];
   checklist_progress: string | null;
   created_at: string;
   updated_at: string;
@@ -969,6 +979,15 @@ export interface ServiceRequestChecklistItem {
   created_at: string;
 }
 
+export interface ServiceRequestAttachment {
+  id: string;
+  service_request_id: string;
+  original_filename: string;
+  uploaded_by_id: string | null;
+  uploaded_by_name: string | null;
+  uploaded_at: string;
+}
+
 export interface ServiceRequest {
   id: string;
   request_type: string;
@@ -986,6 +1005,7 @@ export interface ServiceRequest {
   broker_notes: string | null;
   notes: ServiceRequestNote[];
   checklist_items: ServiceRequestChecklistItem[];
+  attachments: ServiceRequestAttachment[];
   sort_position: number | null;
   created_at: string;
   updated_at: string;

@@ -34,7 +34,7 @@ export default function VerifyEmail() {
   }, [token]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-screen items-center justify-center bg-background px-6" style={{ fontFamily: "'Outfit', sans-serif" }}>
       <div
         className="w-full max-w-[400px] text-center"
         style={{ animation: `fadeInUp 0.6s ${easing} both` }}

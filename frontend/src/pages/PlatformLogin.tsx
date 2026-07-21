@@ -19,7 +19,7 @@ export default function PlatformLogin() {
   const {
     register,
     handleSubmit,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<LoginForm>();
 
   if (user?.role === 'super_admin') {
@@ -37,7 +37,7 @@ export default function PlatformLogin() {
   };
 
   return (
-    <div className="flex min-h-screen" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-screen bg-background" style={{ fontFamily: "'Outfit', sans-serif" }}>
       {/* Left - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-secondary relative overflow-hidden items-center justify-center">
         <div
@@ -98,13 +98,17 @@ export default function PlatformLogin() {
               label="Email"
               type="email"
               placeholder="admin@xpresstech.com"
-              {...register('email', { required: true })}
+              autoComplete="email"
+              error={errors.email?.message}
+              {...register('email', { required: 'Email address is required' })}
             />
             <Input
               label="Password"
               type="password"
               placeholder="Enter your password"
-              {...register('password', { required: true })}
+              autoComplete="current-password"
+              error={errors.password?.message}
+              {...register('password', { required: 'Password is required' })}
             />
             <div className="pt-1">
               <Button type="submit" loading={isSubmitting} size="lg" className="w-full">

@@ -19,7 +19,7 @@ export default function ResendVerification() {
   const {
     register,
     handleSubmit,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<ResendForm>();
 
   const onSubmit = async (data: ResendForm) => {
@@ -33,7 +33,7 @@ export default function ResendVerification() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-screen items-center justify-center bg-background px-6" style={{ fontFamily: "'Outfit', sans-serif" }}>
       <div
         className="w-full max-w-[380px]"
         style={{ animation: `fadeInUp 0.6s ${easing} both` }}
@@ -90,7 +90,9 @@ export default function ResendVerification() {
                 label="Email"
                 type="email"
                 placeholder="you@company.com"
-                {...register('email', { required: true })}
+                autoComplete="email"
+                error={errors.email?.message}
+                {...register('email', { required: 'Email address is required' })}
               />
               <div className="pt-1">
                 <Button

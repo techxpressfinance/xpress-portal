@@ -87,6 +87,17 @@ class SRChecklistReorderRequest(BaseModel):
     item_ids: List[str]
 
 
+class ServiceRequestAttachmentOut(BaseModel):
+    id: str
+    service_request_id: str
+    original_filename: str
+    uploaded_by_id: Optional[str] = None
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ServiceRequestCreate(BaseModel):
     request_type: str
     custom_request: Optional[str] = None
@@ -147,6 +158,7 @@ class ServiceRequestOut(BaseModel):
     broker_notes: Optional[str] = None
     notes: List[ServiceRequestNoteOut] = []
     checklist_items: List[SRChecklistItemOut] = []
+    attachments: List[ServiceRequestAttachmentOut] = []
     sort_position: Optional[int] = None
     created_at: datetime
     updated_at: datetime

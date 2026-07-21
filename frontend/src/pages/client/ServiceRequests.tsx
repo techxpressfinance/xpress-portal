@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Button, GlassCard } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
-import type { ServiceRequest, ServiceRequestStatus } from '../../types';
+import type { ServiceRequest, ServiceRequestAttachment, ServiceRequestStatus } from '../../types';
+
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
 const DONE_STATUSES: ServiceRequestStatus[] = ['resolved', 'closed'];
 
@@ -33,6 +35,11 @@ export default function ClientServiceRequests() {
   const [customRequest, setCustomRequest] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetId = useRef<string | null>(null);
 
   useEffect(() => {
     api.get('/service-requests?per_page=100')
@@ -67,6 +74,49 @@ export default function ClientServiceRequests() {
       toast('Failed to submit request', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const uploadAttachment = async (reqId: string, file: File) => {
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      toast('File size exceeds 10MB limit', 'error');
+      return;
+    }
+    setUploadingId(reqId);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await api.post(`/service-requests/${reqId}/attachments`, formData);
+      setRequests((prev) => prev.map((r) => (r.id === reqId ? data : r)));
+      setExpandedId(reqId);
+    } catch {
+      toast('Failed to upload attachment', 'error');
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const triggerUpload = (reqId: string) => {
+    uploadTargetId.current = reqId;
+    fileInputRef.current?.click();
+  };
+
+  const downloadAttachment = async (reqId: string, attachment: ServiceRequestAttachment) => {
+    let url: string | null = null;
+    let a: HTMLAnchorElement | null = null;
+    try {
+      const { data } = await api.get(`/service-requests/${reqId}/attachments/${attachment.id}/download`, { responseType: 'blob' });
+      url = URL.createObjectURL(data);
+      a = document.createElement('a');
+      a.href = url;
+      a.download = attachment.original_filename;
+      document.body.appendChild(a);
+      a.click();
+    } catch {
+      toast('Failed to download attachment', 'error');
+    } finally {
+      if (a && a.parentNode) document.body.removeChild(a);
+      if (url) URL.revokeObjectURL(url);
     }
   };
 
@@ -137,40 +187,104 @@ export default function ClientServiceRequests() {
             {displayed.map((req) => {
               const isDone = DONE_STATUSES.includes(req.status);
               const label = req.request_type === 'Other' && req.custom_request ? req.custom_request : req.request_type;
+              const attachments = req.attachments ?? [];
               return (
-                <div key={req.id} className={`flex items-start gap-4 px-6 py-5 ${isDone ? 'opacity-60' : ''}`}>
-                  {isDone ? (
-                    <svg className="mt-0.5 h-5 w-5 shrink-0 text-[var(--led-success)]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                  ) : (
-                    <svg className="mt-0.5 h-5 w-5 shrink-0 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                    </svg>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[14px] font-semibold ${isDone ? 'line-through text-[var(--led-muted)]' : 'text-[var(--led-ink)]'}`}>
-                        {label}
-                      </span>
-                      <span className={`led-chip ${STATUS_CHIP[req.status]}`}>
-                        {STATUS_LABEL[req.status]}
-                      </span>
+                <div
+                  key={req.id}
+                  className={`px-6 py-5 transition-colors ${isDone ? 'opacity-60' : ''} ${dragOverId === req.id ? 'bg-[var(--led-accent)]/5' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverId(req.id); }}
+                  onDragLeave={() => setDragOverId((cur) => (cur === req.id ? null : cur))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverId(null);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) uploadAttachment(req.id, file);
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    {isDone ? (
+                      <svg className="mt-0.5 h-5 w-5 shrink-0 text-[var(--led-success)]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    ) : (
+                      <svg className="mt-0.5 h-5 w-5 shrink-0 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                      </svg>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[14px] font-semibold ${isDone ? 'line-through text-[var(--led-muted)]' : 'text-[var(--led-ink)]'}`}>
+                          {label}
+                        </span>
+                        <span className={`led-chip ${STATUS_CHIP[req.status]}`}>
+                          {STATUS_LABEL[req.status]}
+                        </span>
+                      </div>
+                      {(req.assigned_brokers?.length ?? 0) > 0 && (
+                        <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Assigned to {req.assigned_brokers.map((b) => b.full_name).join(', ')}</p>
+                      )}
+                      {req.description && (
+                        <p className="text-[12px] text-[var(--led-muted)] mt-0.5 line-clamp-2">{req.description}</p>
+                      )}
+                      <p className="text-[11px] text-[var(--led-muted)] mt-0.5">{formatDate(req.created_at)}</p>
                     </div>
-                    {(req.assigned_brokers?.length ?? 0) > 0 && (
-                      <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Assigned to {req.assigned_brokers.map((b) => b.full_name).join(', ')}</p>
-                    )}
-                    {req.description && (
-                      <p className="text-[12px] text-[var(--led-muted)] mt-0.5 line-clamp-2">{req.description}</p>
-                    )}
-                    <p className="text-[11px] text-[var(--led-muted)] mt-0.5">{formatDate(req.created_at)}</p>
+                    <button
+                      type="button"
+                      title="Attach a file"
+                      onClick={() => (attachments.length > 0 ? setExpandedId((cur) => (cur === req.id ? null : req.id)) : triggerUpload(req.id))}
+                      disabled={uploadingId === req.id}
+                      className="shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)] transition-colors"
+                    >
+                      {uploadingId === req.id ? (
+                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739 10.682 20.432a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.5L8.552 18.448a1.5 1.5 0 0 1-2.121-2.121L16.5 6.75" />
+                        </svg>
+                      )}
+                      {attachments.length > 0 && (
+                        <span className="text-[11px] font-semibold tabular-nums">{attachments.length}</span>
+                      )}
+                    </button>
                   </div>
+
+                  {expandedId === req.id && attachments.length > 0 && (
+                    <div className="mt-3 ml-9 space-y-1.5">
+                      {attachments.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg bg-[var(--led-surface-2)]/60 px-3 py-1.5">
+                          <button type="button" onClick={() => downloadAttachment(req.id, a)} className="min-w-0 truncate text-[12px] text-[var(--led-ink)] hover:underline text-left">
+                            {a.original_filename}
+                          </button>
+                          <span className="shrink-0 text-[11px] text-[var(--led-muted)]">{formatDate(a.uploaded_at)}</span>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => triggerUpload(req.id)} className="text-[12px] text-[var(--led-accent)] hover:underline">
+                        + Attach another file
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         </GlassCard>
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const reqId = uploadTargetId.current;
+          if (file && reqId) uploadAttachment(reqId, file);
+          e.target.value = '';
+        }}
+      />
 
       {showModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

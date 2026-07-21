@@ -54,6 +54,11 @@ class Task(Base):
         cascade="all, delete-orphan",
         order_by="ChecklistItem.sort_order",
     )
+    attachments = relationship(
+        "TaskAttachment",
+        cascade="all, delete-orphan",
+        order_by="TaskAttachment.uploaded_at",
+    )
 
 
 class ChecklistItem(Base):

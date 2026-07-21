@@ -5,7 +5,8 @@ import { useToast } from '../../components/Toast';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { TASK_PRIORITY_BADGE } from '../../lib/constants';
 import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
-import type { Task, ChecklistItem, User } from '../../types';
+import FileDropzone from '../../components/FileDropzone';
+import type { Task, ChecklistItem, TaskAttachment, User } from '../../types';
 
 function priorityDotClass(priority: string): string {
   switch (priority) {
@@ -49,6 +50,7 @@ export default function TaskDetail() {
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -191,6 +193,52 @@ export default function TaskDetail() {
     }
   };
 
+  const uploadAttachment = async (file: File) => {
+    if (!id) return;
+    setUploadingAttachment(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await api.post(`/tasks/${id}/attachments`, formData);
+      fetchTask();
+      toast('Attachment uploaded', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to upload attachment'), 'error');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const downloadAttachment = async (attachment: TaskAttachment) => {
+    if (!id) return;
+    let url: string | null = null;
+    let a: HTMLAnchorElement | null = null;
+    try {
+      const { data } = await api.get(`/tasks/${id}/attachments/${attachment.id}/download`, { responseType: 'blob' });
+      url = URL.createObjectURL(data);
+      a = document.createElement('a');
+      a.href = url;
+      a.download = attachment.original_filename;
+      document.body.appendChild(a);
+      a.click();
+    } catch {
+      toast('Failed to download attachment', 'error');
+    } finally {
+      if (a && a.parentNode) document.body.removeChild(a);
+      if (url) URL.revokeObjectURL(url);
+    }
+  };
+
+  const deleteAttachment = async (attachmentId: string) => {
+    if (!id) return;
+    try {
+      await api.delete(`/tasks/${id}/attachments/${attachmentId}`);
+      fetchTask();
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to delete attachment'), 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 pt-2">
@@ -280,6 +328,41 @@ export default function TaskDetail() {
     </div>
   );
 
+  /* Attachments — shown in both view and edit modes. */
+  const attachmentsSection = (
+    <div>
+      <p className="text-[13px] font-semibold text-foreground mb-3">Attachments</p>
+
+      {task.attachments.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          {task.attachments.map((a) => (
+            <div key={a.id} className="group flex items-center gap-2 rounded-lg border border-[var(--led-line)] bg-[var(--led-surface-2)]/50 px-3 py-2">
+              <svg className="h-4 w-4 shrink-0 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739 10.682 20.432a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.5L8.552 18.448a1.5 1.5 0 0 1-2.121-2.121L16.5 6.75" />
+              </svg>
+              <button type="button" onClick={() => downloadAttachment(a)} className="flex-1 min-w-0 text-left text-[13px] text-foreground truncate hover:underline">
+                {a.original_filename}
+              </button>
+              <span className="text-[11px] text-[var(--led-muted)] shrink-0">
+                {a.uploaded_by_name ? `${a.uploaded_by_name} · ` : ''}{formatDate(a.uploaded_at)}
+              </span>
+              <button
+                onClick={() => deleteAttachment(a.id)}
+                className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded shrink-0"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <FileDropzone uploading={uploadingAttachment} onFile={uploadAttachment} onError={(msg) => toast(msg, 'error')} />
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-2xl">
       <Breadcrumbs items={[
@@ -331,6 +414,7 @@ export default function TaskDetail() {
           </div>
 
           <div className="pt-2 border-t border-[var(--led-line)]">{checklistSection}</div>
+          <div className="pt-2 border-t border-[var(--led-line)]">{attachmentsSection}</div>
 
           <div className="flex gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</Button>
@@ -448,6 +532,9 @@ export default function TaskDetail() {
 
           {/* Checklist */}
           {checklistSection}
+
+          {/* Attachments */}
+          <div className="border-t border-[var(--led-line)] pt-5">{attachmentsSection}</div>
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2 border-t border-[var(--led-line)]">

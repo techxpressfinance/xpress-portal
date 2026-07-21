@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
+import { useTheme } from '../hooks/useTheme';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
 
@@ -20,8 +21,10 @@ const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export default function Register() {
   const { register: registerUser, user } = useAuth();
   const { tenant } = useTenant();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const brandName = tenant?.name || 'Xpress Finance';
+  const defaultLogo = theme === 'dark' ? '/xpress-dark.svg' : '/xpress-light.svg';
   const [searchParams] = useSearchParams();
   const refCode = searchParams.get('ref') || '';
   const [error, setError] = useState('');
@@ -73,7 +76,7 @@ export default function Register() {
   };
 
   return (
-    <div className="flex min-h-screen" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-screen bg-background" style={{ fontFamily: "'Outfit', sans-serif" }}>
       {/* Left - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-secondary relative overflow-hidden items-center justify-center">
         <div
@@ -81,14 +84,8 @@ export default function Register() {
           style={{ animation: `fadeInUp 0.7s ${easing} both` }}
         >
           <div className="flex items-center gap-3 mb-16">
-            {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={brandName} className="h-11 w-11 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-[18px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
-            <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>
+            <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="h-11 w-auto max-w-[220px] object-contain" />
+            {tenant?.logo_url && <span className="text-[22px] font-semibold text-foreground tracking-tight">{brandName}</span>}
           </div>
 
           <h2
@@ -111,14 +108,8 @@ export default function Register() {
         >
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-12 lg:hidden">
-            {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={brandName} className="h-10 w-10 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-[16px] font-semibold text-background">{brandName.charAt(0).toUpperCase()}</span>
-              </div>
-            )}
-            <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>
+            <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="h-10 w-auto max-w-[220px] object-contain" />
+            {tenant?.logo_url && <span className="text-[20px] font-semibold text-foreground tracking-tight">{brandName}</span>}
           </div>
 
           <h1 className="text-[28px] font-semibold text-foreground mb-2 tracking-tight">
@@ -186,10 +177,10 @@ export default function Register() {
               {...register('email', { required: 'Email is required' })}
             />
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              <label htmlFor="phone" className="block text-[13px] font-medium text-foreground mb-1.5">
                 Phone <span className="text-muted-foreground font-normal">(optional)</span>
               </label>
-              <Input placeholder="+61 412 345 678" {...register('phone')} />
+              <Input id="phone" placeholder="+61 412 345 678" {...register('phone')} />
             </div>
             <div>
               <Input

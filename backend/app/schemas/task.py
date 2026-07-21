@@ -38,6 +38,17 @@ class ChecklistItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskAttachmentOut(BaseModel):
+    id: str
+    task_id: str
+    original_filename: str
+    uploaded_by_id: Optional[str] = None
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -80,6 +91,7 @@ class TaskOut(BaseModel):
     created_by_id: str
     created_by_name: Optional[str] = None
     checklist_items: list[ChecklistItemOut] = []
+    attachments: list[TaskAttachmentOut] = []
     checklist_progress: Optional[str] = None
     created_at: datetime
     updated_at: datetime

@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import Response
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware.auth import require_role
+from app.middleware.rate_limit import RateLimiter
 from app.models.loan_application import LoanApplication
 from app.models.task import ChecklistItem, Task, TaskPriority, TaskStatus
+from app.models.task_attachment import TaskAttachment
 from app.models.user import User, UserRole
 from app.schemas.task import (
     ChecklistItemCreate,
@@ -24,9 +30,13 @@ from app.schemas.task import (
 from app.config import FRONTEND_URL
 from app.services.activity_log import log_activity
 from app.services.email import send_assignment_notification
+from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.services.tenant_scope import get_tenant_id
+from app.services.upload_validation import safe_filename, validate_attachment
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+attachment_upload_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
 
 def _email_task_assignment(task: Task, assignee: User, assigner: User) -> None:
@@ -70,6 +80,17 @@ def _task_to_out(task: Task) -> dict:
                 "created_at": i.created_at,
             }
             for i in items
+        ],
+        "attachments": [
+            {
+                "id": a.id,
+                "task_id": a.task_id,
+                "original_filename": a.original_filename,
+                "uploaded_by_id": a.uploaded_by_id,
+                "uploaded_by_name": a.uploaded_by.full_name if a.uploaded_by else None,
+                "uploaded_at": a.uploaded_at,
+            }
+            for a in (task.attachments or [])
         ],
         "checklist_progress": f"{completed}/{total}" if total > 0 else None,
         "created_at": task.created_at,
@@ -126,6 +147,7 @@ def _get_task(db: Session, task_id: str, tenant_id: str) -> Task:
             joinedload(Task.created_by),
             joinedload(Task.application),
             joinedload(Task.checklist_items),
+            joinedload(Task.attachments),
         )
         .filter(Task.id == task_id, Task.tenant_id == tenant_id)
         .first()
@@ -488,3 +510,113 @@ def reorder_checklist_items(
         .all()
     )
     return updated
+
+
+# ── Attachments ──────────────────────────────────────────────────────────────
+
+
+@router.post("/{task_id}/attachments", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
+def upload_task_attachment(
+    task_id: str,
+    request: Request,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    attachment_upload_limiter.check(request)
+
+    contents = file.file.read()
+    ext = validate_attachment(file.filename or "file", contents)
+    stored_name = f"{uuid4()}{ext}"
+    file_path = upload_file(contents, stored_name)
+
+    attachment = TaskAttachment(
+        tenant_id=tenant_id,
+        task_id=task.id,
+        file_path=file_path,
+        original_filename=safe_filename(file.filename or "unknown"),
+        uploaded_by_id=current_user.id,
+    )
+    db.add(attachment)
+    log_activity(
+        db, current_user.id, "attachment_uploaded", "task", task.id,
+        {"filename": attachment.original_filename}, tenant_id=tenant_id,
+    )
+    db.commit()
+
+    task = _get_task(db, task_id, tenant_id)
+    return _task_to_out(task)
+
+
+@router.get("/{task_id}/attachments/{attachment_id}/download")
+def download_task_attachment(
+    task_id: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    attachment = (
+        db.query(TaskAttachment)
+        .filter(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task.id)
+        .first()
+    )
+    if not attachment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+    if not file_exists(attachment.file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage")
+
+    file_bytes = download_file(attachment.file_path)
+    ext = os.path.splitext(attachment.original_filename or "file")[1].lower()
+    media_types = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    safe_name = (attachment.original_filename or "file").replace("\r", "").replace("\n", "").replace('"', "'")
+    safe_name = os.path.basename(safe_name)
+
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
+
+
+@router.delete("/{task_id}/attachments/{attachment_id}", response_model=TaskOut)
+def delete_task_attachment(
+    task_id: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    task = db.query(Task).filter(Task.id == task_id, Task.tenant_id == tenant_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    attachment = (
+        db.query(TaskAttachment)
+        .filter(TaskAttachment.id == attachment_id, TaskAttachment.task_id == task.id)
+        .first()
+    )
+    if not attachment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+
+    delete_file(attachment.file_path)
+    log_activity(
+        db, current_user.id, "attachment_deleted", "task", task.id,
+        {"filename": attachment.original_filename}, tenant_id=tenant_id,
+    )
+    db.delete(attachment)
+    db.commit()
+
+    task = _get_task(db, task_id, tenant_id)
+    return _task_to_out(task)

@@ -27,7 +27,7 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<LoginForm>();
 
   const registered = searchParams.get('registered') === 'true';
@@ -65,7 +65,7 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
+      className="ledger-theme min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >
       {/* Ambient background */}
@@ -152,15 +152,17 @@ export default function Login() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 w-full">
             <Input
               label="Email Address"
+              id="email"
               type="email"
               placeholder="name@example.com"
               autoComplete="email"
               className="bg-background/50 border-border/60 focus:bg-background transition-colors"
-              {...register('email', { required: true })}
+              error={errors.email?.message}
+              {...register('email', { required: 'Email address is required' })}
             />
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[13px] font-medium text-foreground">Password</label>
+                <label htmlFor="password" className="text-[13px] font-medium text-foreground">Password</label>
                 <Link
                   to="/forgot-password"
                   className="text-[13px] text-primary hover:text-primary/70 transition-colors duration-200"
@@ -169,11 +171,13 @@ export default function Login() {
                 </Link>
               </div>
               <Input
+                id="password"
                 type="password"
                 placeholder="Enter your password"
                 autoComplete="current-password"
                 className="bg-background/50 border-border/60 focus:bg-background transition-colors"
-                {...register('password', { required: true })}
+                error={errors.password?.message}
+                {...register('password', { required: 'Password is required' })}
               />
             </div>
             <div className="pt-2">

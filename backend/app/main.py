@@ -30,12 +30,14 @@ from app.models.external_referral import ExternalReferral  # noqa: F401 — ensu
 from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
+from app.models.task_attachment import TaskAttachment  # noqa: F401 — ensure table is created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
 from app.models.contact import Contact, Organization, ContactOrganization  # noqa: F401 — ensure tables are created
 from app.models.lending_history_entry import LendingHistoryEntry  # noqa: F401 — ensure table is created
 from app.models.service_request import ServiceRequest  # noqa: F401 — ensure table is created
 from app.models.service_request_checklist import ServiceRequestChecklistItem  # noqa: F401 — ensure table is created
+from app.models.service_request_attachment import ServiceRequestAttachment  # noqa: F401 — ensure table is created
 from app.models.application_calculator import ApplicationCalculator  # noqa: F401 — ensure table is created
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created

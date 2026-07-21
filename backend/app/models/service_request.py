@@ -67,3 +67,10 @@ class ServiceRequest(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    # Attached files (e.g. screenshots), oldest first.
+    attachments = relationship(
+        "ServiceRequestAttachment",
+        order_by="ServiceRequestAttachment.uploaded_at",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )

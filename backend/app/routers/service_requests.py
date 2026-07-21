@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import os
 from typing import Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
+from app.middleware.rate_limit import RateLimiter
 from app.models.loan_application import LoanApplication
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
+from app.models.service_request_attachment import ServiceRequestAttachment
 from app.models.service_request_checklist import ServiceRequestChecklistItem
 from app.models.service_request_note import ServiceRequestNote
 from app.models.service_request_order import ServiceRequestOrder
@@ -30,10 +35,14 @@ from app.config import FRONTEND_URL
 from app.services.activity_log import log_activity
 from app.services.email import send_assignment_notification, send_service_request_notification
 from app.services.notification_service import create_notification
+from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.services.service_request_reminders import _resolve_notify_recipients
 from app.services.tenant_scope import get_tenant_id
+from app.services.upload_validation import safe_filename, validate_attachment
 
 router = APIRouter(prefix="/api/service-requests", tags=["service_requests"])
+
+attachment_upload_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
 
 def _set_assignees(db: Session, sr: ServiceRequest, broker_ids: Optional[list[str]], tenant_id: str) -> None:
@@ -134,6 +143,17 @@ def _to_out(sr: ServiceRequest, position: Optional[int] = None) -> dict:
                 "created_at": c.created_at,
             }
             for c in sr.checklist_items
+        ],
+        "attachments": [
+            {
+                "id": a.id,
+                "service_request_id": a.service_request_id,
+                "original_filename": a.original_filename,
+                "uploaded_by_id": a.uploaded_by_id,
+                "uploaded_by_name": a.uploaded_by.full_name if a.uploaded_by else None,
+                "uploaded_at": a.uploaded_at,
+            }
+            for a in sr.attachments
         ],
         "created_at": sr.created_at,
         "updated_at": sr.updated_at,
@@ -545,6 +565,113 @@ def reorder_checklist_items(
     for idx, item_id in enumerate(data.item_ids):
         if item_id in item_map:
             item_map[item_id].sort_order = idx
+    db.commit()
+    db.refresh(sr)
+    return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))
+
+
+# ── Attachments ──────────────────────────────────────────────────────────────
+
+
+@router.post("/{id}/attachments", response_model=ServiceRequestOut, status_code=201)
+def upload_service_request_attachment(
+    id: str,
+    request: Request,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    # Clients/referrers may only attach to their own requests.
+    if current_user.role in (UserRole.client.value, UserRole.referrer.value) and sr.client_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    attachment_upload_limiter.check(request)
+
+    contents = file.file.read()
+    ext = validate_attachment(file.filename or "file", contents)
+    stored_name = f"{uuid4()}{ext}"
+    file_path = upload_file(contents, stored_name)
+
+    attachment = ServiceRequestAttachment(
+        tenant_id=tenant_id,
+        service_request_id=sr.id,
+        file_path=file_path,
+        original_filename=safe_filename(file.filename or "unknown"),
+        uploaded_by_id=current_user.id,
+    )
+    db.add(attachment)
+    log_activity(
+        db, current_user.id, "attachment_uploaded", "service_request", sr.id,
+        {"filename": attachment.original_filename}, tenant_id,
+    )
+    db.commit()
+    db.refresh(sr)
+    position = _user_position(db, current_user.id, sr.id, tenant_id) if current_user.role in (UserRole.broker.value, UserRole.admin.value) else None
+    return _to_out(sr, position)
+
+
+@router.get("/{id}/attachments/{attachment_id}/download")
+def download_service_request_attachment(
+    id: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    if current_user.role in (UserRole.client.value, UserRole.referrer.value) and sr.client_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    attachment = (
+        db.query(ServiceRequestAttachment)
+        .filter(ServiceRequestAttachment.id == attachment_id, ServiceRequestAttachment.service_request_id == sr.id)
+        .first()
+    )
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if not file_exists(attachment.file_path):
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    file_bytes = download_file(attachment.file_path)
+    ext = os.path.splitext(attachment.original_filename or "file")[1].lower()
+    media_types = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    safe_name = (attachment.original_filename or "file").replace("\r", "").replace("\n", "").replace('"', "'")
+    safe_name = os.path.basename(safe_name)
+
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
+
+
+@router.delete("/{id}/attachments/{attachment_id}", response_model=ServiceRequestOut)
+def delete_service_request_attachment(
+    id: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    sr = _load_sr(db, id, tenant_id)
+    attachment = (
+        db.query(ServiceRequestAttachment)
+        .filter(ServiceRequestAttachment.id == attachment_id, ServiceRequestAttachment.service_request_id == sr.id)
+        .first()
+    )
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    delete_file(attachment.file_path)
+    log_activity(
+        db, current_user.id, "attachment_deleted", "service_request", sr.id,
+        {"filename": attachment.original_filename}, tenant_id,
+    )
+    db.delete(attachment)
     db.commit()
     db.refresh(sr)
     return _to_out(sr, _user_position(db, current_user.id, sr.id, tenant_id))

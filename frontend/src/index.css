@@ -688,6 +688,18 @@ table {
   color: var(--led-muted-2);
 }
 
+/* Keep browser autofill consistent with the product theme. The inset fill also
+   prevents WebKit's autofill layer from washing out password controls. */
+.led-input:-webkit-autofill,
+.led-input:-webkit-autofill:hover,
+.led-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--led-ink);
+  caret-color: var(--led-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--led-surface) inset;
+  box-shadow: 0 0 0 1000px var(--led-surface) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
 /* Popover */
 .led-popover {
   position: absolute;
@@ -1280,4 +1292,3 @@ table {
   justify-content: center;
   color: var(--led-muted);
 }
-
