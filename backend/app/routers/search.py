@@ -16,6 +16,7 @@ from app.models.document import Document
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.services.query_utils import active_user_clauses, escape_like
+from app.services.scoring import score as _score, tokenize as _tokenize
 from app.services.search_cache import get_searchable_applications, get_searchable_contacts
 from app.services.tenant_scope import get_tenant_id
 
@@ -29,11 +30,6 @@ CANDIDATE_MULTIPLIER = 3
 _EPOCH = datetime.min
 
 
-def _tokenize(q: str) -> list[str]:
-    """Split a query into lowercase tokens (max 5) for multi-word matching."""
-    return [t.lower() for t in q.split() if t][:5]
-
-
 def _token_filter(tokens: list[str], columns: list):
     """Every token must match at least one column (AND of ORs).
 
@@ -44,29 +40,6 @@ def _token_filter(tokens: list[str], columns: list):
         pattern = f"%{escape_like(token)}%"
         clauses.append(or_(*[col.ilike(pattern, escape="\\") for col in columns]))
     return and_(*clauses)
-
-
-def _score_token(token: str, value: str, weight: int) -> int:
-    """Score one token against one field value: exact > word-prefix > substring."""
-    v = value.lower()
-    if v == token:
-        return weight * 4
-    if any(word.startswith(token) for word in v.split()):
-        return weight * 2
-    if token in v:
-        return weight
-    return 0
-
-
-def _score(tokens: list[str], fields: list[tuple[Optional[str], int]]) -> int:
-    """Relevance score: sum of each token's best field match; 0 if any token misses."""
-    total = 0
-    for token in tokens:
-        best = max((_score_token(token, v, w) for v, w in fields if v), default=0)
-        if best == 0:
-            return 0
-        total += best
-    return total
 
 
 def _enum_str(value) -> Optional[str]:
@@ -221,6 +194,7 @@ def global_search(
                 (f["full_name"], 10),
                 (f["email"], 8),
                 (f["phone"], 6),
+                (f["drivers_license_number"], 4),
                 (f["suburb"], 2),
                 (f["state"], 2),
             ],

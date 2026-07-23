@@ -533,9 +533,6 @@ export default function QuoteSheetComparison({
             <h2 style={{ fontFamily: sans, fontWeight: 700, fontSize: '13px', margin: 0, color: ink }}>
               Scenarios at a glance
             </h2>
-            <span style={{ fontSize: '10px', color: muted, fontWeight: 500 }}>
-              {termGroups.length} term{termGroups.length !== 1 ? 's' : ''}
-            </span>
           </div>
         </div>
 

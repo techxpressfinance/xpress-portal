@@ -122,6 +122,7 @@ def _extract_contact(c: Contact) -> dict:
         "full_name": " ".join(p for p in [c.first_name, c.middle_name, c.last_name] if p),
         "email": c.email,
         "phone": c.phone,
+        "drivers_license_number": c.drivers_license_number,
         "suburb": c.suburb,
         "state": c.state,
         "created_at": c.created_at,

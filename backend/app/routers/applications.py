@@ -818,13 +818,20 @@ def assign_broker(
     app_id: str,
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Add a broker to the application's assigned brokers."""
+    """Add a broker to the application's assigned brokers.
+
+    Brokers may self-assign or add any other broker in the tenant, but only to
+    applications they can already see (admin bypasses this access check).
+    """
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    # Brokers can only act on applications they have access to; admins bypass.
+    if current_user.role == UserRole.broker:
+        check_application_access(application, current_user, db=db)
 
     broker = db.query(User).filter(User.id == broker_id, User.role == UserRole.broker, User.tenant_id == tenant_id).first()
     if not broker:
@@ -901,15 +908,21 @@ def assign_broker_group(
     app_id: str,
     group_id: str = Query(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Assign all brokers in a broker group to the application."""
+    """Assign all brokers in a broker group to the application.
+
+    Brokers may bulk-assign a group, but only to applications they can already
+    see (admin bypasses this access check).
+    """
     from app.models.broker_group import BrokerGroup
 
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if current_user.role == UserRole.broker:
+        check_application_access(application, current_user, db=db)
 
     group = db.query(BrokerGroup).filter(BrokerGroup.id == group_id, BrokerGroup.tenant_id == tenant_id).first()
     if not group:

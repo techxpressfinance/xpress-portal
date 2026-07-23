@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -34,7 +34,8 @@ from app.services.dedupe import (
     match_candidate_contacts,
     merge_contacts,
 )
-from app.services.query_utils import escape_like
+from app.services.scoring import score, tokenize
+from app.services.search_cache import get_searchable_contacts
 from app.services.tenant_scope import get_tenant_id
 
 _logger = logging.getLogger(__name__)
@@ -42,11 +43,21 @@ _logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
 
-def _contact_with_count(contact: Contact, db: Session) -> dict:
-    """Serialize a contact with its application count."""
-    app_count = db.query(func.count(LoanApplication.id)).filter(
-        LoanApplication.contact_id == contact.id
-    ).scalar() or 0
+def _app_counts(db: Session, contact_ids: list[str]) -> dict[str, int]:
+    """One GROUP BY query: {contact_id: application_count} for the given ids."""
+    if not contact_ids:
+        return {}
+    rows = (
+        db.query(LoanApplication.contact_id, func.count(LoanApplication.id))
+        .filter(LoanApplication.contact_id.in_(contact_ids))
+        .group_by(LoanApplication.contact_id)
+        .all()
+    )
+    return {cid: cnt for cid, cnt in rows if cid}
+
+
+def _serialize_contact(contact: Contact, app_count: int) -> dict:
+    """Serialize a contact — caller passes the precomputed application count."""
     return {
         "id": contact.id,
         "first_name": contact.first_name,
@@ -67,6 +78,14 @@ def _contact_with_count(contact: Contact, db: Session) -> dict:
     }
 
 
+def _contact_with_count(contact: Contact, db: Session) -> dict:
+    """Serialize a single contact with its application count (one extra query)."""
+    app_count = db.query(func.count(LoanApplication.id)).filter(
+        LoanApplication.contact_id == contact.id
+    ).scalar() or 0
+    return _serialize_contact(contact, app_count)
+
+
 @router.get("", response_model=PaginatedContacts)
 def list_contacts(
     page: int = Query(1, ge=1),
@@ -76,44 +95,63 @@ def list_contacts(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(Contact).filter(Contact.tenant_id == tenant_id)
-    if search:
-        safe = escape_like(search)
-        # Search across name, email, phone — encrypted fields searched post-query
-        query = query.filter(
-            or_(
-                Contact.email.ilike(f"%{safe}%", escape="\\"),
-            )
+    # No search: straight DB pagination ordered by recency.
+    if not search or not search.strip():
+        query = (
+            db.query(Contact)
+            .filter(Contact.tenant_id == tenant_id)
+            .order_by(Contact.created_at.desc())
         )
-        # Since most PII fields are encrypted, also do post-filter matching
-        # For now, also allow searching by email (unencrypted)
-        # Full-text search on encrypted fields requires fetching all — we'll do client-side for name
-    total = query.count()
-
-    # For name search on encrypted fields, we need to fetch and filter in Python
-    if search and not query.count():
-        # Fallback: load and filter by decrypted name (capped to prevent OOM on large tenants)
-        all_contacts = db.query(Contact).filter(Contact.tenant_id == tenant_id).limit(2000).all()
-        safe_lower = search.lower()
-        filtered = [
-            c for c in all_contacts
-            if safe_lower in (c.first_name or "").lower()
-            or safe_lower in (c.last_name or "").lower()
-            or safe_lower in (c.phone or "").lower()
-        ]
-        total = len(filtered)
-        start = (page - 1) * per_page
-        items = filtered[start:start + per_page]
+        total = query.count()
+        items = query.offset((page - 1) * per_page).limit(per_page).all()
+        counts = _app_counts(db, [c.id for c in items])
         return PaginatedContacts(
-            items=[_contact_with_count(c, db) for c in items],
+            items=[_serialize_contact(c, counts.get(c.id, 0)) for c in items],
             total=total,
             page=page,
             per_page=per_page,
         )
 
-    items = query.order_by(Contact.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    # Search: most contact PII is encrypted at rest, so SQL LIKE only sees
+    # email and would miss name/phone/DL matches. Score against the in-
+    # process decrypted contact cache (same engine as global search) so all
+    # fields match in one ranked pass — no dual-path branch, no 2000-row cap.
+    tokens = tokenize(search.strip())
+    if not tokens:
+        return PaginatedContacts(items=[], total=0, page=page, per_page=per_page)
+
+    contact_fields = get_searchable_contacts(db, tenant_id)
+    scored: list[tuple[int, str]] = []
+    for cid, f in contact_fields.items():
+        s = score(
+            tokens,
+            [
+                (f["full_name"], 10),
+                (f["email"], 8),
+                (f["phone"], 6),
+                (f["drivers_license_number"], 4),
+                (f["suburb"], 2),
+                (f["state"], 2),
+            ],
+        )
+        if s > 0:
+            scored.append((s, cid))
+
+    # Rank by score desc, then most-recently created desc.
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    total = len(scored)
+    start = (page - 1) * per_page
+    page_ids = [cid for _, cid in scored[start:start + per_page]]
+    if not page_ids:
+        return PaginatedContacts(items=[], total=total, page=page, per_page=per_page)
+
+    # Fetch the full ORM rows for this page; preserve ranked order from `scored`.
+    by_id = {c.id: c for c in db.query(Contact).filter(Contact.id.in_(page_ids)).all()}
+    ordered = [by_id[cid] for cid in page_ids if cid in by_id]
+    counts = _app_counts(db, page_ids)
     return PaginatedContacts(
-        items=[_contact_with_count(c, db) for c in items],
+        items=[_serialize_contact(c, counts.get(c.id, 0)) for c in ordered],
         total=total,
         page=page,
         per_page=per_page,

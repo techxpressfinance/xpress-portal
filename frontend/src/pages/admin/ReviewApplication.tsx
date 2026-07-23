@@ -3520,7 +3520,7 @@ export default function ReviewApplication() {
 
 
           {/* Broker Assignment */}
-          {currentUser?.role === 'admin' && (
+          {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
             <GlassCard>
               <h2 className="text-[15px] font-semibold text-foreground mb-4">Assigned Brokers</h2>
               {brokers.length === 0 ? (
@@ -3537,13 +3537,15 @@ export default function ReviewApplication() {
                             </span>
                           </div>
                           <p className="text-[13px] font-semibold text-primary flex-1">{ab.full_name}</p>
-                          <button
-                            onClick={() => handleUnassignBroker(ab.id)}
-                            className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                            title="Remove broker"
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                          </button>
+                          {currentUser?.role === 'admin' && (
+                            <button
+                              onClick={() => handleUnassignBroker(ab.id)}
+                              className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                              title="Remove broker"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

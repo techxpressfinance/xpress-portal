@@ -120,8 +120,11 @@ export default function Contacts() {
   const [showNewContact, setShowNewContact] = useState(false);
   const navigate = useNavigate();
   const perPage = 20;
+  const firstRender = useRef(true);
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchContacts = (p = page, q = search) => {
+    if (fetchTimerRef.current) { clearTimeout(fetchTimerRef.current); fetchTimerRef.current = null; }
     setLoading(true);
     const params = new URLSearchParams({ page: String(p), per_page: String(perPage) });
     if (q.trim()) params.set('search', q.trim());
@@ -134,9 +137,32 @@ export default function Contacts() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchContacts(); }, [page]);
+  // Live debounced search: refetch ~250ms after typing stops so we don't hit
+  // the API on every keystroke. Also fires once on mount for the initial page.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      fetchContacts(1, search);
+      return;
+    }
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    fetchTimerRef.current = setTimeout(() => {
+      fetchTimerRef.current = null;
+      setPage(1);
+      fetchContacts(1, search);
+    }, 250);
+    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  const goToPage = (newPage: number) => {
+    if (fetchTimerRef.current) { clearTimeout(fetchTimerRef.current); fetchTimerRef.current = null; }
+    setPage(newPage);
+    fetchContacts(newPage, search);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
+    // Instant fetch on Enter / Search button — cancels any pending debounce.
     e.preventDefault();
     setPage(1);
     fetchContacts(1, search);
@@ -183,7 +209,7 @@ export default function Contacts() {
       <GlassCard>
         <form onSubmit={handleSearch} className="flex items-center gap-3 mb-4">
           <Input
-            placeholder="Search by name, email, or phone..."
+            placeholder="Search name, email, phone, licence, suburb…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="flex-1"
@@ -251,10 +277,10 @@ export default function Contacts() {
                   Page {page} of {totalPages}
                 </p>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                  <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
                     Previous
                   </Button>
-                  <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                  <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>
                     Next
                   </Button>
                 </div>

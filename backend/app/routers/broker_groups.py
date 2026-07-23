@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/broker-groups", tags=["broker-groups"])
 @router.get("", response_model=list[BrokerGroupOut])
 def list_groups(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     return db.query(BrokerGroup).filter(BrokerGroup.tenant_id == tenant_id).order_by(BrokerGroup.name).all()
