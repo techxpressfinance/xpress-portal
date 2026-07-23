@@ -12,7 +12,7 @@ from app.models.application_broker import ApplicationBroker
 from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import ApplicationStatus, LoanApplication
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.kanban import (
     ColumnReorderRequest,
     KanbanBoardCreate,
@@ -332,13 +332,7 @@ def get_board_applications(
         selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization),
     ).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
-    # Broker access: only their assigned applications
-    if current_user.role == UserRole.broker:
-        query = query.filter(
-            LoanApplication.id.in_(
-                db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
-            )
-        )
+    # Brokers can view every application on the board — no assignment filter.
 
     if search:
         safe_search = escape_like(search)
