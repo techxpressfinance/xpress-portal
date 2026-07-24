@@ -13,12 +13,16 @@ const STATUS_TABS = [
   { label: 'Completed', value: 'completed' },
 ];
 
-function relativeDueDate(dateStr: string): { label: string; overdue: boolean; today: boolean } {
+function relativeDueDate(dateStr: string, completed: boolean): { label: string; overdue: boolean; today: boolean } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dateStr);
   due.setHours(0, 0, 0, 0);
   const diff = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (completed) {
+    if (diff < 7 && diff > -7) return { label: due.toLocaleDateString('en-AU', { weekday: 'short' }), overdue: false, today: false };
+    return { label: due.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }), overdue: false, today: false };
+  }
   if (diff < -1) return { label: `${Math.abs(diff)}d overdue`, overdue: true, today: false };
   if (diff === -1) return { label: 'Yesterday', overdue: true, today: false };
   if (diff === 0) return { label: 'Today', overdue: false, today: true };
@@ -162,7 +166,7 @@ export default function Tasks() {
 
   const renderTask = (task: TaskListItem) => {
     const isCompleted = task.status === 'completed';
-    const due = task.due_date ? relativeDueDate(task.due_date) : null;
+    const due = task.due_date ? relativeDueDate(task.due_date, isCompleted) : null;
     const initials = task.assigned_to_name
       ? task.assigned_to_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
       : null;
