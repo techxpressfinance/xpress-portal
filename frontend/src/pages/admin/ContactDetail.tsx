@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
-import { loanTypeOptions } from '../../lib/constants';
+import { loanTypeOptions, LOAN_TYPE_LABELS } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, LendingHistoryEntry, RepaymentFrequency } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -879,10 +879,26 @@ export default function ContactDetail() {
                   {contact.lending_history.map(e => (
                     <tr key={e.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                       <td className="py-3">
-                        <div className="font-medium">{e.lender_name}</div>
-                        {e.other_broker_name && (
-                          <div className="text-[12px] text-muted-foreground">via {e.other_broker_name}</div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <AssetHoverIcon
+                            heading={e.lender_name}
+                            rows={[
+                              { label: 'Amount', value: `$${Number(e.amount).toLocaleString('en-AU')}` },
+                              { label: 'Balloon', value: e.balloon != null ? `$${Number(e.balloon).toLocaleString('en-AU')}` : null },
+                              { label: 'Repayments', value: formatRepayments(e.repayment_amount, e.repayment_frequency) },
+                              { label: 'Start date', value: e.start_date ? formatDate(e.start_date) : null },
+                              { label: 'Identifier', value: e.identifier },
+                              { label: 'Guarantor', value: e.guaranteed_by_name },
+                              { label: 'Via broker', value: e.other_broker_name },
+                            ]}
+                          />
+                          <div>
+                            <div className="font-medium">{e.lender_name}</div>
+                            {e.other_broker_name && (
+                              <div className="text-[12px] text-muted-foreground">via {e.other_broker_name}</div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3">${Number(e.amount).toLocaleString('en-AU')}</td>
                       <td className="py-3 text-muted-foreground">{e.balloon != null ? `$${Number(e.balloon).toLocaleString('en-AU')}` : '—'}</td>
@@ -932,7 +948,20 @@ export default function ContactDetail() {
                 <tbody>
                   {contact.applications.map(app => (
                     <tr key={app.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                      <td className="py-3 capitalize font-medium">{app.loan_type}</td>
+                      <td className="py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          <AssetHoverIcon
+                            loanType={app.loan_type}
+                            heading={LOAN_TYPE_LABELS[app.loan_type] ?? app.loan_type}
+                            rows={[
+                              { label: 'Amount', value: `$${Number(app.amount).toLocaleString('en-AU')}` },
+                              { label: 'Business', value: app.business_name || app.business_abn },
+                              { label: 'Created', value: formatDate(app.created_at) },
+                            ]}
+                          />
+                          <span className="capitalize">{app.loan_type.replace(/_/g, ' ')}</span>
+                        </div>
+                      </td>
                       <td className="py-3">${Number(app.amount).toLocaleString('en-AU')}</td>
                       <td className="py-3">
                         <Badge value={app.status} />

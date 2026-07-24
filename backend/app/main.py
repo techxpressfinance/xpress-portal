@@ -232,6 +232,11 @@ _MIGRATIONS = [
     # Due-date reminder send tracking
     ("service_requests", "reminder_midpoint_sent_at", "TIMESTAMP"),
     ("service_requests", "reminder_due_soon_sent_at", "TIMESTAMP"),
+    # Loop the request creator in on reminder emails
+    ("service_requests", "created_by_id", "VARCHAR(36)"),
+    # Due-date reminder send tracking on tasks (parallel to service requests)
+    ("tasks", "reminder_midpoint_sent_at", "TIMESTAMP"),
+    ("tasks", "reminder_due_soon_sent_at", "TIMESTAMP"),
     # Kanban boards scoped to a loan category (asset_finance | home_loan | commercial)
     ("kanban_boards", "loan_category", "VARCHAR(20)"),
 ]
@@ -734,7 +739,10 @@ def health():
 import sys  # noqa: E402
 
 from app.config import REMINDER_POLL_MINUTES, SCHEDULER_ENABLED  # noqa: E402
-from app.services.service_request_reminders import process_due_reminders  # noqa: E402
+from app.services.service_request_reminders import (  # noqa: E402
+    process_due_reminders,
+    process_task_due_reminders,
+)
 
 _scheduler = None
 _RUNNING_TESTS = "pytest" in sys.modules
@@ -748,6 +756,14 @@ if SCHEDULER_ENABLED and not _RUNNING_TESTS:
         "interval",
         minutes=REMINDER_POLL_MINUTES,
         id="sr_due_reminders",
+        coalesce=True,
+        max_instances=1,
+    )
+    _scheduler.add_job(
+        process_task_due_reminders,
+        "interval",
+        minutes=REMINDER_POLL_MINUTES,
+        id="task_due_reminders",
         coalesce=True,
         max_instances=1,
     )

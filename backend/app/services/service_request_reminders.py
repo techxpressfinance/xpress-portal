@@ -10,16 +10,34 @@ from app.config import REMINDER_DUE_SOON_HOURS
 from app.database import SessionLocal
 from app.models.loan_application import LoanApplication
 from app.models.service_request import ServiceRequest
+from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
-from app.services.email import send_service_request_reminder
+from app.services.email import send_service_request_reminder, send_task_reminder
 
 logger = logging.getLogger(__name__)
 
 # Statuses that are "done" — reminders never fire for these.
 _DONE_STATUSES = ("resolved", "closed")
 
+# Roles whose members are looped in as the "creator" of a request. Clients are
+# excluded so due-date reminders never go out to end customers.
+_STAFF_ROLES = (UserRole.broker.value, UserRole.admin.value, UserRole.super_admin.value)
+
 # How the due time is rendered in reminder emails (e.g. "25 Jun 2026, 02:30 PM").
 _DUE_FORMAT = "%d %b %Y, %I:%M %p"
+
+
+def _dedupe_active_emailable(users: list[User]) -> list[User]:
+    """Keep only active users with an email, deduped by id (order preserved)."""
+    seen: set[str] = set()
+    out: list[User] = []
+    for u in users:
+        if u is None or u.id in seen:
+            continue
+        if u.is_active and u.email:
+            seen.add(u.id)
+            out.append(u)
+    return out
 
 
 def _resolve_notify_recipients(db: Session, sr: ServiceRequest, tenant_id: str) -> list[User]:
@@ -57,19 +75,28 @@ def _resolve_notify_recipients(db: Session, sr: ServiceRequest, tenant_id: str) 
     )
 
 
+def _reminder_recipients(db: Session, sr: ServiceRequest) -> list[User]:
+    """Who to email about an approaching due date: the assignees (or fallback), plus
+    the staff member who created the request. Deduped; clients never included."""
+    recipients = list(_resolve_notify_recipients(db, sr, sr.tenant_id))
+    creator = getattr(sr, "created_by", None)
+    if creator and creator.role in _STAFF_ROLES:
+        recipients.append(creator)
+    return _dedupe_active_emailable(recipients)
+
+
 def _send_reminder(db: Session, sr: ServiceRequest, when_label: str) -> None:
     """Email every resolved recipient that ``sr`` is approaching its due date."""
     due_display = sr.due_at.strftime(_DUE_FORMAT) if sr.due_at else ""
-    for recipient in _resolve_notify_recipients(db, sr, sr.tenant_id):
-        if recipient.email:
-            send_service_request_reminder(
-                to_email=recipient.email,
-                broker_name=recipient.full_name,
-                request_type=sr.request_type,
-                custom_request=sr.custom_request,
-                due_display=due_display,
-                when_label=when_label,
-            )
+    for recipient in _reminder_recipients(db, sr):
+        send_service_request_reminder(
+            to_email=recipient.email,
+            broker_name=recipient.full_name,
+            request_type=sr.request_type,
+            custom_request=sr.custom_request,
+            due_display=due_display,
+            when_label=when_label,
+        )
 
 
 def process_due_reminders(session_factory=SessionLocal) -> None:
@@ -120,6 +147,78 @@ def process_due_reminders(session_factory=SessionLocal) -> None:
                     sr.reminder_midpoint_sent_at = now
             except Exception:
                 logger.exception("Failed to process reminders for service request %s", sr.id)
+
+        if sent_any or candidates:
+            db.commit()
+    finally:
+        db.close()
+
+
+def _task_reminder_recipients(task: Task) -> list[User]:
+    """Who to email about an approaching task due date: the assignee and the creator.
+    Deduped and filtered to active, emailable users."""
+    return _dedupe_active_emailable([task.assigned_to, task.created_by])
+
+
+def _send_task_reminder(task: Task, when_label: str) -> None:
+    """Email the task's assignee and creator that it is approaching its due date."""
+    due_display = task.due_date.strftime(_DUE_FORMAT) if task.due_date else ""
+    for recipient in _task_reminder_recipients(task):
+        send_task_reminder(
+            to_email=recipient.email,
+            recipient_name=recipient.full_name,
+            title=task.title,
+            description=task.description,
+            due_display=due_display,
+            when_label=when_label,
+        )
+
+
+def process_task_due_reminders(session_factory=SessionLocal) -> None:
+    """Poll open tasks and send any due-date reminders whose window has arrived.
+
+    Mirrors :func:`process_due_reminders` for service requests: a midpoint and a
+    due-soon reminder per task, each stamped once so they never resend. Recipients
+    are the task's assignee and creator. Datetimes are naive UTC throughout.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = session_factory()
+    try:
+        candidates = (
+            db.query(Task)
+            .options(joinedload(Task.assigned_to), joinedload(Task.created_by))
+            .filter(
+                Task.due_date.isnot(None),
+                Task.due_date > now,
+                Task.status != TaskStatus.completed,
+                or_(
+                    Task.reminder_midpoint_sent_at.is_(None),
+                    Task.reminder_due_soon_sent_at.is_(None),
+                ),
+            )
+            .all()
+        )
+
+        sent_any = False
+        for task in candidates:
+            try:
+                due_soon_trigger = task.due_date - timedelta(hours=REMINDER_DUE_SOON_HOURS)
+                midpoint_trigger = task.created_at + (task.due_date - task.created_at) / 2
+
+                if task.reminder_due_soon_sent_at is None and now >= due_soon_trigger:
+                    _send_task_reminder(task, f"is due in about {REMINDER_DUE_SOON_HOURS} hours")
+                    task.reminder_due_soon_sent_at = now
+                    sent_any = True
+
+                if task.reminder_midpoint_sent_at is None and now >= midpoint_trigger:
+                    if now < due_soon_trigger:
+                        _send_task_reminder(task, "is now halfway to its due date")
+                        sent_any = True
+                    # Once the due-soon window is reached the separate "halfway"
+                    # reminder is pointless, so just retire the midpoint slot.
+                    task.reminder_midpoint_sent_at = now
+            except Exception:
+                logger.exception("Failed to process reminders for task %s", task.id)
 
         if sent_any or candidates:
             db.commit()

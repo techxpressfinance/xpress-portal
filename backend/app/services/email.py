@@ -736,6 +736,69 @@ def send_service_request_reminder(
     _send_async(to_email, subject, body, html_body)
 
 
+def send_task_reminder(
+    to_email: str,
+    recipient_name: str,
+    title: str,
+    description: Optional[str],
+    due_display: str,
+    when_label: str,
+) -> None:
+    """Remind a task's creator/assignee that it is approaching its due date.
+
+    ``when_label`` describes the trigger, e.g. "is now halfway to its due date" or
+    "is due in about 2 hours". Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping task reminder")
+        return
+
+    subject = f"Reminder: {title} due {due_display} - Xpress Finance Portal"
+
+    body_lines = [
+        f"Dear {recipient_name},",
+        "",
+        f"A task {when_label}.",
+        "",
+        f"Task: {title}",
+    ]
+    if description:
+        body_lines.append(f"Details: {description}")
+    body_lines += [
+        f"Due: {due_display}",
+        "",
+        "Please log in to the portal to action this task.",
+        "",
+        "Best regards,",
+        "Xpress Finance Team",
+    ]
+    body = "\n".join(body_lines)
+
+    details_rows = f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Task:</strong> {_esc(title)}</p>'
+    if description:
+        details_rows += f'<p style="margin: 0 0 8px; font-size: 15px; color: #3f3f46;"><strong>Details:</strong> {_esc(description)}</p>'
+    details_rows += f'<p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>Due:</strong> {_esc(due_display)}</p>'
+
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(recipient_name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            A task {_esc(when_label)}.
+        </p>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin-bottom: 32px;">
+            <tr>
+                <td style="padding: 20px;">
+                    {details_rows}
+                </td>
+            </tr>
+        </table>
+        <p style="margin: 0; font-size: 15px; color: #3f3f46;">
+            <a href="{FRONTEND_URL}/admin/tasks" style="color: #2563eb;">Open the task in the portal</a> to action it.
+        </p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_new_lead_notification(
     to_email: str,
     admin_name: str,

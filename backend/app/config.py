@@ -62,9 +62,12 @@ S3_ENABLED = bool(S3_BUCKET_NAME)
 # Redis - optional; rate limiter uses in-memory fallback when not set
 REDIS_URL = os.getenv("REDIS_URL", "")
 
-# Service-request due-date reminders (in-process scheduler)
+# Service-request & task due-date reminders (in-process scheduler).
+# The poll interval must be well under the smallest reminder window, otherwise a
+# reminder can only fire on a coarse ~poll-sized band (e.g. a 2h "due soon" window
+# polled every 120 min effectively never lands before the due time).
 REMINDER_DUE_SOON_HOURS = int(os.getenv("REMINDER_DUE_SOON_HOURS", "2"))
-REMINDER_POLL_MINUTES = int(os.getenv("REMINDER_POLL_MINUTES", "120"))
+REMINDER_POLL_MINUTES = int(os.getenv("REMINDER_POLL_MINUTES", "15"))
 SCHEDULER_ENABLED = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
 
 # CORS origins - comma-separated list

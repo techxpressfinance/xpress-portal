@@ -323,6 +323,11 @@ def update_task(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid priority: {data.priority}")
 
     if data.due_date is not None:
+        if data.due_date != task.due_date:
+            # Re-arm both reminders so the new due date triggers a fresh midpoint /
+            # due-soon notification (mirrors the service-request update behaviour).
+            task.reminder_midpoint_sent_at = None
+            task.reminder_due_soon_sent_at = None
         task.due_date = data.due_date
         changes["due_date"] = str(data.due_date)
 

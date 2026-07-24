@@ -172,6 +172,7 @@ def create_service_request(
     sr = ServiceRequest(
         tenant_id=tenant_id,
         client_id=client_id,
+        created_by_id=current_user.id,
         request_type=data.request_type,
         custom_request=data.custom_request,
         description=data.description,

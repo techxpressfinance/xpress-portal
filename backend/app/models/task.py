@@ -34,6 +34,9 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.todo, nullable=False)
     priority: Mapped[TaskPriority] = mapped_column(Enum(TaskPriority), default=TaskPriority.medium, nullable=False)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # When each due-date reminder was sent (null = not yet sent / re-armed on due edit).
+    reminder_midpoint_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reminder_due_soon_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     assigned_to_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     application_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("loan_applications.id"), nullable=True)
     created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)

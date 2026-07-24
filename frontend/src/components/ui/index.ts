@@ -14,5 +14,6 @@ export { default as EmptyState } from './EmptyState';
 export { default as Breadcrumbs } from './Breadcrumbs';
 export { default as DatePicker } from './DatePicker';
 export { default as LoanTypeIcon } from './LoanTypeIcon';
+export { default as AssetHoverIcon } from './AssetHoverIcon';
 export { default as InviteLinkBox } from './InviteLinkBox';
 export { default as SpecialtyPicker } from './SpecialtyPicker';

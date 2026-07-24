@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
-import { getErrorMessage } from '../../lib/utils';
+import { getErrorMessage, dateTimeLocalToUTC } from '../../lib/utils';
 import { DatePicker, EmptyState } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
 
@@ -70,6 +70,7 @@ export default function Tasks() {
   const [newTitle, setNewTitle] = useState('');
   const [newUrgent, setNewUrgent] = useState(false);
   const [newDueDate, setNewDueDate] = useState('');
+  const [newDueTime, setNewDueTime] = useState('');
   const [newAssignee, setNewAssignee] = useState('');
   const [adding, setAdding] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -137,12 +138,17 @@ export default function Tasks() {
         status: 'todo',
         priority: newUrgent ? 'urgent' : 'low',
       };
-      if (newDueDate) payload.due_date = new Date(newDueDate).toISOString();
+      if (newDueDate) {
+        // Default to 5pm local when only a date is picked, so the reminder windows
+        // land at a sensible time of day rather than midnight.
+        payload.due_date = dateTimeLocalToUTC(`${newDueDate}T${newDueTime || '17:00'}`);
+      }
       if (newAssignee) payload.assigned_to_id = newAssignee;
       await api.post('/tasks', payload);
       setNewTitle('');
       setNewUrgent(false);
       setNewDueDate('');
+      setNewDueTime('');
       setNewAssignee('');
       setShowAddForm(false);
       setPage(1);
@@ -363,6 +369,14 @@ export default function Tasks() {
                   onChange={(v) => setNewDueDate(v)}
                   placeholder="Due date"
                   className="text-[12px] h-8 py-1"
+                />
+                <input
+                  type="time"
+                  value={newDueTime}
+                  onChange={(e) => setNewDueTime(e.target.value)}
+                  disabled={!newDueDate}
+                  aria-label="Due time"
+                  className="text-[12px] h-8 rounded-lg border border-[var(--led-line-strong)] bg-transparent px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)] disabled:opacity-40"
                 />
                 <select
                   value={newAssignee}

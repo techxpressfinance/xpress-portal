@@ -23,6 +23,10 @@ class ServiceRequest(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=True)
     client_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    # Who created the request (staff member or the client themselves). Used to loop
+    # the creator in on due-date reminder emails. Null on requests created before
+    # this column shipped.
+    created_by_id = Column(String(36), ForeignKey("users.id"), nullable=True)
     request_type = Column(String(100), nullable=False)
     custom_request = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
@@ -44,6 +48,7 @@ class ServiceRequest(Base):
     broker_notes = Column(Text, nullable=True)
 
     client = relationship("User", foreign_keys=[client_id], backref="service_requests")
+    created_by = relationship("User", foreign_keys=[created_by_id])
     # Retained as the "primary" assignee (first of assigned_brokers) for backward compatibility.
     assigned_broker = relationship("User", foreign_keys=[assigned_broker_id])
     # Many-to-many: a request can be assigned to multiple brokers.

@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs, DetailSkeleton } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
+import { LOAN_TYPE_LABELS } from '../../lib/constants';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import type { OrganizationDetail, OrganizationContactLite } from '../../types';
 
@@ -393,7 +394,20 @@ export default function CompanyDetail() {
               <tbody>
                 {company.applications.map(a => (
                   <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                    <td className="py-3 capitalize font-medium">{a.loan_type.replace(/_/g, ' ')}</td>
+                    <td className="py-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <AssetHoverIcon
+                          loanType={a.loan_type}
+                          heading={LOAN_TYPE_LABELS[a.loan_type] ?? a.loan_type}
+                          rows={[
+                            { label: 'Amount', value: `$${Number(a.amount).toLocaleString('en-AU')}` },
+                            { label: 'Client', value: a.user_name },
+                            { label: 'Created', value: formatDate(a.created_at) },
+                          ]}
+                        />
+                        <span className="capitalize">{a.loan_type.replace(/_/g, ' ')}</span>
+                      </div>
+                    </td>
                     <td className="py-3">${Number(a.amount).toLocaleString('en-AU')}</td>
                     <td className="py-3"><Badge value={a.status} /></td>
                     <td className="py-3 text-muted-foreground">{a.user_name || '—'}</td>

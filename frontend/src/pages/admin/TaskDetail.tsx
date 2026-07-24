@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { formatDate, getErrorMessage } from '../../lib/utils';
+import { formatDate, formatDateTime, getErrorMessage, toDateTimeLocalInput, dateTimeLocalToUTC } from '../../lib/utils';
 import { TASK_PRIORITY_BADGE } from '../../lib/constants';
 import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
 import FileDropzone from '../../components/FileDropzone';
@@ -58,6 +58,7 @@ export default function TaskDetail() {
   const [editPriority, setEditPriority] = useState('');
   const [editAssignee, setEditAssignee] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editDueTime, setEditDueTime] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchTask = () => {
@@ -74,7 +75,10 @@ export default function TaskDetail() {
     setEditStatus(t.status);
     setEditPriority(t.priority);
     setEditAssignee(t.assigned_to_id || '');
-    setEditDueDate(t.due_date ? t.due_date.split('T')[0] : '');
+    // Split the stored UTC due date into local date + time parts for the inputs.
+    const local = t.due_date ? toDateTimeLocalInput(t.due_date) : '';
+    setEditDueDate(local ? local.split('T')[0] : '');
+    setEditDueTime(local ? local.split('T')[1] : '');
   };
 
   const fetchStaff = () => {
@@ -95,9 +99,10 @@ export default function TaskDetail() {
       if (editStatus !== task.status) payload.status = editStatus;
       if (editPriority !== task.priority) payload.priority = editPriority;
       if (editAssignee !== (task.assigned_to_id || '')) payload.assigned_to_id = editAssignee || null;
-      const newDue = editDueDate || null;
-      const oldDue = task.due_date ? task.due_date.split('T')[0] : null;
-      if (newDue !== oldDue) payload.due_date = editDueDate ? new Date(editDueDate).toISOString() : null;
+      // Default to 5pm local when only a date is set, matching the quick-add form.
+      const newDue = editDueDate ? dateTimeLocalToUTC(`${editDueDate}T${editDueTime || '17:00'}`) : null;
+      const oldDue = task.due_date ? new Date(task.due_date).toISOString() : null;
+      if (newDue !== oldDue) payload.due_date = newDue;
 
       if (Object.keys(payload).length > 0) {
         const { data } = await api.patch(`/tasks/${id}`, payload);
@@ -410,7 +415,22 @@ export default function TaskDetail() {
                 <option key={u.id} value={u.id}>{u.full_name}</option>
               ))}
             </Select>
-            <DatePicker label="Due Date" value={editDueDate} onChange={(v) => setEditDueDate(v)} />
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1.5">Due Date &amp; Time</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <DatePicker value={editDueDate} onChange={(v) => setEditDueDate(v)} />
+                </div>
+                <input
+                  type="time"
+                  value={editDueTime}
+                  onChange={(e) => setEditDueTime(e.target.value)}
+                  disabled={!editDueDate}
+                  aria-label="Due time"
+                  className="led-input h-10 w-28 px-3 disabled:opacity-40"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="pt-2 border-t border-[var(--led-line)]">{checklistSection}</div>
@@ -495,7 +515,7 @@ export default function TaskDetail() {
               <div>
                 <p className="text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-wider mb-1">Due Date</p>
                 <span className={`text-[13px] font-medium ${isOverdue ? 'text-red-500' : 'text-foreground'}`}>
-                  {formatDate(task.due_date)}
+                  {formatDateTime(task.due_date)}
                   {isOverdue && ' — overdue'}
                 </span>
               </div>
