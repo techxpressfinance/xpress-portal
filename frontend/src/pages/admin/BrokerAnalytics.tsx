@@ -6,7 +6,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, PageHeader, DatePicker, Select, EmptyState } from '../../components/ui';
+import { GlassCard, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
 import { STATUS_LABEL, STATUS_BADGE, LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
 import type { ApplicationStatus, BrokerAnalytics, BrokerAnalyticsDeal } from '../../types';
@@ -145,49 +145,43 @@ export default function BrokerAnalyticsPage() {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <PageHeader
-        title="Broker Analytics"
-        subtitle="Monthly deal tracking with drill-down to individual applications"
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && (
-              <Select
-                value={brokerId}
-                onChange={(e) => { setBrokerId(e.target.value); setSelectedMonth(null); setSelectedStatus(null); }}
-                className="!h-9 min-w-[160px]"
-              >
-                <option value="">All brokers</option>
-                {brokerOptions.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </Select>
-            )}
-            <div className="flex items-center gap-1 rounded-xl bg-secondary p-1">
-              {periods.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => { setPeriod(p.value); setSelectedMonth(null); setSelectedStatus(null); }}
-                  className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all ${
-                    period === p.value
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {period === 'custom' && (
-              <div className="flex items-center gap-2">
-                <DatePicker value={dateFrom} onChange={(v) => setDateFrom(v)} placeholder="From" className="text-[13px] h-8 py-1.5" />
-                <span className="text-[13px] text-muted-foreground">to</span>
-                <DatePicker value={dateTo} onChange={(v) => setDateTo(v)} placeholder="To" className="text-[13px] h-8 py-1.5" />
-              </div>
-            )}
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {isAdmin && (
+          <Select
+            value={brokerId}
+            onChange={(e) => { setBrokerId(e.target.value); setSelectedMonth(null); setSelectedStatus(null); }}
+            className="!h-9 min-w-[160px]"
+          >
+            <option value="">All brokers</option>
+            {brokerOptions.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </Select>
+        )}
+        <div className="flex items-center gap-1 rounded-xl bg-secondary p-1">
+          {periods.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => { setPeriod(p.value); setSelectedMonth(null); setSelectedStatus(null); }}
+              className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all ${
+                period === p.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {period === 'custom' && (
+          <div className="flex items-center gap-2">
+            <DatePicker value={dateFrom} onChange={(v) => setDateFrom(v)} placeholder="From" className="text-[13px] h-8 py-1.5" />
+            <span className="text-[13px] text-muted-foreground">to</span>
+            <DatePicker value={dateTo} onChange={(v) => setDateTo(v)} placeholder="To" className="text-[13px] h-8 py-1.5" />
           </div>
-        }
-      />
+        )}
+      </div>
 
       {/* Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

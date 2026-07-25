@@ -178,6 +178,11 @@ class LoanApplication(Base):
     client_invite_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
+    # Stamped once, the first time status transitions to settled (settled is a
+    # terminal state — see VALID_TRANSITIONS in constants.py). Drives the
+    # monthly settled-deal archiving sweep (services/settled_deal_archiving.py).
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+
     # Broker lock — prevents client from editing the draft
     is_locked: Mapped[bool] = mapped_column(default=False, nullable=False)
 

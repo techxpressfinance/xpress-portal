@@ -718,6 +718,8 @@ def change_status(
 
     old_status = current
     application.status = new_status
+    if new_status == ApplicationStatus.settled and application.settled_at is None:
+        application.settled_at = datetime.now(timezone.utc).replace(tzinfo=None)
     log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)

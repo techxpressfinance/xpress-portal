@@ -41,8 +41,9 @@ from app.models.service_request_attachment import ServiceRequestAttachment  # no
 from app.models.application_calculator import ApplicationCalculator  # noqa: F401 — ensure table is created
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
+from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -239,6 +240,9 @@ _MIGRATIONS = [
     ("tasks", "reminder_due_soon_sent_at", "TIMESTAMP"),
     # Kanban boards scoped to a loan category (asset_finance | home_loan | commercial)
     ("kanban_boards", "loan_category", "VARCHAR(20)"),
+    # Stamped once when status first transitions to settled — drives the monthly
+    # settled-deal archiving sweep (services/settled_deal_archiving.py)
+    ("loan_applications", "settled_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -601,6 +605,17 @@ try:
 except Exception as _e:
     _logger.warning("Soft-delete purge setup failed: %s", _e)
 
+# Archive settled deals into monthly snapshots. Also runs on the interval
+# schedule below (every REMINDER_POLL_MINUTES) — this startup run is just the
+# one-time backfill for applications already settled before this feature
+# shipped, and a catch-up in case the server was down for a while. Idempotent.
+try:
+    from app.services.settled_deal_archiving import archive_settled_deals as _archive_settled_deals
+
+    _archive_settled_deals()
+except Exception as _e:
+    _logger.warning("Settled-deal archiving startup sweep failed: %s", _e)
+
 # Seed super_admin user if none exists
 with engine.begin() as conn:
     _sa_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")).scalar()
@@ -712,6 +727,7 @@ app.include_router(referrer.router)
 app.include_router(activity_logs.router)
 app.include_router(dashboard.router)
 app.include_router(broker_analytics.router)
+app.include_router(settled_deals_analytics.router)
 app.include_router(kanban.router)
 app.include_router(search.router)
 app.include_router(broker_groups.router)
@@ -743,6 +759,7 @@ from app.services.service_request_reminders import (  # noqa: E402
     process_due_reminders,
     process_task_due_reminders,
 )
+from app.services.settled_deal_archiving import archive_settled_deals  # noqa: E402
 
 _scheduler = None
 _RUNNING_TESTS = "pytest" in sys.modules
@@ -764,6 +781,14 @@ if SCHEDULER_ENABLED and not _RUNNING_TESTS:
         "interval",
         minutes=REMINDER_POLL_MINUTES,
         id="task_due_reminders",
+        coalesce=True,
+        max_instances=1,
+    )
+    _scheduler.add_job(
+        archive_settled_deals,
+        "interval",
+        minutes=REMINDER_POLL_MINUTES,
+        id="archive_settled_deals",
         coalesce=True,
         max_instances=1,
     )

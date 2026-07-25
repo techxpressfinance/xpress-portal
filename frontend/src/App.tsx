@@ -24,8 +24,7 @@ const BrokerGroups = lazy(() => import('./pages/admin/BrokerGroups'));
 const ReferrerManagement = lazy(() => import('./pages/admin/ReferrerManagement'));
 const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderDetail = lazy(() => import('./pages/admin/LenderDetail'));
-const LenderAnalytics = lazy(() => import('./pages/admin/LenderAnalytics'));
-const BrokerAnalytics = lazy(() => import('./pages/admin/BrokerAnalytics'));
+const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
 const Contacts = lazy(() => import('./pages/admin/Contacts'));
@@ -256,21 +255,16 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/lender-analytics"
+                path="/admin/analytics"
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
-                    <LenderAnalytics />
+                    <Analytics />
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/admin/broker-analytics"
-                element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
-                    <BrokerAnalytics />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/admin/lender-analytics" element={<Navigate to="/admin/analytics?tab=lender" replace />} />
+              <Route path="/admin/broker-analytics" element={<Navigate to="/admin/analytics?tab=broker" replace />} />
+              <Route path="/admin/settled-deals" element={<Navigate to="/admin/analytics?tab=settled" replace />} />
               <Route
                 path="/admin/lenders"
                 element={

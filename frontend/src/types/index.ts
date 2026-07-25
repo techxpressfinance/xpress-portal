@@ -640,6 +640,58 @@ export interface BrokerAnalyticsDeal {
   brokers: string[];
 }
 
+export interface SettledDealsMonth {
+  month: string;
+  count: number;
+  volume: number;
+  categories: Partial<Record<LoanCategory | 'uncategorized', number>>;
+}
+
+export interface SettledDealsBreakdown {
+  count: number;
+  volume: number;
+}
+
+export interface SettledDealsLenderBreakdown extends SettledDealsBreakdown {
+  lender_id: string | null;
+  lender_name: string;
+}
+
+export interface SettledDealsReferrerBreakdown extends SettledDealsBreakdown {
+  referrer_id: string | null;
+  referrer_name: string;
+}
+
+export interface SettledDealsCategoryBreakdown extends SettledDealsBreakdown {
+  category: string;
+}
+
+export interface SettledDealsOverview {
+  totals: {
+    total_settlements: number;
+    total_volume: number;
+    avg_loan_size: number;
+  };
+  monthly: SettledDealsMonth[];
+  by_category: SettledDealsCategoryBreakdown[];
+  by_lender: SettledDealsLenderBreakdown[];
+  by_referrer: SettledDealsReferrerBreakdown[];
+}
+
+export interface SettledDealSnapshotOut {
+  id: string;
+  application_id: string;
+  client_name: string;
+  loan_type: LoanType;
+  loan_category: LoanCategory | null;
+  amount: number;
+  broker_name: string;
+  lender_name: string;
+  referrer_name: string;
+  snapshot_month: string;
+  archived_at: string;
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;
