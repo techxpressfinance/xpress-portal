@@ -111,19 +111,71 @@ export const loanTypeOptions = (current?: string): { value: string; label: strin
   return options;
 };
 
+/** Covers every action written by `log_activity` in the backend. Unmapped actions fall back to the raw slug. */
 export const ACTION_LABELS: Record<string, string> = {
+  // Applications
   created: 'Created application',
+  cloned: 'Cloned application',
   submitted: 'Submitted application',
   updated: 'Updated application',
+  deleted: 'Deleted application',
+  restored: 'Restored application',
   status_changed: 'Changed status',
+  kanban_moved: 'Moved on board',
   broker_assigned: 'Assigned broker',
   broker_unassigned: 'Removed broker',
   broker_completed: 'Completed on behalf of client',
   broker_group_assigned: 'Assigned broker group',
-  document_verified: 'Verified document',
+  client_invite_sent: 'Sent client invite',
+  client_sections_set: 'Set client form sections',
   analysis_triggered: 'Analysis triggered',
+  application_reconciled: 'Reconciled application',
   lead_submitted: 'Submitted lead',
+  submitted_public_form: 'Submitted public form',
+  note_added: 'Added note',
+  note_deleted: 'Deleted note',
+  document_requested: 'Requested document',
+  document_request_fulfilled: 'Fulfilled document request',
+  director_added: 'Added director',
+  director_removed: 'Removed director',
+  guarantor_added: 'Added guarantor',
+  guarantor_removed: 'Removed guarantor',
+  guarantor_signatory_added: 'Added guarantor signatory',
+  // Documents
+  document_uploaded: 'Uploaded document',
+  document_verified: 'Verified document',
+  document_deleted: 'Deleted document',
+  // Users
+  registered: 'Registered',
+  broker_created: 'Created broker',
+  admin_created: 'Created admin',
+  user_updated: 'Updated user',
+  user_email_changed: 'Changed login email',
+  user_deleted: 'Deleted user',
+  role_changed: 'Changed role',
+  profile_updated: 'Updated profile',
+  profile_details_updated: 'Updated profile details',
+  password_changed: 'Changed password',
+  password_reset_sent: 'Sent password reset',
+  referrer_attached: 'Linked referrer',
+  referrer_detached: 'Unlinked referrer',
   client_referred: 'Added client contact',
+  // Tasks
+  task_created: 'Created task',
+  task_updated: 'Updated task',
+  task_deleted: 'Deleted task',
+  checklist_item_added: 'Added checklist item',
+  // Kanban
+  board_created: 'Created board',
+  board_updated: 'Updated board',
+  board_deleted: 'Deleted board',
+  columns_reordered: 'Reordered columns',
+  column_created: 'Created column',
+  column_updated: 'Updated column',
+  column_deleted: 'Deleted column',
+  // Alerts
+  alert_created: 'Created alert',
+  alert_deleted: 'Deleted alert',
 };
 
 export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactNode }> = {
@@ -131,6 +183,11 @@ export const ACTION_ICON_CONFIG: Record<string, { bg: string; icon: React.ReactN
     bg: 'bg-[#0071e3] text-white',
     icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
       React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M12 4.5v15m7.5-7.5h-15' })),
+  },
+  cloned: {
+    bg: 'bg-[#0071e3] text-white',
+    icon: React.createElement('svg', { className: 'h-4 w-4', fill: 'none', viewBox: '0 0 24 24', strokeWidth: 2, stroke: 'currentColor' },
+      React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75' })),
   },
   status_changed: {
     bg: 'bg-[#af52de] text-white',

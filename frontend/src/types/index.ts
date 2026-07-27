@@ -142,6 +142,8 @@ export interface LoanApplication {
   lend_ref: string | null;
   // Referrer-filled
   client_engagement_model: ClientEngagementModel | null;
+  // Set when this application was started as a clone of another one
+  cloned_from_id?: string | null;
   // Referrer info (populated from referral data)
   referrer: ReferrerInfo | null;
   // Soft delete

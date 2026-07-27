@@ -302,6 +302,7 @@ class LoanApplicationOut(BaseModel):
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     client_engagement_model: Optional[str] = None
+    cloned_from_id: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
     additional_applicants: list[LoanApplicantOut] = []
     corporate_guarantors: list[CorporateGuarantorOut] = []

@@ -135,6 +135,9 @@ export default function AllApplications() {
   const [searchDraft, setSearchDraft] = useState('');
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'updated_at', dir: 'desc' });
   const [brokersList, setBrokersList] = useState<{ id: string; full_name: string }[]>([]);
+  // Row action menu, anchored to the ⋮ button it was opened from. Fixed-position
+  // so the table's own scroll container can't clip it.
+  const [rowMenu, setRowMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const perPage = 15;
 
   const ACTIVE_STATUSES: ApplicationStatus[] = ['draft', 'application_received', 'application_assessed', 'submitted', 'approval'];
@@ -533,7 +536,16 @@ export default function AllApplications() {
                         </span>
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className="led-btn led-btn-ghost led-btn-sm led-btn-icon">
+                        <button
+                          type="button"
+                          className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setRowMenu((prev) => (prev?.id === app.id
+                              ? null
+                              : { id: app.id, top: rect.bottom + 4, right: window.innerWidth - rect.right }));
+                          }}
+                        >
                           <Icon name="dotsV" size={14} />
                         </button>
                       </td>
@@ -593,6 +605,38 @@ export default function AllApplications() {
           </div>
         </div>
       </div>
+
+      {rowMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+            onClick={() => setRowMenu(null)}
+          />
+          <div
+            className="led-card"
+            style={{ position: 'fixed', top: rowMenu.top, right: rowMenu.right, zIndex: 61, padding: 4, minWidth: 168 }}
+          >
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              style={{ width: '100%', justifyContent: 'flex-start' }}
+              onClick={() => { setRowMenu(null); navigate(`/admin/applications/${rowMenu.id}`); }}
+            >
+              Open application
+            </button>
+            {/* Start another loan for this client — personal and company details
+                carry over, the loan details are entered fresh. */}
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              style={{ width: '100%', justifyContent: 'flex-start' }}
+              onClick={() => { setRowMenu(null); navigate(`/admin/applications/new?cloneFrom=${rowMenu.id}`); }}
+            >
+              Clone application
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -243,6 +243,8 @@ _MIGRATIONS = [
     # Stamped once when status first transitions to settled — drives the monthly
     # settled-deal archiving sweep (services/settled_deal_archiving.py)
     ("loan_applications", "settled_at", "TIMESTAMP"),
+    # Provenance for cloned applications (personal/company copied, loan re-entered)
+    ("loan_applications", "cloned_from_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
 ]
 
 _logger = logging.getLogger(__name__)

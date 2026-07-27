@@ -15,7 +15,7 @@ from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import User, UserRole
 from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, ReferrerAttach, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
-from app.services.activity_log import log_activity
+from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.auth import blacklist_all_user_tokens, create_access_token
 from app.services.email import send_email_changed_email, send_password_reset_email, send_setup_account_email
 from app.services.loan_category import serialize_categories
@@ -419,6 +419,10 @@ def update_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     old_email: str | None = None
+    before = snapshot(user, (
+        "full_name", "email", "phone", "employee_id",
+        "department", "license_number", "specialties", "organization_name",
+    ))
     if data.full_name is not None:
         user.full_name = data.full_name.strip()
     if data.email is not None and data.email != user.email:
@@ -448,7 +452,9 @@ def update_user(
         user.specialties = serialize_categories(data.specialties)
     if data.organization_name is not None:
         user.organization_name = data.organization_name.strip() or None
-    log_activity(db, current_user.id, "user_updated", "user", user_id, {"fields": list(data.model_dump(exclude_unset=True).keys())}, tenant_id=tenant_id)
+    edited = field_changes(user, before)
+    if edited:
+        log_activity(db, current_user.id, "user_updated", "user", user_id, {"changes": edited}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
     if old_email:

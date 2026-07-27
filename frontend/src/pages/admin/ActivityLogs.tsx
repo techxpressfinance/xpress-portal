@@ -4,6 +4,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
+import { activityEntityLink, describeActivity } from '../../lib/activityLog';
+import ActivityChanges from '../../components/ActivityChanges';
 import { formatDateTime } from '../../lib/utils';
 import type { ActivityLog, User } from '../../types';
 
@@ -165,26 +167,9 @@ export default function ActivityLogs() {
           <>
             <div className="divide-y divide-border">
               {logs.map((log) => {
-                let details: Record<string, string> = {};
-                try {
-                  if (log.details) details = JSON.parse(log.details);
-                } catch {}
-
-                let description = '';
-                if (log.action === 'status_changed' && details.from && details.to) {
-                  description = `${details.from} \u2192 ${details.to}`;
-                } else if (log.action === 'broker_assigned' && details.broker_name) {
-                  description = `Assigned to ${details.broker_name}`;
-                } else if (log.action === 'document_verified' && details.filename) {
-                  description = `${details.filename} (${details.doc_type || ''})`;
-                } else if ((log.action === 'created' || log.action === 'lead_submitted') && details.loan_type) {
-                  description = `${details.loan_type} loan - $${Number(details.amount || 0).toLocaleString('en-AU')}${details.client_name ? ` \u00b7 ${details.client_name}` : ''}`;
-                } else if (log.action === 'client_referred' && details.client_name) {
-                  description = `${details.client_name}${details.client_email ? ` (${details.client_email})` : ''}`;
-                }
-
+                const { summary, changes, fields } = describeActivity(log);
                 const actionConfig = ACTION_ICON_CONFIG[log.action];
-                const appLink = log.entity_type === 'application' ? `/admin/applications/${log.entity_id}` : null;
+                const entityLink = activityEntityLink(log);
 
                 return (
                   <div key={log.id} className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
@@ -204,19 +189,20 @@ export default function ActivityLogs() {
                           </span>
                         )}
                       </div>
-                      {description && (
-                        <p className="text-[13px] text-muted-foreground">{description}</p>
+                      {summary && (
+                        <p className="text-[13px] text-muted-foreground">{summary}</p>
                       )}
+                      <ActivityChanges changes={changes} fields={fields} />
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-[12px] text-muted-foreground">
                           {log.entity_type} &middot; {log.entity_id.slice(0, 8)}...
                         </p>
-                        {appLink && (
+                        {entityLink && (
                           <Link
-                            to={appLink}
+                            to={entityLink.to}
                             className="text-[12px] font-medium text-[#0071e3] hover:underline"
                           >
-                            View \u2192
+                            {entityLink.label} &rarr;
                           </Link>
                         )}
                       </div>

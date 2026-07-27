@@ -21,6 +21,8 @@ import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABEL
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
+import { describeActivity } from '../../lib/activityLog';
+import ActivityChanges from '../../components/ActivityChanges';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 
 export default function ReviewApplication() {
@@ -1268,6 +1270,18 @@ export default function ReviewApplication() {
                           Referred by {referrer.organization_name || referrer.full_name}
                         </span>
                       )}
+                      {application.cloned_from_id && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/applications/${application.cloned_from_id}`)}
+                          className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[12px] font-semibold text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                          </svg>
+                          Cloned from APP-{application.cloned_from_id.replace(/-/g, '').slice(-6).toUpperCase()}
+                        </button>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge value={application.status} />
@@ -1278,12 +1292,22 @@ export default function ReviewApplication() {
                         </span>
                       )}
                       {!editing && (
-                        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                          <span className="flex items-center gap-1.5">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                            Edit
-                          </span>
-                        </Button>
+                        <>
+                          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                            <span className="flex items-center gap-1.5">
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                              Edit
+                            </span>
+                          </Button>
+                          {/* Start another loan for this client — personal and company
+                              details carry over, loan details are entered fresh. */}
+                          <Button variant="secondary" size="sm" onClick={() => navigate(`/admin/applications/new?cloneFrom=${id}`)}>
+                            <span className="flex items-center gap-1.5">
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
+                              Clone
+                            </span>
+                          </Button>
+                        </>
                       )}
                       {editing && (
                         <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
@@ -3447,18 +3471,7 @@ export default function ReviewApplication() {
                 ) : (
                   <div className="divide-y divide-border">
                     {activityLogs.map(log => {
-                      let details: Record<string, string> = {};
-                      try { if (log.details) details = JSON.parse(log.details); } catch { }
-                      let description = '';
-                      if (log.action === 'status_changed' && details.from && details.to) {
-                        description = `${details.from} → ${details.to}`;
-                      } else if ((log.action === 'broker_assigned' || log.action === 'broker_unassigned') && details.broker_name) {
-                        description = details.broker_name;
-                      } else if (log.action === 'document_verified' && details.filename) {
-                        description = `${details.filename}${details.doc_type ? ` (${details.doc_type})` : ''}`;
-                      } else if (log.action === 'created' && details.loan_type) {
-                        description = `${details.loan_type} loan · $${Number(details.amount || 0).toLocaleString('en-AU')}`;
-                      }
+                      const { summary, changes, fields } = describeActivity(log);
                       const actionConfig = ACTION_ICON_CONFIG[log.action];
                       return (
                         <div key={log.id} className="flex items-start gap-4 px-6 py-4 hover:bg-secondary/50 transition-colors">
@@ -3474,7 +3487,8 @@ export default function ReviewApplication() {
                                 <span className="text-[12.5px] text-muted-foreground">by <span className="font-medium text-foreground">{log.user_name}</span></span>
                               )}
                             </div>
-                            {description && <p className="text-[12.5px] text-muted-foreground">{description}</p>}
+                            {summary && <p className="text-[12.5px] text-muted-foreground">{summary}</p>}
+                            <ActivityChanges changes={changes} fields={fields} />
                           </div>
                           <span className="text-[12px] text-muted-foreground whitespace-nowrap pt-0.5">
                             {formatDate(log.created_at)}

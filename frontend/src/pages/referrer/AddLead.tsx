@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
@@ -149,6 +149,83 @@ interface AddLeadProps {
   showFullDetails?: boolean;
 }
 
+const str = (v: unknown): string => (v == null ? '' : String(v));
+
+/** Short human reference for an application, matching the applications table. */
+const appRef = (id: string) => `APP-${id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+
+/**
+ * Everything a clone inherits from its source application, mapped back onto the
+ * form's flat field bag. Loan fields are deliberately absent — they're the one
+ * thing a clone fills in fresh.
+ */
+function cloneExtraFields(app: Record<string, unknown>, lend: Record<string, unknown>): Partial<typeof EXTRA_DEFAULTS> {
+  const idDoc = (Array.isArray(lend.identification) ? lend.identification[0] : null) as Record<string, unknown> | null;
+  const employment = (Array.isArray(lend.employments) ? lend.employments[0] : null) as Record<string, unknown> | null;
+  const primaryIncome = (Array.isArray(lend.incomes) ? lend.incomes[0] : null) as Record<string, unknown> | null;
+  const expenses = (lend.expenses ?? {}) as Record<string, unknown>;
+  const isPassport = idDoc?.type === 'Passport';
+
+  return {
+    // Personal
+    applicant_title: str(app.applicant_title),
+    applicant_middle_name: str(app.applicant_middle_name),
+    applicant_dob: str(app.applicant_dob),
+    applicant_gender: str(app.applicant_gender),
+    applicant_marital_status: str(app.applicant_marital_status),
+    preferred_contact_method: str(app.preferred_contact_method),
+    // Identification
+    id_type: isPassport ? 'passport' : 'license',
+    id_number: str(idDoc?.number),
+    id_issuing_state_country: str(idDoc?.state ?? idDoc?.country),
+    id_expiry_date: str(app.id_expiry_date ?? idDoc?.expiry_date),
+    applicant_residency_status: str(app.applicant_residency_status),
+    // Address & living situation
+    applicant_address: str(app.applicant_address),
+    applicant_suburb: str(app.applicant_suburb),
+    applicant_state: str(app.applicant_state),
+    applicant_postcode: str(app.applicant_postcode),
+    residential_status: str(app.residential_status),
+    time_at_address: str(app.time_at_address),
+    applicant_num_dependants: app.applicant_num_dependants != null ? String(app.applicant_num_dependants) : '',
+    has_partner: app.has_partner === true,
+    partner_working: app.partner_working === true,
+    // Employment & income
+    employment_category: str(app.employment_category),
+    employment_type_detail: str(employment?.employment_type),
+    employment_start_date: str(employment?.start_date),
+    employer_name: str(app.employer_name),
+    employer_industry: str(app.employer_industry),
+    employer_contact_details: str(employment?.contact_details),
+    job_title: str(app.job_title),
+    income_frequency: str(app.income_frequency),
+    gross_income: app.gross_income != null ? String(app.gross_income) : '',
+    primary_income_type: str(primaryIncome?.income_type),
+    primary_income_amount: primaryIncome?.amount ? String(primaryIncome.amount) : '',
+    primary_income_frequency: str(primaryIncome?.frequency),
+    // Expenses
+    monthly_living_expenses: expenses.monthly_living ? String(expenses.monthly_living) : '',
+    rent_mortgage_payments: expenses.rent_mortgage ? String(expenses.rent_mortgage) : '',
+    child_support: expenses.child_support ? String(expenses.child_support) : '',
+    other_commitments: expenses.other_commitments ? String(expenses.other_commitments) : '',
+    // Business / entity
+    business_name: str(app.business_name),
+    business_abn: str(app.business_abn),
+    trading_name: str(app.trading_name),
+    business_structure: str(app.business_structure),
+    gst_registered: app.gst_registered === true,
+    num_directors: app.num_directors != null ? String(app.num_directors) : '',
+    time_trading: str(app.time_trading),
+    // Emergency contact
+    emergency_contact_name: str(app.emergency_contact_name),
+    emergency_contact_relationship: str(app.emergency_contact_relationship),
+    emergency_contact_phone: str(app.emergency_contact_phone),
+    // Declarations: the credit history carries over, but the statement of
+    // circumstances and the signature are re-taken for the new loan.
+    previously_declined: app.previously_declined === true,
+  };
+}
+
 function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string): Record<string, unknown> {
   const details: Record<string, unknown> = {};
   const label = findLoanSubType(subLoanType)?.label;
@@ -243,6 +320,14 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const { toast } = useToast();
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
+  const [searchParams] = useSearchParams();
+
+  // Clone mode: start from an existing application. Personal and company details
+  // are copied in; only the loan details are entered fresh.
+  const cloneFromId = searchParams.get('cloneFrom') || '';
+  const [cloneSource, setCloneSource] = useState<{ id: string; name: string } | null>(null);
+  const [cloneLoading, setCloneLoading] = useState(!!cloneFromId);
+  const [createdAppId, setCreatedAppId] = useState<string | null>(null);
 
   // Client
   const [clientMode, setClientMode] = useState<'new' | 'existing'>('new');
@@ -335,6 +420,82 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       .catch(() => {});
   }, [skipEngagement]);
 
+  // Load the application being cloned and lay its client + company details over
+  // the empty form. The loan sections are intentionally left untouched.
+  useEffect(() => {
+    if (!cloneFromId) return;
+    let cancelled = false;
+    api.get(`/applications/${cloneFromId}`)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const app = data as Record<string, unknown>;
+        const lend: Record<string, unknown> = (() => {
+          if (typeof app.lend_extra_data !== 'string') return {};
+          try {
+            const parsed = JSON.parse(app.lend_extra_data);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+          } catch { return {}; }
+        })();
+
+        setFirstName(str(app.applicant_first_name));
+        setLastName(str(app.applicant_last_name));
+        setEmail(str(app.applicant_email || app.user_email));
+        setMobile(str(app.applicant_mobile));
+        setComBusinessName(str(app.business_name));
+        setComAbn(str(app.business_abn));
+        setExtraFields(prev => ({ ...prev, ...cloneExtraFields(app, lend) }));
+
+        // The primary income lives in its own fields; the rest are the extras list.
+        const incomes = Array.isArray(lend.incomes) ? lend.incomes.slice(1) : [];
+        setAdditionalIncomes(incomes.map((row) => {
+          const i = (row ?? {}) as Record<string, unknown>;
+          return {
+            income_type: str(i.income_type) || 'Rental Income',
+            amount: i.amount ? String(i.amount) : '',
+            frequency: str(i.frequency) || 'Monthly',
+          };
+        }));
+
+        const assets = (lend.assets ?? {}) as Record<string, unknown>;
+        setRealEstateAssets((Array.isArray(assets.real_estate) ? assets.real_estate : []).map((row) => {
+          const a = (row ?? {}) as Record<string, unknown>;
+          return {
+            property_type: str(a.property_type) || 'Home',
+            address: str(a.address),
+            estimated_value: str(a.estimated_value),
+            ownership_type: str(a.ownership_type) || 'Sole',
+            is_financed: str(a.is_financed) || 'no',
+            lender: str(a.lender),
+            amount_owing: str(a.amount_owing),
+            monthly_repayment: str(a.monthly_repayment),
+            rental_income: str(a.rental_income),
+          };
+        }));
+        setOtherAssets((Array.isArray(assets.other) ? assets.other : []).map((row) => {
+          const a = (row ?? {}) as Record<string, unknown>;
+          return { asset_type: str(a.asset_type) || 'Vehicles', value: str(a.value) };
+        }));
+        setLiabilities((Array.isArray(lend.liabilities) ? lend.liabilities : []).map((row) => {
+          const l = (row ?? {}) as Record<string, unknown>;
+          return {
+            liability_type: str(l.liability_type) || 'Home Loans',
+            lender: str(l.lender),
+            balance: str(l.balance),
+            limit: str(l.limit),
+            monthly_repayment: str(l.monthly_repayment),
+          };
+        }));
+
+        setCloneSource({
+          id: str(app.id),
+          name: [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || str(app.user_name),
+        });
+      })
+      .catch(() => toast('Could not load the application to clone.', 'error'))
+      .finally(() => { if (!cancelled) setCloneLoading(false); });
+    return () => { cancelled = true; };
+  }, [cloneFromId, toast]);
+
   const deleteDraft = async (id: string) => {
     try { await api.delete(`/applications/${id}`); } catch { /* ignore */ }
   };
@@ -345,6 +506,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // should only happen on explicit submission.
   useEffect(() => {
     if (engagementModel === 'direct_engagement') return;
+    // A clone starts from a real application already — no placeholder draft.
+    if (cloneFromId) return;
     if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
     if (!subLoanType || !amount || parseFloat(amount) <= 0) return;
     if (draftAppId || draftCreatingRef.current) return;
@@ -526,7 +689,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           }),
         } : {};
 
-        const { data: app } = await api.post('/applications', {
+        const payload = {
           loan_type: effectiveLoanType,
           amount: parseFloat(amount),
           ...(engagementModel && { client_engagement_model: engagementModel }),
@@ -543,12 +706,20 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             business_name: (comBusinessName.trim() || extra.business_name.trim()) || null,
             business_abn: (comAbn.trim() || extra.business_abn.trim()) || null,
           } : {}),
-        });
+        };
+
+        // Cloning keeps the source's client, company link, brokers and parties;
+        // this payload only carries the fresh loan details and any edits made to
+        // the copied client details.
+        const { data: app } = cloneFromId
+          ? await api.post(`/applications/${cloneFromId}/clone`, payload)
+          : await api.post('/applications', payload);
         appId = app.id;
 
         // Credit the selected referrer for this lead (staff form only). The
         // application must have resolved to a client-owned account to attribute.
-        if (creditReferrerId && app.user_role === 'client' && app.user_id) {
+        // Clones inherit the client's existing attribution.
+        if (!cloneFromId && creditReferrerId && app.user_role === 'client' && app.user_id) {
           try {
             await api.post(`/users/${app.user_id}/referrer`, { referrer_id: creditReferrerId });
           } catch {
@@ -576,9 +747,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         deleteDraft(id);
       }
 
+      setCreatedAppId(appId);
       setDone(true);
     } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to submit lead'), 'error');
+      toast(getErrorMessage(err, cloneFromId ? 'Failed to clone application' : 'Failed to submit lead'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -612,16 +784,28 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               </svg>
             </div>
             <div>
-              <p className="text-[18px] font-semibold text-foreground">Lead submitted!</p>
+              <p className="text-[18px] font-semibold text-foreground">
+                {cloneFromId ? 'Application cloned!' : 'Lead submitted!'}
+              </p>
               <p className="text-[14px] text-muted-foreground mt-1.5">
-                {engagementModel === 'direct_engagement'
-                  ? `Your broker has been notified and will review the lead. They'll invite ${firstName} once they've set up the form.`
-                  : `Your broker will review and follow up with ${firstName}.`}
+                {cloneFromId
+                  ? `The new application carries ${firstName || 'the client'}'s personal and company details. Documents and signatures start fresh.`
+                  : engagementModel === 'direct_engagement'
+                    ? `Your broker has been notified and will review the lead. They'll invite ${firstName} once they've set up the form.`
+                    : `Your broker will review and follow up with ${firstName}.`}
               </p>
             </div>
             <div className="flex gap-3 justify-center">
-              <Button onClick={() => navigate(basePath)}>View Applications</Button>
-              <Button variant="secondary" onClick={reset}>Add Another</Button>
+              {cloneFromId && createdAppId ? (
+                <Button onClick={() => navigate(`${basePath}/${createdAppId}`)}>Open Application</Button>
+              ) : (
+                <Button onClick={() => navigate(basePath)}>View Applications</Button>
+              )}
+              {cloneFromId ? (
+                <Button variant="secondary" onClick={() => navigate(basePath)}>View Applications</Button>
+              ) : (
+                <Button variant="secondary" onClick={reset}>Add Another</Button>
+              )}
             </div>
           </div>
         </GlassCard>
@@ -636,25 +820,55 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
   });
 
+  if (cloneLoading) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <GlassCard>
+          <p className="text-[14px] text-muted-foreground text-center py-8">Loading the application to clone...</p>
+        </GlassCard>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-xl space-y-4">
-      <PageHeader title={title} subtitle="Fill in the details and submit — your broker handles the rest" />
+      <PageHeader
+        title={cloneFromId ? 'Clone Application' : title}
+        subtitle={cloneFromId
+          ? 'Personal and company details are copied — enter the new loan details'
+          : 'Fill in the details and submit — your broker handles the rest'}
+      />
+
+      {cloneFromId && cloneSource && (
+        <GlassCard className="space-y-1">
+          <p className="text-[14px] font-semibold text-foreground">
+            Cloning {appRef(cloneSource.id)}{cloneSource.name ? ` · ${cloneSource.name}` : ''}
+          </p>
+          <p className="text-[12.5px] text-muted-foreground">
+            The client, their company, directors and guarantors carry over. Documents,
+            signatures and the loan details start fresh — check the copied details below
+            are still current before submitting.
+          </p>
+        </GlassCard>
+      )}
 
       {/* Client */}
       <GlassCard className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">Client</p>
-        <div className="flex gap-2">
-          <button type="button"
-            onClick={() => { setClientMode('new'); setSelectedPrevClient(null); }}
-            className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'new' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-          >New client</button>
-          <button type="button"
-            onClick={() => setClientMode('existing')}
-            className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'existing' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-          >Existing client</button>
-        </div>
+        {!cloneFromId && (
+          <div className="flex gap-2">
+            <button type="button"
+              onClick={() => { setClientMode('new'); setSelectedPrevClient(null); }}
+              className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'new' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+            >New client</button>
+            <button type="button"
+              onClick={() => setClientMode('existing')}
+              className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'existing' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+            >Existing client</button>
+          </div>
+        )}
 
-        {clientMode === 'existing' && (
+        {!cloneFromId && clientMode === 'existing' && (
           <div className="space-y-2">
             {selectedPrevClient ? (
               <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
@@ -733,8 +947,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
       </GlassCard>}
 
-      {/* Referrer credit — staff form only */}
-      {skipEngagement && (
+      {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
+      {skipEngagement && !cloneFromId && (
         <GlassCard className="space-y-3">
           <div>
             <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
@@ -1802,7 +2016,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
       <div className="flex gap-3 pb-6">
         <Button size="lg" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? 'Submitting...' : (submitLabel ?? 'Submit Lead')}
+          {submitting
+            ? (cloneFromId ? 'Cloning...' : 'Submitting...')
+            : (cloneFromId ? 'Create Cloned Application' : (submitLabel ?? 'Submit Lead'))}
         </Button>
         <Button variant="secondary" size="lg" onClick={() => navigate(basePath)}>Cancel</Button>
       </div>

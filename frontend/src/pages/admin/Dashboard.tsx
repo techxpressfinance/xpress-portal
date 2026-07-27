@@ -19,6 +19,7 @@ import { CopyButton } from '../../components/ui/CopyButton';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { formatShortDate, formatTime } from '../../lib/utils';
 import type { ActivityLog, DashboardStats, LoanApplication } from '../../types';
+import { describeActivity } from '../../lib/activityLog';
 
 type MetricTone = 'accent' | 'success' | 'warning' | 'neutral';
 
@@ -703,23 +704,33 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))
-                : logs.map((log) => (
-                    <div key={log.id} className="flex gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--led-bg)] text-[var(--led-muted)]">
-                        {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
+                : logs.map((log) => {
+                    const { summary, changes, fields } = describeActivity(log);
+                    // The tape has one line to spare — collapse before/after detail into it.
+                    const detail = summary
+                      || changes.map(c => (c.redacted ? c.field : `${c.field}: ${c.from ?? '—'} → ${c.to ?? '—'}`)).join(' · ')
+                      || fields.join(', ');
+                    return (
+                      <div key={log.id} className="flex gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] p-4">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--led-bg)] text-[var(--led-muted)]">
+                          {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] leading-6 text-[var(--led-ink)]">
+                            <span className="font-semibold">{log.user_name || 'System'}</span>
+                            <span className="mx-1.5 text-[var(--led-muted)]">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
+                            <span className="font-medium">{log.entity_type}</span>
+                          </p>
+                          {detail && (
+                            <p className="mt-0.5 truncate text-[12px] text-[var(--led-muted)]" title={detail}>{detail}</p>
+                          )}
+                          <p className="mt-1 text-[12px] text-[var(--led-muted)]">
+                            {formatTime(log.created_at)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] leading-6 text-[var(--led-ink)]">
-                          <span className="font-semibold">{log.user_name || 'System'}</span>
-                          <span className="mx-1.5 text-[var(--led-muted)]">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
-                          <span className="font-medium">{log.entity_type}</span>
-                        </p>
-                        <p className="mt-1 text-[12px] text-[var(--led-muted)]">
-                          {formatTime(log.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               {!loading && logs.length === 0 && (
                 <EmptyState title="No activity" description="Recent operational activity will appear here." />
               )}

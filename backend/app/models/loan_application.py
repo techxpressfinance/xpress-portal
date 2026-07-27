@@ -167,6 +167,10 @@ class LoanApplication(Base):
     # Business / company linkage
     business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
 
+    # Provenance: the application this one was cloned from (personal + company
+    # details copied, loan details entered fresh). Null for originals.
+    cloned_from_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("loan_applications.id"), nullable=True)
+
     lend_ref: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Referrer-filled

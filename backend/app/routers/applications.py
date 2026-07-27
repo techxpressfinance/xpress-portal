@@ -42,7 +42,7 @@ ALLOWED_SECTIONS = set(SECTION_KEYS)
 from app.constants import VALID_TRANSITIONS
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
-from app.services.activity_log import log_activity
+from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.loan_category import category_filtered_ids, parse_categories
 from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
 from app.services.email import (
@@ -277,6 +277,187 @@ def create_application(
 
 
 CLOSED_STATUSES = [ApplicationStatus.settled, ApplicationStatus.rejected, ApplicationStatus.not_proceeding]
+
+
+# ---------------------------------------------------------------------------
+# Cloning — start a new loan from an existing application
+# ---------------------------------------------------------------------------
+
+#: Columns a clone does NOT inherit. Everything else carries over verbatim, so
+#: new applicant/company columns are cloned without touching this list.
+_CLONE_RESET_COLUMNS = frozenset({
+    # Identity — the clone gets its own
+    "id", "created_at", "updated_at", "cloned_from_id",
+    # Loan details — the whole point of a clone is to re-enter these
+    "loan_type", "amount", "notes", "loan_purpose_id", "loan_term_requested",
+    "lend_product_type_id", "lend_owner_type", "lend_send_type", "lend_who_to_contact",
+    "lend_ref",
+    "lend_extra_data",  # copied separately, minus its loan-specific block
+    # Workflow state that belongs to the source application
+    "status", "deleted_at", "settled_at", "kanban_column_id", "is_locked",
+    "completed_by_id", "completed_at",
+    "analysis_status", "analysis_result", "analysis_error", "analyzed_at",
+    "needs_reconciliation", "reconciliation_note",
+    "client_invite_token", "client_invite_email", "client_invite_sent_at",
+    # A declaration signed for one loan doesn't carry to another
+    "signature_name",
+})
+
+#: Party columns set explicitly or deliberately dropped when cloning a director /
+#: guarantor signatory. Their signature and sent-invite belong to the source.
+_CLONE_PARTY_RESET_COLUMNS = frozenset({
+    "id", "created_at", "updated_at", "tenant_id",
+    "application_id", "application_guarantor_id",
+    "signature_name", "signed_at", "completed_at",
+    "invite_token", "invite_sent_at",
+})
+
+
+def _strip_loan_details(raw: Optional[str]) -> Optional[str]:
+    """Copy a lend_extra_data blob without its loan-specific block."""
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    parsed.pop("loan_type_details", None)
+    return json.dumps(parsed) if parsed else None
+
+
+def _merge_lend_extra_data(base: Optional[str], incoming: Optional[str]) -> Optional[str]:
+    """Overlay a submitted blob on a copied one, merging top-level keys.
+
+    The submitting form only models the keys it renders, so a plain replace would
+    silently drop anything else the source carried (OCR-derived values, keys
+    written by the other form).
+    """
+    if not incoming:
+        return base
+    try:
+        incoming_parsed = json.loads(incoming)
+    except (ValueError, TypeError):
+        return base
+    if not isinstance(incoming_parsed, dict):
+        return incoming
+    merged: dict = {}
+    if base:
+        try:
+            base_parsed = json.loads(base)
+            if isinstance(base_parsed, dict):
+                merged.update(base_parsed)
+        except (ValueError, TypeError):
+            pass
+    merged.update(incoming_parsed)
+    return json.dumps(merged)
+
+
+@router.post("/{app_id}/clone", response_model=LoanApplicationOut, status_code=status.HTTP_201_CREATED)
+def clone_application(
+    app_id: str,
+    data: LoanApplicationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Start a new application for the same client from an existing one.
+
+    Everything about the person and the company carries over — personal details,
+    address, identification, employment, income/assets/liabilities, business
+    entity, emergency contact, plus directors and corporate guarantors. Only the
+    loan details are entered fresh; they arrive on the request body and overlay
+    the copy.
+
+    Nothing is emailed. Signatures and sent-invites belong to the source
+    application, so cloned parties start unsigned with a fresh (unsent) invite
+    link the broker can share when ready.
+    """
+    source = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(source, current_user, db=db)
+
+    clone_kwargs = {
+        c.name: getattr(source, c.name)
+        for c in LoanApplication.__table__.columns
+        if c.name not in _CLONE_RESET_COLUMNS
+    }
+    clone_kwargs["lend_extra_data"] = _strip_loan_details(source.lend_extra_data)
+    clone_kwargs["cloned_from_id"] = source.id
+
+    # The submitted loan details (and any edits the broker made to the copied
+    # personal/company fields) win over the copy. exclude_unset so fields the
+    # form never sent keep the cloned value.
+    overrides = data.model_dump(exclude_unset=True)
+    incoming_extra = overrides.pop("lend_extra_data", None)
+    clone_kwargs.update(overrides)
+    clone_kwargs["lend_extra_data"] = _merge_lend_extra_data(clone_kwargs["lend_extra_data"], incoming_extra)
+    if clone_kwargs.get("business_abn"):
+        clone_kwargs["business_abn"] = normalize_abn(clone_kwargs["business_abn"])
+
+    app = LoanApplication(**clone_kwargs)
+
+    # Re-resolve the Company link — the broker may have changed the ABN, and a
+    # cleared business means the clone is no longer tied to a company.
+    if app.business_abn or app.business_name:
+        org = find_or_create_organization_by_abn(db, tenant_id, app.business_abn, app.business_name)
+        if org:
+            app.business_organization_id = org.id
+            if org.name and org.name != "Unnamed Company":
+                app.business_name = org.name
+    else:
+        app.business_organization_id = None
+
+    app.brokers = list(source.brokers)
+    db.add(app)
+    db.flush()
+
+    def _clone_party(src_party: LoanApplicant, *, guarantor_id: Optional[str] = None) -> None:
+        party = LoanApplicant(
+            **{
+                c.name: getattr(src_party, c.name)
+                for c in LoanApplicant.__table__.columns
+                if c.name not in _CLONE_PARTY_RESET_COLUMNS
+            },
+            tenant_id=tenant_id,
+            application_id=app.id,
+            application_guarantor_id=guarantor_id,
+        )
+        # Fresh link so the broker can re-collect this party's declaration; not
+        # sent — cloning emails nobody.
+        party.invite_token = secrets.token_urlsafe(32)
+        db.add(party)
+
+    for src_party in source.additional_applicants:
+        if src_party.application_guarantor_id is None:
+            _clone_party(src_party)
+
+    for src_guarantor in source.corporate_guarantors:
+        guarantor = ApplicationGuarantor(
+            tenant_id=tenant_id,
+            application_id=app.id,
+            organization_id=src_guarantor.organization_id,
+        )
+        db.add(guarantor)
+        db.flush()
+        for signatory in src_guarantor.signatories:
+            _clone_party(signatory, guarantor_id=guarantor.id)
+
+    log_activity(
+        db, current_user.id, "cloned", "application", app.id,
+        {"cloned_from": source.id, "loan_type": getattr(app.loan_type, "value", app.loan_type), "amount": str(app.amount)},
+        tenant_id=tenant_id,
+    )
+    db.commit()
+
+    db.refresh(app, attribute_names=["user"])
+    return _app_with_user(app, db)
 
 
 @router.get("", response_model=PaginatedApplications)
@@ -671,6 +852,10 @@ def update_application(
     if "business_abn" in updates:
         updates["business_abn"] = normalize_abn(updates["business_abn"])
 
+    # Snapshot before mutating so the activity log records what actually changed —
+    # the edit form PATCHes the whole payload, so `updates` is everything submitted.
+    before = snapshot(application, updates.keys())
+
     for key, value in updates.items():
         setattr(application, key, value)
 
@@ -686,8 +871,9 @@ def update_application(
         else:
             application.business_organization_id = None
 
-    if updates:
-        log_activity(db, current_user.id, "updated", "application", app_id, {"fields": list(updates.keys())}, tenant_id=tenant_id)
+    edited = field_changes(application, before)
+    if edited:
+        log_activity(db, current_user.id, "updated", "application", app_id, {"changes": edited}, tenant_id=tenant_id)
 
     db.commit()
 
