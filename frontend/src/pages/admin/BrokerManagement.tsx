@@ -14,11 +14,12 @@ const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(LOAN_CATEGORIE
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
-function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: () => void; onSaved: (u: User) => void }) {
+function EditBrokerModal({ broker, canEditEmail, onClose, onSaved }: { broker: User; canEditEmail: boolean; onClose: () => void; onSaved: (u: User) => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     full_name: broker.full_name ?? '',
+    email: broker.email,
     phone: broker.phone ?? '',
     employee_id: broker.employee_id ?? '',
     department: broker.department ?? '',
@@ -42,10 +43,13 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) return;
+    const email = form.email.trim().toLowerCase();
+    if (canEditEmail && !email) return;
     setSaving(true);
     try {
       const { data } = await api.patch<User>(`/users/${broker.id}`, {
         full_name: form.full_name.trim(),
+        ...(canEditEmail && email !== broker.email ? { email } : {}),
         phone: form.phone.trim() || null,
         employee_id: form.employee_id.trim() || null,
         department: form.department.trim() || null,
@@ -73,6 +77,15 @@ function EditBrokerModal({ broker, onClose, onSaved }: { broker: User; onClose: 
               <label className={LABEL}>Full Name *</label>
               <Input ref={ref} placeholder="Full name" required {...f('full_name')} />
             </div>
+            {canEditEmail && (
+              <div className="sm:col-span-2">
+                <label className={LABEL}>Email *</label>
+                <Input type="email" placeholder="broker@example.com" required {...f('email')} />
+                {form.email.trim().toLowerCase() !== broker.email && (
+                  <p className="mt-1.5 text-[12px] text-amber-600 dark:text-amber-500">They'll need to sign in with this new address.</p>
+                )}
+              </div>
+            )}
             <div>
               <label className={LABEL}>Phone</label>
               <Input type="tel" placeholder="+61 400 000 000" {...f('phone')} />
@@ -661,6 +674,7 @@ export default function BrokerManagement() {
       {editingBroker && (
         <EditBrokerModal
           broker={editingBroker}
+          canEditEmail={currentUser?.role === 'admin'}
           onClose={() => setEditingBroker(null)}
           onSaved={updated => { setBrokers(prev => prev.map(b => b.id === updated.id ? updated : b)); setEditingBroker(null); }}
         />

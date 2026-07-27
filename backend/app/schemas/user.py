@@ -153,6 +153,7 @@ class ClientProfile(BaseModel):
 class UserUpdate(BaseModel):
     """Admin/broker update of any user's profile fields."""
     full_name: Optional[str] = None
+    email: Optional[EmailStr] = None  # admin only — changes the user's login identity
     phone: Optional[str] = None
     employee_id: Optional[str] = None
     department: Optional[str] = None
@@ -161,6 +162,7 @@ class UserUpdate(BaseModel):
     organization_name: Optional[str] = None
 
     _parse_specialties = field_validator("specialties", mode="before")(_validate_specialties)
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
 
 class UserRoleUpdate(BaseModel):

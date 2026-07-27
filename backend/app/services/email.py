@@ -352,6 +352,52 @@ def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_n
     _send_async(to_email, subject, body, html_body)
 
 
+def send_email_changed_email(to_email: str, name: str, old_email: str, changed_by_name: Optional[str] = None) -> None:
+    """Tell a user at their NEW address that an admin changed their login email. Non-blocking."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping email-changed notice for %s", to_email)
+        return
+
+    changed_by = changed_by_name or "An administrator"
+    login_url = f"{FRONTEND_URL}/login"
+    subject = "Your Xpress Finance login email has changed"
+    body = (
+        f"Dear {name},\n\n"
+        f"{changed_by} has changed the email address on your Xpress Finance Portal account.\n\n"
+        f"Previous email: {old_email}\n"
+        f"New email: {to_email}\n\n"
+        f"From now on, sign in with {to_email}. Your password has not changed.\n\n"
+        f"Log in: {login_url}\n\n"
+        f"If you did not expect this change, contact your administrator immediately.\n\n"
+        f"Best regards,\nXpress Finance Team"
+    )
+    changed_by_line = f"<strong>{_esc(changed_by_name)}</strong>" if changed_by_name else "An administrator"
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Dear {_esc(name)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            {changed_by_line} has changed the email address on your Xpress Finance Portal account.
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; margin: 0 0 24px;">
+            <tr>
+                <td style="padding: 20px;">
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #71717a;"><strong>Previous email:</strong> <span style="text-decoration: line-through;">{_esc(old_email)}</span></p>
+                    <p style="margin: 0; font-size: 15px; color: #3f3f46;"><strong>New email:</strong> {_esc(to_email)}</p>
+                </td>
+            </tr>
+        </table>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+            From now on, sign in with <strong>{_esc(to_email)}</strong>. Your password has not changed.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(login_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Log In</a>
+        </div>
+        <p style="margin: 0; font-size: 14px; color: #71717a;">If you did not expect this change, contact your administrator immediately.</p>
+    """
+    html_body = _get_base_html(content)
+
+    _send_async(to_email, subject, body, html_body)
+
+
 def send_referral_notification_email(to_email: str, client_name: str, referrer_name: str, organization_name: Optional[str] = None) -> None:
     """Notify an existing password-auth client that they've been referred. Non-blocking."""
     if not EMAIL_ENABLED:

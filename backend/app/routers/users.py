@@ -17,7 +17,7 @@ from app.models.user import User, UserRole
 from app.schemas.user import AdminCreate, BrokerCreate, ClientProfile, DeletedClientOut, InvitedUserOut, ReferrerAttach, UserActiveUpdate, UserOut, UserProfileUpdate, UserRoleUpdate, UserUpdate
 from app.services.activity_log import log_activity
 from app.services.auth import blacklist_all_user_tokens, create_access_token
-from app.services.email import send_password_reset_email, send_setup_account_email
+from app.services.email import send_email_changed_email, send_password_reset_email, send_setup_account_email
 from app.services.loan_category import serialize_categories
 from app.services.tenant_scope import get_tenant_id
 
@@ -418,8 +418,24 @@ def update_user(
     user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    old_email: str | None = None
     if data.full_name is not None:
         user.full_name = data.full_name.strip()
+    if data.email is not None and data.email != user.email:
+        # Email is the login identity — admins only, and it must stay unique per tenant.
+        if current_user.role.value != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can change a user's email")
+        clash = db.query(User).filter(
+            User.email == data.email,
+            User.tenant_id == tenant_id,
+            User.id != user_id,
+        ).first()
+        if clash:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A user with this email already exists")
+        old_email = user.email
+        user.email = data.email
+        log_activity(db, current_user.id, "user_email_changed", "user", user_id,
+                     {"from": old_email, "to": data.email}, tenant_id=tenant_id)
     if data.phone is not None:
         user.phone = data.phone.strip() or None
     if data.employee_id is not None:
@@ -435,6 +451,9 @@ def update_user(
     log_activity(db, current_user.id, "user_updated", "user", user_id, {"fields": list(data.model_dump(exclude_unset=True).keys())}, tenant_id=tenant_id)
     db.commit()
     db.refresh(user)
+    if old_email:
+        # Only after the change is committed — tell them at the new address which one to sign in with.
+        send_email_changed_email(user.email, user.full_name, old_email, changed_by_name=current_user.full_name)
     return user
 
 
