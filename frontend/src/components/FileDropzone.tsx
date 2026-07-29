@@ -1,6 +1,26 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const MAX_SIZE = 10 * 1024 * 1024;
+
+/** Clipboard image mime → extension the backend attachment validator accepts. */
+const PASTE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+};
+
+/**
+ * Paste listeners of every mounted dropzone, oldest first. A paste is a page-level
+ * event, so only the most recently mounted zone handles it — otherwise two zones on
+ * one page would each upload the same screenshot.
+ */
+const pasteHandlers: ((e: ClipboardEvent) => void)[] = [];
+
+function pastedImage(e: ClipboardEvent): File | null {
+  const items = Array.from(e.clipboardData?.items ?? []);
+  const item = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+  return item?.getAsFile() ?? null;
+}
 
 interface Props {
   uploading: boolean;
@@ -10,7 +30,7 @@ interface Props {
   hint?: string;
 }
 
-/** Generic drag-and-drop / click-to-browse file upload zone (screenshots, PDFs, etc). */
+/** Generic drag-and-drop / paste / click-to-browse file upload zone (screenshots, PDFs, etc). */
 export default function FileDropzone({
   uploading,
   onFile,
@@ -29,6 +49,48 @@ export default function FileDropzone({
     onFile(file);
     if (fileInput.current) fileInput.current.value = '';
   };
+
+  /* Keep the latest props for the paste listener without re-registering it each render. */
+  const latest = useRef({ uploading, handleFile, onError });
+  useEffect(() => {
+    latest.current = { uploading, handleFile, onError };
+  });
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const { uploading: busy, handleFile: upload, onError: err } = latest.current;
+      if (busy) return;
+
+      // Rich-text targets insert the image themselves — don't also upload it.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('[contenteditable="true"]')) return;
+
+      const image = pastedImage(e);
+      if (!image) return;
+      e.preventDefault();
+
+      const ext = PASTE_EXTENSIONS[image.type];
+      if (!ext) {
+        err?.('Pasted image must be PNG or JPG');
+        return;
+      }
+
+      // Clipboard files arrive unnamed or as a generic "image.png" — stamp them so
+      // several pasted screenshots stay distinguishable in the attachment list.
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      upload(new File([image], `screenshot-${stamp}.${ext}`, { type: image.type }));
+    };
+
+    pasteHandlers.push(onPaste);
+    const dispatch = (e: ClipboardEvent) => {
+      if (pasteHandlers[pasteHandlers.length - 1] === onPaste) onPaste(e);
+    };
+    document.addEventListener('paste', dispatch);
+    return () => {
+      document.removeEventListener('paste', dispatch);
+      pasteHandlers.splice(pasteHandlers.indexOf(onPaste), 1);
+    };
+  }, []);
 
   return (
     <div
@@ -74,7 +136,7 @@ export default function FileDropzone({
               {isDragOver ? 'Drop to upload' : (
                 <>
                   <span className="sm:hidden">Tap to upload a file</span>
-                  <span className="hidden sm:inline">Drop a file or click to browse</span>
+                  <span className="hidden sm:inline">Drop a file, click to browse, or paste a screenshot</span>
                 </>
               )}
             </p>
