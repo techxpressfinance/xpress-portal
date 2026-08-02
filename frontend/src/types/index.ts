@@ -872,6 +872,7 @@ export interface QuoteSheet {
 export interface ContactOrganization {
   id: string;
   name: string;
+  entity_type: EntityType | null;
   abn: string | null;
   industry: string | null;
   address: string | null;
@@ -942,9 +943,12 @@ export interface AbrRecord {
   postcode: string | null;
 }
 
+export type EntityType = 'trust' | 'trustee' | 'company' | 'partnership' | 'sole_trader';
+
 export interface Organization {
   id: string;
   name: string;
+  entity_type: EntityType | null;
   abn: string | null;
   industry: string | null;
   address: string | null;

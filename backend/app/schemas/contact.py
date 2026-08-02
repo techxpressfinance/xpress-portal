@@ -11,6 +11,7 @@ from app.schemas.lending_history import LendingHistoryEntryOut
 class OrganizationOut(BaseModel):
     id: str
     name: str
+    entity_type: Optional[str] = None
     abn: Optional[str]
     industry: Optional[str]
     address: Optional[str]

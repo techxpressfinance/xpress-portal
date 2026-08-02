@@ -23,6 +23,7 @@ from app.schemas.organization import (
     PaginatedOrganizations,
 )
 from app.config import ABR_ENABLED
+from app.constants import ENTITY_TYPES
 from app.services.abr import lookup_abn as abr_lookup_abn
 from app.services.dedupe import (
     find_org_duplicates,
@@ -60,6 +61,7 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
     return {
         "id": org.id,
         "name": org.name,
+        "entity_type": org.entity_type,
         "abn": org.abn,
         "industry": org.industry,
         "address": org.address,
@@ -83,11 +85,19 @@ def list_organizations(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
+    entity_type: Optional[str] = Query(None, description="Filter to one entity type (see ENTITY_TYPES)"),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     query = db.query(Organization).filter(Organization.tenant_id == tenant_id)
+    if entity_type:
+        if entity_type not in ENTITY_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"entity_type must be one of: {', '.join(ENTITY_TYPES)}",
+            )
+        query = query.filter(Organization.entity_type == entity_type)
     if search:
         safe = escape_like(search)
         digits = _normalize_abn(search)
@@ -171,6 +181,7 @@ def create_organization(
     org = Organization(
         tenant_id=tenant_id,
         name=data.name.strip(),
+        entity_type=data.entity_type,
         abn=abn,
         industry=data.industry.strip() if data.industry else None,
         address=data.address.strip() if data.address else None,

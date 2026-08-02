@@ -280,6 +280,7 @@ def get_contact(
         organizations.append({
             "id": org.id,
             "name": org.name,
+            "entity_type": org.entity_type,
             "abn": org.abn,
             "industry": org.industry,
             "address": org.address,

@@ -32,6 +32,9 @@ class Organization(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # One of ENTITY_TYPES (app/constants.py). Null on rows created before entity
+    # typing existed, and on organizations auto-created from application data.
+    entity_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

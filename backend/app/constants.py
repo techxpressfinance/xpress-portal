@@ -12,6 +12,15 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "not_proceeding": ["draft", "application_received"],
 }
 
+# Legal structure of an Organization. Ordered as presented in the entity picker.
+ENTITY_TYPES: list[str] = [
+    "trust",
+    "trustee",
+    "company",
+    "partnership",
+    "sole_trader",
+]
+
 DEFAULT_KANBAN_COLUMNS = [
     {"title": "Draft", "mapped_status": "draft", "position": 0, "color": "muted-foreground"},
     {"title": "Application Received", "mapped_status": "application_received", "position": 1, "color": "primary"},

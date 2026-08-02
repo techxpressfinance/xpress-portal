@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, EntityType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -315,6 +315,24 @@ export const LOAN_CATEGORIES: { value: LoanCategory; label: string; types: reado
   { value: 'home_loan', label: 'Home Loan', types: HOME_LOAN_TYPES },
   { value: 'commercial', label: 'Commercial Loans', types: COMMERCIAL_LOAN_TYPES },
 ];
+
+// Legal structures an entity can take. Order drives the entity picker.
+// Backend copy at backend/app/constants.py (ENTITY_TYPES) — keep in sync.
+export const ENTITY_TYPES: { value: EntityType; label: string; description: string }[] = [
+  { value: 'trust', label: 'Trust', description: 'Discretionary, unit or SMSF trust' },
+  { value: 'trustee', label: 'Trustee', description: 'Acts as trustee for a trust' },
+  { value: 'company', label: 'Company', description: 'Pty Ltd or public company' },
+  { value: 'partnership', label: 'Partnership', description: 'Two or more partners' },
+  { value: 'sole_trader', label: 'Sole Trader', description: 'Individual trading under an ABN' },
+];
+
+export const ENTITY_TYPE_CONFIG: Record<EntityType, { label: string; className: string }> = {
+  trust: { label: 'Trust', className: 'bg-chart-4/10 text-chart-4' },
+  trustee: { label: 'Trustee', className: 'bg-chart-5/10 text-chart-5' },
+  company: { label: 'Company', className: 'bg-chart-2/10 text-chart-2' },
+  partnership: { label: 'Partnership', className: 'bg-chart-1/10 text-chart-1' },
+  sole_trader: { label: 'Sole Trader', className: 'bg-chart-3/10 text-chart-3' },
+};
 
 // Sub-types whose details serialize under consumer_loan_type (individual borrower).
 // Everything else — including legacy values no longer offered as cards — is a

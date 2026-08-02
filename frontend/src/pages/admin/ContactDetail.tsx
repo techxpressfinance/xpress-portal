@@ -6,8 +6,8 @@ import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
-import { loanTypeOptions, LOAN_TYPE_LABELS } from '../../lib/constants';
-import type { ContactDetail as ContactDetailType, ContactApplication, LendingHistoryEntry, RepaymentFrequency } from '../../types';
+import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG } from '../../lib/constants';
+import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
   { value: 'weekly', label: 'Weekly', short: 'wk' },
@@ -311,18 +311,27 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
   );
 }
 
-function LinkCompanyModal({ contactId, excludeIds, onClose, onLinked }: {
+type EntityCandidate = { id: string; name: string; entity_type: EntityType | null; abn: string | null; industry: string | null };
+
+/** Add an entity to a contact: pick a legal structure, then link an existing
+ *  entity or create a new one of that type. */
+function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
   contactId: string;
   excludeIds: Set<string>;
   onClose: () => void;
-  onLinked: (org: { id: string; name: string; abn: string | null; industry: string | null; role: string | null }) => void;
+  onLinked: (org: EntityCandidate & { role: string | null }) => void;
 }) {
   const { toast } = useToast();
+  const [entityType, setEntityType] = useState<EntityType | null>(null);
+  const [mode, setMode] = useState<'search' | 'create'>('search');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ id: string; name: string; abn: string | null; industry: string | null }[]>([]);
+  const [results, setResults] = useState<EntityCandidate[]>([]);
   const [role, setRole] = useState('');
-  const [picked, setPicked] = useState<typeof results[number] | null>(null);
+  const [picked, setPicked] = useState<EntityCandidate | null>(null);
+  const [form, setForm] = useState({ name: '', abn: '', industry: '', address: '' });
   const [saving, setSaving] = useState(false);
+
+  const typeLabel = entityType ? ENTITY_TYPE_CONFIG[entityType].label : 'Entity';
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -330,20 +339,25 @@ function LinkCompanyModal({ contactId, excludeIds, onClose, onLinked }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Search across all entities regardless of stored type — entities created
+  // before typing existed have entity_type null and must stay linkable. The
+  // chosen type is surfaced by sorting its matches first.
   useEffect(() => {
+    if (!entityType || mode !== 'search' || picked) return;
     let cancelled = false;
     const t = setTimeout(() => {
       api.get('/organizations', { params: { search: query || undefined, page: 1, per_page: 20 } })
         .then(({ data }) => {
           if (cancelled) return;
-          setResults((data.items || []).filter((o: { id: string }) => !excludeIds.has(o.id)));
+          const items: EntityCandidate[] = (data.items || []).filter((o: { id: string }) => !excludeIds.has(o.id));
+          setResults(items.sort((a, b) => Number(b.entity_type === entityType) - Number(a.entity_type === entityType)));
         })
         .catch(() => { if (!cancelled) setResults([]); });
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [query, excludeIds]);
+  }, [query, excludeIds, entityType, mode, picked]);
 
-  const submit = async () => {
+  const linkExisting = async () => {
     if (!picked) return;
     setSaving(true);
     try {
@@ -351,21 +365,92 @@ function LinkCompanyModal({ contactId, excludeIds, onClose, onLinked }: {
         organization_id: picked.id,
         role: role.trim() || null,
       });
-      toast('Company linked', 'success');
-      onLinked({ id: picked.id, name: picked.name, abn: picked.abn, industry: picked.industry, role: role.trim() || null });
+      toast('Entity linked', 'success');
+      onLinked({ ...picked, role: role.trim() || null });
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to link company'), 'error');
+      toast(getErrorMessage(err, 'Failed to link entity'), 'error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const createAndLink = async () => {
+    if (!form.name.trim() || !entityType) return;
+    setSaving(true);
+    try {
+      const { data: org } = await api.post('/organizations', {
+        name: form.name.trim(),
+        entity_type: entityType,
+        abn: form.abn.trim() || null,
+        industry: form.industry.trim() || null,
+        address: form.address.trim() || null,
+      });
+      await api.post(`/contacts/${contactId}/organizations`, {
+        organization_id: org.id,
+        role: role.trim() || null,
+      });
+      toast(`${typeLabel} created and linked`, 'success');
+      onLinked({
+        id: org.id,
+        name: org.name,
+        entity_type: org.entity_type,
+        abn: org.abn,
+        industry: org.industry,
+        role: role.trim() || null,
+      });
+    } catch (err) {
+      toast(getErrorMessage(err, `Failed to create ${typeLabel.toLowerCase()}`), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const back = () => {
+    if (picked) { setPicked(null); return; }
+    if (mode === 'create') { setMode('search'); return; }
+    setEntityType(null);
+    setQuery('');
+    setResults([]);
   };
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
-        <h3 className="text-[17px] font-semibold text-foreground mb-4">Link Company</h3>
-        {picked ? (
+        <div className="flex items-center gap-2 mb-4">
+          {entityType && (
+            <button type="button" onClick={back} className="text-muted-foreground hover:text-foreground transition-colors text-[13px]" aria-label="Back">←</button>
+          )}
+          <h3 className="text-[17px] font-semibold text-foreground">
+            {entityType ? `Add ${typeLabel}` : 'Add an Entity'}
+          </h3>
+        </div>
+
+        {/* Step 1 — pick the legal structure */}
+        {!entityType && (
+          <>
+            <p className="text-[13px] text-muted-foreground mb-3">What kind of entity are you adding?</p>
+            <div className="space-y-2">
+              {ENTITY_TYPES.map(t => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setEntityType(t.value)}
+                  className="w-full text-left px-4 py-3 rounded-xl border border-border hover:bg-secondary/50 hover:border-primary/40 transition-colors"
+                >
+                  <div className="font-medium">{t.label}</div>
+                  <div className="text-[12px] text-muted-foreground">{t.description}</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3 justify-end pt-4">
+              <Button variant="secondary" size="md" onClick={onClose}>Cancel</Button>
+            </div>
+          </>
+        )}
+
+        {/* Step 3 — confirm role on the entity picked from search */}
+        {entityType && picked && (
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 flex items-center justify-between">
               <div>
@@ -376,19 +461,24 @@ function LinkCompanyModal({ contactId, excludeIds, onClose, onLinked }: {
             </div>
             <div>
               <label className={LABEL}>Role (optional)</label>
-              <Input placeholder="e.g. director, guarantor, signatory" value={role} onChange={e => setRole(e.target.value)} />
+              <Input placeholder="e.g. director, trustee, guarantor" value={role} onChange={e => setRole(e.target.value)} />
             </div>
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-              <Button variant="primary" size="md" loading={saving} onClick={submit}>Link Company</Button>
+              <Button variant="primary" size="md" loading={saving} onClick={linkExisting}>Link Entity</Button>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* Step 2a — search existing entities */}
+        {entityType && !picked && mode === 'search' && (
           <>
-            <Input autoFocus placeholder="Search companies by name or ABN…" value={query} onChange={e => setQuery(e.target.value)} />
-            <div className="mt-3 max-h-72 overflow-y-auto divide-y divide-border border border-border rounded-xl">
+            <Input autoFocus placeholder={`Search entities by name or ABN…`} value={query} onChange={e => setQuery(e.target.value)} />
+            <div className="mt-3 max-h-64 overflow-y-auto divide-y divide-border border border-border rounded-xl">
               {results.length === 0 ? (
-                <p className="px-3 py-4 text-[13px] text-muted-foreground">No matches</p>
+                <p className="px-3 py-4 text-[13px] text-muted-foreground">
+                  {query ? 'No matches — create a new one below.' : 'No entities yet — create one below.'}
+                </p>
               ) : (
                 results.map(o => (
                   <button
@@ -397,16 +487,58 @@ function LinkCompanyModal({ contactId, excludeIds, onClose, onLinked }: {
                     onClick={() => setPicked(o)}
                     className="w-full text-left px-3 py-2 hover:bg-secondary/50 transition-colors"
                   >
-                    <div className="font-medium">{o.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{o.name}</span>
+                      {o.entity_type && (
+                        <Badge type="custom" value={ENTITY_TYPE_CONFIG[o.entity_type].label} className={ENTITY_TYPE_CONFIG[o.entity_type].className} />
+                      )}
+                    </div>
                     <div className="text-[12px] text-muted-foreground">{o.abn || 'No ABN'} {o.industry ? `· ${o.industry}` : ''}</div>
                   </button>
                 ))
               )}
             </div>
-            <div className="flex gap-3 justify-end pt-4">
+            <div className="flex gap-3 justify-between pt-4">
+              <Button variant="secondary" size="md" onClick={() => { setForm(f => ({ ...f, name: query })); setMode('create'); }}>
+                + Create new {typeLabel.toLowerCase()}
+              </Button>
               <Button variant="secondary" size="md" onClick={onClose}>Cancel</Button>
             </div>
           </>
+        )}
+
+        {/* Step 2b — create a new entity of the chosen type */}
+        {entityType && !picked && mode === 'create' && (
+          <div className="space-y-4">
+            <div>
+              <label className={LABEL}>{typeLabel} name</label>
+              <Input autoFocus placeholder={entityType === 'trust' ? 'e.g. Smith Family Trust' : 'Registered name'} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL}>ABN (optional)</label>
+                <Input placeholder="11 222 333 444" value={form.abn} onChange={e => setForm({ ...form, abn: e.target.value })} />
+              </div>
+              <div>
+                <label className={LABEL}>Industry (optional)</label>
+                <Input placeholder="e.g. Construction" value={form.industry} onChange={e => setForm({ ...form, industry: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className={LABEL}>Address (optional)</label>
+              <Input placeholder="Registered address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+            </div>
+            <div>
+              <label className={LABEL}>Role (optional)</label>
+              <Input placeholder="e.g. director, trustee, guarantor" value={role} onChange={e => setRole(e.target.value)} />
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+              <Button variant="primary" size="md" loading={saving} disabled={!form.name.trim()} onClick={createAndLink}>
+                Create &amp; Link
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </div>,
@@ -666,7 +798,7 @@ export default function ContactDetail() {
   const [editingApp, setEditingApp] = useState<ContactApplication | null>(null);
   const [lendingModal, setLendingModal] = useState<{ entry: LendingHistoryEntry | null } | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
-  const [linkingCompany, setLinkingCompany] = useState(false);
+  const [addingEntity, setAddingEntity] = useState(false);
   const [unlinkingOrgId, setUnlinkingOrgId] = useState<string | null>(null);
 
   const handleUnlinkCompany = async (orgId: string) => {
@@ -793,19 +925,20 @@ export default function ContactDetail() {
       <GlassCard>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
-            Companies
+            Entities
             <span className="ml-2 text-sm font-normal text-muted-foreground">({contact.organizations.length})</span>
           </h3>
-          <Button variant="primary" size="sm" onClick={() => setLinkingCompany(true)}>+ Link Company</Button>
+          <Button variant="primary" size="sm" onClick={() => setAddingEntity(true)}>+ Add Entity</Button>
         </div>
         {contact.organizations.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">No companies linked yet.</p>
+          <p className="text-sm text-muted-foreground py-2">No entities linked yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="pb-3 font-medium">Name</th>
+                  <th className="pb-3 font-medium">Type</th>
                   <th className="pb-3 font-medium">ABN</th>
                   <th className="pb-3 font-medium">Industry</th>
                   <th className="pb-3 font-medium">Role</th>
@@ -817,6 +950,11 @@ export default function ContactDetail() {
                   <tr key={org.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="py-3 font-medium">
                       <Link to={`/admin/companies/${org.id}`} className="hover:underline">{org.name}</Link>
+                    </td>
+                    <td className="py-3">
+                      {org.entity_type ? (
+                        <Badge type="custom" value={ENTITY_TYPE_CONFIG[org.entity_type].label} className={ENTITY_TYPE_CONFIG[org.entity_type].className} />
+                      ) : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="py-3 text-muted-foreground">{org.abn || '—'}</td>
                     <td className="py-3 text-muted-foreground">{org.industry || '—'}</td>
@@ -1009,11 +1147,11 @@ export default function ContactDetail() {
         />
       )}
 
-      {linkingCompany && contact && (
-        <LinkCompanyModal
+      {addingEntity && contact && (
+        <AddEntityModal
           contactId={contact.id}
           excludeIds={new Set(contact.organizations.map(o => o.id))}
-          onClose={() => setLinkingCompany(false)}
+          onClose={() => setAddingEntity(false)}
           onLinked={(org) => {
             setContact(prev => prev ? {
               ...prev,
@@ -1022,6 +1160,7 @@ export default function ContactDetail() {
                 {
                   id: org.id,
                   name: org.name,
+                  entity_type: org.entity_type,
                   abn: org.abn,
                   industry: org.industry,
                   address: null,
@@ -1032,7 +1171,7 @@ export default function ContactDetail() {
                 },
               ],
             } : prev);
-            setLinkingCompany(false);
+            setAddingEntity(false);
           }}
         />
       )}

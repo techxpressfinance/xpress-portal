@@ -3,28 +3,48 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.constants import ENTITY_TYPES
+
+
+def _validate_entity_type(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in ENTITY_TYPES:
+        raise ValueError(f"entity_type must be one of: {', '.join(ENTITY_TYPES)}")
+    return normalized
 
 
 class OrganizationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    entity_type: Optional[str] = Field(default=None, max_length=30)
     abn: Optional[str] = Field(default=None, max_length=20)
     industry: Optional[str] = Field(default=None, max_length=200)
     address: Optional[str] = Field(default=None, max_length=500)
     notes: Optional[str] = None
+
+    _check_entity_type = field_validator("entity_type")(_validate_entity_type)
 
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    entity_type: Optional[str] = Field(default=None, max_length=30)
     abn: Optional[str] = Field(default=None, max_length=20)
     industry: Optional[str] = Field(default=None, max_length=200)
     address: Optional[str] = Field(default=None, max_length=500)
     notes: Optional[str] = None
+
+    _check_entity_type = field_validator("entity_type")(_validate_entity_type)
 
 
 class OrganizationOut(BaseModel):
     id: str
     name: str
+    entity_type: Optional[str] = None
     abn: Optional[str]
     industry: Optional[str]
     address: Optional[str]

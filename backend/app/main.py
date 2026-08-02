@@ -131,6 +131,8 @@ _MIGRATIONS = [
     ("documents", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("contacts", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    # Legal structure of an entity (trust/trustee/company/partnership/sole_trader)
+    ("organizations", "entity_type", "VARCHAR(30)"),
     ("contact_organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("lenders", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("lender_submissions", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
