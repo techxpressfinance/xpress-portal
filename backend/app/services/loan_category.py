@@ -23,6 +23,13 @@ _ASSET_SUB_TYPES = frozenset({
     "day_to_day_capital", "vehicles_or_transport",
 })
 
+# Sub-types whose details serialize under loan_type_details.consumer_loan_type
+# (individual borrower); everything else goes under commercial_loan_type. Keep
+# in sync with CONSUMER_SUB_TYPES in frontend/src/lib/constants.ts.
+CONSUMER_SUB_TYPES = frozenset({
+    "car", "motorcycle", "caravan", "other_vehicle", "personal", "purchase", "refinance",
+})
+
 # Fallback when an application has no recorded sub-type (LEND-mode or legacy
 # rows): resolve from the stored LoanType enum. equipment_finance is produced
 # by both asset-finance and commercial sub-types — treat sub-type-less rows as

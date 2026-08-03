@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.models.loan_application import LoanType
 from app.schemas.lending_history import LendingHistoryEntryOut
 
 
@@ -93,6 +95,21 @@ class ContactUpdate(BaseModel):
     state: Optional[str] = None
     postcode: Optional[str] = None
     notes: Optional[str] = None
+
+
+class ContactPipelineCreate(BaseModel):
+    """Quick-add of a contact to the pipeline as a draft application card."""
+
+    loan_type: LoanType
+    amount: Decimal = Field(..., ge=0)
+    # Form sub-type (car, refinance, new_fit_out, …) with its display label —
+    # stored in lend_extra_data so the card resolves to the right loan category.
+    sub_type: Optional[str] = None
+    sub_type_label: Optional[str] = None
+    notes: Optional[str] = None
+    # Placement. Omit both to use the tenant's default board and its first column.
+    board_id: Optional[str] = None
+    column_id: Optional[str] = None
 
 
 class ContactOrganizationLink(BaseModel):

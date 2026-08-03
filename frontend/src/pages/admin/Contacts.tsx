@@ -6,9 +6,10 @@ import { useToast } from '../../components/Toast';
 import DuplicateReviewModal from '../../components/DuplicateReviewModal';
 import { DuplicateWarning } from '../../components/DuplicateWarning';
 import { useContactDuplicateCheck } from '../../hooks/useDuplicateCheck';
-import { GlassCard, PageHeader, Button, Badge, Input, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
+import { LOAN_CATEGORIES, findLoanSubType, subTypeToLoanType } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
-import type { Contact, PaginatedResponse } from '../../types';
+import type { Contact, KanbanBoard, KanbanBoardListItem, PaginatedResponse } from '../../types';
 
 interface NewContactForm {
   first_name: string;
@@ -25,6 +26,15 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const firstRef = useRef<HTMLInputElement>(null);
   const possibleDuplicates = useContactDuplicateCheck(form);
 
+  // Pipeline quick-add: creates a draft application card for the new contact.
+  const [addToPipeline, setAddToPipeline] = useState(false);
+  const [subType, setSubType] = useState('');
+  const [amount, setAmount] = useState('');
+  const [boards, setBoards] = useState<KanbanBoardListItem[]>([]);
+  const [boardId, setBoardId] = useState('');
+  const [columns, setColumns] = useState<KanbanBoard['columns']>([]);
+  const [columnId, setColumnId] = useState('');
+
   useEffect(() => {
     firstRef.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -32,19 +42,68 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Boards are only needed once the tick is on — load them lazily, then select
+  // the default board (or the first one) so the card has a landing place.
+  useEffect(() => {
+    if (!addToPipeline || boards.length) return;
+    let cancelled = false;
+    api.get<KanbanBoardListItem[]>('/kanban/boards')
+      .then(({ data }) => {
+        if (cancelled) return;
+        setBoards(data);
+        setBoardId(prev => prev || data.find(b => b.is_default)?.id || data[0]?.id || '');
+      })
+      .catch(() => { if (!cancelled) toast('Failed to load boards', 'error'); });
+    return () => { cancelled = true; };
+  }, [addToPipeline, boards.length, toast]);
+
+  // Columns of the selected board; the first (leftmost) stage is the default.
+  useEffect(() => {
+    if (!boardId) { setColumns([]); setColumnId(''); return; }
+    let cancelled = false;
+    api.get<KanbanBoard>(`/kanban/boards/${boardId}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setColumns(data.columns);
+        setColumnId(data.columns[0]?.id || '');
+      })
+      .catch(() => { if (!cancelled) { setColumns([]); setColumnId(''); } });
+    return () => { cancelled = true; };
+  }, [boardId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.first_name.trim() || !form.last_name.trim()) return;
+    if (addToPipeline && !subType) { toast('Choose a loan type for the pipeline card', 'error'); return; }
     setSaving(true);
     try {
-      await api.post('/contacts', {
+      const { data: contact } = await api.post<Contact>('/contacts', {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         date_of_birth: form.date_of_birth.trim() || undefined,
       });
-      toast('Contact created', 'success');
+      if (!addToPipeline) {
+        toast('Contact created', 'success');
+        onCreated();
+        return;
+      }
+      // The contact already exists at this point — a failure here must not read
+      // as a failed creation.
+      try {
+        await api.post(`/contacts/${contact.id}/pipeline`, {
+          loan_type: subTypeToLoanType(subType),
+          amount: parseFloat(amount) || 0,
+          sub_type: subType,
+          sub_type_label: findLoanSubType(subType)?.label ?? null,
+          board_id: boardId || null,
+          column_id: columnId || null,
+        });
+        toast('Contact created and added to the pipeline', 'success');
+      } catch {
+        toast('Contact created, but adding it to the pipeline failed', 'error');
+      }
       onCreated();
     } catch {
       toast('Failed to create contact', 'error');
@@ -97,6 +156,60 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
             />
           </div>
           <DuplicateWarning matches={possibleDuplicates} />
+
+          <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-border p-3 hover:bg-secondary/30 transition-colors">
+            <input
+              type="checkbox"
+              checked={addToPipeline}
+              onChange={e => setAddToPipeline(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+            />
+            <span>
+              <span className="block text-sm font-medium text-foreground">Add to pipeline</span>
+              <span className="block text-xs text-muted-foreground">
+                Creates a draft application card on the board. No client account is created and no email is sent.
+              </span>
+            </span>
+          </label>
+
+          {addToPipeline && (
+            <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-3">
+              <Select label="Loan Type *" value={subType} onChange={e => setSubType(e.target.value)}>
+                <option value="">Select a loan type…</option>
+                {LOAN_CATEGORIES.map(cat => (
+                  <optgroup key={cat.value} label={cat.label}>
+                    {cat.types.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </optgroup>
+                ))}
+              </Select>
+              <Input
+                label="Amount"
+                type="number"
+                min="0"
+                step="any"
+                placeholder="0"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+              />
+              {boards.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Select label="Board" value={boardId} onChange={e => setBoardId(e.target.value)}>
+                    {boards.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}{b.is_default ? ' (default)' : ''}</option>
+                    ))}
+                  </Select>
+                  <Select label="Stage" value={columnId} onChange={e => setColumnId(e.target.value)} disabled={!columns.length}>
+                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  </Select>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No boards yet — the card will appear on the first board you create.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="submit" variant="primary" size="md" loading={saving}>Create Contact</Button>

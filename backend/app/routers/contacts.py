@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
@@ -10,9 +11,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.lending_history_entry import LendingHistoryEntry, RepaymentFrequency
-from app.models.loan_application import LoanApplication
-from app.models.user import User
+from app.models.loan_application import ApplicationStatus, LoanApplication
+from app.models.user import User, UserRole
 from app.schemas.contact import (
     ContactCreate,
     ContactDetailOut,
@@ -20,6 +22,7 @@ from app.schemas.contact import (
     ContactMergeRequest,
     ContactOrganizationLink,
     ContactOut,
+    ContactPipelineCreate,
     ContactUpdate,
     PaginatedContacts,
 )
@@ -34,8 +37,11 @@ from app.services.dedupe import (
     match_candidate_contacts,
     merge_contacts,
 )
+from app.services.activity_log import log_activity
+from app.services.loan_category import CONSUMER_SUB_TYPES
 from app.services.scoring import score, tokenize
 from app.services.search_cache import get_searchable_contacts
+from app.services.serialization import app_with_user
 from app.services.tenant_scope import get_tenant_id
 
 _logger = logging.getLogger(__name__)
@@ -173,6 +179,102 @@ def create_contact(
     db.commit()
     db.refresh(contact)
     return _contact_with_count(contact, db)
+
+
+def _resolve_pipeline_column(
+    board_id: Optional[str], column_id: Optional[str], tenant_id: str, db: Session
+) -> Optional[KanbanColumn]:
+    """The column a new pipeline card lands in, or None when no board exists yet.
+
+    Falls back to the tenant's default board (then its oldest board) and that
+    board's first column. A card with no column still shows on a board via the
+    status → column mapping in the kanban router.
+    """
+    boards = db.query(KanbanBoard).filter(KanbanBoard.tenant_id == tenant_id)
+    if board_id:
+        board = boards.filter(KanbanBoard.id == board_id).first()
+        if not board:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    else:
+        board = (
+            boards.filter(KanbanBoard.is_default.is_(True)).first()
+            or boards.order_by(KanbanBoard.created_at).first()
+        )
+    if not board:
+        return None
+
+    if column_id:
+        column = next((c for c in board.columns if c.id == column_id), None)
+        if not column:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found on that board")
+        return column
+    return board.columns[0] if board.columns else None  # relationship is ordered by position
+
+
+def _sub_type_extra_data(sub_type: Optional[str], label: Optional[str]) -> Optional[str]:
+    """lend_extra_data recording the form sub-type, so the card resolves to a
+    loan category. Mirrors buildLoanTypeDetails in frontend AddLead.tsx."""
+    if not sub_type:
+        return None
+    key = "consumer_loan_type" if sub_type in CONSUMER_SUB_TYPES else "commercial_loan_type"
+    return json.dumps({"loan_type_details": {key: {"type": sub_type, "label": label}}})
+
+
+@router.post("/{contact_id}/pipeline", status_code=status.HTTP_201_CREATED)
+def add_contact_to_pipeline(
+    contact_id: str,
+    data: ContactPipelineCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Create a draft pipeline card (loan application) for an existing contact.
+
+    Deliberately silent: unlike POST /api/applications, no client account is
+    created and no email is sent — the card is staff-owned, and the broker
+    invites the client later from the application itself. The contact's details
+    are copied onto the applicant fields so the card shows their name.
+    """
+    contact = _get_contact_in_tenant(contact_id, tenant_id, db)
+    column = _resolve_pipeline_column(data.board_id, data.column_id, tenant_id, db)
+
+    application = LoanApplication(
+        tenant_id=tenant_id,
+        user_id=current_user.id,
+        contact_id=contact.id,
+        loan_type=data.loan_type,
+        amount=data.amount,
+        status=ApplicationStatus.draft,
+        notes=data.notes,
+        kanban_column_id=column.id if column else None,
+        lend_extra_data=_sub_type_extra_data(data.sub_type, data.sub_type_label),
+        applicant_first_name=contact.first_name,
+        applicant_last_name=contact.last_name,
+        applicant_middle_name=contact.middle_name,
+        applicant_email=contact.email,
+        applicant_mobile=contact.phone,
+        applicant_dob=contact.date_of_birth,
+        applicant_address=contact.address,
+        applicant_suburb=contact.suburb,
+        applicant_state=contact.state,
+        applicant_postcode=contact.postcode,
+    )
+    if current_user.role == UserRole.broker:
+        application.assigned_broker_id = current_user.id
+    db.add(application)
+    db.flush()
+    log_activity(
+        db,
+        current_user.id,
+        "created",
+        "application",
+        application.id,
+        {"loan_type": data.loan_type.value, "amount": str(data.amount), "from_contact_id": contact.id},
+        tenant_id=tenant_id,
+    )
+    db.commit()
+    db.refresh(application)
+    return app_with_user(application, db)
 
 
 @router.get("/duplicates")
