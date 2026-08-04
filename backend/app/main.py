@@ -42,6 +42,7 @@ from app.models.application_calculator import ApplicationCalculator  # noqa: F40
 from app.models.client_message import ClientMessage  # noqa: F401 — ensure table is created
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
+from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
 from app.constants import DEFAULT_KANBAN_COLUMNS
 from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tenants, users
 
@@ -247,6 +248,12 @@ _MIGRATIONS = [
     ("loan_applications", "settled_at", "TIMESTAMP"),
     # Provenance for cloned applications (personal/company copied, loan re-entered)
     ("loan_applications", "cloned_from_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
+    # Trust entities: kind of trust + the "no ABN, checked with the accountant"
+    # acknowledgement a broker must give before a trust can be saved without one
+    ("organizations", "trust_type", "VARCHAR(30)"),
+    ("organizations", "no_abn_confirmed", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("organizations", "no_abn_confirmed_at", "TIMESTAMP"),
+    ("organizations", "no_abn_confirmed_by_id", "VARCHAR(36) REFERENCES users(id)"),
 ]
 
 _logger = logging.getLogger(__name__)

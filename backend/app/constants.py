@@ -21,6 +21,37 @@ ENTITY_TYPES: list[str] = [
     "sole_trader",
 ]
 
+# Kind of trust, captured on Organizations with entity_type == "trust".
+TRUST_TYPES: list[str] = [
+    "discretionary",
+    "unit",
+    "hybrid",
+    "smsf",
+    "testamentary",
+    "fixed",
+    "other",
+]
+
+# Roles a party can hold in a trust structure (see models/trust_party.py).
+TRUST_PARTY_ROLES: list[str] = [
+    "settlor",
+    "appointor",
+    "trustee",
+    "beneficiary",
+    "beneficial_owner",
+]
+
+# What a trust party *is*. A trustee may be an individual, a company or a
+# partnership (the latter two carry an ABN); beneficiaries may also be a class
+# ("the children of X"), captured as "other" with a free-text name.
+TRUST_PARTY_KINDS: list[str] = [
+    "individual",
+    "company",
+    "partnership",
+    "trust",
+    "other",
+]
+
 DEFAULT_KANBAN_COLUMNS = [
     {"title": "Draft", "mapped_status": "draft", "position": 0, "color": "muted-foreground"},
     {"title": "Application Received", "mapped_status": "application_received", "position": 1, "color": "primary"},

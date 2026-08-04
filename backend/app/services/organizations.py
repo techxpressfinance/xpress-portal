@@ -23,6 +23,11 @@ def find_or_create_organization_by_abn(
 ) -> Optional[Organization]:
     """Find an Organization by ABN within the tenant. Create a stub if missing.
 
+    With no ABN the name is the only handle there is — a trust may legitimately
+    have none — so an exact (case/whitespace-insensitive) name match is used
+    instead, otherwise every save of the same ABN-less borrower would strand
+    another stub company.
+
     Returns None if neither abn nor fallback_name is meaningful — caller should
     skip linkage in that case.
     """
@@ -36,12 +41,23 @@ def find_or_create_organization_by_abn(
         if existing:
             return existing
 
-    if not normalized and not fallback_name:
+    name = (fallback_name or "").strip()
+    if not normalized and not name:
         return None
+
+    if not normalized and name:
+        key = " ".join(name.lower().split())
+        for candidate in (
+            db.query(Organization)
+            .filter(Organization.tenant_id == tenant_id, Organization.abn.is_(None))
+            .all()
+        ):
+            if " ".join((candidate.name or "").lower().split()) == key:
+                return candidate
 
     org = Organization(
         tenant_id=tenant_id,
-        name=(fallback_name or "Unnamed Company").strip(),
+        name=name or "Unnamed Company",
         abn=normalized,
     )
     db.add(org)

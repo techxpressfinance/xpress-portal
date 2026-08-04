@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import { GlassCard, PageHeader, Button, Input, Select } from '../../components/ui';
+import { ENTITY_TYPES, TRUST_TYPES } from '../../lib/constants';
 import { getErrorMessage } from '../../lib/utils';
+import type { EntityType, Organization, TrustType } from '../../types';
 
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
 
@@ -15,15 +18,21 @@ const COMMERCIAL_TYPE_OPTIONS = [
 ] as const;
 
 /**
- * Entity-first commercial create: the broker/admin creates the company entity
+ * Entity-first commercial create: the broker/admin creates the borrowing entity
  * (no inline applicant), then adds directors/guarantors on the review page —
  * each is emailed a magic-link to self-complete their own block.
+ *
+ * A trust borrower is created as an Organization first (so entity/trust type and
+ * the no-ABN acknowledgement are recorded), then the application links back to
+ * it by ABN, or by name when the trust has none.
  */
 export default function CreateCommercialEntity() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const [businessName, setBusinessName] = useState('');
+  const [entityType, setEntityType] = useState<EntityType | ''>('');
+  const [trustType, setTrustType] = useState<TrustType | ''>('');
   const [abn, setAbn] = useState('');
   const [loanType, setLoanType] = useState<string>('business_loan');
   const [amount, setAmount] = useState('');
@@ -31,53 +40,110 @@ export default function CreateCommercialEntity() {
   const [numDirectors, setNumDirectors] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!businessName.trim()) { toast('Please enter the business name', 'error'); return; }
-    if (!abn.trim()) { toast('ABN is required for a commercial entity', 'error'); return; }
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      toast('Please enter a valid loan amount', 'error');
-      return;
-    }
+  const isTrust = entityType === 'trust';
 
+  const create = async (noAbnConfirmed: boolean) => {
     setSubmitting(true);
     try {
+      // Create/refresh the entity record first so the trust structure has
+      // somewhere to live before the application exists.
+      let org: Organization | null = null;
+      if (entityType) {
+        const { data } = await api.post<Organization>('/organizations', {
+          name: businessName.trim(),
+          entity_type: entityType,
+          trust_type: isTrust ? trustType || null : null,
+          abn: abn.trim() || null,
+          no_abn_confirmed: noAbnConfirmed,
+        });
+        org = data;
+      }
+
       const { data: app } = await api.post('/applications', {
         loan_type: loanType,
         amount: parseFloat(amount),
-        business_name: businessName.trim(),
-        business_abn: abn.trim(),
+        business_name: org?.name || businessName.trim(),
+        business_abn: abn.trim() || null,
         ...(termMonths.trim() && { loan_term_requested: parseInt(termMonths, 10) }),
         ...(numDirectors.trim() && { num_directors: parseInt(numDirectors, 10) }),
         ...(notes.trim() && { notes: notes.trim() }),
       });
-      toast('Commercial entity created — now add directors & guarantors', 'success');
+      toast(
+        isTrust
+          ? 'Trust created — capture its structure on the entity, then add directors & guarantors'
+          : 'Commercial entity created — now add directors & guarantors',
+        'success',
+      );
       navigate(`/admin/applications/${app.id}`);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to create entity'), 'error');
     } finally {
       setSubmitting(false);
+      setConfirmingNoAbn(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (!businessName.trim()) { toast('Please enter the entity name', 'error'); return; }
+    // A trust may legitimately have no ABN — every other structure must have one.
+    if (!abn.trim() && !isTrust) { toast('ABN is required for a commercial entity', 'error'); return; }
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      toast('Please enter a valid loan amount', 'error');
+      return;
+    }
+    if (isTrust && !abn.trim()) {
+      setConfirmingNoAbn(true);
+      return;
+    }
+    await create(false);
   };
 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="New Commercial Entity"
-        subtitle="Create the company, then invite directors and guarantors to complete their own details."
+        subtitle="Create the borrowing entity, then invite directors and guarantors to complete their own details."
       />
 
       <GlassCard padding="lg" className="mt-4">
         <div className="space-y-5">
           <Input
-            label="Business name"
+            label="Entity name"
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
-            placeholder="e.g. Acme Pty Ltd"
+            placeholder={isTrust ? 'e.g. Smith Family Trust' : 'e.g. Acme Pty Ltd'}
           />
 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Select
+              label="Entity type"
+              value={entityType}
+              onChange={(e) => { setEntityType(e.target.value as EntityType | ''); setTrustType(''); }}
+            >
+              <option value="">Not specified</option>
+              {ENTITY_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+
+            {isTrust && (
+              <Select
+                label="Trust type"
+                value={trustType}
+                onChange={(e) => setTrustType(e.target.value as TrustType | '')}
+              >
+                <option value="">Not specified</option>
+                {TRUST_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </Select>
+            )}
+          </div>
+
           <Input
-            label="ABN"
+            label={isTrust ? 'ABN (optional for a trust)' : 'ABN'}
             value={abn}
             onChange={(e) => setAbn(e.target.value)}
             placeholder="11 digit ABN"
@@ -149,6 +215,14 @@ export default function CreateCommercialEntity() {
           </div>
         </div>
       </GlassCard>
+
+      <TrustNoAbnDialog
+        open={confirmingNoAbn}
+        name={businessName}
+        loading={submitting}
+        onConfirm={() => create(true)}
+        onCancel={() => setConfirmingNoAbn(false)}
+      />
     </div>
   );
 }

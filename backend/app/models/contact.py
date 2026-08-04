@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -39,6 +39,15 @@ class Organization(Base):
     industry: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Trust-only (entity_type == "trust"). A trust may legitimately have no ABN,
+    # so the broker must tick the "checked with the accountant" acknowledgement
+    # instead — recorded here rather than only shown as a UI prompt.
+    trust_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # TRUST_TYPES
+    no_abn_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    no_abn_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    no_abn_confirmed_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -48,6 +57,14 @@ class Organization(Base):
     )
 
     contact_organizations = relationship("ContactOrganization", back_populates="organization", cascade="all, delete-orphan")
+    # Trust structure — only populated on entity_type == "trust" rows.
+    trust_parties = relationship(
+        "TrustParty",
+        back_populates="trust",
+        foreign_keys="TrustParty.organization_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class Contact(Base):

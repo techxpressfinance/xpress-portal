@@ -21,6 +21,7 @@ from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.lending_history_entry import LendingHistoryEntry
 from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
 from app.models.loan_application import LoanApplication
+from app.models.trust_party import TrustParty
 
 # --- Normalisation -----------------------------------------------------------
 
@@ -379,6 +380,7 @@ def merge_contacts(db: Session, primary: Contact, duplicates: list[Contact]) -> 
         (LoanApplicant, LoanApplicant.contact_id),
         (LendingHistoryEntry, LendingHistoryEntry.contact_id),
         (LendingHistoryEntry, LendingHistoryEntry.guaranteed_by_contact_id),
+        (TrustParty, TrustParty.contact_id),
     ):
         db.query(model).filter(column.in_(dup_ids)).update(
             {column.key: primary.id}, synchronize_session="fetch"
@@ -404,7 +406,7 @@ def merge_organizations(db: Session, primary: Organization, duplicates: list[Org
 
     Caller commits.
     """
-    _fill_missing(primary, duplicates, ("industry", "address"))
+    _fill_missing(primary, duplicates, ("industry", "address", "entity_type", "trust_type"))
     _merge_notes(primary, duplicates)
 
     # ABN moves last: uq_org_abn_tenant means the duplicate must release the
@@ -424,6 +426,21 @@ def merge_organizations(db: Session, primary: Organization, duplicates: list[Org
     db.query(ApplicationGuarantor).filter(ApplicationGuarantor.organization_id.in_(dup_ids)).update(
         {"organization_id": primary.id}, synchronize_session="fetch"
     )
+    # Trust structure: the duplicate's own parties come across, and any role it
+    # held in someone else's trust now points at the primary.
+    db.query(TrustParty).filter(TrustParty.organization_id.in_(dup_ids)).update(
+        {"organization_id": primary.id}, synchronize_session="fetch"
+    )
+    db.query(TrustParty).filter(TrustParty.linked_organization_id.in_(dup_ids)).update(
+        {"linked_organization_id": primary.id}, synchronize_session="fetch"
+    )
+    # Repointing can leave the primary as a party of itself (it held a role in a
+    # duplicate's structure, or vice versa) — drop those rows.
+    for party in (
+        db.query(TrustParty).filter(TrustParty.organization_id == primary.id).all()
+    ):
+        if party.linked_organization_id == primary.id:
+            db.delete(party)
 
     primary_contact_ids = {
         link.contact_id

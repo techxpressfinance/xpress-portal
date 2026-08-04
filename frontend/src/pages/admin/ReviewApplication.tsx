@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import ApplicationCalculators from '../../components/ApplicationCalculators';
@@ -1912,6 +1912,18 @@ export default function ReviewApplication() {
                             <dt className="text-[12px] text-muted-foreground">Business Structure</dt>
                             <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_structure || '—'}</dd>
                           </div>
+                          {application.business_organization_id && (
+                            <div>
+                              <dt className="text-[12px] text-muted-foreground">Entity record</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium">
+                                {/* Trust structure (settlor, appointor, trustee, beneficiaries,
+                                    beneficial owners) is captured on the entity, not the loan. */}
+                                <Link to={`/admin/companies/${application.business_organization_id}`} className="text-primary hover:underline">
+                                  View entity &amp; trust structure
+                                </Link>
+                              </dd>
+                            </div>
+                          )}
                           <div>
                             <dt className="text-[12px] text-muted-foreground">GST Registered</dt>
                             <dd className="mt-0.5 text-[14px] font-medium text-foreground">

@@ -124,6 +124,9 @@ export interface LoanApplication {
   income_frequency: string | null;
   gross_income: number | null;
   trading_name: string | null;
+  /** Borrowing entity this application is linked to (resolved from the ABN, or
+   *  the name when the entity — e.g. a trust — has none). */
+  business_organization_id: string | null;
   business_structure: string | null;
   gst_registered: boolean | null;
   num_directors: number | null;
@@ -953,8 +956,37 @@ export interface Organization {
   industry: string | null;
   address: string | null;
   notes: string | null;
+  // Trust-only (entity_type === 'trust')
+  trust_type: TrustType | null;
+  no_abn_confirmed: boolean;
+  no_abn_confirmed_at: string | null;
   contact_count: number;
   application_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TrustType = 'discretionary' | 'unit' | 'hybrid' | 'smsf' | 'testamentary' | 'fixed' | 'other';
+
+export type TrustPartyRole = 'settlor' | 'appointor' | 'trustee' | 'beneficiary' | 'beneficial_owner';
+
+/** What a trust party is. Company/partnership parties carry an ABN; 'other'
+ *  covers a beneficiary class ("the children of X"). */
+export type TrustPartyKind = 'individual' | 'company' | 'partnership' | 'trust' | 'other';
+
+export interface TrustParty {
+  id: string;
+  organization_id: string;
+  role: TrustPartyRole;
+  party_kind: TrustPartyKind;
+  contact_id: string | null;
+  linked_organization_id: string | null;
+  /** Linked Contact/Organization name, falling back to the free-text `name`. */
+  display_name: string;
+  name: string | null;
+  abn: string | null;
+  ownership_percentage: number | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -980,6 +1012,7 @@ export interface OrganizationApplicationLite {
 export interface OrganizationDetail extends Organization {
   contacts: OrganizationContactLite[];
   applications: OrganizationApplicationLite[];
+  trust_parties: TrustParty[];
 }
 
 export interface ContactDetail extends Contact {

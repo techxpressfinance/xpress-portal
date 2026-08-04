@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,6 +12,7 @@ from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import LoanApplication
+from app.models.trust_party import TrustParty
 from app.models.user import User
 from app.schemas.organization import (
     OrganizationContactLink,
@@ -21,9 +23,12 @@ from app.schemas.organization import (
     OrganizationOut,
     OrganizationUpdate,
     PaginatedOrganizations,
+    TrustPartyCreate,
+    TrustPartyOut,
+    TrustPartyUpdate,
 )
 from app.config import ABR_ENABLED
-from app.constants import ENTITY_TYPES
+from app.constants import ENTITY_TYPES, TRUST_PARTY_ROLES
 from app.services.abr import lookup_abn as abr_lookup_abn
 from app.services.dedupe import (
     find_org_duplicates,
@@ -66,6 +71,9 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
         "industry": org.industry,
         "address": org.address,
         "notes": org.notes,
+        "trust_type": org.trust_type,
+        "no_abn_confirmed": org.no_abn_confirmed,
+        "no_abn_confirmed_at": org.no_abn_confirmed_at,
         "contact_count": contact_count,
         "application_count": application_count,
         "created_at": org.created_at,
@@ -78,6 +86,51 @@ def _get_org_in_tenant(org_id: str, tenant_id: str, db: Session) -> Organization
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
     return org
+
+
+NO_ABN_CONFIRM_DETAIL = (
+    "A trust without an ABN needs confirmation — check the structure with the client's "
+    "accountant, then resubmit with no_abn_confirmed set."
+)
+
+
+def _require_no_abn_confirmation(entity_type: Optional[str], abn: Optional[str], confirmed: bool) -> None:
+    """A trust may genuinely have no ABN, but the broker has to acknowledge it."""
+    if entity_type == "trust" and not abn and not confirmed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ABN_CONFIRM_DETAIL)
+
+
+def _party_display_name(party: TrustParty) -> str:
+    """Linked record's name wins; the free-text name is the fallback."""
+    if party.contact:
+        return f"{party.contact.first_name} {party.contact.last_name}".strip()
+    if party.linked_organization:
+        return party.linked_organization.name
+    return party.name or "Unnamed party"
+
+
+def _ordered_parties(parties: list[TrustParty]) -> list[TrustParty]:
+    """Group by role in the order the structure is presented, oldest first."""
+    order = {role: i for i, role in enumerate(TRUST_PARTY_ROLES)}
+    return sorted(parties, key=lambda p: (order.get(p.role, len(order)), p.created_at))
+
+
+def _trust_party_dict(party: TrustParty) -> dict:
+    return {
+        "id": party.id,
+        "organization_id": party.organization_id,
+        "role": party.role,
+        "party_kind": party.party_kind,
+        "contact_id": party.contact_id,
+        "linked_organization_id": party.linked_organization_id,
+        "display_name": _party_display_name(party),
+        "name": party.name,
+        "abn": party.abn or (party.linked_organization.abn if party.linked_organization else None),
+        "ownership_percentage": party.ownership_percentage,
+        "notes": party.notes,
+        "created_at": party.created_at,
+        "updated_at": party.updated_at,
+    }
 
 
 @router.get("", response_model=PaginatedOrganizations)
@@ -162,10 +215,11 @@ def lookup_by_abn(
 def create_organization(
     data: OrganizationCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     abn = _normalize_abn(data.abn)
+    _require_no_abn_confirmation(data.entity_type, abn, data.no_abn_confirmed)
     if abn:
         existing = (
             db.query(Organization)
@@ -178,6 +232,7 @@ def create_organization(
                 detail=f"A company with this ABN already exists: {existing.name}",
             )
 
+    confirmed_no_abn = data.entity_type == "trust" and not abn and data.no_abn_confirmed
     org = Organization(
         tenant_id=tenant_id,
         name=data.name.strip(),
@@ -186,6 +241,10 @@ def create_organization(
         industry=data.industry.strip() if data.industry else None,
         address=data.address.strip() if data.address else None,
         notes=data.notes,
+        trust_type=data.trust_type if data.entity_type == "trust" else None,
+        no_abn_confirmed=confirmed_no_abn,
+        no_abn_confirmed_at=datetime.now(timezone.utc) if confirmed_no_abn else None,
+        no_abn_confirmed_by_id=current_user.id if confirmed_no_abn else None,
     )
     db.add(org)
     db.commit()
@@ -366,6 +425,7 @@ def get_organization(
         **_org_with_counts(org, db),
         "contacts": contacts,
         "applications": applications,
+        "trust_parties": [_trust_party_dict(p) for p in _ordered_parties(org.trust_parties)],
     }
 
 
@@ -374,12 +434,26 @@ def update_organization(
     org_id: str,
     data: OrganizationUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     org = _get_org_in_tenant(org_id, tenant_id, db)
 
     payload = data.model_dump(exclude_unset=True)
+
+    # Re-check the no-ABN acknowledgement against the *resulting* entity, so it
+    # also fires when an existing company is retyped as a trust or loses its ABN.
+    entity_type = payload.get("entity_type", org.entity_type)
+    resulting_abn = _normalize_abn(payload["abn"]) if "abn" in payload else org.abn
+    confirmed = payload.get("no_abn_confirmed", org.no_abn_confirmed)
+    _require_no_abn_confirmation(entity_type, resulting_abn, bool(confirmed))
+    if payload.get("no_abn_confirmed") and not org.no_abn_confirmed:
+        org.no_abn_confirmed_at = datetime.now(timezone.utc)
+        org.no_abn_confirmed_by_id = current_user.id
+    if entity_type != "trust":
+        # Trust-only fields don't survive a change of legal structure.
+        payload["trust_type"] = None
+
     if "abn" in payload:
         new_abn = _normalize_abn(payload["abn"])
         if new_abn and new_abn != org.abn:
@@ -440,7 +514,13 @@ def delete_organization(
         )
         .scalar() or 0
     )
-    if linked_apps or linked_contacts or linked_guarantees:
+    # Named in another entity's trust structure (corporate trustee, beneficiary…).
+    linked_trust_roles = (
+        db.query(func.count(TrustParty.id))
+        .filter(TrustParty.linked_organization_id == org_id)
+        .scalar() or 0
+    )
+    if linked_apps or linked_contacts or linked_guarantees or linked_trust_roles:
         bits = []
         if linked_contacts:
             bits.append(f"{linked_contacts} contact{'s' if linked_contacts != 1 else ''}")
@@ -449,6 +529,10 @@ def delete_organization(
         if linked_guarantees:
             bits.append(
                 f"guarantor on {linked_guarantees} application{'s' if linked_guarantees != 1 else ''}"
+            )
+        if linked_trust_roles:
+            bits.append(
+                f"named in {linked_trust_roles} trust structure{'s' if linked_trust_roles != 1 else ''}"
             )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -512,6 +596,147 @@ def link_contact(
         "phone": contact.phone,
         "role": link.role,
     }
+
+
+# ---------------------------------------------------------------------------
+# Trust structure — parties of an entity_type == "trust" organization
+# ---------------------------------------------------------------------------
+
+
+def _resolve_party_links(
+    payload: dict, org: Organization, tenant_id: str, db: Session
+) -> None:
+    """Validate the party's linked records in place (tenant-scoped, mutually exclusive)."""
+    contact_id = payload.get("contact_id")
+    linked_org_id = payload.get("linked_organization_id")
+
+    if contact_id and linked_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A trust party links to either a contact or a company, not both",
+        )
+    if contact_id:
+        contact = db.query(Contact).filter(Contact.id == contact_id, Contact.tenant_id == tenant_id).first()
+        if not contact:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    if linked_org_id:
+        if linked_org_id == org.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A trust cannot be its own trustee or beneficiary",
+            )
+        _get_org_in_tenant(linked_org_id, tenant_id, db)
+    if "abn" in payload:
+        payload["abn"] = _normalize_abn(payload["abn"])
+    if "name" in payload and payload["name"]:
+        payload["name"] = payload["name"].strip() or None
+
+
+def _require_party_identity(
+    contact_id: Optional[str], linked_org_id: Optional[str], name: Optional[str]
+) -> None:
+    if not contact_id and not linked_org_id and not (name or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Link a contact or company, or enter a name for this trust party",
+        )
+
+
+def _get_trust_org(org_id: str, tenant_id: str, db: Session) -> Organization:
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    if org.entity_type != "trust":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Trust parties can only be recorded on an entity of type trust",
+        )
+    return org
+
+
+@router.get("/{org_id}/trust-parties", response_model=list[TrustPartyOut])
+def list_trust_parties(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    return [_trust_party_dict(p) for p in _ordered_parties(org.trust_parties)]
+
+
+@router.post("/{org_id}/trust-parties", response_model=TrustPartyOut, status_code=status.HTTP_201_CREATED)
+def add_trust_party(
+    org_id: str,
+    data: TrustPartyCreate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    org = _get_trust_org(org_id, tenant_id, db)
+
+    payload = data.model_dump()
+    _resolve_party_links(payload, org, tenant_id, db)
+    _require_party_identity(payload.get("contact_id"), payload.get("linked_organization_id"), payload.get("name"))
+
+    party = TrustParty(tenant_id=tenant_id, organization_id=org.id, **payload)
+    db.add(party)
+    db.commit()
+    db.refresh(party)
+    return _trust_party_dict(party)
+
+
+@router.patch("/{org_id}/trust-parties/{party_id}", response_model=TrustPartyOut)
+def update_trust_party(
+    org_id: str,
+    party_id: str,
+    data: TrustPartyUpdate,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    org = _get_trust_org(org_id, tenant_id, db)
+    party = (
+        db.query(TrustParty)
+        .filter(TrustParty.id == party_id, TrustParty.organization_id == org.id)
+        .first()
+    )
+    if not party:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trust party not found")
+
+    payload = data.model_dump(exclude_unset=True)
+    _resolve_party_links(payload, org, tenant_id, db)
+    # Switching to a linked record clears the other identity, so the resulting
+    # party is checked as a whole rather than field by field.
+    if payload.get("contact_id"):
+        payload["linked_organization_id"] = None
+    elif payload.get("linked_organization_id"):
+        payload["contact_id"] = None
+    for field, value in payload.items():
+        setattr(party, field, value)
+    _require_party_identity(party.contact_id, party.linked_organization_id, party.name)
+
+    db.commit()
+    db.refresh(party)
+    return _trust_party_dict(party)
+
+
+@router.delete("/{org_id}/trust-parties/{party_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_trust_party(
+    org_id: str,
+    party_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    party = (
+        db.query(TrustParty)
+        .filter(TrustParty.id == party_id, TrustParty.organization_id == org.id)
+        .first()
+    )
+    if not party:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trust party not found")
+    db.delete(party)
+    db.commit()
 
 
 @router.delete("/{org_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)

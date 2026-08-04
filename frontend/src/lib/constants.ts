@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnalysisStatus, ApplicationStatus, DocType, EntityType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, UserRole } from '../types';
+import type { AnalysisStatus, ApplicationStatus, DocType, EntityType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, TrustPartyKind, TrustPartyRole, TrustType, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
   draft: '',
@@ -325,6 +325,79 @@ export const ENTITY_TYPES: { value: EntityType; label: string; description: stri
   { value: 'partnership', label: 'Partnership', description: 'Two or more partners' },
   { value: 'sole_trader', label: 'Sole Trader', description: 'Individual trading under an ABN' },
 ];
+
+// Trust structure. Backend copies at backend/app/constants.py (TRUST_TYPES,
+// TRUST_PARTY_ROLES, TRUST_PARTY_KINDS) — keep in sync.
+export const TRUST_TYPES: { value: TrustType; label: string }[] = [
+  { value: 'discretionary', label: 'Discretionary (family)' },
+  { value: 'unit', label: 'Unit' },
+  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'smsf', label: 'SMSF' },
+  { value: 'testamentary', label: 'Testamentary' },
+  { value: 'fixed', label: 'Fixed' },
+  { value: 'other', label: 'Other' },
+];
+
+export const TRUST_PARTY_ROLES: {
+  value: TrustPartyRole;
+  label: string;
+  plural: string;
+  description: string;
+  className: string;
+}[] = [
+  {
+    value: 'settlor',
+    label: 'Settlor',
+    plural: 'Settlors',
+    description: 'Settled the trust with the initial sum — named on the deed.',
+    className: 'bg-chart-1/10 text-chart-1',
+  },
+  {
+    value: 'appointor',
+    label: 'Appointor',
+    plural: 'Appointors',
+    description: 'Can hire and fire the trustee — effective control of the trust.',
+    className: 'bg-chart-5/10 text-chart-5',
+  },
+  {
+    value: 'trustee',
+    label: 'Trustee',
+    plural: 'Trustees',
+    description: 'Holds the trust property and borrows on its behalf. An individual, company or partnership.',
+    className: 'bg-chart-2/10 text-chart-2',
+  },
+  {
+    value: 'beneficiary',
+    label: 'Beneficiary',
+    plural: 'Beneficiaries',
+    description: 'Entitled to benefit from the trust. May be a person, an entity or a class.',
+    className: 'bg-chart-4/10 text-chart-4',
+  },
+  {
+    value: 'beneficial_owner',
+    label: 'Beneficial owner',
+    plural: 'Beneficial owners',
+    description: 'Ultimately owns or controls 25%+ of the trust (AML/CTF).',
+    className: 'bg-chart-3/10 text-chart-3',
+  },
+];
+
+export const TRUST_PARTY_ROLE_CONFIG = Object.fromEntries(
+  TRUST_PARTY_ROLES.map(r => [r.value, r]),
+) as Record<TrustPartyRole, (typeof TRUST_PARTY_ROLES)[number]>;
+
+export const TRUST_PARTY_KINDS: { value: TrustPartyKind; label: string }[] = [
+  { value: 'individual', label: 'Individual' },
+  { value: 'company', label: 'Company' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'trust', label: 'Trust' },
+  { value: 'other', label: 'Other / class' },
+];
+
+/** Kinds that are an entity with an ABN — these link to an Organization
+ *  rather than a Contact. */
+export const isEntityPartyKind = (kind: TrustPartyKind): boolean =>
+  kind === 'company' || kind === 'partnership' || kind === 'trust';
 
 export const ENTITY_TYPE_CONFIG: Record<EntityType, { label: string; className: string }> = {
   trust: { label: 'Trust', className: 'bg-chart-4/10 text-chart-4' },

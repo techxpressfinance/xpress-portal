@@ -456,7 +456,11 @@ export default function AllApplications() {
                   const clientName = isDirectLead
                     ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
                     : app.user_name || '';
-                  const referrerName = isDirectLead ? app.user_name || null : null;
+                  // Referrer attribution is client-level: the API resolves it from the
+                  // owner's referral rows, so it is present on referred clients' apps too.
+                  const referrerName = app.referrer?.organization_name
+                    || app.referrer?.full_name
+                    || (app.user_role === 'referrer' ? app.user_name || null : null);
                   const subtitle = isDirectLead ? null : (app.user_email || '');
 
                   return (

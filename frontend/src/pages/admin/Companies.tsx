@@ -6,29 +6,36 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import DuplicateReviewModal from '../../components/DuplicateReviewModal';
 import { DuplicateWarning } from '../../components/DuplicateWarning';
+import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import { useOrganizationDuplicateCheck } from '../../hooks/useDuplicateCheck';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
+import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
-import type { Organization, PaginatedResponse } from '../../types';
+import type { EntityType, Organization, PaginatedResponse, TrustType } from '../../types';
 
 interface NewCompanyForm {
   name: string;
+  entity_type: EntityType | '';
+  trust_type: TrustType | '';
   abn: string;
   industry: string;
   address: string;
   notes: string;
 }
 
-const EMPTY: NewCompanyForm = { name: '', abn: '', industry: '', address: '', notes: '' };
+const EMPTY: NewCompanyForm = { name: '', entity_type: '', trust_type: '', abn: '', industry: '', address: '', notes: '' };
 
 function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (company: Organization) => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<NewCompanyForm>(EMPTY);
+  const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
   const possibleDuplicates = useOrganizationDuplicateCheck(form);
+
+  const isTrust = form.entity_type === 'trust';
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -37,25 +44,38 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return;
+  const create = async (noAbnConfirmed: boolean) => {
     setSaving(true);
     try {
       const { data } = await api.post<Organization>('/organizations', {
         name: form.name.trim(),
+        entity_type: form.entity_type || null,
+        trust_type: isTrust ? form.trust_type || null : null,
         abn: form.abn.trim() || null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
         notes: form.notes.trim() || null,
+        no_abn_confirmed: noAbnConfirmed,
       });
-      toast('Company created', 'success');
+      toast(isTrust ? 'Trust created' : 'Company created', 'success');
       onCreated(data);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to create company'), 'error');
     } finally {
       setSaving(false);
+      setConfirmingNoAbn(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    // A trust may genuinely have no ABN — confirm rather than block.
+    if (isTrust && !form.abn.trim()) {
+      setConfirmingNoAbn(true);
+      return;
+    }
+    await create(false);
   };
 
   const field = (k: keyof NewCompanyForm) => ({
@@ -81,8 +101,10 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-[17px] font-semibold leading-tight text-foreground">New Company</h3>
-              <p className="text-[13px] text-muted-foreground">Add a business to your portfolio</p>
+              <h3 className="text-[17px] font-semibold leading-tight text-foreground">New {isTrust ? 'Trust' : 'Company'}</h3>
+              <p className="text-[13px] text-muted-foreground">
+                {isTrust ? 'Add a trust — capture its structure next' : 'Add a business to your portfolio'}
+              </p>
             </div>
           </div>
           <button
@@ -97,11 +119,35 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
-            <Input ref={nameRef} placeholder="Acme Pty Ltd" required {...field('name')} />
+            <Input ref={nameRef} placeholder={isTrust ? 'Smith Family Trust' : 'Acme Pty Ltd'} required {...field('name')} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ABN</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Entity type</label>
+              <Select
+                value={form.entity_type}
+                onChange={e => setForm(f => ({ ...f, entity_type: e.target.value as EntityType | '', trust_type: '' }))}
+              >
+                <option value="">Not specified</option>
+                {ENTITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
+            </div>
+            {isTrust && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Trust type</label>
+                <Select
+                  value={form.trust_type}
+                  onChange={e => setForm(f => ({ ...f, trust_type: e.target.value as TrustType | '' }))}
+                >
+                  <option value="">Not specified</option>
+                  {TRUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ABN{isTrust ? ' (optional for a trust)' : ''}</label>
               <Input placeholder="12 345 678 901" {...field('abn')} />
             </div>
             <div>
@@ -136,10 +182,18 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" variant="primary" size="md" loading={saving}>Create Company</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Create {isTrust ? 'Trust' : 'Company'}</Button>
           </div>
         </form>
       </div>
+
+      <TrustNoAbnDialog
+        open={confirmingNoAbn}
+        name={form.name}
+        loading={saving}
+        onConfirm={() => create(true)}
+        onCancel={() => setConfirmingNoAbn(false)}
+      />
     </div>,
     document.body,
   );
@@ -208,7 +262,7 @@ export default function Companies() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={8} widths={[160, 110, 100, 40, 40, 90]} />
+                <TableSkeleton rows={8} widths={[160, 90, 110, 100, 40, 40, 90]} />
               </tbody>
             </table>
           </div>
@@ -225,6 +279,7 @@ export default function Companies() {
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="pb-3 font-medium">Name</th>
+                    <th className="pb-3 font-medium">Type</th>
                     <th className="pb-3 font-medium">ABN</th>
                     <th className="pb-3 font-medium">Industry</th>
                     <th className="pb-3 font-medium">Contacts</th>
@@ -240,7 +295,14 @@ export default function Companies() {
                       onClick={() => navigate(`/admin/companies/${c.id}`)}
                     >
                       <td className="py-3 font-medium">{c.name}</td>
-                      <td className="py-3 text-muted-foreground">{c.abn || '—'}</td>
+                      <td className="py-3">
+                        {c.entity_type
+                          ? <Badge type="custom" value={ENTITY_TYPE_CONFIG[c.entity_type].label} className={ENTITY_TYPE_CONFIG[c.entity_type].className} />
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="py-3 text-muted-foreground">
+                        {c.abn || (c.entity_type === 'trust' && c.no_abn_confirmed ? 'No ABN (confirmed)' : '—')}
+                      </td>
                       <td className="py-3 text-muted-foreground">{c.industry || '—'}</td>
                       <td className="py-3">
                         <Badge type="custom" value={String(c.contact_count)} className="bg-chart-2/10 text-chart-2" />

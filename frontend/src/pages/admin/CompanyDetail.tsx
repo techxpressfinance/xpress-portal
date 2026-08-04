@@ -3,14 +3,18 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Badge, Input, Select, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
+import TrustStructureSection from '../../components/TrustStructureSection';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { LOAN_TYPE_LABELS } from '../../lib/constants';
+import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES } from '../../lib/constants';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
-import type { OrganizationDetail, OrganizationContactLite } from '../../types';
+import type { EntityType, OrganizationDetail, OrganizationContactLite, TrustType } from '../../types';
 
 interface EditForm {
   name: string;
+  entity_type: EntityType | '';
+  trust_type: TrustType | '';
   abn: string;
   industry: string;
   address: string;
@@ -24,8 +28,11 @@ function EditCompanyModal({ company, onClose, onSaved }: {
 }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
   const [form, setForm] = useState<EditForm>({
     name: company.name,
+    entity_type: company.entity_type ?? '',
+    trust_type: company.trust_type ?? '',
     abn: company.abn ?? '',
     industry: company.industry ?? '',
     address: company.address ?? '',
@@ -34,6 +41,8 @@ function EditCompanyModal({ company, onClose, onSaved }: {
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
 
+  const isTrust = form.entity_type === 'trust';
+
   useEffect(() => {
     nameRef.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -41,17 +50,18 @@ function EditCompanyModal({ company, onClose, onSaved }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return;
+  const save = async (noAbnConfirmed: boolean) => {
     setSaving(true);
     try {
       const { data } = await api.patch(`/organizations/${company.id}`, {
         name: form.name.trim(),
+        entity_type: form.entity_type || null,
+        trust_type: isTrust ? form.trust_type || null : null,
         abn: form.abn.trim() || null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
         notes: form.notes.trim() || null,
+        ...(noAbnConfirmed && { no_abn_confirmed: true }),
       });
       toast('Company updated', 'success');
       onSaved({ ...company, ...data });
@@ -59,7 +69,19 @@ function EditCompanyModal({ company, onClose, onSaved }: {
       toast(getErrorMessage(err, 'Failed to update company'), 'error');
     } finally {
       setSaving(false);
+      setConfirmingNoAbn(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    // Re-confirm whenever this save would leave a trust without an ABN.
+    if (isTrust && !form.abn.trim() && !company.no_abn_confirmed) {
+      setConfirmingNoAbn(true);
+      return;
+    }
+    await save(false);
   };
 
   const field = (k: keyof EditForm) => ({
@@ -72,7 +94,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
-        <h3 className="text-[17px] font-semibold text-foreground mb-4">Edit Company</h3>
+        <h3 className="text-[17px] font-semibold text-foreground mb-4">Edit {isTrust ? 'Trust' : 'Company'}</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
@@ -80,7 +102,28 @@ function EditCompanyModal({ company, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ABN</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Entity type</label>
+              <Select
+                value={form.entity_type}
+                onChange={e => setForm(f => ({ ...f, entity_type: e.target.value as EntityType | '', trust_type: e.target.value === 'trust' ? f.trust_type : '' }))}
+              >
+                <option value="">Not specified</option>
+                {ENTITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
+            </div>
+            {isTrust && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Trust type</label>
+                <Select value={form.trust_type} onChange={e => setForm(f => ({ ...f, trust_type: e.target.value as TrustType | '' }))}>
+                  <option value="">Not specified</option>
+                  {TRUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ABN{isTrust ? ' (optional for a trust)' : ''}</label>
               <Input placeholder="12 345 678 901" {...field('abn')} />
             </div>
             <div>
@@ -109,6 +152,14 @@ function EditCompanyModal({ company, onClose, onSaved }: {
           </div>
         </form>
       </div>
+
+      <TrustNoAbnDialog
+        open={confirmingNoAbn}
+        name={form.name}
+        loading={saving}
+        onConfirm={() => save(true)}
+        onCancel={() => setConfirmingNoAbn(false)}
+      />
     </div>,
     document.body,
   );
@@ -281,6 +332,7 @@ export default function CompanyDetail() {
   if (!company) return <p className="text-center py-20 text-muted-foreground">Company not found.</p>;
 
   const excludeIds = new Set(company.contacts.map(c => c.id));
+  const isTrust = company.entity_type === 'trust';
 
   return (
     <div className="space-y-6">
@@ -290,7 +342,13 @@ export default function CompanyDetail() {
       ]} />
       <PageHeader
         title={company.name}
-        subtitle={company.abn ? `ABN ${company.abn}` : 'Company'}
+        subtitle={
+          company.abn
+            ? `ABN ${company.abn}`
+            : isTrust
+              ? (company.no_abn_confirmed ? 'Trust · no ABN (confirmed with accountant)' : 'Trust · no ABN on file')
+              : 'Company'
+        }
         action={
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={() => setEditing(true)}>Edit</Button>
@@ -301,10 +359,34 @@ export default function CompanyDetail() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <GlassCard>
-          <h3 className="text-lg font-semibold mb-4">Company Information</h3>
+          <h3 className="text-lg font-semibold mb-4">{isTrust ? 'Trust' : 'Company'} Information</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between"><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{company.name}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">ABN</dt><dd>{company.abn || '—'}</dd></div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Entity type</dt>
+              <dd>
+                {company.entity_type
+                  ? <Badge type="custom" value={ENTITY_TYPE_CONFIG[company.entity_type].label} className={ENTITY_TYPE_CONFIG[company.entity_type].className} />
+                  : '—'}
+              </dd>
+            </div>
+            {isTrust && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Trust type</dt>
+                <dd>{TRUST_TYPES.find(t => t.value === company.trust_type)?.label || '—'}</dd>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">ABN</dt>
+              <dd className="text-right">
+                {company.abn || '—'}
+                {!company.abn && isTrust && company.no_abn_confirmed && (
+                  <div className="text-[12px] text-muted-foreground">
+                    No ABN — confirmed with the accountant{company.no_abn_confirmed_at ? ` on ${formatDate(company.no_abn_confirmed_at)}` : ''}
+                  </div>
+                )}
+              </dd>
+            </div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Industry</dt><dd>{company.industry || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Address</dt><dd className="text-right">{company.address || '—'}</dd></div>
           </dl>
@@ -326,6 +408,14 @@ export default function CompanyDetail() {
           </dl>
         </GlassCard>
       </div>
+
+      {isTrust && (
+        <TrustStructureSection
+          organizationId={company.id}
+          parties={company.trust_parties || []}
+          onChange={(trust_parties) => setCompany(prev => prev ? { ...prev, trust_parties } : prev)}
+        />
+      )}
 
       {/* Linked contacts */}
       <GlassCard>

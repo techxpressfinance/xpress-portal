@@ -6,8 +6,9 @@ import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
-import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG } from '../../lib/constants';
-import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency } from '../../types';
+import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
+import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
+import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
   { value: 'weekly', label: 'Weekly', short: 'wk' },
@@ -328,8 +329,11 @@ function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
   const [results, setResults] = useState<EntityCandidate[]>([]);
   const [role, setRole] = useState('');
   const [picked, setPicked] = useState<EntityCandidate | null>(null);
-  const [form, setForm] = useState({ name: '', abn: '', industry: '', address: '' });
+  const [form, setForm] = useState<{ name: string; abn: string; industry: string; address: string; trust_type: TrustType | '' }>(
+    { name: '', abn: '', industry: '', address: '', trust_type: '' },
+  );
   const [saving, setSaving] = useState(false);
+  const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
 
   const typeLabel = entityType ? ENTITY_TYPE_CONFIG[entityType].label : 'Entity';
 
@@ -374,16 +378,23 @@ function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
     }
   };
 
-  const createAndLink = async () => {
+  const createAndLink = async (noAbnConfirmed = false) => {
     if (!form.name.trim() || !entityType) return;
+    // A trust may genuinely have no ABN — confirm before creating one without.
+    if (entityType === 'trust' && !form.abn.trim() && !noAbnConfirmed) {
+      setConfirmingNoAbn(true);
+      return;
+    }
     setSaving(true);
     try {
       const { data: org } = await api.post('/organizations', {
         name: form.name.trim(),
         entity_type: entityType,
+        trust_type: entityType === 'trust' ? form.trust_type || null : null,
         abn: form.abn.trim() || null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
+        no_abn_confirmed: noAbnConfirmed,
       });
       await api.post(`/contacts/${contactId}/organizations`, {
         organization_id: org.id,
@@ -402,6 +413,7 @@ function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
       toast(getErrorMessage(err, `Failed to create ${typeLabel.toLowerCase()}`), 'error');
     } finally {
       setSaving(false);
+      setConfirmingNoAbn(false);
     }
   };
 
@@ -524,6 +536,15 @@ function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
                 <Input placeholder="e.g. Construction" value={form.industry} onChange={e => setForm({ ...form, industry: e.target.value })} />
               </div>
             </div>
+            {entityType === 'trust' && (
+              <div>
+                <label className={LABEL}>Trust type (optional)</label>
+                <Select value={form.trust_type} onChange={e => setForm({ ...form, trust_type: e.target.value as TrustType | '' })}>
+                  <option value="">Not specified</option>
+                  {TRUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </Select>
+              </div>
+            )}
             <div>
               <label className={LABEL}>Address (optional)</label>
               <Input placeholder="Registered address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
@@ -534,13 +555,21 @@ function AddEntityModal({ contactId, excludeIds, onClose, onLinked }: {
             </div>
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-              <Button variant="primary" size="md" loading={saving} disabled={!form.name.trim()} onClick={createAndLink}>
+              <Button variant="primary" size="md" loading={saving} disabled={!form.name.trim()} onClick={() => createAndLink()}>
                 Create &amp; Link
               </Button>
             </div>
           </div>
         )}
       </div>
+
+      <TrustNoAbnDialog
+        open={confirmingNoAbn}
+        name={form.name}
+        loading={saving}
+        onConfirm={() => createAndLink(true)}
+        onCancel={() => setConfirmingNoAbn(false)}
+      />
     </div>,
     document.body,
   );
