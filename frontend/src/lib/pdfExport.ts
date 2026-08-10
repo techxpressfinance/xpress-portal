@@ -1,6 +1,89 @@
 import html2pdf from 'html2pdf.js';
 
 /**
+ * html2pdf.js ships its own `declare module` (node_modules/html2pdf.js/type.d.ts)
+ * which wins over src/types/html2pdf.d.ts — and its options type omits
+ * `pagebreak`, a real option both exports here depend on. Resolve the worker
+ * through this structural type so call sites stay checked without `any`.
+ */
+type PdfWorker = {
+  set(options: Record<string, unknown>): PdfWorker;
+  from(element: HTMLElement): PdfWorker;
+  save(): Promise<void>;
+};
+
+/** The module ships both a CJS default and a callable namespace depending on
+ *  the bundler — accept either. */
+function pdfWorker(): PdfWorker {
+  const factory =
+    typeof html2pdf === 'function'
+      ? html2pdf
+      : (html2pdf as unknown as { default: unknown }).default;
+  return (factory as () => PdfWorker)();
+}
+
+/**
+ * html2canvas (used by html2pdf) crashes on modern CSS colors like oklab/oklch,
+ * which Tailwind 4 emits throughout. Neutralise them on the clone before the
+ * PDF engine parses it.
+ */
+function stripModernColors(root: HTMLElement): void {
+  const elements = [root, ...Array.from(root.querySelectorAll('*'))] as HTMLElement[];
+  elements.forEach((element) => {
+    const computed = window.getComputedStyle(element);
+    const propsToOverride: { name: string; isShadow: boolean }[] = [];
+    for (let i = 0; i < computed.length; i++) {
+      const propName = computed[i];
+      const val = computed.getPropertyValue(propName);
+      if (val && (val.includes('oklab') || val.includes('oklch'))) {
+        propsToOverride.push({ name: propName, isShadow: propName.includes('shadow') });
+      }
+    }
+    propsToOverride.forEach(({ name, isShadow }) => {
+      element.style.setProperty(name, isShadow ? 'none' : 'rgba(0, 0, 0, 0)', 'important');
+    });
+  });
+}
+
+/**
+ * Render an arbitrary DOM element to an A4 PDF. Used by report exports (e.g.
+ * the arrears book), where the printable markup is a plain table rather than
+ * the styled quote sheet below.
+ */
+export async function downloadElementPdf(
+  elementId: string,
+  filename: string,
+  orientation: 'portrait' | 'landscape' = 'portrait',
+): Promise<void> {
+  const el = document.getElementById(elementId);
+  if (!el) {
+    console.error(`PDF export: element #${elementId} not found`);
+    return;
+  }
+
+  const clone = el.cloneNode(true) as HTMLElement;
+  (el.parentElement ?? document.body).appendChild(clone);
+  try {
+    stripModernColors(clone);
+    await pdfWorker()
+      .set({
+        margin: [10, 8, 10, 8],
+        filename,
+        // Only blocks explicitly marked .break-inside-avoid are protected — see
+        // the note in downloadQuoteSheetPdf on why 'avoid-all' leaves blank gaps.
+        pagebreak: { mode: ['css', 'legacy'], avoid: '.break-inside-avoid' },
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation },
+      })
+      .from(clone)
+      .save();
+  } finally {
+    (el.parentElement ?? document.body).removeChild(clone);
+  }
+}
+
+/**
  * Download a quote sheet as a landscape A4 PDF.
  * Captures the DOM element by its ID and renders it at 2x scale for crisp output.
  */

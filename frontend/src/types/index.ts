@@ -935,6 +935,102 @@ export interface LendingHistoryEntry {
   updated_at: string;
 }
 
+/** Ageing bands, plus the manual `delinquent` flag which overrides whichever
+ *  band a contract's day count falls in. Mirrors ARREARS_BUCKETS in
+ *  backend/app/services/arrears.py — keep both in sync. */
+export type ArrearsBucket =
+  | '0_29' | '30_59' | '60_89' | '90_119' | '120_180' | 'over_180' | 'delinquent';
+
+export type ArrearsFileType = LoanCategory | 'other';
+
+export type ArrearsRepaymentFrequency = RepaymentFrequency | 'quarterly';
+
+export type ArrearsAttachmentKind = 'file' | 'screenshot' | 'email';
+
+export interface ArrearsAttachment {
+  id: string;
+  kind: ArrearsAttachmentKind;
+  original_filename: string;
+  email_from: string | null;
+  email_to: string | null;
+  email_subject: string | null;
+  email_body: string | null;
+  email_sent_at: string | null;
+  uploaded_by_name: string | null;
+  uploaded_at: string;
+}
+
+export interface ArrearsEvent {
+  id: string;
+  event_type: string;
+  detail: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface ArrearsRecord {
+  id: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  organization_id: string | null;
+  organization_name: string | null;
+  application_id: string | null;
+  lender_id: string | null;
+  lender_name: string;
+  contract_number: string | null;
+  asset_details: string | null;
+  file_type: ArrearsFileType;
+  repayment_amount: number | null;
+  repayment_frequency: ArrearsRepaymentFrequency | null;
+  arrears_amount: number | null;
+  in_arrears_since: string;
+  /** Derived server-side from in_arrears_since — never stored, never stale. */
+  days_in_arrears: number;
+  bucket: ArrearsBucket;
+  resolved: boolean;
+  resolved_at: string | null;
+  proof_of_payment_received: boolean;
+  proof_received_at: string | null;
+  delinquent: boolean;
+  delinquent_at: string | null;
+  delinquent_reason: string | null;
+  notes: string | null;
+  attachment_count: number;
+  email_count: number;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArrearsRecordDetail extends ArrearsRecord {
+  attachments: ArrearsAttachment[];
+  events: ArrearsEvent[];
+}
+
+export interface ArrearsBucketCount {
+  bucket: ArrearsBucket;
+  count: number;
+  total_arrears: number;
+  total_repayment: number;
+}
+
+export interface ArrearsMonthSummary {
+  month: string;
+  count: number;
+  total_arrears: number;
+  buckets: ArrearsBucketCount[];
+}
+
+export interface ArrearsSummary {
+  as_of: string;
+  total_count: number;
+  total_arrears: number;
+  resolved_count: number;
+  unresolved_count: number;
+  buckets: ArrearsBucketCount[];
+  months: ArrearsMonthSummary[];
+}
+
 export interface AbrRecord {
   abn: string;
   name: string;

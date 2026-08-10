@@ -43,8 +43,14 @@ from app.models.client_message import ClientMessage  # noqa: F401 — ensure tab
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
 from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
+from app.models.arrears import (  # noqa: F401 — ensure tables are created
+    ArrearsAttachment,
+    ArrearsEvent,
+    ArrearsRecord,
+    ArrearsSnapshot,
+)
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -752,6 +758,7 @@ app.include_router(contacts.router)
 app.include_router(organizations.router)
 app.include_router(service_requests.router)
 app.include_router(application_calculators.router)
+app.include_router(arrears.router)
 app.include_router(public_apply.router)
 
 
@@ -770,6 +777,7 @@ from app.services.service_request_reminders import (  # noqa: E402
     process_due_reminders,
     process_task_due_reminders,
 )
+from app.services.arrears import capture_completed_months  # noqa: E402
 from app.services.settled_deal_archiving import archive_settled_deals  # noqa: E402
 
 _scheduler = None
@@ -800,6 +808,17 @@ if SCHEDULER_ENABLED and not _RUNNING_TESTS:
         "interval",
         minutes=REMINDER_POLL_MINUTES,
         id="archive_settled_deals",
+        coalesce=True,
+        max_instances=1,
+    )
+    # Freezes the arrears book at each month end. Runs on the same short
+    # interval so a server that was down over a month boundary back-fills the
+    # months it missed instead of losing them.
+    _scheduler.add_job(
+        capture_completed_months,
+        "interval",
+        minutes=REMINDER_POLL_MINUTES,
+        id="arrears_month_snapshots",
         coalesce=True,
         max_instances=1,
     )

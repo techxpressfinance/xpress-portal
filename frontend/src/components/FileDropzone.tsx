@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-const MAX_SIZE = 10 * 1024 * 1024;
+const DEFAULT_MAX_MB = 10;
 
 /** Clipboard image mime → extension the backend attachment validator accepts. */
 const PASTE_EXTENSIONS: Record<string, string> = {
@@ -28,6 +28,11 @@ interface Props {
   onError?: (msg: string) => void;
   accept?: string;
   hint?: string;
+  /** Client-side size cap. Raise it where the server allows larger uploads
+   *  (dropped emails are capped at 15 MB, not 10). */
+  maxSizeMb?: number;
+  /** Replaces the default "Drop a file…" copy — e.g. to mention dropped emails. */
+  prompt?: string;
 }
 
 /** Generic drag-and-drop / paste / click-to-browse file upload zone (screenshots, PDFs, etc). */
@@ -37,13 +42,15 @@ export default function FileDropzone({
   onError,
   accept = '.pdf,.jpg,.jpeg,.png',
   hint = 'PDF, JPG, PNG — up to 10 MB',
+  maxSizeMb = DEFAULT_MAX_MB,
+  prompt,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFile = (file: File) => {
-    if (file.size > MAX_SIZE) {
-      onError?.('File size exceeds 10MB limit');
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      onError?.(`File size exceeds ${maxSizeMb}MB limit`);
       return;
     }
     onFile(file);
@@ -136,7 +143,7 @@ export default function FileDropzone({
               {isDragOver ? 'Drop to upload' : (
                 <>
                   <span className="sm:hidden">Tap to upload a file</span>
-                  <span className="hidden sm:inline">Drop a file, click to browse, or paste a screenshot</span>
+                  <span className="hidden sm:inline">{prompt ?? 'Drop a file, click to browse, or paste a screenshot'}</span>
                 </>
               )}
             </p>

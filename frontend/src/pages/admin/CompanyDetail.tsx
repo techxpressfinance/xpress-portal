@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { GlassCard, PageHeader, Button, Badge, Input, Select, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
+import ArrearsSection from '../../components/arrears/ArrearsSection';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES } from '../../lib/constants';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
@@ -514,6 +515,8 @@ export default function CompanyDetail() {
           </div>
         )}
       </GlassCard>
+
+      <ArrearsSection organization={{ id: company.id, name: company.name }} />
 
       {editing && (
         <EditCompanyModal

@@ -25,6 +25,7 @@ const ReferrerManagement = lazy(() => import('./pages/admin/ReferrerManagement')
 const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderDetail = lazy(() => import('./pages/admin/LenderDetail'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
+const ArrearsBook = lazy(() => import('./pages/admin/ArrearsBook'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
 const Contacts = lazy(() => import('./pages/admin/Contacts'));
@@ -265,6 +266,16 @@ export default function App() {
               <Route path="/admin/lender-analytics" element={<Navigate to="/admin/analytics?tab=lender" replace />} />
               <Route path="/admin/broker-analytics" element={<Navigate to="/admin/analytics?tab=broker" replace />} />
               <Route path="/admin/settled-deals" element={<Navigate to="/admin/analytics?tab=settled" replace />} />
+              <Route
+                path="/admin/arrears"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <ArrearsBook />
+                  </ProtectedRoute>
+                }
+              />
+              {/* The arrears book shipped as an Analytics tab first — keep that link working. */}
+              <Route path="/admin/analytics/arrears" element={<Navigate to="/admin/arrears" replace />} />
               <Route
                 path="/admin/lenders"
                 element={

@@ -7,6 +7,7 @@ import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DateP
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
+import ArrearsSection from '../../components/arrears/ArrearsSection';
 import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
@@ -1153,6 +1154,8 @@ export default function ContactDetail() {
           )}
         </div>
       </GlassCard>
+
+      <ArrearsSection contact={{ id: contact.id, name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') }} />
 
       {editing && (
         <EditContactModal
