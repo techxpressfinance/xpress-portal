@@ -14,7 +14,6 @@ from app.models.task import Task, TaskStatus
 from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.lender import Lender
 from app.models.referral import Referral
-from app.services.access_control import broker_application_filter
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -29,11 +28,8 @@ def get_dashboard_stats(
     now = datetime.now(timezone.utc)
 
     def scoped(q):
-        q = q.filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
-        if current_user.role == UserRole.broker:
-            # Same scope as the applications list, so dashboard counts match it.
-            return q.filter(broker_application_filter(db, current_user.id, tenant_id))
-        return q
+        # Admin and broker both see the whole tenant, matching the applications list.
+        return q.filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     # ── Counts & volume by status ──
     status_rows = scoped(

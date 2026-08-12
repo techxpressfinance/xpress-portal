@@ -13,8 +13,7 @@ from app.middleware.auth import require_role
 from app.models.contact import Organization
 from app.models.document import Document
 from app.models.loan_application import LoanApplication
-from app.models.user import User, UserRole
-from app.services.access_control import broker_application_filter
+from app.models.user import User
 from app.services.query_utils import active_user_clauses, escape_like
 from app.services.scoring import score as _score, tokenize as _tokenize
 from app.services.search_cache import get_searchable_applications, get_searchable_contacts
@@ -64,27 +63,12 @@ def global_search(
     tokens = _tokenize(q)
     candidate_limit = limit * CANDIDATE_MULTIPLIER
 
-    broker_app_ids = None
-    if current_user.role == UserRole.broker:
-        # Same scope as the applications list — assignment alone would hide
-        # drafts, referrer leads and unassigned apps from search only.
-        broker_app_ids = {
-            row[0]
-            for row in db.query(LoanApplication.id)
-            .filter(
-                LoanApplication.tenant_id == tenant_id,
-                broker_application_filter(db, current_user.id, tenant_id),
-            )
-            .all()
-        }
-
     # ── Applications ───────────────────────────────────────
     # Applicant name/email/mobile are encrypted at rest, so SQL LIKE can't see
     # them. Score decrypted values from the in-process search cache instead:
     # one (id, updated_at) sweep per query, decryption only for changed rows.
+    # Already tenant-scoped; admin and broker both search the whole tenant.
     app_fields = get_searchable_applications(db, tenant_id)
-    if broker_app_ids is not None:
-        app_fields = {aid: f for aid, f in app_fields.items() if aid in broker_app_ids}
 
     # Batch-load owner name/email for scoring and results
     users_map: dict[str, tuple[Optional[str], Optional[str]]] = {}
@@ -267,8 +251,6 @@ def global_search(
             )
         )
     )
-    if broker_app_ids is not None:
-        doc_query = doc_query.filter(Document.application_id.in_(broker_app_ids))
 
     docs = doc_query.order_by(Document.uploaded_at.desc()).limit(candidate_limit).all()
     scored_docs = sorted(
