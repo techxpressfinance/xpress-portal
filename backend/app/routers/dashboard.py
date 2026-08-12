@@ -3,18 +3,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, desc, or_
+from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
-from app.models.application_broker import ApplicationBroker
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.lender import Lender
 from app.models.referral import Referral
+from app.services.access_control import broker_application_filter
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -31,19 +31,8 @@ def get_dashboard_stats(
     def scoped(q):
         q = q.filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
         if current_user.role == UserRole.broker:
-            referrer_ids = db.query(User.id).filter(
-                User.role == UserRole.referrer, User.tenant_id == tenant_id
-            )
-            return q.filter(
-                or_(
-                    LoanApplication.id.in_(
-                        db.query(ApplicationBroker.application_id).filter(
-                            ApplicationBroker.broker_id == current_user.id
-                        )
-                    ),
-                    LoanApplication.user_id.in_(referrer_ids),
-                )
-            )
+            # Same scope as the applications list, so dashboard counts match it.
+            return q.filter(broker_application_filter(db, current_user.id, tenant_id))
         return q
 
     # ── Counts & volume by status ──

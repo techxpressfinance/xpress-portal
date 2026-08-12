@@ -41,7 +41,7 @@ SECTION_KEYS = (
 ALLOWED_SECTIONS = set(SECTION_KEYS)
 from app.constants import VALID_TRANSITIONS
 from app.services.query_utils import escape_like
-from app.services.access_control import check_application_access
+from app.services.access_control import broker_application_filter, check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.loan_category import category_filtered_ids, parse_categories
 from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
@@ -490,19 +490,7 @@ def list_applications(
             LoanApplication.hidden_from_client.is_(False),
         )
     elif current_user.role == UserRole.broker:
-        # Brokers see: applications assigned to them + referrer-submitted leads + their own created leads + all drafts (tenant-wide)
-        from sqlalchemy import or_
-        referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
-        query = query.filter(
-            or_(
-                LoanApplication.id.in_(
-                    db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
-                ),
-                LoanApplication.user_id.in_(referrer_ids),
-                LoanApplication.user_id == current_user.id,
-                LoanApplication.status == ApplicationStatus.draft,
-            )
-        )
+        query = query.filter(broker_application_filter(db, current_user.id, tenant_id))
     elif current_user.role == UserRole.referrer:
         # Referrers see: applications from clients they referred + leads they submitted directly
         referred_client_ids = (
@@ -568,16 +556,7 @@ def get_application_analytics(
             LoanApplication.hidden_from_client.is_(False),
         )
     elif current_user.role == UserRole.broker:
-        referrer_ids = db.query(User.id).filter(User.role == UserRole.referrer, User.tenant_id == tenant_id)
-        query = query.filter(
-            or_(
-                LoanApplication.id.in_(
-                    db.query(ApplicationBroker.application_id).filter(ApplicationBroker.broker_id == current_user.id)
-                ),
-                LoanApplication.user_id.in_(referrer_ids),
-                LoanApplication.status == ApplicationStatus.draft,
-            )
-        )
+        query = query.filter(broker_application_filter(db, current_user.id, tenant_id))
     elif current_user.role == UserRole.referrer:
         referred_client_ids = db.query(ExternalReferral.referred_client_id).filter(
             ExternalReferral.referrer_id == current_user.id,
