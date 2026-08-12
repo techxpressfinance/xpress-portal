@@ -45,6 +45,31 @@ export interface User {
   created_at: string;
 }
 
+/**
+ * Referrer billing details — everything needed to raise their monthly tax invoice.
+ * Bank fields are encrypted at rest and only ever served to the referrer themselves
+ * or to admins/brokers.
+ */
+export interface ReferrerBusinessProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  organization_name: string | null;
+  business_abn: string | null;
+  business_gst_registered: boolean | null;
+  business_director_name: string | null;
+  business_address: string | null;
+  bank_account_name: string | null;
+  bank_bsb: string | null;
+  bank_account_number: string | null;
+  business_logo_filename: string | null;
+  business_letterhead_filename: string | null;
+  business_details_updated_at: string | null;
+  /** Every invoice-critical field is present (logo/letterhead are optional). */
+  is_complete: boolean;
+}
+
 export interface TenantBranding {
   id: string;
   name: string;

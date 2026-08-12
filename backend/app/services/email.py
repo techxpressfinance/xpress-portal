@@ -325,12 +325,26 @@ def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_n
 
     role_label = {"broker": "broker", "referrer": "referrer", "admin": "administrator"}.get(role, "client")
     inviter_line = f"<strong>{_esc(inviter_name)}</strong> has invited you" if inviter_name else "You have been invited"
+    # Referrers are paid by monthly tax invoice, so flag the billing step up front.
+    next_step_text = (
+        "\nOnce you're in, you'll be asked for your business and bank details "
+        "(ABN, GST registration, and where to pay you) so we can raise your monthly tax invoice.\n"
+        if role == "referrer" else ""
+    )
+    next_step_html = (
+        '<p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">'
+        "Once you're in, we'll ask for your business and bank details (ABN, GST registration, and where to "
+        "pay you) so we can raise your monthly tax invoice."
+        "</p>"
+        if role == "referrer" else ""
+    )
     subject = "Set up your Xpress Finance account"
     body = (
         f"Dear {name},\n\n"
         f"{'%s has invited you' % inviter_name if inviter_name else 'You have been invited'} to join Xpress Finance Portal as a {role_label}.\n\n"
         f"Click the link below to set your password and access your account:\n\n"
-        f"{setup_url}\n\n"
+        f"{setup_url}\n"
+        f"{next_step_text}\n"
         f"This link expires in 48 hours.\n\n"
         f"Best regards,\nXpress Finance Team"
     )
@@ -340,6 +354,7 @@ def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_n
             {inviter_line} to join Xpress Finance Portal as a <strong>{_esc(role_label)}</strong>.
             Click the button below to set your password and access your account.
         </p>
+        {next_step_html}
         <div style="text-align: center; margin: 32px 0;">
             <a href="{_esc(setup_url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">Set Up My Account</a>
         </div>

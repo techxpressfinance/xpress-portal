@@ -43,6 +43,7 @@ const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/Applicatio
 const ReferrerMessages = lazy(() => import('./pages/referrer/Messages'));
 const ReferrerAddLead = lazy(() => import('./pages/referrer/AddLead'));
 const ReferrerServiceRequests = lazy(() => import('./pages/referrer/ServiceRequests'));
+const ReferrerBusinessDetails = lazy(() => import('./pages/referrer/BusinessDetails'));
 const ApplicationDetail = lazy(() => import('./pages/client/ApplicationDetail'));
 const Applications = lazy(() => import('./pages/client/Applications'));
 const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
@@ -473,6 +474,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['referrer']}>
                     <ReferrerServiceRequests />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/referrer/business-details"
+                element={
+                  <ProtectedRoute roles={['referrer']}>
+                    <ReferrerBusinessDetails />
                   </ProtectedRoute>
                 }
               />

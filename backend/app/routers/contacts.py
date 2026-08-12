@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
+from app.models.application_broker import ApplicationBroker
 from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.lending_history_entry import LendingHistoryEntry, RepaymentFrequency
@@ -263,6 +264,14 @@ def add_contact_to_pipeline(
         application.assigned_broker_id = current_user.id
     db.add(application)
     db.flush()
+    # Mirror the assignment into application_brokers — that table, not the legacy
+    # column, is what the broker-visibility filters read.
+    if application.assigned_broker_id:
+        db.add(ApplicationBroker(
+            application_id=application.id,
+            broker_id=application.assigned_broker_id,
+            tenant_id=tenant_id,
+        ))
     log_activity(
         db,
         current_user.id,

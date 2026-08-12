@@ -64,6 +64,24 @@ class User(Base):
     # Referrer-specific fields
     organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Referrer business & payment details — captured at account setup so the tenant
+    # can raise a monthly tax invoice on the referrer's behalf.
+    business_abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Tri-state: None = not yet answered, True/False = declared.
+    business_gst_registered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    business_director_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    business_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Bank details are financial PII — encrypted at rest like other sensitive columns.
+    bank_account_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    # Optional branding assets used on the generated invoice
+    business_logo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    business_logo_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    business_letterhead_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    business_letterhead_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    business_details_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Password reset
     password_reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     password_reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

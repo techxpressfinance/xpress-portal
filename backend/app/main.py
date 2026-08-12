@@ -118,6 +118,19 @@ _MIGRATIONS = [
     ("users", "specialties", "VARCHAR(100)"),
     # Referrer-specific fields
     ("users", "organization_name", "VARCHAR(255)"),
+    # Referrer business & payment details (monthly tax invoicing)
+    ("users", "business_abn", "VARCHAR(20)"),
+    ("users", "business_gst_registered", "BOOLEAN"),
+    ("users", "business_director_name", "VARCHAR(255)"),
+    ("users", "business_address", "VARCHAR(500)"),
+    ("users", "bank_account_name", "TEXT"),
+    ("users", "bank_bsb", "TEXT"),
+    ("users", "bank_account_number", "TEXT"),
+    ("users", "business_logo_path", "VARCHAR(500)"),
+    ("users", "business_logo_filename", "VARCHAR(255)"),
+    ("users", "business_letterhead_path", "VARCHAR(500)"),
+    ("users", "business_letterhead_filename", "VARCHAR(255)"),
+    ("users", "business_details_updated_at", "TIMESTAMP"),
     ("external_referrals", "client_engagement_model", "VARCHAR(20)"),
     # Token revocation timestamp (for bulk invalidation on password change)
     ("users", "tokens_revoked_at", "TIMESTAMP"),

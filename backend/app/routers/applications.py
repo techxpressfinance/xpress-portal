@@ -143,6 +143,15 @@ def create_application(
 
     db.add(app)
     db.flush()
+    # Every read path (list, access check, dashboard, search, kanban) scopes brokers
+    # by application_brokers, so the legacy column alone would hide this app from its
+    # own creator once it leaves draft.
+    if app.assigned_broker_id:
+        db.add(ApplicationBroker(
+            application_id=app.id,
+            broker_id=app.assigned_broker_id,
+            tenant_id=tenant_id,
+        ))
     log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
 
     # Commercial reconciliation: if another open application already exists for the

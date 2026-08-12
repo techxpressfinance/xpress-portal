@@ -128,7 +128,9 @@ export default function SetupAccount() {
     try {
       await setupAccount(token, password);
       setDone(true);
-      const redirectTarget = searchParams.get('redirect') || '/';
+      // New referrers go straight to their billing details — we can't invoice them without it.
+      const defaultTarget = tokenInfo?.role === 'referrer' ? '/referrer/business-details?welcome=1' : '/';
+      const redirectTarget = searchParams.get('redirect') || defaultTarget;
       setTimeout(() => navigate(redirectTarget), 1200);
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to set up account. The link may have expired.'));
@@ -169,6 +171,10 @@ export default function SetupAccount() {
             {[
               { n: '1', label: 'Set your password', done: passwordMet },
               { n: '2', label: 'Sign in automatically', done: done },
+              // Referrers finish by telling us how to invoice and pay them.
+              ...(tokenInfo?.role === 'referrer'
+                ? [{ n: '3', label: 'Add your business & payment details', done: false }]
+                : []),
             ].map(step => (
               <div key={step.n} className="flex items-center gap-3">
                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-all duration-300 ${step.done ? 'bg-success text-white' : 'bg-secondary border border-border text-muted-foreground'}`}>

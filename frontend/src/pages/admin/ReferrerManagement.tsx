@@ -4,7 +4,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
+import { GlassCard, StatCard, PageHeader, Button, Input, Select, InviteLinkBox } from '../../components/ui';
+import BusinessDetailsForm from '../../components/referrer/BusinessDetailsForm';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
@@ -77,14 +78,57 @@ function EditReferrerModal({ referrer, onClose, onSaved }: { referrer: User; onC
   );
 }
 
+/** Billing details for a referrer, edited in its own modal. */
+function BusinessDetailsModal({ referrer, onClose }: { referrer: User; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 py-10">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-3xl rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-[17px] font-semibold text-foreground">Business & Payment Details</h3>
+            <p className="text-[13px] text-muted-foreground">{referrer.full_name} — {referrer.email}</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <BusinessDetailsForm
+          basePath={`/external-referrers/${referrer.id}`}
+          contactNote="Email and phone are edited from the referrer's profile."
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 interface ReferrerForm {
   full_name: string;
   email: string;
   phone: string;
   organization_name: string;
+  business_abn: string;
+  /** '' (unanswered) | 'yes' | 'no' */
+  business_gst_registered: string;
+  business_director_name: string;
+  business_address: string;
+  bank_account_name: string;
+  bank_bsb: string;
+  bank_account_number: string;
 }
 
-const INITIAL_FORM: ReferrerForm = { full_name: '', email: '', phone: '', organization_name: '' };
+const INITIAL_FORM: ReferrerForm = {
+  full_name: '', email: '', phone: '', organization_name: '',
+  business_abn: '', business_gst_registered: '', business_director_name: '', business_address: '',
+  bank_account_name: '', bank_bsb: '', bank_account_number: '',
+};
+
+const onlyDigits = (v: string) => v.replace(/\D/g, '');
 
 type PendingAction =
   | { type: 'toggle_active'; userId: string; userName: string; isActive: boolean }
@@ -117,6 +161,7 @@ export default function ReferrerManagement() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
   const [editingReferrer, setEditingReferrer] = useState<User | null>(null);
+  const [billingReferrer, setBillingReferrer] = useState<User | null>(null);
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -147,6 +192,12 @@ export default function ReferrerManagement() {
     if (!form.full_name.trim()) errs.full_name = 'Full name is required';
     if (!form.email.trim()) errs.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Invalid email address';
+    const abn = onlyDigits(form.business_abn);
+    if (abn && abn.length !== 11) errs.business_abn = 'ABN must be 11 digits';
+    const bsb = onlyDigits(form.bank_bsb);
+    if (bsb && bsb.length !== 6) errs.bank_bsb = 'BSB must be 6 digits';
+    const acct = onlyDigits(form.bank_account_number);
+    if (acct && (acct.length < 4 || acct.length > 10)) errs.bank_account_number = 'Account number must be 4–10 digits';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -161,6 +212,14 @@ export default function ReferrerManagement() {
         email: form.email.trim().toLowerCase(),
         phone: form.phone.trim() || null,
         organization_name: form.organization_name.trim() || null,
+        // Anything left blank here, the referrer completes on their business-details page.
+        business_abn: onlyDigits(form.business_abn) || null,
+        business_gst_registered: form.business_gst_registered === '' ? null : form.business_gst_registered === 'yes',
+        business_director_name: form.business_director_name.trim() || null,
+        business_address: form.business_address.trim() || null,
+        bank_account_name: form.bank_account_name.trim() || null,
+        bank_bsb: onlyDigits(form.bank_bsb) || null,
+        bank_account_number: onlyDigits(form.bank_account_number) || null,
       });
       toast('Referrer created. Login credentials sent via email.', 'success');
       setInviteLink(data.invite_url || null);
@@ -255,6 +314,32 @@ export default function ReferrerManagement() {
               <Input label="Phone" type="tel" placeholder="+61 400 000 000" value={form.phone} onChange={e => update('phone', e.target.value)} />
               <Input label="Organization" placeholder="Company or institution name" value={form.organization_name} onChange={e => update('organization_name', e.target.value)} />
             </div>
+
+            {/* Invoicing details. Optional here — the referrer is prompted to complete
+                them the moment they set their password. */}
+            <div className="rounded-xl border border-border p-4">
+              <p className="text-[13px] font-semibold text-foreground">Business & payment details</p>
+              <p className="text-[12px] text-muted-foreground mb-4">
+                Needed to raise their monthly tax invoice. Fill in what you know — the referrer is asked
+                to complete the rest (including logo and letterhead) after setting their password.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input label="Business ABN" placeholder="11 222 333 444" inputMode="numeric" value={form.business_abn} onChange={e => update('business_abn', e.target.value)} error={errors.business_abn} />
+                <Select label="Registered for GST" value={form.business_gst_registered} onChange={e => update('business_gst_registered', e.target.value)}>
+                  <option value="">Select…</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </Select>
+                <Input label="Director's name" placeholder="Jane Smith" value={form.business_director_name} onChange={e => update('business_director_name', e.target.value)} />
+                <Input label="Business address" placeholder="12 Example St, Sydney NSW 2000" value={form.business_address} onChange={e => update('business_address', e.target.value)} />
+                <Input label="Bank account name" placeholder="Example Pty Ltd" value={form.bank_account_name} onChange={e => update('bank_account_name', e.target.value)} />
+                <div className="grid gap-4 grid-cols-2">
+                  <Input label="BSB" placeholder="123-456" inputMode="numeric" value={form.bank_bsb} onChange={e => update('bank_bsb', e.target.value)} error={errors.bank_bsb} />
+                  <Input label="Account number" placeholder="12345678" inputMode="numeric" value={form.bank_account_number} onChange={e => update('bank_account_number', onlyDigits(e.target.value).slice(0, 10))} error={errors.bank_account_number} />
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <Button type="submit" loading={submitting}>Create Referrer</Button>
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
@@ -308,6 +393,7 @@ export default function ReferrerManagement() {
                         {isAdmin && (
                           <>
                             <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
+                            <Button size="sm" variant="secondary" onClick={() => setBillingReferrer(referrer)}>Billing</Button>
                             {referrer.is_active && (
                               <Button size="sm" variant="secondary" loading={impersonatingId === referrer.id} onClick={() => handleImpersonate(referrer.id)}>Login as</Button>
                             )}
@@ -397,6 +483,10 @@ export default function ReferrerManagement() {
           </>
         )}
       </GlassCard>
+
+      {billingReferrer && (
+        <BusinessDetailsModal referrer={billingReferrer} onClose={() => setBillingReferrer(null)} />
+      )}
 
       {editingReferrer && (
         <EditReferrerModal
