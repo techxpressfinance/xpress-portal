@@ -4,26 +4,27 @@ import type { QuoteSheet, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
+import {
+  MAX_TERM_MONTHS,
+  MIN_TERM_MONTHS,
+  STANDARD_TERM_MONTHS,
+  migrateQuoteParams,
+  sortTerms,
+  standardResidualPercent,
+  termLabel,
+  termLabelShort,
+} from '../lib/quoteTerms';
 
-const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = {
-  '2': 0,
-  '3': 0,
-  '4': 0,
-  '5': 0,
-  '7': 0,
-};
+const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = Object.fromEntries(
+  STANDARD_TERM_MONTHS.map(m => [String(m), 0]),
+);
 
-const TERMS = [5, 4, 3, 2, 7]; // Display order matching Excel
-
-// ATO minimum residual values for vehicle leases, by term in years.
-// Used by the "Auto-fill standard" balloon button.
-const STANDARD_RESIDUALS: Record<string, number> = {
-  '2': 56.25,
-  '3': 46.88,
-  '4': 37.5,
-  '5': 28.13,
-  '7': 9.38, // extrapolated — ATO publishes 1–5yr only
-};
+// All terms (in months) this sheet quotes: the standard set plus any custom
+// terms the broker added (e.g. 18 months).
+function termsOf(inputs: QuoteInputParameters): number[] {
+  const custom = (inputs.custom_term_months ?? []).filter(m => !STANDARD_TERM_MONTHS.includes(m));
+  return sortTerms([...STANDARD_TERM_MONTHS, ...new Set(custom)]);
+}
 
 const DEFAULT_INPUTS: QuoteInputParameters = {
   facility_type: 'chattel',
@@ -47,13 +48,15 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   non_taxable_charges: 0,
   luxury_car_tax: 0,
   fees_financed: true,
-  selected_terms: [...TERMS],
+  custom_term_months: [],
+  selected_terms: [...STANDARD_TERM_MONTHS],
   show_interest_rate: false,
   show_total_interest: true,
   show_weekly: true,
   show_preferred_option: false,
-  preferred_term: 5,
+  preferred_term: 60,
   preferred_balloon: false,
+  terms_in_months: true,
 };
 
 // ── PMT — Excel-compatible (supports type=0 arrears & type=1 advance) ─
@@ -159,7 +162,7 @@ function computeFromInputs(inputs: QuoteInputParameters) {
 }
 
 type Scenario = {
-  termYears: number;
+  termMonths: number;
   hasBalloon: boolean;
   balloon: number;          // net balloon
   balloonGst: number;       // GST on balloon (lease only)
@@ -187,11 +190,10 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
 
   const scenarios: Scenario[] = [];
 
-  for (const termYears of TERMS) {
-    const months = termYears * 12;
-    const balloonPct = inputs.balloon_percentages[String(termYears)] ?? 0;
+  for (const months of termsOf(inputs)) {
+    const balloonPct = inputs.balloon_percentages[String(months)] ?? 0;
     // Balloon: dollar override or calculate from %
-    const balloonOverride = inputs.balloon_amounts?.[String(termYears)];
+    const balloonOverride = inputs.balloon_amounts?.[String(months)];
     const balloonNet = balloonOverride != null ? balloonOverride : fmt2(balloonBase * (balloonPct / 100));
     const balloonGst = isLease ? fmt2(balloonNet * (inputs.gst_percent / 100)) : 0;
     const balloonTotal = fmt2(balloonNet + balloonGst);
@@ -241,7 +243,7 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
       const totalInterest = fmt2(totalOverTerm - amountBorrowed);
 
       return {
-        termYears,
+        termMonths: months,
         hasBalloon: useBalloon,
         balloon,
         balloonGst: bGst,
@@ -277,14 +279,14 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
   const { deposit, amountFinanced, brokerage } = computeFromInputs(inputs);
 
   return scenarios.map((s, i) => ({
-    lender_name: `${s.termYears} Year${s.hasBalloon ? ` (${s.balloonPercent}% Balloon)` : ''}`,
+    lender_name: `${termLabel(s.termMonths)}${s.hasBalloon ? ` (${s.balloonPercent}% Balloon)` : ''}`,
     lender_product: inputs.facility_type.toUpperCase(),
     sort_order: i,
     is_recommended: false,
     purchase_price: inputs.asset_price,
     deposit: fmt2(deposit),
     loan_amount: fmt2(amountFinanced),
-    loan_term_months: s.termYears * 12,
+    loan_term_months: s.termMonths,
     balloon_residual: s.balloonTotal,
     interest_rate: inputs.interest_rate,
     comparison_rate: null,
@@ -423,7 +425,9 @@ interface QuoteSheetEditorProps {
 function parseInputParams(quoteSheet?: QuoteSheet): QuoteInputParameters {
   if (quoteSheet?.input_parameters) {
     try {
-      return { ...DEFAULT_INPUTS, ...JSON.parse(quoteSheet.input_parameters), gst_percent: 10 };
+      // Sheets saved before custom terms keyed everything by years — migrate.
+      const saved = migrateQuoteParams(JSON.parse(quoteSheet.input_parameters));
+      return { ...DEFAULT_INPUTS, ...saved, gst_percent: 10 } as QuoteInputParameters;
     } catch { /* fall through */ }
   }
   return { ...DEFAULT_INPUTS, balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES } };
@@ -435,6 +439,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
   const [brokerNotes, setBrokerNotes] = useState(quoteSheet?.broker_notes || '');
   const [inputs, setInputs] = useState<QuoteInputParameters>(() => parseInputParams(quoteSheet));
   const [saving, setSaving] = useState(false);
+  const [customTermInput, setCustomTermInput] = useState('');
 
   const updateInput = <K extends keyof QuoteInputParameters>(key: K, value: QuoteInputParameters[K]) => {
     setInputs(prev => ({ ...prev, [key]: value }));
@@ -472,24 +477,68 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
     });
   };
 
-  // Fill in ATO minimum residual values and clear any $ overrides.
+  // Fill in ATO minimum residual values and clear any $ overrides. Custom terms
+  // get the value interpolated between the neighbouring whole years.
   const applyStandardResiduals = () => {
     setInputs(prev => ({
       ...prev,
-      balloon_percentages: { ...prev.balloon_percentages, ...STANDARD_RESIDUALS },
+      balloon_percentages: {
+        ...prev.balloon_percentages,
+        ...Object.fromEntries(termsOf(prev).map(m => [String(m), standardResidualPercent(m)])),
+      },
       balloon_amounts: {},
     }));
   };
 
   const toggleTerm = (term: number) => {
     setInputs(prev => {
-      const current = prev.selected_terms ?? TERMS;
+      const current = prev.selected_terms ?? termsOf(prev);
       const next = current.includes(term) ? current.filter(t => t !== term) : [...current, term];
       return { ...prev, selected_terms: next };
     });
   };
 
+  // Custom terms are any month count outside the standard set (e.g. 18, 19) —
+  // added terms are shown to the client by default.
+  const addCustomTerm = (months: number) => {
+    if (!Number.isInteger(months) || months < MIN_TERM_MONTHS || months > MAX_TERM_MONTHS) {
+      toast(`Enter a term between ${MIN_TERM_MONTHS} and ${MAX_TERM_MONTHS} months`, 'error');
+      return;
+    }
+    setInputs(prev => {
+      if (termsOf(prev).includes(months)) {
+        toast(`${termLabel(months)} term is already on this quote`, 'error');
+        return prev;
+      }
+      const selected = prev.selected_terms ?? termsOf(prev);
+      return {
+        ...prev,
+        custom_term_months: sortTerms([...(prev.custom_term_months ?? []), months]),
+        balloon_percentages: { ...prev.balloon_percentages, [String(months)]: 0 },
+        selected_terms: [...selected, months],
+      };
+    });
+  };
+
+  const removeCustomTerm = (months: number) => {
+    setInputs(prev => {
+      const percentages = { ...prev.balloon_percentages };
+      const amounts = { ...(prev.balloon_amounts ?? {}) };
+      delete percentages[String(months)];
+      delete amounts[String(months)];
+      return {
+        ...prev,
+        custom_term_months: (prev.custom_term_months ?? []).filter(m => m !== months),
+        balloon_percentages: percentages,
+        balloon_amounts: amounts,
+        selected_terms: (prev.selected_terms ?? termsOf(prev)).filter(t => t !== months),
+        preferred_term: prev.preferred_term === months ? undefined : prev.preferred_term,
+      };
+    });
+  };
+
   // Derived values
+  const terms = useMemo(() => termsOf(inputs), [inputs]);
   const derived = useMemo(() => computeFromInputs(inputs), [inputs]);
   const scenarios = useMemo(() => {
     if (inputs.asset_price <= 0) return [];
@@ -827,13 +876,13 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                   Auto-fill standard
                 </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-1">
-                {TERMS.map(t => {
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-1">
+                {terms.map(t => {
                   const pct = inputs.balloon_percentages[String(t)] ?? 0;
                   const computedAmt = fmt2(derived.balloonBase * (pct / 100));
                   return (
                     <div key={t} className="space-y-1">
-                      <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{t}yr</div>
+                      <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{termLabelShort(t)}</div>
                       <div className="relative">
                         <input
                           type="number"
@@ -870,24 +919,70 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
             <div>
               <label className={`${labelBase} mb-2`}>Terms to include in client PDF</label>
               <div className="flex flex-wrap gap-2">
-                {TERMS.map(t => {
-                  const isSelected = (inputs.selected_terms ?? TERMS).includes(t);
+                {terms.map(t => {
+                  const isSelected = (inputs.selected_terms ?? terms).includes(t);
+                  const isCustom = !STANDARD_TERM_MONTHS.includes(t);
                   return (
-                    <button
+                    <span
                       key={t}
-                      type="button"
-                      onClick={() => toggleTerm(t)}
-                      className={`h-8 px-4 rounded-lg text-[12px] font-semibold transition-colors border ${isSelected
+                      className={`inline-flex items-center h-8 rounded-lg text-[12px] font-semibold transition-colors border ${isSelected
                         ? 'bg-primary/10 text-primary border-primary/20'
                         : 'bg-muted text-muted-foreground border-border/40 opacity-50'
                       }`}
                     >
-                      {t} Year
-                    </button>
+                      <button type="button" onClick={() => toggleTerm(t)} className="h-full px-4">
+                        {termLabel(t)}
+                      </button>
+                      {isCustom && (
+                        <button
+                          type="button"
+                          onClick={() => removeCustomTerm(t)}
+                          title={`Remove the ${termLabel(t).toLowerCase()} term`}
+                          className="h-full pr-2.5 -ml-2 text-[14px] leading-none opacity-60 hover:opacity-100"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
                   );
                 })}
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">Only selected terms appear in the client PDF.</p>
+
+              {/* Custom term — any month count, e.g. 18 or 19 months */}
+              <label className={`${labelBase} mt-4 mb-1.5`}>Add custom term</label>
+              <div className="flex items-center gap-2">
+                <div className="relative w-32">
+                  <input
+                    type="number"
+                    min={MIN_TERM_MONTHS}
+                    max={MAX_TERM_MONTHS}
+                    step="1"
+                    placeholder="e.g. 18"
+                    value={customTermInput}
+                    onChange={e => setCustomTermInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCustomTerm(Number(customTermInput));
+                        setCustomTermInput('');
+                      }
+                    }}
+                    className={`${fieldBase} pl-3 pr-14`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px] pointer-events-none">months</span>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => { addCustomTerm(Number(customTermInput)); setCustomTermInput(''); }}
+                  disabled={customTermInput.trim() === ''}
+                >
+                  Add term
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Quotes any term in whole months — repayments, balloon and interest are calculated on the exact month count.
+              </p>
             </div>
             <div className="space-y-3">
               <div>
@@ -968,12 +1063,12 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <div>
                   <label className={`${labelBase} mb-1.5`}>Preferred term</label>
                   <select
-                    value={inputs.preferred_term ?? (inputs.selected_terms ?? TERMS)[0]}
+                    value={inputs.preferred_term ?? (inputs.selected_terms ?? terms)[0]}
                     onChange={e => updateInput('preferred_term', Number(e.target.value))}
                     className={`${fieldBase} px-3`}
                   >
-                    {TERMS.filter(t => (inputs.selected_terms ?? TERMS).includes(t)).map(t => (
-                      <option key={t} value={t}>{t} Year</option>
+                    {terms.filter(t => (inputs.selected_terms ?? terms).includes(t)).map(t => (
+                      <option key={t} value={t}>{termLabel(t)}</option>
                     ))}
                   </select>
                 </div>
@@ -1030,7 +1125,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
                 <tbody>
                   {scenarios.map((s, i) => (
                     <tr key={i} className={`border-b border-border/40 last:border-0 ${i % 2 === 0 ? '' : 'bg-muted/20'}`}>
-                      <td className="py-2 px-3 font-semibold tabular-nums">{s.termYears}yr</td>
+                      <td className="py-2 px-3 font-semibold tabular-nums">{termLabelShort(s.termMonths)}</td>
                       <td className="py-2 px-3 text-muted-foreground tabular-nums">
                         {s.hasBalloon ? `${s.balloonPercent}% · ${fmtCurrency(s.balloon)}` : '—'}
                       </td>

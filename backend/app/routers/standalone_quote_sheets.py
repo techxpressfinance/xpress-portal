@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -323,16 +324,22 @@ def send_standalone_quote_email(
     # Filter options by selected terms if specified
     options = sheet.options
     if data.include_terms:
-        options = [o for o in options if round((o.loan_term_months or 0) / 12) in data.include_terms]
+        options = [o for o in options if (o.loan_term_months or 0) in data.include_terms]
 
     # Build summary rows for the email
     summary_rows = []
-    for opt in sorted(options, key=lambda o: o.sort_order):
-        term_years = round((opt.loan_term_months or 0) / 12)
+    for opt in sorted(options, key=lambda o: (o.loan_term_months or 0, o.sort_order)):
+        months = opt.loan_term_months or 0
+        term_label = f"{months // 12} Year" if months % 12 == 0 else f"{months} Month"
         has_balloon = (opt.balloon_residual or 0) > 0
-        balloon_label = f" ({opt.lender_name})" if has_balloon else ""
+        # lender_name is "5 Year (28.13% Balloon)" — keep only the balloon part
+        # so the row doesn't repeat the term.
+        balloon_label = ""
+        if has_balloon:
+            match = re.search(r"\(([^)]*Balloon[^)]*)\)", opt.lender_name or "")
+            balloon_label = f" ({match.group(1)})" if match else " (Balloon)"
         summary_rows.append({
-            "term": f"{term_years} Year{balloon_label}",
+            "term": f"{term_label}{balloon_label}",
             "loan_amount": float(opt.loan_amount) if opt.loan_amount else 0,
             "monthly": float(opt.repayment_monthly) if opt.repayment_monthly else 0,
             "weekly": float(opt.repayment_weekly) if opt.repayment_weekly else 0,

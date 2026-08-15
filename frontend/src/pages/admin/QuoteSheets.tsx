@@ -7,6 +7,7 @@ import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import api from '../../api/client';
+import { migrateQuoteParams, optionTermMonths, termLabel, termLabelShort } from '../../lib/quoteTerms';
 import type { QuoteSheet } from '../../types';
 
 export default function QuoteSheets() {
@@ -52,13 +53,7 @@ export default function QuoteSheets() {
   }, []);
 
   const openEmailModal = (sheet: QuoteSheet) => {
-    const terms = [...new Set(sheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-    const displayOrder = [5, 4, 3, 2, 7];
-    terms.sort((a, b) => {
-      const ai = displayOrder.indexOf(a);
-      const bi = displayOrder.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
+    const terms = optionTermMonths(sheet.options);
     setEmailTerms(terms);
     setEmailTo(sheet.recipient_email || '');
     setEmailName(sheet.recipient_name || '');
@@ -260,13 +255,7 @@ export default function QuoteSheets() {
                     {sheet.status === 'draft' && (
                       <button
                         onClick={() => {
-                          const terms = [...new Set(sheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-                          const displayOrder = [5, 4, 3, 2, 7];
-                          terms.sort((a, b) => {
-                            const ai = displayOrder.indexOf(a);
-                            const bi = displayOrder.indexOf(b);
-                            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                          });
+                          const terms = optionTermMonths(sheet.options);
                           setSendModalTerms(terms);
                           setSendModalSheet(sheet);
                         }}
@@ -341,17 +330,11 @@ export default function QuoteSheets() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-xl border border-border w-full max-w-md mx-4 p-6">
             <h3 className="text-lg font-semibold text-foreground mb-1">Mark Quote as Sent</h3>
-            <p className="text-sm text-muted-foreground mb-5">Select which term years to include.</p>
+            <p className="text-sm text-muted-foreground mb-5">Select which terms to include.</p>
 
             <div className="space-y-2.5 mb-6">
               {(() => {
-                const allTerms = [...new Set(sendModalSheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-                const displayOrder = [5, 4, 3, 2, 7];
-                allTerms.sort((a, b) => {
-                  const ai = displayOrder.indexOf(a);
-                  const bi = displayOrder.indexOf(b);
-                  return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                });
+                const allTerms = optionTermMonths(sendModalSheet.options);
                 return allTerms.map(term => (
                   <label key={term} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/30 transition-colors cursor-pointer">
                     <input
@@ -366,7 +349,7 @@ export default function QuoteSheets() {
                       }}
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
                     />
-                    <span className="text-sm font-medium text-foreground">{term} Year Term</span>
+                    <span className="text-sm font-medium text-foreground">{termLabel(term)} Term</span>
                   </label>
                 ));
               })()}
@@ -381,8 +364,10 @@ export default function QuoteSheets() {
                   try {
                     let inputParams: Record<string, unknown> = {};
                     if (sendModalSheet.input_parameters) {
-                      try { inputParams = JSON.parse(sendModalSheet.input_parameters); } catch { /* empty */ }
+                      try { inputParams = migrateQuoteParams(JSON.parse(sendModalSheet.input_parameters)); } catch { /* empty */ }
                     }
+                    // Terms are months — mark the blob so it isn't re-migrated.
+                    inputParams.terms_in_months = true;
                     inputParams.selected_terms = sendModalTerms;
 
                     await api.patch(`/quote-sheets/${sendModalSheet.id}`, {
@@ -477,13 +462,7 @@ export default function QuoteSheets() {
                 <label className="block text-[12px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Include Terms</label>
                 <div className="flex flex-wrap gap-2">
                   {(() => {
-                    const allTerms = [...new Set(emailModalSheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-                    const displayOrder = [5, 4, 3, 2, 7];
-                    allTerms.sort((a, b) => {
-                      const ai = displayOrder.indexOf(a);
-                      const bi = displayOrder.indexOf(b);
-                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                    });
+                    const allTerms = optionTermMonths(emailModalSheet.options);
                     return allTerms.map(term => {
                       const selected = emailTerms.includes(term);
                       return (
@@ -501,7 +480,7 @@ export default function QuoteSheets() {
                               : 'bg-secondary/60 text-muted-foreground border-border hover:bg-secondary hover:text-foreground'
                           }`}
                         >
-                          {term}yr
+                          {termLabelShort(term)}
                         </button>
                       );
                     });

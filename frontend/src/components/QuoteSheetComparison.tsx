@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { QuoteSheet, QuoteOption } from '../types';
+import { migrateQuoteParams, termLabel } from '../lib/quoteTerms';
 
 interface QuoteSheetComparisonProps {
   quoteSheet: QuoteSheet;
@@ -68,23 +69,23 @@ function computeAllUpRate(opt: QuoteOption, paymentType: string): number | null 
 }
 
 type TermGroup = {
-  termYears: number;
   termMonths: number;
   noBalloon: QuoteOption | null;
   withBalloon: QuoteOption | null;
 };
 
+// Grouped by exact month count — 18- and 24-month terms are distinct quotes.
+// Displayed in increasing term order (shortest term first).
 function groupByTerm(options: QuoteOption[]): TermGroup[] {
-  const sorted = [...options].sort((a, b) => a.sort_order - b.sort_order);
+  const sorted = [...options].sort((a, b) => (a.loan_term_months ?? 0) - (b.loan_term_months ?? 0));
   const termMap = new Map<number, TermGroup>();
 
   for (const opt of sorted) {
     const months = opt.loan_term_months ?? 0;
-    const years = Math.round(months / 12);
-    if (!termMap.has(years)) {
-      termMap.set(years, { termYears: years, termMonths: months, noBalloon: null, withBalloon: null });
+    if (!termMap.has(months)) {
+      termMap.set(months, { termMonths: months, noBalloon: null, withBalloon: null });
     }
-    const group = termMap.get(years)!;
+    const group = termMap.get(months)!;
     const hasBalloon = (opt.balloon_residual ?? 0) > 0;
     if (hasBalloon) {
       group.withBalloon = opt;
@@ -93,18 +94,7 @@ function groupByTerm(options: QuoteOption[]): TermGroup[] {
     }
   }
 
-  // Order: 5, 4, 3, 2, 7 (matching Excel)
-  const displayOrder = [5, 4, 3, 2, 7];
-  const result: TermGroup[] = [];
-  for (const t of displayOrder) {
-    if (termMap.has(t)) result.push(termMap.get(t)!);
-  }
-  // Add any remaining terms not in the default order
-  for (const [t, group] of termMap) {
-    if (!displayOrder.includes(t)) result.push(group);
-  }
-
-  return result;
+  return [...termMap.values()];
 }
 
 // Per-term highlight accents — each term's figures are coloured, cycling
@@ -119,12 +109,12 @@ const TERM_ACCENTS = [
 
 // ── On-screen term block ────────────────────────────────────────────
 function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInterest, showWeekly, assetDescription, paymentType }: { group: TermGroup; accent: string; isClientView: boolean; showInterestRate: boolean; showTotalInterest: boolean; showWeekly: boolean; assetDescription: string; paymentType: string }) {
-  const { termYears, noBalloon, withBalloon } = group;
+  const { termMonths, noBalloon, withBalloon } = group;
   const hasTwo = noBalloon && withBalloon;
 
   const renderColumn = (opt: QuoteOption | null) => {
     if (!opt) return null;
-    const balloonPct = opt.lender_name.match(/(\d+)%\s*Balloon/);
+    const balloonPct = opt.lender_name.match(/([\d.]+)%\s*Balloon/);
     const balloonLabel = balloonPct ? `Balloon ${balloonPct[1]}%` : 'Balloon';
 
     // Client sees: asset price - deposit + fees (no brokerage commission)
@@ -141,7 +131,7 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
             value={<Money v={isClientView ? clientLoanAmount : opt.loan_amount} />}
             color={accent}
           />
-          <Row label="Term (years)" value={String(termYears)} color={accent} />
+          <Row label="Term" value={`${termMonths} months`} color={accent} />
           <Row
             label={(opt.balloon_residual ?? 0) > 0 ? balloonLabel : 'Balloon'}
             value={<Money v={opt.balloon_residual ?? 0} />}
@@ -169,7 +159,7 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-card">
       <div className="bg-muted/40 px-4 py-2 border-b border-border">
-        <h4 className="text-sm font-semibold text-foreground">{termYears} Year Term</h4>
+        <h4 className="text-sm font-semibold text-foreground">{termLabel(termMonths)} Term</h4>
       </div>
       <div className={`grid ${hasTwo ? 'grid-cols-1 divide-y sm:grid-cols-2 sm:divide-y-0 sm:divide-x divide-border' : 'grid-cols-1'}`}>
         {noBalloon && (
@@ -205,7 +195,8 @@ function Row({ label, value, bold, color }: { label: string; value: ReactNode; b
 function parseInputParams(quoteSheet: QuoteSheet) {
   if (!quoteSheet.input_parameters) return null;
   try {
-    const params = JSON.parse(quoteSheet.input_parameters);
+    // Legacy sheets stored terms in years — normalise to months on read.
+    const params = migrateQuoteParams(JSON.parse(quoteSheet.input_parameters));
     return {
       assetDescription: (params.asset_description || params.asset_type || 'Asset') as string,
       facilityType: (params.facility_type || 'chattel') as string,
@@ -260,7 +251,7 @@ export default function QuoteSheetComparison({
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
-    ? allTermGroups.filter(g => selectedTerms.includes(g.termYears))
+    ? allTermGroups.filter(g => selectedTerms.includes(g.termMonths))
     : allTermGroups;
 
   // Split into rows of 2 for the grid
@@ -300,7 +291,7 @@ export default function QuoteSheetComparison({
     // Preferred option (broker-selected term + balloon choice). Only surfaced
     // when the toggle is on and the chosen term is among the shown terms.
     const preferredGroup = showPreferredOption && preferredTerm != null
-      ? termGroups.find(g => g.termYears === preferredTerm) ?? null
+      ? termGroups.find(g => g.termMonths === preferredTerm) ?? null
       : null;
     const preferredOpt: QuoteOption | null = preferredGroup
       ? (preferredBalloon
@@ -309,10 +300,10 @@ export default function QuoteSheetComparison({
       : null;
 
     // The preferred term takes precedence over any is_recommended flag.
-    const recommendedYears: number | null = (() => {
-      if (preferredGroup) return preferredGroup.termYears;
+    const recommendedMonths: number | null = (() => {
+      if (preferredGroup) return preferredGroup.termMonths;
       for (const g of termGroups) {
-        if (prim(g).is_recommended) return g.termYears;
+        if (prim(g).is_recommended) return g.termMonths;
       }
       return null;
     })();
@@ -561,11 +552,11 @@ export default function QuoteSheetComparison({
             const cols: { key: string; head: string | null; opt: QuoteOption }[] = [];
             if (g.noBalloon) cols.push({ key: 'nb', head: g.withBalloon ? 'No Balloon' : null, opt: g.noBalloon });
             if (g.withBalloon) {
-              const m = g.withBalloon.lender_name.match(/(\d+)%\s*Balloon/i);
+              const m = g.withBalloon.lender_name.match(/([\d.]+)%\s*Balloon/i);
               cols.push({ key: 'wb', head: g.noBalloon ? (m ? `${m[1]}% Balloon` : 'With Balloon') : null, opt: g.withBalloon });
             }
             const dual = cols.length === 2;
-            const recommended = g.termYears === recommendedYears;
+            const recommended = g.termMonths === recommendedMonths;
             const { accent } = TERM_ACCENTS[termGroups.indexOf(g) % TERM_ACCENTS.length];
             const clientAmt = (o: QuoteOption) =>
               (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0);
@@ -610,7 +601,7 @@ export default function QuoteSheetComparison({
 
             return (
               <div
-                key={g.termYears}
+                key={g.termMonths}
                 style={{
                   border: `1px solid ${hairline}`,
                   background: recommended ? subtleBg : paper,
@@ -625,10 +616,12 @@ export default function QuoteSheetComparison({
                   background: navy,
                 }}>
                   <span style={{ fontFamily: sans, fontWeight: 700, fontSize: '12px', color: '#ffffff' }}>
-                    {g.termYears} Year Term
-                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', fontWeight: 400, marginLeft: '6px' }}>
-                      {g.termMonths} months
-                    </span>
+                    {termLabel(g.termMonths)} Term
+                    {g.termMonths % 12 === 0 && (
+                      <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', fontWeight: 400, marginLeft: '6px' }}>
+                        {g.termMonths} months
+                      </span>
+                    )}
                   </span>
                   {recommended && (
                     <span style={{ fontSize: '8px', color: gold, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -701,7 +694,7 @@ export default function QuoteSheetComparison({
         {preferredOpt && preferredGroup && (() => {
           const o = preferredOpt;
           const balloonAmt = o.balloon_residual ?? 0;
-          const m = o.lender_name.match(/(\d+)%\s*Balloon/i);
+          const m = o.lender_name.match(/([\d.]+)%\s*Balloon/i);
           const balloonLabel = balloonAmt > 0 ? (m ? `${m[1]}% Balloon` : 'With Balloon') : 'No Balloon';
           const amtFin = isClientView
             ? (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0)
@@ -737,7 +730,7 @@ export default function QuoteSheetComparison({
                 </span>
               </div>
               <div style={{ marginTop: '6px', fontSize: '18px', fontWeight: 700, fontFamily: serif, color: '#ffffff' }}>
-                {preferredGroup.termYears} Year Term · {balloonLabel}
+                {termLabel(preferredGroup.termMonths)} Term · {balloonLabel}
               </div>
               <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                 {metrics.map((mt, i) => (
@@ -952,7 +945,7 @@ export default function QuoteSheetComparison({
             {row.map(group => {
               const { accent } = TERM_ACCENTS[termGroups.indexOf(group) % TERM_ACCENTS.length];
               return (
-                <TermBlock key={group.termYears} group={group} accent={accent} isClientView={isClientView} showInterestRate={showInterestRate} showTotalInterest={showTotalInterest} showWeekly={showWeekly} assetDescription={assetDescription} paymentType={paymentType} />
+                <TermBlock key={group.termMonths} group={group} accent={accent} isClientView={isClientView} showInterestRate={showInterestRate} showTotalInterest={showTotalInterest} showWeekly={showWeekly} assetDescription={assetDescription} paymentType={paymentType} />
               );
             })}
           </div>

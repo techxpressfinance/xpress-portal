@@ -113,7 +113,7 @@ class QuoteSheetUpdate(BaseModel):
 class QuoteSheetEmailRequest(BaseModel):
     to_email: str
     to_name: Optional[str] = None
-    include_terms: Optional[list[int]] = None  # which term years to include; None = all
+    include_terms: Optional[list[int]] = None  # which terms (months) to include; None = all
     client_facing: bool = True
 
 

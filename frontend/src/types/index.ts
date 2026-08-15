@@ -862,19 +862,23 @@ export interface QuoteInputParameters {
   balloon_on_total_price: boolean;
   interest_rate: number;
   gst_percent: number;
-  balloon_percentages: Record<string, number>; // e.g. { "2": 62, "3": 55, "4": 42, "5": 35, "7": 0 }
+  // Terms are keyed/stored in MONTHS (see lib/quoteTerms.ts). Sheets saved
+  // before custom terms used years and are migrated on read.
+  balloon_percentages: Record<string, number>; // e.g. { "24": 62, "36": 55, "60": 35 }
   balloon_amounts: Record<string, number | null>; // Dollar overrides per term
   monthly_account_fee: number;         // Ongoing monthly fee added to repayment
   non_taxable_charges: number;         // Lease only — non-taxable on-road charges
   luxury_car_tax: number;              // Lease only — luxury car tax
   fees_financed: boolean;              // true = fees added to loan amount, false = charged separately
-  selected_terms?: number[];           // e.g. [5, 4, 3] — which terms to show client
+  custom_term_months?: number[];       // extra non-standard terms, e.g. [18, 19]
+  terms_in_months?: true;              // migration marker — terms below are months, not years
+  selected_terms?: number[];           // e.g. [60, 48, 36] — which terms (months) to show client
   show_interest_rate?: boolean;        // show interest rate to client (default: hidden)
   show_total_interest?: boolean;       // show total interest to client (default: visible)
   show_weekly?: boolean;               // show weekly repayment on quote sheet (default: visible)
   repayment_range?: number;            // show client a ±$ range instead of exact repayment
   show_preferred_option?: boolean;     // show a highlighted "recommended for you" callout
-  preferred_term?: number;             // term (years) of the preferred option, e.g. 5
+  preferred_term?: number;             // term (months) of the preferred option, e.g. 60
   preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
 }
 

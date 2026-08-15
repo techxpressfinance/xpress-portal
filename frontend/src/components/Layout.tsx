@@ -374,13 +374,13 @@ export default function Layout() {
 
         {/* Keep notifications outside the scrollable navigation so they are always reachable. */}
         {!isSuperAdmin && (
-          <div className="shrink-0 border-t border-[var(--led-line)] px-3 py-2" data-tour="nav-notifications">
+          <div className="shrink-0 border-t border-[var(--led-line)] px-3 pt-2 pb-1" data-tour="nav-notifications">
             <NotificationCenter collapsed={collapsed} />
           </div>
         )}
 
         {/* Collapse toggle (desktop only) */}
-        <div className="hidden lg:flex items-center justify-center py-2 px-3">
+        <div className="hidden lg:flex items-center justify-center px-3">
           <button
             onClick={toggleCollapsed}
             className="w-full flex items-center justify-center rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] transition-all duration-200"

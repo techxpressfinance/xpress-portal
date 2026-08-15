@@ -19,6 +19,7 @@ import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, Invit
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
@@ -3301,14 +3302,8 @@ export default function ReviewApplication() {
                               {sheet.status === 'draft' && (
                                 <button
                                   onClick={() => {
-                                    // Extract available term years from sheet options
-                                    const terms = [...new Set(sheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-                                    const displayOrder = [5, 4, 3, 2, 7];
-                                    terms.sort((a, b) => {
-                                      const ai = displayOrder.indexOf(a);
-                                      const bi = displayOrder.indexOf(b);
-                                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                                    });
+                                    // Available terms (months) quoted by this sheet
+                                    const terms = optionTermMonths(sheet.options);
                                     setSendModalTerms(terms);
                                     setSendModalSheet(sheet);
                                   }}
@@ -3379,17 +3374,11 @@ export default function ReviewApplication() {
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-card rounded-2xl shadow-xl border border-border w-full max-w-md mx-4 p-6">
                       <h3 className="text-lg font-semibold text-foreground mb-1">Send Quote to Client</h3>
-                      <p className="text-sm text-muted-foreground mb-5">Select which term years to include in the client's quote sheet.</p>
+                      <p className="text-sm text-muted-foreground mb-5">Select which terms to include in the client's quote sheet.</p>
 
                       <div className="space-y-2.5 mb-6">
                         {(() => {
-                          const allTerms = [...new Set(sendModalSheet.options.map(o => Math.round((o.loan_term_months ?? 0) / 12)))];
-                          const displayOrder = [5, 4, 3, 2, 7];
-                          allTerms.sort((a, b) => {
-                            const ai = displayOrder.indexOf(a);
-                            const bi = displayOrder.indexOf(b);
-                            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-                          });
+                          const allTerms = optionTermMonths(sendModalSheet.options);
                           return allTerms.map(term => (
                             <label key={term} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted/30 transition-colors cursor-pointer">
                               <input
@@ -3404,7 +3393,7 @@ export default function ReviewApplication() {
                                 }}
                                 className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
                               />
-                              <span className="text-sm font-medium text-foreground">{term} Year Term</span>
+                              <span className="text-sm font-medium text-foreground">{termLabel(term)} Term</span>
                             </label>
                           ));
                         })()}
@@ -3420,8 +3409,10 @@ export default function ReviewApplication() {
                               // Update input_parameters with selected_terms
                               let inputParams: Record<string, unknown> = {};
                               if (sendModalSheet.input_parameters) {
-                                try { inputParams = JSON.parse(sendModalSheet.input_parameters); } catch { /* empty */ }
+                                try { inputParams = migrateQuoteParams(JSON.parse(sendModalSheet.input_parameters)); } catch { /* empty */ }
                               }
+                              // Terms are months — mark the blob so it isn't re-migrated.
+                              inputParams.terms_in_months = true;
                               inputParams.selected_terms = sendModalTerms;
 
                               await api.patch(`/applications/${id}/quote-sheets/${sendModalSheet.id}`, {
