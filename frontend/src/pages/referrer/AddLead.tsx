@@ -417,7 +417,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         const raw: { id: string; full_name: string | null; email: string; organization_name?: string | null }[] = Array.isArray(data) ? data : [];
         setReferrers(raw.map(u => ({ id: u.id, name: u.full_name || u.email, organization: u.organization_name })));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [skipEngagement]);
 
   // Load the application being cloned and lay its client + company details over
@@ -538,7 +538,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     }, 1500);
 
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstName, lastName, email, subLoanType, amount, engagementModel]);
 
   // Delete draft when referrer switches to direct_engagement (which creates its own application).
@@ -548,7 +548,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       setDraftAppId(null);
       deleteDraft(id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engagementModel]);
 
   // Patch the draft as the referrer keeps filling in details.
@@ -1165,10 +1165,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 {/* Vehicles or Transport / Machinery or Equipment */}
                 {['vehicles_or_transport', 'machinery_or_equipment'].includes(subLoanType) && (
                   <div className="space-y-3">
-                    <p className="text-[13px] font-semibold text-foreground">{subLoanType === 'vehicles_or_transport' ? 'Vehicle / Transport' : 'Equipment'} Details</p>
+                    <p className="text-[13px] font-semibold text-foreground">{subLoanType === 'vehicles_or_transport' ? 'Equipment' : 'Equipment'} Details</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
-                        <label className={LBL}>{subLoanType === 'vehicles_or_transport' ? 'Vehicle Type' : 'Equipment Type'}</label>
+                        <label className={LBL}>{subLoanType === 'vehicles_or_transport' ? 'Equipment Type' : 'Equipment Type'}</label>
                         <input type="text" className="led-input" placeholder={subLoanType === 'vehicles_or_transport' ? 'e.g. Truck, Van' : 'e.g. Excavator, Printer'} value={extra.equipment_type} onChange={e => setExtra('equipment_type', e.target.value)} />
                       </div>
                       <div>
