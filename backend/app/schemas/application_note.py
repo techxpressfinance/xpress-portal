@@ -11,6 +11,11 @@ class ApplicationNoteCreate(BaseModel):
     visibility: list[str] = ["broker"]
 
 
+class ApplicationNoteUpdate(BaseModel):
+    content: Optional[str] = None
+    visibility: Optional[list[str]] = None
+
+
 class ApplicationNoteOut(BaseModel):
     id: str
     application_id: str

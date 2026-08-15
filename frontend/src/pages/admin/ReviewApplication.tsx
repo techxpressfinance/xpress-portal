@@ -51,6 +51,9 @@ export default function ReviewApplication() {
   const [newNoteContent, setNewNoteContent] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<'broker' | 'personal'>('broker');
   const [sendingNote, setSendingNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
+  const [savingNoteEdit, setSavingNoteEdit] = useState(false);
   const [pinningMsgId, setPinningMsgId] = useState<string | null>(null);
   const [pinnedMsgIds, setPinnedMsgIds] = useState<Set<string>>(new Set());
   // Maps a pinned deal note's id back to its source message id, so deleting the
@@ -311,6 +314,32 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to unlink referrer'), 'error');
     } finally {
       setUnlinkingReferrer(false);
+    }
+  };
+
+  const startEditNote = (note: ApplicationNote) => {
+    setEditingNoteId(note.id);
+    setEditingNoteContent(note.content);
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  };
+
+  const saveNoteEdit = async () => {
+    if (!id || !editingNoteId || !editingNoteContent.trim()) return;
+    setSavingNoteEdit(true);
+    try {
+      const { data } = await api.patch(`/applications/${id}/notes/${editingNoteId}`, { content: editingNoteContent.trim() });
+      setAppNotes((prev) => prev.map((n) => (n.id === editingNoteId ? data : n)));
+      setEditingNoteId(null);
+      setEditingNoteContent('');
+      toast('Note updated', 'success');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update note'), 'error');
+    } finally {
+      setSavingNoteEdit(false);
     }
   };
 
@@ -2961,6 +2990,15 @@ export default function ReviewApplication() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
+                                    {(currentUser?.role === 'admin' || note.author_id === currentUser?.id) && (
+                                      <button
+                                        onClick={() => startEditNote(note)}
+                                        className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                                        title="Edit"
+                                      >
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                                      </button>
+                                    )}
                                     <button
                                       onClick={async () => {
                                         if (!id) return;
@@ -2995,7 +3033,23 @@ export default function ReviewApplication() {
                                   </div>
                                 </div>
                                 <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed text-foreground border ${isPersonal ? 'bg-amber-500/8 border-amber-500/20' : 'bg-secondary/40 border-transparent'}`}>
-                                  <p className="whitespace-pre-wrap">{note.content}</p>
+                                  {editingNoteId === note.id ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        value={editingNoteContent}
+                                        onChange={(e) => setEditingNoteContent(e.target.value)}
+                                        rows={3}
+                                        autoFocus
+                                        className="w-full rounded-lg bg-background border border-border px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                                      />
+                                      <div className="flex items-center justify-end gap-2">
+                                        <Button size="sm" variant="ghost" onClick={cancelEditNote} disabled={savingNoteEdit}>Cancel</Button>
+                                        <Button size="sm" onClick={saveNoteEdit} loading={savingNoteEdit} disabled={!editingNoteContent.trim()}>Save</Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="whitespace-pre-wrap">{note.content}</p>
+                                  )}
                                   <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
                                     <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
                                     <span className="text-[11px] font-medium opacity-60">{isPersonal ? 'Only you' : 'Internal (Brokers only)'}</span>

@@ -9,7 +9,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.application_note import ApplicationNote
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
-from app.schemas.application_note import ApplicationNoteCreate, ApplicationNoteOut
+from app.schemas.application_note import ApplicationNoteCreate, ApplicationNoteOut, ApplicationNoteUpdate
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.tenant_scope import get_tenant_id
@@ -103,6 +103,46 @@ def create_note(
     db.add(note)
     db.flush()
     log_activity(db, current_user.id, "note_added", "application", app_id, {"visibility": note.visibility}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(note)
+    return _note_to_out(note)
+
+
+@router.patch("/{app_id}/notes/{note_id}", response_model=ApplicationNoteOut)
+def update_note(
+    app_id: str,
+    note_id: str,
+    data: ApplicationNoteUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker", "referrer")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Edit a note's content and/or visibility. Authors (and admins) only."""
+    note = (
+        db.query(ApplicationNote)
+        .filter(ApplicationNote.id == note_id, ApplicationNote.application_id == app_id)
+        .first()
+    )
+    if not note:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+
+    if current_user.role != UserRole.admin and note.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only edit your own notes")
+
+    if data.content is not None:
+        note.content = data.content
+
+    if data.visibility is not None:
+        from app.models.application_note import VALID_VISIBILITY
+        if current_user.role == UserRole.referrer:
+            visibility_set = {"personal"} if "personal" in data.visibility else {"referrer"}
+        else:
+            visibility_set = {v for v in data.visibility if v in VALID_VISIBILITY}
+            if not visibility_set:
+                visibility_set = {"broker"}
+        note.visibility = ",".join(sorted(visibility_set))
+
+    log_activity(db, current_user.id, "note_updated", "application", app_id, {"note_id": note_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(note)
     return _note_to_out(note)
