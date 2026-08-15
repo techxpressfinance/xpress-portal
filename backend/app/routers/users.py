@@ -300,15 +300,15 @@ def set_user_referrer(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Credit a referrer for a client who has none — for leads that arrived
-    outside the portal (e.g. via WhatsApp) and were entered by staff."""
+    """Credit a referrer for an application owner who has none — for leads that
+    arrived outside the portal (e.g. via WhatsApp) and were entered by staff."""
     client = db.query(User).filter(
         User.id == user_id,
         User.tenant_id == tenant_id,
         User.deleted_at.is_(None),
     ).first()
-    if not client or client.role != UserRole.client:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    if not client or client.role == UserRole.referrer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     referrer = db.query(User).filter(
         User.id == data.referrer_id,
         User.tenant_id == tenant_id,
@@ -322,7 +322,7 @@ def set_user_referrer(
         or db.query(Referral).filter(Referral.referred_user_id == user_id).first()
     )
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This client already has a referrer")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This user already has a referrer")
     has_applied = db.query(LoanApplication.id).filter(LoanApplication.user_id == user_id).first() is not None
     db.add(ExternalReferral(
         tenant_id=tenant_id,
@@ -352,15 +352,15 @@ def unlink_user_referrer(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Remove a client's referrer attribution. The referrer stops being credited
-    for the client (and their applications) and loses the client from their lists."""
+    """Remove an application owner's referrer attribution. The referrer stops being
+    credited for the user (and their applications) and loses the user from their lists."""
     client = db.query(User).filter(
         User.id == user_id,
         User.tenant_id == tenant_id,
         User.deleted_at.is_(None),
     ).first()
-    if not client or client.role != UserRole.client:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    if not client or client.role == UserRole.referrer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     removed_referrer_ids: set[str] = set()
     for ext_ref in db.query(ExternalReferral).filter(ExternalReferral.referred_client_id == user_id).all():
         removed_referrer_ids.add(ext_ref.referrer_id)
@@ -377,7 +377,7 @@ def unlink_user_referrer(
         removed_referrer_ids.add(referral.referrer_id)
         db.delete(referral)
     if not removed_referrer_ids:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This client has no referrer linked")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This user has no referrer linked")
     log_activity(db, current_user.id, "referrer_detached", "user", client.id,
                  {"referrer_ids": sorted(removed_referrer_ids)}, tenant_id=tenant_id)
     db.commit()

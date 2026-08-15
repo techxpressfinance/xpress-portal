@@ -1046,13 +1046,19 @@ def unassign_broker(
     app_id: str,
     broker_id: str = Query(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Remove a broker (or admin) from the application's assigned brokers."""
+    """Remove a broker (or admin) from the application's assigned brokers.
+
+    Brokers may remove any broker from applications they can see (admin bypasses
+    the access check). Removing a broker notifies tenant admins.
+    """
     application = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if current_user.role == UserRole.broker:
+        check_application_access(application, current_user, db=db)
 
     # Allow removing both broker-role and admin-role users — legacy data may have
     # stored an admin's ID in assigned_broker_id which then got backfilled here.
@@ -1072,6 +1078,33 @@ def unassign_broker(
     if application.assigned_broker_id == broker_id:
         application.assigned_broker_id = application.brokers[0].id if application.brokers else None
     log_activity(db, current_user.id, "broker_unassigned", "application", app_id, {"broker_id": broker_id, "broker_name": broker.full_name}, tenant_id=tenant_id)
+
+    # Notify tenant admins of the reassignment (a broker removed from the app).
+    applicant_label = application.applicant_first_name or "a new"
+    admins = db.query(User).filter(User.role == UserRole.admin, User.tenant_id == tenant_id).all()
+    for admin in admins:
+        create_notification(
+            db,
+            user_id=admin.id,
+            type="status_change",
+            title="Application reassigned",
+            body=f"{current_user.full_name} removed {broker.full_name} from the {application.loan_type.value} application for {applicant_label}.",
+            link=f"/admin/applications/{app_id}",
+            tenant_id=tenant_id,
+        )
+
+    # Notify the removed broker unless they removed themselves.
+    if broker.id != current_user.id:
+        create_notification(
+            db,
+            user_id=broker.id,
+            type="status_change",
+            title="Application reassigned",
+            body=f"{current_user.full_name} removed you from the {application.loan_type.value} application for {applicant_label}.",
+            link=f"/admin/applications/{app_id}",
+            tenant_id=tenant_id,
+        )
+
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
     return _app_with_user(application, db)

@@ -69,6 +69,8 @@ export default function ReviewApplication() {
   const [previewDoc, setPreviewDoc] = useState<{ id: string; filename: string; ocrStatus: Document['ocr_status'] } | null>(null);
   const [retryingOcr, setRetryingOcr] = useState<string | null>(null);
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
+  const [removeBrokerTarget, setRemoveBrokerTarget] = useState<{ id: string; full_name: string } | null>(null);
+  const [removingBroker, setRemovingBroker] = useState(false);
   const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'messages', 'activity'] as const);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -384,9 +386,12 @@ export default function ReviewApplication() {
     if (updated) setApplication(updated);
   };
 
-  const handleUnassignBroker = async (brokerId: string) => {
-    if (!id) return;
-    const updated = await unassignBroker(id, brokerId);
+  const handleRemoveBroker = async () => {
+    if (!id || !removeBrokerTarget) return;
+    setRemovingBroker(true);
+    const updated = await unassignBroker(id, removeBrokerTarget.id);
+    setRemovingBroker(false);
+    setRemoveBrokerTarget(null);
     if (updated) setApplication(updated);
   };
 
@@ -897,11 +902,11 @@ export default function ReviewApplication() {
                 )}
 
                 {/* Referrer — admin/broker only (this whole page is staff-gated) */}
-                {!referrer && client?.role === 'client' && (
+                {!referrer && client && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
                     <p className="text-[13px] text-muted-foreground mb-4">
-                      No referrer is linked to this client. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
+                      No referrer is linked to this application. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
                     </p>
                     {referrers.length === 0 && (
                       <p className="text-[13px] text-muted-foreground">
@@ -3550,15 +3555,13 @@ export default function ReviewApplication() {
                             </span>
                           </div>
                           <p className="text-[13px] font-semibold text-primary flex-1">{ab.full_name}</p>
-                          {currentUser?.role === 'admin' && (
-                            <button
-                              onClick={() => handleUnassignBroker(ab.id)}
-                              className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                              title="Remove broker"
-                            >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setRemoveBrokerTarget({ id: ab.id, full_name: ab.full_name })}
+                            className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                            title="Remove broker"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -3990,6 +3993,24 @@ export default function ReviewApplication() {
         onConfirm={handleUnlinkReferrer}
         onCancel={() => {
           if (!unlinkingReferrer) setConfirmUnlinkReferrer(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!removeBrokerTarget}
+        title="Remove this broker?"
+        message={removeBrokerTarget ? (
+          <>
+            <span className="font-semibold text-foreground">{removeBrokerTarget.full_name}</span> will be removed from this application.
+          </>
+        ) : null}
+        confirmText="Remove Broker"
+        cancelText="Cancel"
+        variant="danger"
+        loading={removingBroker}
+        onConfirm={handleRemoveBroker}
+        onCancel={() => {
+          if (!removingBroker) setRemoveBrokerTarget(null);
         }}
       />
 

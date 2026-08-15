@@ -82,10 +82,17 @@ def app_with_user(
             app.user.role.value == "client"
             and app.user.password_hash in ("!", "!invited")
         )
-    # Backward compat: first assigned broker populates the legacy fields
-    if app.brokers:
-        data["assigned_broker_id"] = app.brokers[0].id
-        data["assigned_broker_name"] = app.brokers[0].full_name
+    # Backward compat: legacy primary broker populates the legacy fields. Prefer
+    # the explicit assigned_broker_id column (kept in sync on assign/unassign/
+    # reassign); fall back to the first listed broker for legacy rows.
+    primary = None
+    if app.assigned_broker_id:
+        primary = next((b for b in app.brokers if b.id == app.assigned_broker_id), None)
+    if primary is None and app.brokers:
+        primary = app.brokers[0]
+    if primary:
+        data["assigned_broker_id"] = primary.id
+        data["assigned_broker_name"] = primary.full_name
     else:
         data["assigned_broker_id"] = None
         data["assigned_broker_name"] = None
