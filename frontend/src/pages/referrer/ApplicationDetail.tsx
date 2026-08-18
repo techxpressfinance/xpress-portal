@@ -7,13 +7,12 @@ import api from '../../api/client';
 import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
-import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
-import { DOC_TYPE_LABELS, LOAN_CATEGORIES, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
+import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 
@@ -30,7 +29,7 @@ export default function ReferrerApplicationDetail() {
   const [client, setClient] = useState<User | null>(null);
   const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'details', 'documents', 'messages'] as const);
+  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'messages'] as const);
 
   const [downloadingAppPdf, setDownloadingAppPdf] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -57,7 +56,6 @@ export default function ReferrerApplicationDetail() {
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [savingDetails, setSavingDetails] = useState(false);
 
   // Delete document
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -233,47 +231,6 @@ export default function ReferrerApplicationDetail() {
     }
   };
 
-  const handleSaveDetails = async (fields: typeof EDIT_DEFAULTS) => {
-    if (!id) return;
-    setSavingDetails(true);
-    try {
-      const { data } = await api.patch(`/applications/${id}`, {
-        applicant_email: fields.applicant_email || null,
-        applicant_mobile: fields.applicant_mobile || null,
-        preferred_contact_method: fields.preferred_contact_method || null,
-        id_expiry_date: fields.id_expiry_date || null,
-        applicant_residency_status: fields.applicant_residency_status || null,
-        residential_status: fields.residential_status || null,
-        time_at_address: fields.time_at_address || null,
-        applicant_num_dependants: fields.applicant_num_dependants ? parseInt(fields.applicant_num_dependants) : null,
-        has_partner: fields.has_partner,
-        partner_working: fields.partner_working,
-        employment_category: fields.employment_category || null,
-        employer_name: fields.employer_name || null,
-        employer_industry: fields.employer_industry || null,
-        job_title: fields.job_title || null,
-        income_frequency: fields.income_frequency || null,
-        gross_income: fields.gross_income ? parseFloat(fields.gross_income) : null,
-        trading_name: fields.trading_name || null,
-        business_structure: fields.business_structure || null,
-        gst_registered: fields.gst_registered,
-        num_directors: fields.num_directors ? parseInt(fields.num_directors) : null,
-        time_trading: fields.time_trading || null,
-        previously_declined: fields.previously_declined,
-        change_of_circumstances: fields.change_of_circumstances || null,
-        signature_name: fields.signature_name || null,
-        emergency_contact_name: fields.emergency_contact_name || null,
-        emergency_contact_relationship: fields.emergency_contact_relationship || null,
-        emergency_contact_phone: fields.emergency_contact_phone || null,
-      });
-      setApplication(data);
-      toast('Details saved', 'success');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to save details'), 'error');
-    } finally {
-      setSavingDetails(false);
-    }
-  };
 
   const handleSubmitDocRequest = async () => {
     if (!id) return;
@@ -421,12 +378,6 @@ export default function ReferrerApplicationDetail() {
           </Button>
         </div>
 
-        {/* Status Timeline */}
-        <GlassCard className="mb-6">
-          <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
-          <StatusTimeline currentStatus={application.status} />
-        </GlassCard>
-
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Content - Client Style */}
           <div className="lg:col-span-2 space-y-6">
@@ -436,9 +387,6 @@ export default function ReferrerApplicationDetail() {
                 <h1 className="text-[20px] font-semibold text-foreground capitalize">
                   {application.loan_type} Loan Application
                 </h1>
-                <div className="flex items-center gap-2">
-                  <Badge value={application.status} />
-                </div>
               </div>
               {application.lend_ref && (
                 <div className="mb-4 rounded-xl bg-success/5 border border-success/20 px-4 py-2.5">
@@ -969,12 +917,6 @@ export default function ReferrerApplicationDetail() {
         ]} />
       </div>
 
-      {/* Status Timeline */}
-      <GlassCard className="mb-6">
-        <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
-        <StatusTimeline currentStatus={application.status} />
-      </GlassCard>
-
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
@@ -982,7 +924,6 @@ export default function ReferrerApplicationDetail() {
           <div className="flex items-center gap-2 overflow-x-auto pb-0 border-b border-border/60 mb-6 scrollbar-none">
             {([
               { key: 'overview', label: 'Overview' },
-              { key: 'details', label: 'Full Details' },
               { key: 'documents', label: 'Documents' },
               { key: 'messages', label: 'Messages' },
             ] as const).map(({ key, label }) => (
@@ -1021,7 +962,6 @@ export default function ReferrerApplicationDetail() {
                       {application.loan_type} Loan
                     </h1>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge value={application.status} />
                       {!editing && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
                           <span className="flex items-center gap-1.5">
@@ -1215,528 +1155,9 @@ export default function ReferrerApplicationDetail() {
                   );
                 })()}
 
-                {/* Applicant Summary */}
-                {application.applicant_first_name && sectionVisible('personal', 'living', 'business') && (
-                  <GlassCard>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
-                    <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {application.applicant_title} {application.applicant_first_name} {application.applicant_middle_name} {application.applicant_last_name}
-                        </dd>
-                      </div>
-                      {sectionVisible('personal') && application.applicant_dob && (
-                        <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_dob}</dd>
-                        </div>
-                      )}
-                      {sectionVisible('personal') && application.applicant_gender && (
-                        <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Gender</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_gender}</dd>
-                        </div>
-                      )}
-                      {sectionVisible('personal') && application.applicant_marital_status && (
-                        <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Marital Status</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_marital_status}</dd>
-                        </div>
-                      )}
-                      {sectionVisible('living') && application.applicant_address && (
-                        <div className="rounded-xl bg-secondary/50 p-3 sm:col-span-2">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Address</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                            {application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}
-                          </dd>
-                        </div>
-                      )}
-                      {sectionVisible('business') && application.business_name && (
-                        <>
-                          <div className="rounded-xl bg-secondary/50 p-3">
-                            <dt className="text-[12px] font-medium text-muted-foreground">Business</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_name}</dd>
-                          </div>
-                          {application.business_abn && (
-                            <div className="rounded-xl bg-secondary/50 p-3">
-                              <dt className="text-[12px] font-medium text-muted-foreground">ABN</dt>
-                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.business_abn}</dd>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </dl>
-                  </GlassCard>
-                )}
               </>
             )}
 
-            {/* ── FULL DETAILS ── */}
-            {activeTab === 'details' && (
-              <div className="space-y-6">
-                {/* Contact */}
-                {sectionVisible('contact') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Contact Details</h2>
-                  <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Email</label>
-                        <input type="email" className="led-input" placeholder="client@email.com" {...regEdit('applicant_email')} />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Mobile</label>
-                        <input type="text" className="led-input" placeholder="04XX XXX XXX" {...regEdit('applicant_mobile')} />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Preferred Contact Method</label>
-                      <select {...regEdit('preferred_contact_method')} className="led-input">
-                        <option value="">Select...</option>
-                        {['Phone', 'Email', 'SMS'].map((m) => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Identification */}
-                {sectionVisible('identification') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Identification</h2>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <DatePicker
-                        label="ID Expiry Date"
-                        value={watchEdit('id_expiry_date') || ''}
-                        onChange={(v) => setValueEdit('id_expiry_date', v, { shouldValidate: true })}
-                        className="led-input"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Residency Status</label>
-                      <select {...regEdit('applicant_residency_status')} className="led-input">
-                        <option value="">Select...</option>
-                        {['Australian Citizen', 'Permanent Resident', 'Temporary Resident', 'Non-Resident'].map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Living Situation */}
-                {sectionVisible('living') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Living Situation</h2>
-                  <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Residential Status</label>
-                        <select {...regEdit('residential_status')} className="led-input">
-                          <option value="">Select...</option>
-                          {['Owner', 'Renting', 'Living with parents', 'Other'].map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Time at Address</label>
-                        <input type="text" placeholder="e.g. 2 years" className="led-input" {...regEdit('time_at_address')} />
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Number of Dependants</label>
-                        <input type="number" min="0" className="led-input" {...regEdit('applicant_num_dependants')} />
-                      </div>
-                      <div className="flex flex-col justify-end pb-[2px]">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('has_partner')} />
-                          <span className="text-[13px] font-medium text-foreground">Has a partner</span>
-                        </label>
-                      </div>
-                      <div className="flex flex-col justify-end pb-[2px]">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('partner_working')} />
-                          <span className="text-[13px] font-medium text-foreground">Partner is working</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Employment & Income */}
-                {sectionVisible('employment', 'income') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Employment & Income</h2>
-                  <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Employment Category</label>
-                        <select {...regEdit('employment_category')} className="led-input">
-                          <option value="">Select...</option>
-                          {['Full-time', 'Part-time', 'Casual', 'Self-employed', 'Contract', 'Retired', 'Unemployed'].map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Employer Name</label>
-                        <input type="text" className="led-input" {...regEdit('employer_name')} />
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Industry</label>
-                        <input type="text" className="led-input" {...regEdit('employer_industry')} />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Job Title</label>
-                        <input type="text" className="led-input" {...regEdit('job_title')} />
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Income Frequency</label>
-                        <select {...regEdit('income_frequency')} className="led-input">
-                          <option value="">Select...</option>
-                          {['Weekly', 'Fortnightly', 'Monthly', 'Annually'].map((f) => <option key={f} value={f}>{f}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Gross Income (AUD)</label>
-                        <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                          <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
-                          <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
-                            {...regEdit('gross_income')} onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); regEdit('gross_income').onChange({ target: { value: v } }); }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Business Details */}
-                {sectionVisible('business') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Business Details</h2>
-                  <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Trading Name</label>
-                        <input type="text" className="led-input" {...regEdit('trading_name')} />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Business Structure</label>
-                        <select {...regEdit('business_structure')} className="led-input">
-                          <option value="">Select...</option>
-                          {['Sole Trader', 'Partnership', 'Company', 'Trust'].map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Time Trading</label>
-                        <input type="text" placeholder="e.g. 3 years" className="led-input" {...regEdit('time_trading')} />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] font-medium text-muted-foreground mb-1">Number of Directors</label>
-                        <input type="number" min="1" className="led-input" {...regEdit('num_directors')} />
-                      </div>
-                      <div className="flex flex-col justify-end pb-[2px]">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('gst_registered')} />
-                          <span className="text-[13px] font-medium text-foreground">GST Registered</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Emergency Contact */}
-                {sectionVisible('emergency') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Emergency Contact</h2>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Name</label>
-                      <input type="text" className="led-input" {...regEdit('emergency_contact_name')} />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Relationship</label>
-                      <input type="text" className="led-input" placeholder="e.g. Spouse, Parent" {...regEdit('emergency_contact_relationship')} />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Phone</label>
-                      <input type="tel" className="led-input" placeholder="04XX XXX XXX" {...regEdit('emergency_contact_phone')} />
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                {/* Declarations */}
-                {sectionVisible('declarations') && (
-                <GlassCard>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Declarations</h2>
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-3">
-                      <label className="flex items-center gap-2.5 cursor-pointer">
-                        <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('previously_declined')} />
-                        <span className="text-[13px] font-medium text-foreground">Previously declined for credit</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Change of Circumstances</label>
-                      <textarea rows={2} className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder-muted-foreground" placeholder="Any changes in financial circumstances..." {...regEdit('change_of_circumstances')} />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-muted-foreground mb-1">Signature Name</label>
-                      <input type="text" className="led-input" placeholder="Full legal name" {...regEdit('signature_name')} />
-                    </div>
-                  </div>
-                </GlassCard>
-                )}
-
-                <div className="flex items-center gap-3 pb-2">
-                  <Button onClick={handleEditSubmit(handleSaveDetails)} loading={savingDetails}>Save Details</Button>
-                </div>
-
-                {/* Read-only: Lend extra data (identification, financial position) */}
-                {application.lend_extra_data && (() => {
-                  let extra: Record<string, unknown> = {};
-                  try { extra = JSON.parse(application.lend_extra_data); } catch { return null; }
-                  const idEntry = Array.isArray(extra.identification) ? (extra.identification as Array<Record<string, string>>)[0] : null;
-                  const empEntry = Array.isArray(extra.employments) ? (extra.employments as Array<Record<string, string>>)[0] : null;
-                  const incomes = Array.isArray(extra.incomes) ? (extra.incomes as Array<{ income_type?: string; amount?: number; frequency?: string }>).filter(i => (i.amount ?? 0) > 0) : [];
-                  const realEstateAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.real_estate) ? (extra.assets as Record<string, any[]>).real_estate as Array<Record<string, any>> : [];
-                  const otherAssets: Array<Record<string, any>> = Array.isArray((extra.assets as Record<string, any> | undefined)?.other) ? (extra.assets as Record<string, any[]>).other as Array<Record<string, any>> : [];
-                  const liabs: Array<Record<string, any>> = Array.isArray(extra.liabilities) ? extra.liabilities as Array<Record<string, any>> : [];
-                  const expenses = extra.expenses as Record<string, number> | undefined;
-                  const hasAny = idEntry || empEntry || incomes.length > 0 || realEstateAssets.length > 0 || otherAssets.length > 0 || liabs.length > 0 || (expenses && Object.values(expenses).some(v => v > 0));
-                  if (!hasAny) return null;
-                  return (
-                    <div className="space-y-6 mt-6 pt-6 border-t border-border">
-                      <p className="text-[13px] font-semibold text-muted-foreground">Application Data (Read-only)</p>
-
-                      {/* Identification */}
-                      {sectionVisible('identification') && idEntry && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">ID Document</h2>
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            {idEntry.type && <div><p className="text-[12px] text-muted-foreground">ID Type</p><p className="text-[14px] font-medium text-foreground">{idEntry.type}</p></div>}
-                            {idEntry.number && <div><p className="text-[12px] text-muted-foreground">ID Number</p><p className="text-[14px] font-medium text-foreground">{idEntry.number}</p></div>}
-                            {(idEntry.state || idEntry.country) && <div><p className="text-[12px] text-muted-foreground">{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p className="text-[14px] font-medium text-foreground">{idEntry.state || idEntry.country}</p></div>}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Employment details */}
-                      {sectionVisible('employment') && empEntry && (empEntry.employment_type || empEntry.start_date || empEntry.contact_details) && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Employment Details</h2>
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            {empEntry.employment_type && <div><p className="text-[12px] text-muted-foreground">Employment Type</p><p className="text-[14px] font-medium text-foreground">{empEntry.employment_type}</p></div>}
-                            {empEntry.start_date && <div><p className="text-[12px] text-muted-foreground">Start Date</p><p className="text-[14px] font-medium text-foreground">{empEntry.start_date}</p></div>}
-                            {empEntry.contact_details && <div><p className="text-[12px] text-muted-foreground">Employer Contact</p><p className="text-[14px] font-medium text-foreground">{empEntry.contact_details}</p></div>}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Income */}
-                      {sectionVisible('income') && incomes.length > 0 && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Income</h2>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {incomes.map((inc, i) => (
-                              <div key={i} className="rounded-xl bg-secondary/50 p-3">
-                                <p className="text-[12px] text-muted-foreground">{i === 0 ? 'Primary Income' : `Additional Income ${i}`}</p>
-                                <p className="text-[14px] font-medium text-foreground">{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Expenses */}
-                      {sectionVisible('expenses') && expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Monthly Expenses</h2>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {expenses.monthly_living > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Living Expenses</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
-                            {expenses.rent_mortgage > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Rent / Mortgage</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
-                            {expenses.child_support > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Child Support</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
-                            {expenses.other_commitments > 0 && <div className="rounded-xl bg-secondary/50 p-3"><p className="text-[12px] text-muted-foreground">Other Commitments</p><p className="text-[14px] font-medium text-foreground">${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Real Estate Assets */}
-                      {sectionVisible('assets') && realEstateAssets.length > 0 && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Real Estate Assets</h2>
-                          <div className="space-y-3">
-                            {realEstateAssets.map((asset, i) => (
-                              <div key={i} className="rounded-xl bg-secondary/50 p-3">
-                                <p className="text-[13px] font-medium text-foreground">{String(asset.property_type || `Property ${i + 1}`)}</p>
-                                {asset.address && <p className="text-[13px] text-muted-foreground mt-0.5">{String(asset.address)}</p>}
-                                <div className="flex gap-4 flex-wrap mt-1.5">
-                                  {(asset.estimated_value as number) > 0 && <span className="text-[12px] text-foreground">Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
-                                  {asset.ownership_type && <span className="text-[12px] text-muted-foreground">Ownership: {String(asset.ownership_type)}</span>}
-                                  {asset.is_financed === 'yes' && asset.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(asset.lender)}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Other Assets */}
-                      {sectionVisible('assets') && otherAssets.length > 0 && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Other Assets</h2>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {otherAssets.map((asset, i) => (
-                              <div key={i} className="rounded-xl bg-secondary/50 p-3">
-                                <p className="text-[12px] text-muted-foreground">{String(asset.asset_type || `Asset ${i + 1}`)}</p>
-                                {(asset.value as number) > 0 && <p className="text-[14px] font-medium text-foreground">${Number(asset.value).toLocaleString('en-AU')}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Liabilities */}
-                      {sectionVisible('liabilities') && liabs.length > 0 && (
-                        <GlassCard>
-                          <h2 className="text-[15px] font-semibold text-foreground mb-4">Liabilities</h2>
-                          <div className="space-y-3">
-                            {liabs.map((liab, i) => (
-                              <div key={i} className="rounded-xl bg-secondary/50 p-3">
-                                <p className="text-[13px] font-medium text-foreground">{String(liab.liability_type || `Liability ${i + 1}`)}</p>
-                                <div className="flex gap-4 flex-wrap mt-1.5">
-                                  {liab.lender && <span className="text-[12px] text-muted-foreground">Lender: {String(liab.lender)}</span>}
-                                  {(liab.balance as number) > 0 && <span className="text-[12px] text-foreground">Balance: ${Number(liab.balance).toLocaleString('en-AU')}</span>}
-                                  {(liab.monthly_repayment as number) > 0 && <span className="text-[12px] text-muted-foreground">Repayment: ${Number(liab.monthly_repayment).toLocaleString('en-AU')}/mo</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </GlassCard>
-                      )}
-
-                      {/* Loan Type Details */}
-                      {sectionVisible('loan_details') && (() => {
-                        try {
-                          const extraData = JSON.parse(application.lend_extra_data || '{}');
-                          const loanDetails = extraData.loan_type_details;
-                          if (!loanDetails || Object.keys(loanDetails).length === 0) return null;
-
-                          return (
-                            <GlassCard>
-                              <h2 className="text-[15px] font-semibold text-foreground mb-4">Loan Type Details</h2>
-                              <div className="space-y-4">
-                                {(() => {
-                                  const subType: string | undefined = loanDetails.consumer_loan_type?.type || loanDetails.commercial_loan_type?.type;
-                                  if (!subType) return null;
-                                  const categoryLabel = LOAN_CATEGORIES.find(c => c.value === categoryForSubType(subType))?.label;
-                                  const storedLabel = loanDetails.consumer_loan_type?.label || loanDetails.commercial_loan_type?.label;
-                                  const subTypeLabel = findLoanSubType(subType)?.label || storedLabel || subType.replace(/_/g, ' ');
-                                  return (
-                                    <div className="rounded-xl bg-secondary p-4">
-                                      <p className="text-[13px] font-medium text-muted-foreground">{categoryLabel}</p>
-                                      <p className="mt-1 text-[16px] font-semibold text-foreground">{subTypeLabel}</p>
-                                    </div>
-                                  );
-                                })()}
-
-                                {loanDetails.vehicle_details && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Vehicle Information</p>
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.vehicle_details.make && <div><p className="text-[12px] text-muted-foreground">Make</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.make}</p></div>}
-                                      {loanDetails.vehicle_details.model && <div><p className="text-[12px] text-muted-foreground">Model</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.model}</p></div>}
-                                      {loanDetails.vehicle_details.year && <div><p className="text-[12px] text-muted-foreground">Year</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.year}</p></div>}
-                                      {loanDetails.vehicle_details.condition && <div><p className="text-[12px] text-muted-foreground">Condition</p><p className="text-[14px] font-medium text-foreground">{loanDetails.vehicle_details.condition}</p></div>}
-                                      {loanDetails.vehicle_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.vehicle_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}</p></div>}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {loanDetails.property_details && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Property Information</p>
-                                    {loanDetails.property_details.address && <div><p className="text-[12px] text-muted-foreground">Address</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.address}</p></div>}
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.property_details.property_type && <div><p className="text-[12px] text-muted-foreground">Property Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_type}</p></div>}
-                                      {loanDetails.property_details.property_use && <div><p className="text-[12px] text-muted-foreground">Property Use</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.property_use}</p></div>}
-                                      {loanDetails.property_details.value > 0 && <div><p className="text-[12px] text-muted-foreground">Property Value</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.value).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.property_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.property_details.deposit).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.property_details.first_home_buyer !== undefined && <div><p className="text-[12px] text-muted-foreground">First Home Buyer</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.first_home_buyer ? 'Yes' : 'No'}</p></div>}
-                                      {loanDetails.property_details.current_lender && <div><p className="text-[12px] text-muted-foreground">Current Lender</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.current_lender}</p></div>}
-                                    </div>
-                                    {loanDetails.property_details.refinance_reason && <div><p className="text-[12px] text-muted-foreground">Refinance Reason</p><p className="text-[14px] font-medium text-foreground">{loanDetails.property_details.refinance_reason}</p></div>}
-                                  </div>
-                                )}
-
-                                {loanDetails.asset_details && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Asset Information</p>
-                                    {loanDetails.asset_details.equipment_type && <div><p className="text-[12px] text-muted-foreground">Asset Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.equipment_type}</p></div>}
-                                    {loanDetails.asset_details.description && <div><p className="text-[12px] text-muted-foreground">Description</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.description}</p></div>}
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.asset_details.price > 0 && <div><p className="text-[12px] text-muted-foreground">Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.price).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.asset_details.deposit > 0 && <div><p className="text-[12px] text-muted-foreground">Deposit</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.asset_details.vendor_type && <div><p className="text-[12px] text-muted-foreground">Vendor Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.vendor_type}</p></div>}
-                                      {loanDetails.asset_details.condition && <div><p className="text-[12px] text-muted-foreground">Condition</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.condition}</p></div>}
-                                      {loanDetails.asset_details.business_use_pct > 0 && <div><p className="text-[12px] text-muted-foreground">Business Use %</p><p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.business_use_pct}%</p></div>}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {loanDetails.business_details && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Business Information</p>
-                                    {loanDetails.business_details.business_plan && <div><p className="text-[12px] text-muted-foreground">Business Plan</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_plan}</p></div>}
-                                    {loanDetails.business_details.business_details && <div><p className="text-[12px] text-muted-foreground">Business Details</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_details}</p></div>}
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      {loanDetails.business_details.startup_costs > 0 && <div><p className="text-[12px] text-muted-foreground">Startup Costs</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.startup_costs).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.business_details.purchase_price > 0 && <div><p className="text-[12px] text-muted-foreground">Purchase Price</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.business_details.purchase_price).toLocaleString('en-AU')}</p></div>}
-                                      {loanDetails.business_details.industry && <div><p className="text-[12px] text-muted-foreground">Industry</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.industry}</p></div>}
-                                      {loanDetails.business_details.business_type && <div><p className="text-[12px] text-muted-foreground">Business Type</p><p className="text-[14px] font-medium text-foreground">{loanDetails.business_details.business_type}</p></div>}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {loanDetails.working_capital && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Working Capital Details</p>
-                                    {loanDetails.working_capital.expansion_description && <div><p className="text-[12px] text-muted-foreground">Expansion Plans</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.expansion_description}</p></div>}
-                                    {loanDetails.working_capital.recruitment_details && <div><p className="text-[12px] text-muted-foreground">Recruitment Details</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.recruitment_details}</p></div>}
-                                    {loanDetails.working_capital.supplier_details && <div><p className="text-[12px] text-muted-foreground">Supplier Details</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.supplier_details}</p></div>}
-                                    {loanDetails.working_capital.outstanding_invoices && <div><p className="text-[12px] text-muted-foreground">Outstanding Invoices</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.outstanding_invoices}</p></div>}
-                                    {loanDetails.working_capital.purpose_description && <div><p className="text-[12px] text-muted-foreground">Purpose</p><p className="text-[14px] font-medium text-foreground">{loanDetails.working_capital.purpose_description}</p></div>}
-                                    {loanDetails.working_capital.loan_amount > 0 && <div><p className="text-[12px] text-muted-foreground">Loan Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.working_capital.loan_amount).toLocaleString('en-AU')}</p></div>}
-                                  </div>
-                                )}
-
-                                {loanDetails.personal_loan && (
-                                  <div className="rounded-xl bg-secondary/50 p-4 space-y-3">
-                                    <p className="text-[13px] font-semibold text-foreground">Personal Loan Details</p>
-                                    {loanDetails.personal_loan.purpose && <div><p className="text-[12px] text-muted-foreground">Purpose</p><p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.purpose}</p></div>}
-                                    {loanDetails.personal_loan.amount > 0 && <div><p className="text-[12px] text-muted-foreground">Amount</p><p className="text-[14px] font-medium text-foreground">${Number(loanDetails.personal_loan.amount).toLocaleString('en-AU')}</p></div>}
-                                    {loanDetails.personal_loan.term && <div><p className="text-[12px] text-muted-foreground">Term</p><p className="text-[14px] font-medium text-foreground">{loanDetails.personal_loan.term}</p></div>}
-                                  </div>
-                                )}
-                              </div>
-                            </GlassCard>
-                          );
-                        } catch { return null; }
-                      })()}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
 
             {/* ── DOCUMENTS ── */}
             {activeTab === 'documents' && (

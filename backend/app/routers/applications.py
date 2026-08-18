@@ -55,6 +55,7 @@ from app.services.email import (
     send_status_notification,
 )
 from app.services.notification_service import create_notification
+from app.services.contacts import ensure_contact
 from app.services.organizations import find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
@@ -152,6 +153,23 @@ def create_application(
             broker_id=app.assigned_broker_id,
             tenant_id=tenant_id,
         ))
+    # Referrer-created leads are mirrored into the CRM so admins and brokers see
+    # the referred client as a contact, not just an application. Require an email
+    # so auto-saved drafts (which omit it) don't create shell contacts.
+    if (
+        current_user.role == UserRole.referrer
+        and app.applicant_first_name
+        and app.applicant_last_name
+        and app.applicant_email
+    ):
+        app.contact_id = ensure_contact(
+            db,
+            tenant_id,
+            app.applicant_first_name,
+            app.applicant_last_name,
+            email=app.applicant_email,
+            phone=app.applicant_mobile,
+        ).id
     log_activity(db, current_user.id, "created", "application", app.id, {"loan_type": data.loan_type, "amount": str(data.amount)}, tenant_id=tenant_id)
 
     # Commercial reconciliation: if another open application already exists for the

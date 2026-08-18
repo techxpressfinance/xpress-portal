@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, Badge, PageHeader, Button, Select, Input } from '../../components/ui';
+import { GlassCard, PageHeader, Button, Select, Input } from '../../components/ui';
 import { LOAN_TYPE_LABELS } from '../../lib/constants';
 
 import type { LoanApplication } from '../../types';
@@ -17,7 +17,6 @@ export default function ReferrerApplications() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState('');
   const [loanTypeFilter, setLoanTypeFilter] = useState('');
   const [search, setSearch] = useState('');
   const perPage = 15;
@@ -27,7 +26,6 @@ export default function ReferrerApplications() {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('per_page', String(perPage));
-    if (statusFilter) params.set('status', statusFilter);
     if (loanTypeFilter) params.set('loan_type', loanTypeFilter);
     if (search) params.set('search', search);
 
@@ -43,7 +41,7 @@ export default function ReferrerApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, statusFilter, loanTypeFilter]);
+  }, [page, loanTypeFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,20 +78,6 @@ export default function ReferrerApplications() {
       {/* Filters */}
       <GlassCard className="mb-6">
         <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
-          <Select
-            label="Status"
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="application_received">Application Received</option>
-            <option value="application_assessed">Application Assessed</option>
-            <option value="submitted">Submitted</option>
-            <option value="approval">Approval</option>
-            <option value="settled">Settled</option>
-            <option value="rejected">Rejected</option>
-          </Select>
           <Select
             label="Loan Type"
             value={loanTypeFilter}
@@ -156,7 +140,6 @@ export default function ReferrerApplications() {
                     <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Company</th>
                     <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Type</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
-                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Status</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Created</th>
                   </tr>
                 </thead>
@@ -197,9 +180,6 @@ export default function ReferrerApplications() {
                       </td>
                       <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString('en-AU')}</td>
-                      <td className="px-3 sm:px-6 py-4">
-                        <Badge value={app.status} />
-                      </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
                         {formatDate(app.created_at)}
                       </td>

@@ -16,6 +16,7 @@ from app.models.loan_application import LoanApplication, LoanType
 from app.models.user import User, UserRole
 from app.schemas.common import normalize_email
 from app.services.activity_log import log_activity
+from app.services.contacts import ensure_contact
 from app.services.email import notify_admins_new_account, send_new_lead_notification, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
@@ -164,6 +165,11 @@ def create_referrer_client(
         tenant_id=tenant_id,
     )
     db.add(referral)
+    ensure_contact(
+        db, tenant_id,
+        data.first_name, data.last_name,
+        email=email, phone=data.mobile,
+    )
     client_name = f"{data.first_name.strip()} {data.last_name.strip()}".strip()
     log_activity(db, current_user.id, "client_referred", "client", client_id,
                 {"client_name": client_name, "client_email": email}, tenant_id=tenant_id)
@@ -375,6 +381,11 @@ def create_direct_referral(
     )
     db.add(application)
     db.flush()
+    application.contact_id = ensure_contact(
+        db, tenant_id,
+        data.first_name, data.last_name,
+        email=email, phone=data.mobile,
+    ).id
     log_activity(db, current_user.id, "lead_submitted", "application", application.id,
                 {"loan_type": loan_type.value, "amount": str(data.amount), "client_name": full_name},
                 tenant_id=tenant_id)
