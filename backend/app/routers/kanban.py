@@ -23,9 +23,10 @@ from app.schemas.kanban import (
     KanbanColumnOut,
     KanbanColumnUpdate,
 )
-from app.constants import DEFAULT_KANBAN_COLUMNS
+from app.constants import DEFAULT_KANBAN_COLUMNS, STATUS_LABELS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.application_status import change_application_status
 from app.services.date_filter import apply_date_range_filter
 from app.services.loan_category import (
     LOAN_CATEGORIES,
@@ -46,6 +47,10 @@ _VALID_STATUSES = {s.value for s in ApplicationStatus}
 def _validate_mapped_status(status: str) -> None:
     if status not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid mapped_status: {status}")
+
+
+def _column_title(mapped_status: str) -> str:
+    return STATUS_LABELS.get(mapped_status, mapped_status.replace("_", " ").title())
 
 
 def _validate_loan_category(category: str) -> None:
@@ -118,12 +123,15 @@ def create_board(
     db.flush()
 
     cols = data.columns if data.columns else [KanbanColumnCreate(**c) for c in DEFAULT_KANBAN_COLUMNS]
+    seen: set[str] = set()
     for col_data in cols:
-        if col_data.mapped_status:
-            _validate_mapped_status(col_data.mapped_status)
+        _validate_mapped_status(col_data.mapped_status)
+        if col_data.mapped_status in seen:
+            raise HTTPException(status_code=400, detail=f"Duplicate mapped_status: {col_data.mapped_status}")
+        seen.add(col_data.mapped_status)
         col = KanbanColumn(
             board_id=board.id,
-            title=col_data.title,
+            title=_column_title(col_data.mapped_status),
             mapped_status=col_data.mapped_status,
             position=col_data.position,
             color=col_data.color,
@@ -203,12 +211,13 @@ def add_column(
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    if data.mapped_status:
-        _validate_mapped_status(data.mapped_status)
+    _validate_mapped_status(data.mapped_status)
+    if any(c.mapped_status == data.mapped_status for c in board.columns):
+        raise HTTPException(status_code=400, detail=f"A column for status '{data.mapped_status}' already exists on this board")
     max_pos = max((c.position for c in board.columns), default=-1)
     col = KanbanColumn(
         board_id=board_id,
-        title=data.title,
+        title=_column_title(data.mapped_status),
         mapped_status=data.mapped_status,
         position=max_pos + 1,
         color=data.color,
@@ -216,7 +225,7 @@ def add_column(
     )
     db.add(col)
     db.flush()
-    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": data.title, "board_id": board_id}, tenant_id=tenant_id)
+    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": col.title, "mapped_status": data.mapped_status, "board_id": board_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
     count = 0
@@ -238,10 +247,21 @@ def update_column(
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
     updates = data.model_dump(exclude_unset=True)
-    if "mapped_status" in updates and updates["mapped_status"]:
-        _validate_mapped_status(updates["mapped_status"])
-    for key, value in updates.items():
-        setattr(col, key, value)
+    new_mapped = updates.get("mapped_status") or col.mapped_status
+    _validate_mapped_status(new_mapped)
+    if new_mapped != col.mapped_status:
+        clash = db.query(KanbanColumn).filter(
+            KanbanColumn.board_id == board_id,
+            KanbanColumn.id != column_id,
+            KanbanColumn.mapped_status == new_mapped,
+        ).first()
+        if clash:
+            raise HTTPException(status_code=400, detail=f"A column for status '{new_mapped}' already exists on this board")
+    # Column titles are derived from the mapped status so they can't drift.
+    col.mapped_status = new_mapped
+    col.title = _column_title(new_mapped)
+    if "color" in updates:
+        col.color = updates["color"]
     log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
@@ -262,21 +282,9 @@ def delete_column(
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
-    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id).first()
-    if len(board.columns) <= 1:
-        raise HTTPException(status_code=400, detail="Cannot delete the last column")
-    # Reset kanban position for any apps explicitly placed in this column
-    db.query(LoanApplication).filter(
-        LoanApplication.kanban_column_id == column_id,
-        LoanApplication.tenant_id == tenant_id,
-    ).update({"kanban_column_id": None})
-    log_activity(db, current_user.id, "column_deleted", "kanban_column", col.id, {"title": col.title}, tenant_id=tenant_id)
-    db.delete(col)
-    # Reorder remaining columns
-    remaining = db.query(KanbanColumn).filter(KanbanColumn.board_id == board_id, KanbanColumn.id != column_id).order_by(KanbanColumn.position).all()
-    for i, c in enumerate(remaining):
-        c.position = i
-    db.commit()
+    # Columns are locked to the application statuses — they can't be deleted,
+    # only reordered and recoloured.
+    raise HTTPException(status_code=400, detail="Columns are fixed to the application statuses and cannot be deleted")
 
 
 @router.put("/boards/{board_id}/columns/reorder")
@@ -388,9 +396,8 @@ def get_board_applications(
     if sub_type:
         apps = [a for a in apps if application_sub_type(a) == sub_type]
 
-    # Build set of valid column IDs on this board for quick lookup
-    board_col_ids = {col.id for col in board.columns}
-    # Map mapped_status → column id (for fallback placement)
+    # Cards are placed purely by status — each board has exactly one column per
+    # application status, so the board and the application list always agree.
     status_to_col_id: dict[str, str] = {}
     for col in board.columns:
         if col.mapped_status and col.mapped_status not in status_to_col_id:
@@ -400,14 +407,9 @@ def get_board_applications(
 
     referrer_map = referrer_info_map(db, (app.user_id for app in apps))
     for app in apps:
-        # Explicit kanban placement takes priority
-        if app.kanban_column_id and app.kanban_column_id in board_col_ids:
-            result[app.kanban_column_id].append(app_with_user(app, db, referrer_map=referrer_map))
-        else:
-            # Fall back to status-based placement
-            fallback = status_to_col_id.get(app.status.value)
-            if fallback:
-                result[fallback].append(app_with_user(app, db, referrer_map=referrer_map))
+        col_id = status_to_col_id.get(app.status.value)
+        if col_id:
+            result[col_id].append(app_with_user(app, db, referrer_map=referrer_map))
 
     # Apply per_column limit
     for col_id in result:
@@ -430,6 +432,9 @@ def move_card(
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
+    if not col.mapped_status:
+        raise HTTPException(status_code=400, detail="This column is not mapped to an application status")
+    new_status = ApplicationStatus(col.mapped_status)
 
     application = db.query(LoanApplication).filter(
         LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
@@ -441,6 +446,6 @@ def move_card(
     old_col_id = application.kanban_column_id
     application.kanban_column_id = column_id
     log_activity(db, current_user.id, "kanban_moved", "application", app_id, {"to_column": col.title, "from_column_id": old_col_id}, tenant_id=tenant_id)
-    db.commit()
+    change_application_status(db, application, new_status, current_user.id, tenant_id)
 
-    return {"status": "ok", "column_id": column_id, "column_title": col.title}
+    return {"status": "ok", "column_id": column_id, "column_title": col.title, "application_status": new_status.value}

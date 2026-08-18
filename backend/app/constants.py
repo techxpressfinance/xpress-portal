@@ -60,4 +60,9 @@ DEFAULT_KANBAN_COLUMNS = [
     {"title": "Approval", "mapped_status": "approval", "position": 4, "color": "chart-5"},
     {"title": "Settled", "mapped_status": "settled", "position": 5, "color": "success"},
     {"title": "Rejected", "mapped_status": "rejected", "position": 6, "color": "destructive"},
+    {"title": "Not Proceeding", "mapped_status": "not_proceeding", "position": 7, "color": "muted-foreground"},
 ]
+
+# Display label for each application status — kanban column titles are derived
+# from these so the board can never drift from the application statuses.
+STATUS_LABELS: dict[str, str] = {c["mapped_status"]: c["title"] for c in DEFAULT_KANBAN_COLUMNS}

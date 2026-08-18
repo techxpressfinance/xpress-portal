@@ -3565,25 +3565,36 @@ export default function ReviewApplication() {
         <div className="space-y-6 sticky top-6">
           {/* Status Actions */}
           <GlassCard>
-            <h2 className="text-[15px] font-semibold text-foreground mb-4">Actions</h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-[15px] font-semibold text-foreground">Status</h2>
+              <Badge value={application.status} />
+            </div>
             {allowedTransitions.length === 0 ? (
               <div className="rounded-xl bg-secondary p-4 text-center">
-                <p className="text-[13px] text-muted-foreground">No transitions available</p>
-                <p className="text-[12px] text-muted-foreground mt-1">Status: {application.status}</p>
+                <p className="text-[13px] font-medium text-foreground">Final status</p>
+                <p className="text-[12px] text-muted-foreground mt-1">No further transitions are available.</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                <p className="text-[13px] font-medium text-muted-foreground mb-3">Change status to</p>
+              <div className="space-y-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Move to</p>
                 {allowedTransitions.map((s) => (
-                  <Button
+                  <button
                     key={s}
-                    variant={s === 'settled' || s === 'approval' ? 'success' : s === 'rejected' || s === 'not_proceeding' ? 'danger' : 'primary'}
-                    size="lg"
-                    className="w-full capitalize"
+                    type="button"
                     onClick={() => handleStatusChange(s)}
+                    className={`group flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-[13.5px] font-medium transition-all hover:-translate-y-[1px] hover:shadow-sm ${
+                      s === 'settled' || s === 'approval'
+                        ? 'border-success/30 text-success hover:bg-success/10'
+                        : s === 'rejected' || s === 'not_proceeding'
+                          ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
+                          : 'border-[var(--led-line)] text-foreground hover:bg-secondary'
+                    }`}
                   >
-                    {s.replace(/_/g, ' ')}
-                  </Button>
+                    <span className="capitalize">{STATUS_LABEL[s as keyof typeof STATUS_LABEL] || s.replace(/_/g, ' ')}</span>
+                    <svg className="h-4 w-4 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </button>
                 ))}
               </div>
             )}

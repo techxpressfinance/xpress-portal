@@ -6,9 +6,9 @@ from pydantic import BaseModel
 
 
 class KanbanColumnCreate(BaseModel):
-    title: str
-    mapped_status: Optional[str] = None
-    position: int
+    mapped_status: str
+    title: Optional[str] = None
+    position: int = 0
     color: Optional[str] = None
 
 

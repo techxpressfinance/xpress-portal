@@ -706,6 +706,53 @@ try:
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
+# Reconcile kanban columns to the canonical application-status columns.
+# Columns are locked to the 8 application statuses (see constants.py), but
+# boards created before that lock may be missing "not_proceeding", or carry
+# unmapped/duplicate columns from when custom stages were allowed. Bring every
+# board to exactly one column per status and clear any kanban_column_id that
+# pointed at a removed column. Idempotent.
+try:
+    import uuid as _uuid
+    from datetime import datetime as _dt, timezone as _tz
+    _valid_statuses = [c["mapped_status"] for c in DEFAULT_KANBAN_COLUMNS]
+    _status_set = set(_valid_statuses)
+    with engine.begin() as conn:
+        _boards = conn.execute(text("SELECT id FROM kanban_boards")).fetchall()
+        for (_bid,) in _boards:
+            _cols = conn.execute(
+                text("SELECT id, mapped_status, position FROM kanban_columns WHERE board_id = :bid ORDER BY position, created_at"),
+                {"bid": _bid},
+            ).fetchall()
+            _kept: dict = {}
+            _remove_ids = []
+            _max_pos = -1
+            for _cid, _mapped, _pos in _cols:
+                _max_pos = max(_max_pos, _pos or 0)
+                if _mapped in _status_set and _mapped not in _kept:
+                    _kept[_mapped] = _cid
+                else:
+                    _remove_ids.append(_cid)
+            for _cid in _remove_ids:
+                conn.execute(text("DELETE FROM kanban_columns WHERE id = :cid"), {"cid": _cid})
+                conn.execute(text("UPDATE loan_applications SET kanban_column_id = NULL WHERE kanban_column_id = :cid"), {"cid": _cid})
+            for _col_def in DEFAULT_KANBAN_COLUMNS:
+                _status = _col_def["mapped_status"]
+                if _status in _kept:
+                    conn.execute(
+                        text("UPDATE kanban_columns SET title = :title WHERE id = :cid"),
+                        {"title": _col_def["title"], "cid": _kept[_status]},
+                    )
+                    continue
+                _max_pos += 1
+                conn.execute(text(
+                    "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, position, color, created_at) "
+                    "VALUES (:id, (SELECT tenant_id FROM kanban_boards WHERE id = :bid), :bid, :title, :mapped_status, :position, :color, :now)"
+                ), {"id": str(_uuid.uuid4()), "bid": _bid, "title": _col_def["title"],
+                    "mapped_status": _status, "position": _max_pos, "color": _col_def["color"], "now": _dt.now(_tz.utc)})
+except Exception as _e:
+    _logger.debug("Kanban column reconciliation skipped (table may not exist yet): %s", _e)
+
 # API docs are only served in development — the OpenAPI schema enumerates the
 # full attack surface and has no business being public in production.
 _docs_kwargs = (

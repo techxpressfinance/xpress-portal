@@ -39,7 +39,7 @@ SECTION_KEYS = (
     "declarations", "emergency", "documents",
 )
 ALLOWED_SECTIONS = set(SECTION_KEYS)
-from app.constants import VALID_TRANSITIONS
+from app.services.application_status import change_application_status
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
@@ -880,42 +880,7 @@ def change_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    current = application.status.value
-    allowed = VALID_TRANSITIONS.get(current, [])
-    if new_status.value not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot transition from '{current}' to '{new_status.value}'. Allowed: {allowed}",
-        )
-
-    old_status = current
-    application.status = new_status
-    if new_status == ApplicationStatus.settled and application.settled_at is None:
-        application.settled_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    log_activity(db, current_user.id, "status_changed", "application", app_id, {"from": old_status, "to": new_status.value}, tenant_id=tenant_id)
-    db.commit()
-    db.refresh(application)
-
-    # Notify client via email and SMS
-    client = db.query(User).filter(User.id == application.user_id).first()
-    if client and client.role == UserRole.client and not client.email.endswith('@deleted.invalid'):
-        send_status_notification(client.email, client.full_name, application.loan_type.value, new_status.value)
-        if client.phone:
-            from app.services.sms import send_status_sms
-            send_status_sms(client.phone, new_status.value)
-        create_notification(
-            db,
-            user_id=client.id,
-            type="status_change",
-            title=f"Application {new_status.value.replace('_', ' ')}",
-            body=f"Your {application.loan_type.value} application has been updated to: {new_status.value.replace('_', ' ')}",
-            link=f"/applications/{app_id}",
-            tenant_id=tenant_id,
-        )
-        db.commit()
-    elif application.applicant_email:
-        applicant_name = " ".join(filter(None, [application.applicant_first_name, application.applicant_last_name])) or "Applicant"
-        send_status_notification(application.applicant_email, applicant_name, application.loan_type.value, new_status.value)
+    change_application_status(db, application, new_status, current_user.id, tenant_id)
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application, db)

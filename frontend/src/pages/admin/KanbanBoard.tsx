@@ -5,12 +5,12 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
-import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, findLoanSubType } from '../../lib/constants';
+import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
 
 // Category scope value meaning "the signed-in broker's specialties".
 const MY_FOCUS = 'mine';
 import { ConfirmDialog, EmptyState } from '../../components/ui';
-import type { KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, User } from '../../types';
+import type { ApplicationStatus, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, User } from '../../types';
 
 // ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
 
@@ -278,7 +278,6 @@ function BoardColumn({
   onDrop,
   onDragLeave,
   onEditColumn,
-  onDeleteColumn,
   onMoveColumn,
 }: {
   col: KanbanColumn;
@@ -295,7 +294,6 @@ function BoardColumn({
   onDrop: (e: DragEvent, columnId: string) => void;
   onDragLeave: (e: DragEvent, columnId: string) => void;
   onEditColumn: (col: KanbanColumn) => void;
-  onDeleteColumn: (col: KanbanColumn) => void;
   onMoveColumn: (col: KanbanColumn, direction: 'left' | 'right') => void;
 }) {
   const isOver = dragOverColumn === col.id;
@@ -396,14 +394,6 @@ function BoardColumn({
                   onClick={() => { setMenuOpen(false); onEditColumn(col); }}
                 >
                   <Icon name="edit" size={13} />Edit column
-                </button>
-                <button
-                  type="button"
-                  className="led-popover-item"
-                  style={{ color: 'var(--led-danger)' }}
-                  onClick={() => { setMenuOpen(false); onDeleteColumn(col); }}
-                >
-                  <Icon name="trash" size={13} />Delete column
                 </button>
               </div>
             )}
@@ -521,7 +511,6 @@ export default function KanbanBoardPage() {
 
   // Modal state
   const [showCreateBoard, setShowCreateBoard] = useState(false);
-  const [showAddColumn, setShowAddColumn] = useState(false);
   const [editingColumn, setEditingColumn] = useState<KanbanColumn | null>(null);
   const [showBoardSettings, setShowBoardSettings] = useState(false);
   const [pendingMove, setPendingMove] = useState<{
@@ -529,6 +518,7 @@ export default function KanbanBoardPage() {
     sourceColumnId: string;
     targetColumnId: string;
     targetColumnTitle: string;
+    targetColumnStatus: ApplicationStatus | null;
   } | null>(null);
   const [movingApp, setMovingApp] = useState(false);
 
@@ -536,8 +526,6 @@ export default function KanbanBoardPage() {
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDesc, setNewBoardDesc] = useState('');
   const [newBoardCategory, setNewBoardCategory] = useState('');
-  const [colTitle, setColTitle] = useState('');
-  const [colMappedStatus, setColMappedStatus] = useState('');
   const [colColor, setColColor] = useState('muted-foreground');
 
   // ── Data fetching ──
@@ -647,8 +635,11 @@ export default function KanbanBoardPage() {
   const getDropValidity = useCallback((targetColumnId: string): DropValidity => {
     if (!draggedApp) return null;
     if (dragSourceColumn.current === targetColumnId) return 'same';
+    const targetCol = activeBoard?.columns.find((c) => c.id === targetColumnId);
+    const allowed = VALID_TRANSITIONS[draggedApp.status] || [];
+    if (!targetCol?.mapped_status || !allowed.includes(targetCol.mapped_status)) return 'invalid';
     return 'valid';
-  }, [draggedApp]);
+  }, [draggedApp, activeBoard]);
 
   const handleDragStart = (e: DragEvent, app: LoanApplication) => {
     setDraggedApp(app);
@@ -750,6 +741,7 @@ export default function KanbanBoardPage() {
       sourceColumnId: sourceColId,
       targetColumnId,
       targetColumnTitle: targetCol.title,
+      targetColumnStatus: targetCol.mapped_status,
     });
   };
 
@@ -764,7 +756,7 @@ export default function KanbanBoardPage() {
       updated[pendingMove.sourceColumnId] = (prev[pendingMove.sourceColumnId] || []).filter((a) => a.id !== pendingMove.app.id);
       updated[pendingMove.targetColumnId] = [
         ...(prev[pendingMove.targetColumnId] || []),
-        { ...pendingMove.app, kanban_column_id: pendingMove.targetColumnId },
+        { ...pendingMove.app, kanban_column_id: pendingMove.targetColumnId, status: pendingMove.targetColumnStatus ?? pendingMove.app.status },
       ];
       return updated;
     });
@@ -831,34 +823,14 @@ export default function KanbanBoardPage() {
 
   // ── Column management ──
 
-  const handleAddColumn = async () => {
-    if (!activeBoard || !colTitle.trim()) return;
-    try {
-      await api.post(`/kanban/boards/${activeBoard.id}/columns`, {
-        title: colTitle,
-        mapped_status: colMappedStatus || null,
-        position: activeBoard.columns.length,
-        color: colColor,
-      });
-      setShowAddColumn(false);
-      resetColForm();
-      await loadBoard(activeBoard.id);
-      toast('Column added', 'success');
-    } catch (err: any) {
-      toast(err?.response?.data?.detail || 'Failed to add column', 'error');
-    }
-  };
-
   const handleEditColumn = async () => {
-    if (!activeBoard || !editingColumn || !colTitle.trim()) return;
+    if (!activeBoard || !editingColumn) return;
     try {
       await api.patch(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}`, {
-        title: colTitle,
-        mapped_status: colMappedStatus || null,
         color: colColor,
       });
       setEditingColumn(null);
-      resetColForm();
+      setColColor('muted-foreground');
       await loadBoard(activeBoard.id);
       toast('Column updated', 'success');
     } catch (err: any) {
@@ -890,27 +862,7 @@ export default function KanbanBoardPage() {
     }
   };
 
-  const handleDeleteColumn = async (col: KanbanColumn) => {
-    if (!activeBoard) return;
-    if (!confirm(`Delete column "${col.title}"?`)) return;
-    try {
-      await api.delete(`/kanban/boards/${activeBoard.id}/columns/${col.id}`);
-      await loadBoard(activeBoard.id);
-      toast('Column deleted', 'success');
-    } catch (err: any) {
-      toast(err?.response?.data?.detail || 'Failed to delete column', 'error');
-    }
-  };
-
-  const resetColForm = () => {
-    setColTitle('');
-    setColMappedStatus('');
-    setColColor('muted-foreground');
-  };
-
   const openEditColumn = (col: KanbanColumn) => {
-    setColTitle(col.title);
-    setColMappedStatus(col.mapped_status || '');
     setColColor(col.color || 'muted-foreground');
     setEditingColumn(col);
   };
@@ -1268,19 +1220,9 @@ export default function KanbanBoardPage() {
                 onDrop={handleDrop}
                 onDragLeave={handleDragLeave}
                 onEditColumn={openEditColumn}
-                onDeleteColumn={handleDeleteColumn}
                 onMoveColumn={handleMoveColumn}
               />
             ))}
-            {isAdmin && (
-              <button
-                type="button"
-                className="led-kanban-add-col"
-                onClick={() => setShowAddColumn(true)}
-              >
-                <Icon name="plus" size={13} /> Add stage
-              </button>
-            )}
           </div>
         </div>
       ) : (
@@ -1344,29 +1286,12 @@ export default function KanbanBoardPage() {
         </div>
       </Modal>
 
-      {/* ── Add Column Modal ── */}
-      <Modal open={showAddColumn} onClose={() => { setShowAddColumn(false); resetColForm(); }} title="Add stage">
-        <ColumnForm
-          title={colTitle} setTitle={setColTitle}
-          mappedStatus={colMappedStatus} setMappedStatus={setColMappedStatus}
-          color={colColor} setColor={setColColor}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setShowAddColumn(false); resetColForm(); }}>Cancel</button>
-          <button type="button" className="led-btn led-btn-accent" onClick={handleAddColumn} disabled={!colTitle.trim()}>Add stage</button>
-        </div>
-      </Modal>
-
       {/* ── Edit Column Modal ── */}
-      <Modal open={!!editingColumn} onClose={() => { setEditingColumn(null); resetColForm(); }} title="Edit stage">
-        <ColumnForm
-          title={colTitle} setTitle={setColTitle}
-          mappedStatus={colMappedStatus} setMappedStatus={setColMappedStatus}
-          color={colColor} setColor={setColColor}
-        />
+      <Modal open={!!editingColumn} onClose={() => { setEditingColumn(null); setColColor('muted-foreground'); }} title="Edit stage">
+        <ColumnForm color={colColor} setColor={setColColor} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setEditingColumn(null); resetColForm(); }}>Cancel</button>
-          <button type="button" className="led-btn led-btn-accent" onClick={handleEditColumn} disabled={!colTitle.trim()}>Save</button>
+          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setEditingColumn(null); setColColor('muted-foreground'); }}>Cancel</button>
+          <button type="button" className="led-btn led-btn-accent" onClick={handleEditColumn}>Save</button>
         </div>
       </Modal>
 
@@ -1436,39 +1361,15 @@ export default function KanbanBoardPage() {
   );
 }
 
-// ── Column form (shared between Add + Edit) ──
+// ── Column form (color only — titles/statuses are fixed) ──
 
 function ColumnForm({
-  title, setTitle,
-  mappedStatus, setMappedStatus,
   color, setColor,
 }: {
-  title: string; setTitle: (s: string) => void;
-  mappedStatus: string; setMappedStatus: (s: string) => void;
   color: string; setColor: (s: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <input className="led-input" placeholder="Stage title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      <div>
-        <div className="led-label" style={{ marginBottom: 6 }}>Map to status (optional)</div>
-        <select
-          className="led-input"
-          value={mappedStatus}
-          onChange={(e) => setMappedStatus(e.target.value)}
-          style={{ cursor: 'pointer' }}
-        >
-          <option value="">None (organizational only)</option>
-          <option value="draft">Draft</option>
-          <option value="application_received">Application Received</option>
-          <option value="application_assessed">Application Assessed</option>
-          <option value="submitted">Submitted</option>
-          <option value="approval">Approval</option>
-          <option value="settled">Settled</option>
-          <option value="rejected">Rejected</option>
-          <option value="not_proceeding">Not Proceeding</option>
-        </select>
-      </div>
       <div>
         <div className="led-label" style={{ marginBottom: 6 }}>Color</div>
         <div style={{ display: 'flex', gap: 8 }}>
