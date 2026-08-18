@@ -59,15 +59,15 @@ class LoanApplication(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    loan_type: Mapped[LoanType] = mapped_column(Enum(LoanType), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=False)
+    loan_type: Mapped[LoanType] = mapped_column(Enum(LoanType), index=True, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[ApplicationStatus] = mapped_column(
-        Enum(ApplicationStatus), default=ApplicationStatus.draft, nullable=False
+        Enum(ApplicationStatus), default=ApplicationStatus.draft, index=True, nullable=False
     )
-    assigned_broker_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    assigned_broker_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -180,7 +180,7 @@ class LoanApplication(Base):
     client_invite_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     client_invite_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     client_invite_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None, index=True)
 
     # Stamped once, the first time status transitions to settled (settled is a
     # terminal state — see VALID_TRANSITIONS in constants.py). Drives the

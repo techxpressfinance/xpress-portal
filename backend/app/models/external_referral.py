@@ -27,9 +27,9 @@ class ExternalReferral(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
-    referrer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    referrer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=False)
     referred_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    referred_client_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    referred_client_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=True)
     status: Mapped[ExternalReferralStatus] = mapped_column(
         Enum(ExternalReferralStatus), default=ExternalReferralStatus.pending, nullable=False
     )

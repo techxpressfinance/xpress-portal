@@ -500,7 +500,19 @@ def list_applications(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(LoanApplication).options(joinedload(LoanApplication.user), joinedload(LoanApplication.assigned_broker), selectinload(LoanApplication.brokers), selectinload(LoanApplication.completed_by), selectinload(LoanApplication.additional_applicants), selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories), selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization)).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
+    # List view only needs the owner + assigned brokers; skip eager-loading the
+    # parties/guarantors/completed_by graphs that the slim serializer never reads.
+    # Clients keep the full graph — their list doubles as the form prefill source
+    # (NewApplication reads decrypted PII from the latest few applications).
+    options = [joinedload(LoanApplication.user), selectinload(LoanApplication.brokers)]
+    if current_user.role == UserRole.client:
+        options += [
+            selectinload(LoanApplication.completed_by),
+            selectinload(LoanApplication.additional_applicants),
+            selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories),
+            selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization),
+        ]
+    query = db.query(LoanApplication).options(*options).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     if current_user.role == UserRole.client:
         query = query.filter(
@@ -554,7 +566,18 @@ def list_applications(
     items = query.order_by(LoanApplication.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
     referrer_map = referrer_info_map(db, (app.user_id for app in items))
-    return PaginatedApplications(items=[_app_with_user(app, db, referrer_map=referrer_map) for app in items], total=total, page=page, per_page=per_page)
+    is_client = current_user.role == UserRole.client
+    items_out = [
+        _app_with_user(
+            app,
+            db,
+            referrer_map=referrer_map,
+            list_item=not is_client,
+            include_lend_extra_data=(current_user.role == UserRole.referrer),
+        )
+        for app in items
+    ]
+    return PaginatedApplications(items=items_out, total=total, page=page, per_page=per_page)
 
 
 @router.get("/analytics")

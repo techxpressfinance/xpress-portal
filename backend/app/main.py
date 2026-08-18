@@ -287,6 +287,24 @@ with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
             _logger.info("Added column %s.%s", table, col)
 
+# Idempotent indexes for hot filter/sort columns. create_all only indexes tables
+# it creates; databases that predate the index=True model flags need the indexes
+# added here. Index names match SQLAlchemy's default ix_<table>_<column> so fresh
+# installs (which create them via create_all) are unaffected.
+_INDEX_COLUMNS = [
+    ("loan_applications", "user_id"),
+    ("loan_applications", "status"),
+    ("loan_applications", "loan_type"),
+    ("loan_applications", "assigned_broker_id"),
+    ("loan_applications", "deleted_at"),
+    ("loan_applications", "created_at"),
+    ("external_referrals", "referrer_id"),
+    ("external_referrals", "referred_client_id"),
+]
+with engine.begin() as conn:
+    for _tbl, _col in _INDEX_COLUMNS:
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{_tbl}_{_col} ON {_tbl} ({_col})"))
+
 # ── Field-level encryption: re-encrypt legacy plaintext rows ──────────────────
 # Any EncryptedString column may hold plaintext written before encryption was
 # enabled (or before the column switched to EncryptedString). Discover them all

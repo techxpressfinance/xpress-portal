@@ -78,17 +78,31 @@ def get_dashboard_stats(
         )
     ).scalar() or 0
 
-    # ── Average turnaround (created → updated for approved/rejected) ──
-    completed = scoped(
-        db.query(LoanApplication.created_at, LoanApplication.updated_at).filter(
-            LoanApplication.status.in_([ApplicationStatus.settled, ApplicationStatus.rejected])
-        )
-    ).all()
-    if completed:
-        total_secs = sum((r.updated_at - r.created_at).total_seconds() for r in completed)
-        avg_turnaround_days = round(total_secs / len(completed) / 86400, 1)
+    # ── Average turnaround (created → settled/rejected), computed in SQL ──
+    dialect = db.bind.dialect.name
+    if dialect == "sqlite":
+        avg_turnaround = scoped(
+            db.query(
+                func.avg(
+                    func.julianday(LoanApplication.updated_at)
+                    - func.julianday(LoanApplication.created_at)
+                )
+            ).filter(
+                LoanApplication.status.in_([ApplicationStatus.settled, ApplicationStatus.rejected])
+            )
+        ).scalar()
+        avg_turnaround_days = round(avg_turnaround, 1) if avg_turnaround is not None else None
     else:
-        avg_turnaround_days = None
+        avg_turnaround_secs = scoped(
+            db.query(
+                func.avg(
+                    func.extract("epoch", LoanApplication.updated_at - LoanApplication.created_at)
+                )
+            ).filter(
+                LoanApplication.status.in_([ApplicationStatus.settled, ApplicationStatus.rejected])
+            )
+        ).scalar()
+        avg_turnaround_days = round(avg_turnaround_secs / 86400, 1) if avg_turnaround_secs is not None else None
 
     # ── Monthly trend (last 6 months) ──
     month_keys: list[str] = []
@@ -98,33 +112,41 @@ def get_dashboard_stats(
         d = (d - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     start_month = datetime.strptime(month_keys[0] + "-01", "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    rows = scoped(
-        db.query(LoanApplication.created_at).filter(LoanApplication.created_at >= start_month)
-    ).all()
+    if dialect == "sqlite":
+        month_label = func.strftime("%Y-%m", LoanApplication.created_at)
+    else:
+        month_label = func.to_char(func.date_trunc("month", LoanApplication.created_at), "YYYY-MM")
 
     month_counts = {k: 0 for k in month_keys}
-    for (created_at,) in rows:
-        key = created_at.strftime("%Y-%m")
-        if key in month_counts:
-            month_counts[key] += 1
-            
+    for label, cnt in scoped(
+        db.query(month_label, func.count(LoanApplication.id))
+        .filter(LoanApplication.created_at >= start_month)
+        .group_by(month_label)
+    ).all():
+        if label in month_counts:
+            month_counts[label] = cnt
+
     # ── 30-Day Daily Trend ──
     day_keys: list[str] = []
     d_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     for _ in range(30):
         day_keys.insert(0, d_day.strftime("%Y-%m-%d"))
         d_day = d_day - timedelta(days=1)
-        
+
     start_day = datetime.strptime(day_keys[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    day_rows = scoped(
-        db.query(LoanApplication.created_at).filter(LoanApplication.created_at >= start_day)
-    ).all()
-    
+    if dialect == "sqlite":
+        day_label = func.strftime("%Y-%m-%d", LoanApplication.created_at)
+    else:
+        day_label = func.to_char(func.date_trunc("day", LoanApplication.created_at), "YYYY-MM-DD")
+
     day_counts = {k: 0 for k in day_keys}
-    for (created_at,) in day_rows:
-        key = created_at.strftime("%Y-%m-%d")
-        if key in day_counts:
-            day_counts[key] += 1
+    for label, cnt in scoped(
+        db.query(day_label, func.count(LoanApplication.id))
+        .filter(LoanApplication.created_at >= start_day)
+        .group_by(day_label)
+    ).all():
+        if label in day_counts:
+            day_counts[label] = cnt
 
     # ── Action Items (Tasks) ──
     tasks_query = db.query(Task).filter(

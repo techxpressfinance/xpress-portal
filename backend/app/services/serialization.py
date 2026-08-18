@@ -15,6 +15,25 @@ from app.models.user import UserRole
 # (_attach_invite_urls in the applications router) so invites can be re-shared.
 _SECRET_COLUMNS = {"client_invite_token", "invite_token"}
 
+# Encrypted PII columns the list views never render. Skipping them avoids a
+# Fernet decrypt per column per row on the applications list — lend_extra_data
+# alone can be a large JSON blob. applicant_first/last_name stay (admin and
+# referrer lists show the applicant); lend_extra_data is skipped too unless the
+# caller opts in (the referrer list still reads applicant_email out of it).
+_LIST_SKIP_COLUMNS = frozenset({
+    "applicant_middle_name",
+    "applicant_dob",
+    "applicant_address",
+    "applicant_suburb",
+    "applicant_postcode",
+    "business_abn",
+    "applicant_email",
+    "applicant_mobile",
+    "emergency_contact_name",
+    "emergency_contact_phone",
+    "lend_extra_data",
+})
+
 
 def _referrer_dict(user) -> dict:
     return {
@@ -66,13 +85,27 @@ def app_with_user(
     db: Session,
     *,
     referrer_map: Optional[dict[str, dict]] = None,
+    list_item: bool = False,
+    include_lend_extra_data: bool = False,
 ) -> dict:
     """Build response dict with user info and assigned brokers list.
 
     For list endpoints, pass ``referrer_map`` from referrer_info_map() so the
-    referrer lookup is two batched queries instead of one per application.
+    referrer lookup is two batched queries instead of one per application, and
+    ``list_item=True`` to skip decrypting PII columns the list never renders
+    (plus the nested parties/guarantor serialization).
     """
-    data = {c.name: getattr(app, c.name) for c in app.__table__.columns if c.name not in _SECRET_COLUMNS}
+    data = {}
+    for c in app.__table__.columns:
+        if c.name in _SECRET_COLUMNS:
+            continue
+        if list_item and c.name in _LIST_SKIP_COLUMNS:
+            if c.name == "lend_extra_data" and include_lend_extra_data:
+                data[c.name] = getattr(app, c.name)
+                continue
+            data[c.name] = None
+            continue
+        data[c.name] = getattr(app, c.name)
     if app.user:
         data["user_name"] = app.user.full_name
         data["user_email"] = app.user.email
@@ -97,11 +130,6 @@ def app_with_user(
         data["assigned_broker_id"] = None
         data["assigned_broker_name"] = None
     data["assigned_brokers"] = [{"id": b.id, "full_name": b.full_name} for b in app.brokers]
-    # Completion info
-    if app.completed_by:
-        data["completed_by_name"] = app.completed_by.full_name
-    else:
-        data["completed_by_name"] = None
     # Referrer info
     referrer_info = None
     if app.user and app.user.role.value == "referrer":
@@ -122,6 +150,15 @@ def app_with_user(
                 if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
                     referrer_info = _referrer_dict(ref.referrer)
     data["referrer"] = referrer_info
+
+    if list_item:
+        return data
+
+    # Completion info
+    if app.completed_by:
+        data["completed_by_name"] = app.completed_by.full_name
+    else:
+        data["completed_by_name"] = None
     # Additional directors (commercial loans). Relationship isn't a column, so
     # serialize it explicitly from each applicant row's columns.
     # additional_applicants holds both direct individual parties and corporate-
