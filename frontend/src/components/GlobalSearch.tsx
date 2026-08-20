@@ -204,12 +204,12 @@ export default function GlobalSearch() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-[13px] font-medium text-foreground truncate">
-                              {app.business_name || app.user_name || 'Unknown'}{' '}
+                              {app.business_name || app.applicant_name || 'Unknown'}{' '}
                               <span className="text-muted-foreground font-normal capitalize">— {app.loan_type}</span>
                             </p>
                           </div>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {app.business_name && app.user_name && `${app.user_name} · `}
+                            {app.business_name && app.applicant_name && `${app.applicant_name} · `}
                             ${Number(app.amount).toLocaleString('en-AU')}
                             {app.lend_ref && ` · ${app.lend_ref}`}
                             {app.created_at && ` · ${formatDate(app.created_at)}`}

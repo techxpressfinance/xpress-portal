@@ -405,10 +405,10 @@ def get_organization(
         .all()
     )
     user_ids = {a.user_id for a in apps if a.user_id}
-    users_map: dict[str, str] = {}
+    users_map: dict[str, tuple[Optional[str], str]] = {}
     if user_ids:
         for u in db.query(User).filter(User.id.in_(user_ids)).all():
-            users_map[u.id] = u.full_name
+            users_map[u.id] = (u.full_name, u.role.value)
     applications = [
         {
             "id": a.id,
@@ -416,7 +416,13 @@ def get_organization(
             "amount": float(a.amount),
             "status": a.status.value,
             "created_at": a.created_at,
-            "user_name": users_map.get(a.user_id) if a.user_id else None,
+            # user_name/user_role are the *owner* — a staff-created application is
+            # owned by the broker who created it, so the client column must prefer
+            # the applicant fields and only fall back for client-owned rows.
+            "user_name": users_map.get(a.user_id, (None, None))[0] if a.user_id else None,
+            "user_role": users_map.get(a.user_id, (None, None))[1] if a.user_id else None,
+            "applicant_first_name": a.applicant_first_name,
+            "applicant_last_name": a.applicant_last_name,
         }
         for a in apps
     ]

@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
 import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
+import { applicantDisplayName } from '../../lib/applicantName';
 
 // Category scope value meaning "the signed-in broker's specialties".
 const MY_FOCUS = 'mine';
@@ -179,11 +180,14 @@ function KanbanCard({
   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
   const { icon: ltIcon, label: ltLabel } = loanTypeChip(app);
   const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
-  const clientName = isDirectLead
-    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
-    : app.user_name || '';
-  const referrerName = isDirectLead ? app.user_name || null : null;
-  const subtitle = app.business_name || (!isDirectLead ? app.user_email : null) || '';
+  // The owner of a staff-created card is the broker who created it, never the
+  // applicant — fall back to the borrowing entity instead of their name.
+  const clientName = applicantDisplayName(app);
+  const referrerName = app.referrer?.organization_name
+    || app.referrer?.full_name
+    || (app.user_role === 'referrer' ? app.user_name || null : null);
+  const businessSubtitle = app.business_name && app.business_name !== clientName ? app.business_name : null;
+  const subtitle = businessSubtitle || (!isDirectLead ? app.user_email : null) || '';
   const brokers = app.assigned_brokers || [];
   const days = daysSince(app.updated_at);
   const isStale = days >= 7;
@@ -1323,9 +1327,7 @@ export default function KanbanBoardPage() {
                 </span>
               </div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--led-ink)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {draggedApp.user_role === 'referrer' || draggedApp.user_role === 'broker' || draggedApp.user_role === 'admin'
-                  ? [draggedApp.applicant_first_name, draggedApp.applicant_last_name].filter(Boolean).join(' ') || draggedApp.user_name || ''
-                  : draggedApp.user_name || ''}
+                {applicantDisplayName(draggedApp)}
               </div>
               <div className="led-mono led-tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--led-ink)' }}>
                 {fmtMoneyK(Number(draggedApp.amount) || 0)}
@@ -1342,9 +1344,7 @@ export default function KanbanBoardPage() {
         message={pendingMove ? (
           <>
             Move <span className="font-semibold text-foreground">
-              {pendingMove.app.user_role === 'referrer' || pendingMove.app.user_role === 'broker' || pendingMove.app.user_role === 'admin'
-                ? [pendingMove.app.applicant_first_name, pendingMove.app.applicant_last_name].filter(Boolean).join(' ') || pendingMove.app.user_name || 'this application'
-                : pendingMove.app.user_name || 'this application'}
+              {applicantDisplayName(pendingMove.app, 'this application')}
             </span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
           </>
         ) : null}

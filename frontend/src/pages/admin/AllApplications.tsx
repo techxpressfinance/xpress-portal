@@ -5,6 +5,7 @@ import { useToast } from '../../components/Toast';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
 import { useAuth } from '../../hooks/useAuth';
 import { LOAN_CATEGORIES, STATUS_LABEL } from '../../lib/constants';
+import { applicantName } from '../../lib/applicantName';
 import type { LoanApplication, ApplicationStatus, User } from '../../types';
 import { Skeleton, EmptyState } from '../../components/ui';
 
@@ -197,7 +198,7 @@ export default function AllApplications() {
     arr.sort((a, b) => {
       let av: any = a[sort.key];
       let bv: any = b[sort.key];
-      if (sort.key === 'user_name') { av = a.user_name || ''; bv = b.user_name || ''; }
+      if (sort.key === 'user_name') { av = applicantName(a) || a.business_name || ''; bv = applicantName(b) || b.business_name || ''; }
       if (sort.key === 'amount') { av = Number(a.amount) || 0; bv = Number(b.amount) || 0; }
       if (sort.key === 'status') { av = STATUS_LABEL[a.status] || a.status; bv = STATUS_LABEL[b.status] || b.status; }
       if (sort.key === 'updated_at') { av = new Date(a.updated_at).getTime(); bv = new Date(b.updated_at).getTime(); }
@@ -453,9 +454,9 @@ export default function AllApplications() {
                   const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
                   const firstBroker = app.assigned_brokers?.[0];
                   const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
-                  const clientName = isDirectLead
-                    ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || ''
-                    : app.user_name || '';
+                  // Never the owner's name on a staff/referrer-held application —
+                  // that is the creator, not the applicant.
+                  const clientName = applicantName(app);
                   // Referrer attribution is client-level: the API resolves it from the
                   // owner's referral rows, so it is present on referred clients' apps too.
                   const referrerName = app.referrer?.organization_name
@@ -467,10 +468,10 @@ export default function AllApplications() {
                     <tr key={app.id} onClick={() => navigate(`/admin/applications/${app.id}`)}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                          <Avatar name={clientName} size="sm" />
+                          <Avatar name={clientName || app.business_name || '?'} size="sm" />
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 500, color: 'var(--led-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                              {clientName}
+                              {clientName || <span style={{ color: 'var(--led-muted)' }}>—</span>}
                             </div>
                             {subtitle && (
                               <div style={{ fontSize: 12, color: 'var(--led-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>

@@ -114,6 +114,9 @@ def global_search(
             "status": f["status"],
             "business_name": f["business_name"],
             "lend_ref": f["lend_ref"],
+            # The applicant as entered on the form; user_name/user_email are the
+            # owner, who is the creating broker on staff-created applications.
+            "applicant_name": f["applicant_name"],
             "user_name": uname,
             "user_email": uemail,
             "created_at": f["created_at"].isoformat() if f["created_at"] else None,

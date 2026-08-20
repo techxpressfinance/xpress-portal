@@ -6,6 +6,7 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { TableSkeleton } from '../../components/ui';
 import { relativeTime, fmtMoneyK } from '../../lib/utils';
 import { STATUS_LABEL } from '../../lib/constants';
+import { applicantDisplayName } from '../../lib/applicantName';
 import type { LoanApplication, DeletedClient } from '../../types';
 
 function Icon({ name, size = 14, className = '' }: { name: string; size?: number; className?: string }) {
@@ -146,7 +147,7 @@ export default function DeletedApplications() {
                   <tr key={app.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">
-                        {[app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || app.user_name || '—'}
+                        {applicantDisplayName(app, '—')}
                       </div>
                       {app.user_email && (
                         <div className="text-xs text-gray-400">{app.user_email}</div>

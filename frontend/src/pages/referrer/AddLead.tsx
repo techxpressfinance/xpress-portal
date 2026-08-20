@@ -6,6 +6,7 @@ import { GlassCard, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '
 import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
+import { applicantDisplayName } from '../../lib/applicantName';
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
@@ -488,7 +489,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
         setCloneSource({
           id: str(app.id),
-          name: [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || str(app.user_name),
+          name: applicantDisplayName({
+            applicant_first_name: str(app.applicant_first_name),
+            applicant_last_name: str(app.applicant_last_name),
+            business_name: str(app.business_name),
+            user_name: str(app.user_name),
+            user_role: str(app.user_role),
+          }),
         });
       })
       .catch(() => toast('Could not load the application to clone.', 'error'))

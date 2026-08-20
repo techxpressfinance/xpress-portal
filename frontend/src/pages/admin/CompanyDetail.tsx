@@ -9,6 +9,7 @@ import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES } from '../../lib/constants';
+import { applicantName } from '../../lib/applicantName';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import type { EntityType, OrganizationDetail, OrganizationContactLite, TrustType } from '../../types';
 
@@ -492,7 +493,7 @@ export default function CompanyDetail() {
                           heading={LOAN_TYPE_LABELS[a.loan_type] ?? a.loan_type}
                           rows={[
                             { label: 'Amount', value: `$${Number(a.amount).toLocaleString('en-AU')}` },
-                            { label: 'Client', value: a.user_name },
+                            { label: 'Client', value: applicantName(a) || '—' },
                             { label: 'Created', value: formatDate(a.created_at) },
                           ]}
                         />
@@ -501,7 +502,7 @@ export default function CompanyDetail() {
                     </td>
                     <td className="py-3">${Number(a.amount).toLocaleString('en-AU')}</td>
                     <td className="py-3"><Badge value={a.status} /></td>
-                    <td className="py-3 text-muted-foreground">{a.user_name || '—'}</td>
+                    <td className="py-3 text-muted-foreground">{applicantName(a) || '—'}</td>
                     <td className="py-3 text-muted-foreground">{formatDate(a.created_at)}</td>
                     <td className="py-3">
                       <Link to={`/admin/applications/${a.id}`}>

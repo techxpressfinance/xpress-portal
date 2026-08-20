@@ -480,6 +480,9 @@ export interface SearchResultApplication {
   status: ApplicationStatus;
   business_name: string | null;
   lend_ref: string | null;
+  /** As entered on the form. `user_name`/`user_email` are the owner, who is the
+   *  creating broker on staff-created applications. */
+  applicant_name: string | null;
   user_name: string | null;
   user_email: string | null;
   created_at: string | null;
@@ -1131,7 +1134,11 @@ export interface OrganizationApplicationLite {
   amount: number;
   status: ApplicationStatus;
   created_at: string;
+  applicant_first_name: string | null;
+  applicant_last_name: string | null;
+  /** The application's owner — the creating broker on staff-created rows. */
   user_name: string | null;
+  user_role: string | null;
 }
 
 export interface OrganizationDetail extends Organization {

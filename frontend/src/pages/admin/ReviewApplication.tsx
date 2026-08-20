@@ -18,6 +18,7 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
+import { applicantEmail, applicantName } from '../../lib/applicantName';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
@@ -767,11 +768,12 @@ export default function ReviewApplication() {
   const allowedTransitions = VALID_TRANSITIONS[application.status] || [];
   const pendingStatusLabel = pendingStatus ? (STATUS_LABEL[pendingStatus as keyof typeof STATUS_LABEL] || pendingStatus.replace(/_/g, ' ')) : '';
 
-  // The applicant's name as entered on the form; falls back to the account owner
-  // (user_name / client) so the name is consistent with the applications list and
-  // never blank on drafts that haven't been filled in yet.
-  const applicantFormName = [application.applicant_title, application.applicant_first_name, application.applicant_middle_name, application.applicant_last_name].filter(Boolean).join(' ');
-  const displayName = applicantFormName || application.user_name || client?.full_name || '—';
+  // The applicant's name as entered on the form. It falls back to the account
+  // owner only when a client owns the application — on a staff-created card
+  // (entity-first commercial, broker draft) the owner is the broker who created
+  // it, so the borrowing entity is the meaningful label instead.
+  const applicantFormName = applicantName(application, { withTitle: true });
+  const displayName = applicantFormName || application.business_name || '—';
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -2451,16 +2453,18 @@ export default function ReviewApplication() {
             {activeTab === 'overview' && (
               <>
                 {/* Applicant Summary */}
-                {displayName !== '—' && (
+                {(applicantFormName || application.business_name) && (
                   <GlassCard>
                     <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
                     <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {displayName}
-                        </dd>
-                      </div>
+                      {applicantFormName && (
+                        <div className="rounded-xl bg-secondary/50 p-3">
+                          <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                            {applicantFormName}
+                          </dd>
+                        </div>
+                      )}
                       {application.applicant_dob && (
                         <div className="rounded-xl bg-secondary/50 p-3">
                           <dt className="text-[12px] font-medium text-muted-foreground">Date of Birth</dt>
@@ -3706,16 +3710,16 @@ export default function ReviewApplication() {
               </div>
 
               {/* Personal Details */}
-              {displayName !== '—' && (
+              {(applicantFormName || application.business_name) && (
                 <div style={S.section}>
                   <h2 style={S.h2}>Applicant Details</h2>
                   <div style={S.grid}>
-                    <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{displayName}</p></div>
+                    {applicantFormName && <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{applicantFormName}</p></div>}
                     {application.applicant_dob && <div style={S.cell}><p style={S.label}>Date of Birth</p><p style={S.value}>{application.applicant_dob}</p></div>}
                     {application.applicant_gender && <div style={S.cell}><p style={S.label}>Gender</p><p style={S.value}>{application.applicant_gender}</p></div>}
                     {application.applicant_marital_status && <div style={S.cell}><p style={S.label}>Marital Status</p><p style={S.value}>{application.applicant_marital_status}</p></div>}
                     {application.applicant_mobile && <div style={S.cell}><p style={S.label}>Mobile</p><p style={S.value}>{application.applicant_mobile}</p></div>}
-                    {application.user_email && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{application.user_email}</p></div>}
+                    {applicantEmail(application) && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{applicantEmail(application)}</p></div>}
                     {application.preferred_contact_method && <div style={S.cell}><p style={S.label}>Preferred Contact</p><p style={S.value}>{application.preferred_contact_method}</p></div>}
                     {application.applicant_residency_status && <div style={S.cell}><p style={S.label}>Residency Status</p><p style={S.value}>{application.applicant_residency_status}</p></div>}
                     {idEntry?.type && <div style={S.cell}><p style={S.label}>ID Type</p><p style={S.value}>{idEntry.type}</p></div>}
