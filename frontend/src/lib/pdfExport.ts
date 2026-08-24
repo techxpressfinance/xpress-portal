@@ -9,6 +9,9 @@ import html2pdf from 'html2pdf.js';
 type PdfWorker = {
   set(options: Record<string, unknown>): PdfWorker;
   from(element: HTMLElement): PdfWorker;
+  toPdf(): PdfWorker;
+  get(key: string): PdfWorker;
+  then(onFulfilled: (value: unknown) => void): PdfWorker;
   save(): Promise<void>;
 };
 
@@ -46,9 +49,66 @@ function stripModernColors(root: HTMLElement): void {
 }
 
 /**
+ * Paint the Xpress Finance footer band onto every page of a jsPDF instance.
+ * html2pdf flattens the DOM into one sliced image, so a per-page band can't
+ * live in the DOM — it's painted after layout, and callers reserve a ~22mm
+ * bottom margin so it never overlaps content.
+ */
+interface PdfDoc {
+  internal: { getNumberOfPages(): number; pageSize: { getWidth(): number; getHeight(): number } };
+  setPage(page: number): void;
+  setFillColor(r: number, g: number, b: number): void;
+  rect(x: number, y: number, w: number, h: number, style: string): void;
+  setFont(font: string, style: string): void;
+  setFontSize(size: number): void;
+  setTextColor(r: number, g: number, b: number): void;
+  text(text: string, x: number, y: number, opts?: { align?: string }): void;
+  setDrawColor(r: number, g: number, b: number): void;
+  setLineWidth(w: number): void;
+  line(x1: number, y1: number, x2: number, y2: number): void;
+}
+
+function paintXpressFooter(pdf: PdfDoc): void {
+  const totalPages = pdf.internal.getNumberOfPages();
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const sideMargin = 14; // mm
+  const bandH = 20;      // mm — keep in sync with the reserved bottom margin
+  for (let i = 1; i <= totalPages; i++) {
+    pdf.setPage(i);
+    const top = pageHeight - bandH;
+    // Full-bleed navy band (#0d1f3c)
+    pdf.setFillColor(13, 31, 60);
+    pdf.rect(0, top, pageWidth, bandH, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text('Xpress Finance Pty Ltd', sideMargin, top + 6);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(150, 162, 184);
+    pdf.text('ABN 616 500 599 39 · ACN 650 059 939', sideMargin, top + 9.8);
+    pdf.text('Australian Credit Licence 389328', sideMargin, top + 12.8);
+    pdf.text(`Page ${i} of ${totalPages}`, pageWidth - sideMargin, top + 6, { align: 'right' });
+    // Divider + gold tagline (#c8962e), centred
+    pdf.setDrawColor(54, 68, 92);
+    pdf.setLineWidth(0.2);
+    pdf.line(sideMargin, top + 15, pageWidth - sideMargin, top + 15);
+    pdf.setFontSize(6.2);
+    pdf.setTextColor(200, 150, 46);
+    pdf.text(
+      'XPRESS FINANCE PTY LTD · XPRESSFINANCE.COM.AU · POWERING AMBITION, FUNDING GROWTH',
+      pageWidth / 2,
+      top + 18,
+      { align: 'center' },
+    );
+  }
+}
+
+/**
  * Render an arbitrary DOM element to an A4 PDF. Used by report exports (e.g.
  * the arrears book), where the printable markup is a plain table rather than
- * the styled quote sheet below.
+ * the styled quote sheet below. Every page carries the Xpress footer band.
  */
 export async function downloadElementPdf(
   elementId: string,
@@ -67,7 +127,8 @@ export async function downloadElementPdf(
     stripModernColors(clone);
     await pdfWorker()
       .set({
-        margin: [10, 8, 10, 8],
+        // Bottom margin reserves room for the painted footer band.
+        margin: [10, 8, 22, 8],
         filename,
         // Only blocks explicitly marked .break-inside-avoid are protected — see
         // the note in downloadQuoteSheetPdf on why 'avoid-all' leaves blank gaps.
@@ -77,6 +138,9 @@ export async function downloadElementPdf(
         jsPDF: { unit: 'mm', format: 'a4', orientation },
       })
       .from(clone)
+      .toPdf()
+      .get('pdf')
+      .then((pdf) => paintXpressFooter(pdf as PdfDoc))
       .save();
   } finally {
     (el.parentElement ?? document.body).removeChild(clone);
@@ -93,15 +157,20 @@ export async function downloadQuoteSheetPdf(
   // [top, left, bottom, right] page margins in mm. Vertical margins give multi-page
   // exports breathing room at page edges when content is pushed to the next page.
   margin: [number, number, number, number] = [0, 0, 0, 0],
-  // When true, paint the navy Xpress Finance band onto every page. The caller is
-  // responsible for reserving enough bottom margin (≥20mm) so it clears content.
-  footerBand = false,
+  // When true, paint the navy Xpress Finance band onto every page. Defaults to
+  // on so every PDF carries the branding; the bottom margin is bumped to clear it.
+  footerBand = true,
 ): Promise<void> {
   const el = document.getElementById(elementId);
   if (!el) {
     console.error(`PDF export: element #${elementId} not found`);
     return;
   }
+
+  // Reserve room for the painted footer band so it never overlaps content.
+  const effectiveMargin: [number, number, number, number] = footerBand
+    ? [margin[0], margin[1], Math.max(margin[2], 22), margin[3]]
+    : margin;
 
   try {
     const clone = el.cloneNode(true) as HTMLElement;
@@ -135,12 +204,9 @@ export async function downloadQuoteSheetPdf(
     });
 
     try {
-      const pdfGenerator = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any).default;
-      
-      
-      await pdfGenerator()
+      await pdfWorker()
         .set({
-          margin,
+          margin: effectiveMargin,
           filename,
           // 'css' reads break-* properties; 'legacy' actively measures elements and
           // inserts a break before any that would straddle a page boundary, honouring
@@ -157,50 +223,10 @@ export async function downloadQuoteSheetPdf(
         })
         .from(clone)
         .toPdf()
-        // Draw the navy footer band onto every page. html2pdf flattens the DOM
-        // into one sliced image, so a per-page band can't live in the DOM — we
-        // paint it on the jsPDF instance after layout. The bottom page margin
-        // (see callers) is sized to reserve room for this 20mm band so it never
-        // overlaps content.
         .get('pdf')
-        .then((pdf: any) => {
+        .then((pdf) => {
           if (!footerBand) return;
-          const totalPages = pdf.internal.getNumberOfPages();
-          const pageWidth = pdf.internal.pageSize.getWidth();
-          const pageHeight = pdf.internal.pageSize.getHeight();
-          const sideMargin = 14; // mm — matches the sheet's 56px side padding
-          const bandH = 20;      // mm — keep in sync with the bottom page margin
-          for (let i = 1; i <= totalPages; i++) {
-            pdf.setPage(i);
-            const top = pageHeight - bandH;
-            // Full-bleed navy band (#0d1f3c)
-            pdf.setFillColor(13, 31, 60);
-            pdf.rect(0, top, pageWidth, bandH, 'F');
-            // Company block (left)
-            pdf.setFont('helvetica', 'bold');
-            pdf.setFontSize(8.5);
-            pdf.setTextColor(255, 255, 255);
-            pdf.text('Xpress Finance Pty Ltd', sideMargin, top + 6);
-            pdf.setFont('helvetica', 'normal');
-            pdf.setFontSize(6.5);
-            pdf.setTextColor(150, 162, 184);
-            pdf.text('ABN 616 500 599 39 · ACN 650 059 939', sideMargin, top + 9.8);
-            pdf.text('Australian Credit Licence 389328', sideMargin, top + 12.8);
-            // Page number (right)
-            pdf.text(`Page ${i} of ${totalPages}`, pageWidth - sideMargin, top + 6, { align: 'right' });
-            // Divider + gold tagline (#c8962e), centred
-            pdf.setDrawColor(54, 68, 92);
-            pdf.setLineWidth(0.2);
-            pdf.line(sideMargin, top + 15, pageWidth - sideMargin, top + 15);
-            pdf.setFontSize(6.2);
-            pdf.setTextColor(200, 150, 46);
-            pdf.text(
-              'XPRESS FINANCE PTY LTD · XPRESSFINANCE.COM.AU · POWERING AMBITION, FUNDING GROWTH',
-              pageWidth / 2,
-              top + 18,
-              { align: 'center' },
-            );
-          }
+          paintXpressFooter(pdf as PdfDoc);
         })
         .save();
     } finally {

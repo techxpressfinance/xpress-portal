@@ -667,6 +667,8 @@ def get_arrears_record(
                     "kind": f.kind,
                     "email_subject": f.email_subject,
                     "email_from": f.email_from,
+                    "email_to": f.email_to,
+                    "email_body": f.email_body,
                     "email_sent_at": f.email_sent_at,
                 }
                 for f in a.attachments

@@ -1049,14 +1049,16 @@ export interface ArrearsRecord {
 export type ArrearsAttemptMethod = 'phone' | 'email' | 'text';
 
 /** Evidence on one contact attempt: a screenshot of the call log, a photo, or
- *  the chase email itself. Email rows carry parsed headers so the attempt can
- *  show the subject and sender rather than a bare .eml filename. */
+ *  the chase email itself. Email rows carry parsed headers (and body, so the
+ *  message can be read in place) rather than a bare .eml filename. */
 export interface ArrearsAttemptAttachment {
   id: string;
   original_filename: string;
   kind: ArrearsAttachmentKind;
   email_subject: string | null;
   email_from: string | null;
+  email_to: string | null;
+  email_body: string | null;
   email_sent_at: string | null;
 }
 

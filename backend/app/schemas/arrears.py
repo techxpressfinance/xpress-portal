@@ -92,14 +92,16 @@ class ArrearsAttemptUpdate(BaseModel):
 
 class ArrearsAttemptAttachmentOut(BaseModel):
     """Evidence hanging off one contact attempt — a screenshot, a photo, or the
-    chase email itself. Email rows carry their parsed headers so the attempt can
-    show "Re: arrears — from broker@…" instead of a bare .eml filename."""
+    chase email itself. Email rows carry their parsed headers (and body, so the
+    attempt can show the full message) instead of a bare .eml filename."""
 
     id: str
     original_filename: str
     kind: str
     email_subject: Optional[str] = None
     email_from: Optional[str] = None
+    email_to: Optional[str] = None
+    email_body: Optional[str] = None
     email_sent_at: Optional[datetime] = None
 
 

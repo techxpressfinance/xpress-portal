@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../Toast';
@@ -50,6 +50,41 @@ const downloadAttachment = async (recordId: string, attachmentId: string, filena
   saveBlob(data as Blob, filename);
 };
 
+/** A file is a viewable image if its name carries an image extension — a pasted
+ *  screenshot arrives as "screenshot-….png", but a dropped snip may be a plain
+ *  "call log.jpg" with kind "file", so go by name rather than kind. */
+const isImage = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename);
+
+/** Full-screen image viewer for screenshot evidence. Mounts on document.body so
+ *  it sits above the detail panel's own portal. */
+function ImageViewer({ src, label, onClose }: { src: string; label: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="ledger-theme fixed inset-0 z-[70] flex items-center justify-center p-6">
+      <div className="fixed inset-0 bg-black/80" onClick={onClose} />
+      <div className="relative flex max-h-[92vh] max-w-[92vw] flex-col overflow-hidden rounded-xl bg-black shadow-2xl">
+        <img src={src} alt={label} className="max-h-[85vh] max-w-[92vw] object-contain" />
+        <div className="flex items-center justify-between gap-4 px-4 py-2">
+          <p className="truncate text-[12px] text-white/80">{label}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-medium text-white/90 hover:bg-white/10"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /** One titled block in the panel. Consistent heading weight and an optional
  *  count so the eye can skip a section without reading into it. */
 function Section({
@@ -82,14 +117,17 @@ function AttachmentRow({
   attachment,
   recordId,
   onDelete,
+  onView,
 }: {
   attachment: ArrearsAttachment;
   recordId: string;
   onDelete: (id: string) => void;
+  onView: (id: string, filename: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   const download = () => downloadAttachment(recordId, attachment.id, attachment.original_filename);
+  const viewable = isImage(attachment.original_filename);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">
@@ -123,6 +161,15 @@ function AttachmentRow({
               className="text-[12px] font-medium text-primary hover:underline"
             >
               {expanded ? 'Hide' : 'Read'}
+            </button>
+          )}
+          {viewable && (
+            <button
+              type="button"
+              onClick={() => onView(attachment.id, attachment.original_filename)}
+              className="text-[12px] font-medium text-primary hover:underline"
+            >
+              View
             </button>
           )}
           <button type="button" onClick={download} className="text-[12px] font-medium text-primary hover:underline">
@@ -192,6 +239,7 @@ function AttemptRow({
   onDeleted,
   onAttach,
   onAttachmentRemoved,
+  onView,
   attachBusy,
 }: {
   attempt: ArrearsAttempt;
@@ -200,6 +248,7 @@ function AttemptRow({
   onDeleted: () => Promise<void>;
   onAttach: (file: File) => Promise<void>;
   onAttachmentRemoved: (attachmentId: string) => Promise<void>;
+  onView: (id: string, filename: string) => void;
   attachBusy: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -207,6 +256,15 @@ function AttemptRow({
   const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
   const [attemptedAt, setAttemptedAt] = useState(toDatetimeLocal(attempt.attempted_at));
   const [note, setNote] = useState(attempt.note ?? '');
+  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
+
+  const toggleEmail = (id: string) => {
+    setExpandedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   /** Seed the form from the row's current props every time it opens — the row
    *  isn't remounted when a save swaps the record in, so state set at mount
@@ -264,34 +322,55 @@ function AttemptRow({
           </div>
           {attempt.attachments.length > 0 && (
             <div className="mt-2 space-y-1.5">
-              {/* An email carries a subject and a sender worth reading; a snip
-                  is just a file, so it stays a compact pill. */}
+              {/* An email carries a subject, a sender, and a body worth reading;
+                  a snip is just a file, so it stays a compact pill. */}
               {attempt.attachments.filter((f) => f.kind === 'email').map((f) => (
                 <div
                   key={f.id}
-                  className="flex items-start justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5"
+                  className="rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5"
                 >
-                  <div className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      onClick={() => downloadAttachment(recordId, f.id, f.original_filename)}
-                      className="block w-full truncate text-left text-[12px] font-medium text-foreground hover:underline"
-                    >
-                      {f.email_subject || f.original_filename}
-                    </button>
-                    <p className="truncate text-[11px] text-muted-foreground">
-                      {f.email_from || 'Unknown sender'}
-                      {f.email_sent_at ? ` · ${formatStamp(f.email_sent_at)}` : ''}
-                    </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-medium text-foreground">
+                        {f.email_subject || f.original_filename}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {f.email_from || 'Unknown sender'}
+                        {f.email_sent_at ? ` · ${formatStamp(f.email_sent_at)}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {f.email_body && (
+                        <button
+                          type="button"
+                          onClick={() => toggleEmail(f.id)}
+                          className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                          {expandedEmails.has(f.id) ? 'Hide' : 'Read'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => downloadAttachment(recordId, f.id, f.original_filename)}
+                        className="text-[11px] font-medium text-primary hover:underline"
+                      >
+                        Download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onAttachmentRemoved(f.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label={`Remove ${f.email_subject || f.original_filename}`}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onAttachmentRemoved(f.id)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    aria-label={`Remove ${f.email_subject || f.original_filename}`}
-                  >
-                    ×
-                  </button>
+                  {expandedEmails.has(f.id) && f.email_body && (
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-secondary/50 p-2.5 text-[12px] text-foreground">
+                      {f.email_body}
+                    </pre>
+                  )}
                 </div>
               ))}
               <div className="flex flex-wrap gap-1.5">
@@ -300,6 +379,11 @@ function AttemptRow({
                     key={f.id}
                     className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[12px] text-foreground"
                   >
+                    {isImage(f.original_filename) && (
+                      <button type="button" onClick={() => onView(f.id, f.original_filename)} className="font-medium text-primary hover:underline">
+                        View
+                      </button>
+                    )}
                     <button type="button" onClick={() => downloadAttachment(recordId, f.id, f.original_filename)} className="hover:underline">
                       {f.original_filename}
                     </button>
@@ -391,6 +475,30 @@ export default function ArrearsDetailPanel({
   const [savingAttempt, setSavingAttempt] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [imageView, setImageView] = useState<{ url: string; label: string } | null>(null);
+  const imageUrlRef = useRef<string | null>(null);
+
+  const viewImage = async (attachmentId: string, filename: string) => {
+    try {
+      const { data } = await api.get(`/arrears/${recordId}/attachments/${attachmentId}/download`, {
+        responseType: 'blob',
+      });
+      if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+      const url = URL.createObjectURL(data as Blob);
+      imageUrlRef.current = url;
+      setImageView({ url, label: filename });
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to load image'), 'error');
+    }
+  };
+
+  const closeImage = () => {
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = null;
+    }
+    setImageView(null);
+  };
 
   const load = async () => {
     try {
@@ -582,7 +690,7 @@ export default function ArrearsDetailPanel({
   // Portals mount into document.body, outside the .ledger-theme host that
   // declares every --led-* variable, so led-btn / led-input / led-chip render
   // with no background, border, or colour unless the theme is re-declared here.
-  return createPortal(
+  const panel = createPortal(
     <div className="ledger-theme fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative flex max-h-[90vh] w-full max-w-[720px] flex-col overflow-y-auto rounded-2xl border border-border bg-background shadow-xl">
@@ -786,6 +894,7 @@ export default function ArrearsDetailPanel({
                       onDeleted={() => deleteAttempt(a.id)}
                       onAttach={(file) => uploadAttemptFile(a.id, file)}
                       onAttachmentRemoved={removeAttemptFile}
+                      onView={viewImage}
                       attachBusy={attachBusy}
                     />
                   ))}
@@ -834,7 +943,7 @@ export default function ArrearsDetailPanel({
                 />
                 <div className="mt-2 space-y-2">
                   {record.attachments.map((a) => (
-                    <AttachmentRow key={a.id} attachment={a} recordId={record.id} onDelete={removeAttachment} />
+                    <AttachmentRow key={a.id} attachment={a} recordId={record.id} onDelete={removeAttachment} onView={viewImage} />
                   ))}
                 </div>
               </Section>
@@ -877,5 +986,14 @@ export default function ArrearsDetailPanel({
       )}
     </div>,
     document.body,
+  );
+
+  return imageView ? (
+    <>
+      {panel}
+      <ImageViewer src={imageView.url} label={imageView.label} onClose={closeImage} />
+    </>
+  ) : (
+    panel
   );
 }
