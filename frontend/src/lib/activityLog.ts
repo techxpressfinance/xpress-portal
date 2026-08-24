@@ -36,7 +36,7 @@ export const FIELD_LABELS: Record<string, string> = {
   assigned_to_id: 'Assignee',
   application_id: 'Application',
   contact_id: 'Contact',
-  business_organization_id: 'Company',
+  business_organization_id: 'Entity',
   client_sections: 'Client form sections',
   client_engagement_model: 'Engagement model',
   hidden_from_client: 'Hidden from client',

@@ -84,7 +84,7 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
 def _get_org_in_tenant(org_id: str, tenant_id: str, db: Session) -> Organization:
     org = db.query(Organization).filter(Organization.id == org_id, Organization.tenant_id == tenant_id).first()
     if not org:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found")
     return org
 
 

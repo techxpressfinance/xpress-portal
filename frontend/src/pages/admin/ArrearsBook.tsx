@@ -180,7 +180,7 @@ export default function ArrearsBook() {
           <div className="min-w-[240px] flex-1">
             <Input
               label="Search"
-              placeholder="Client, company, lender, contract no., VIN, asset…"
+              placeholder="Client, entity, lender, contract no., VIN, asset…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

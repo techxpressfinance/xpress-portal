@@ -57,10 +57,10 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
         notes: form.notes.trim() || null,
         no_abn_confirmed: noAbnConfirmed,
       });
-      toast(isTrust ? 'Trust created' : 'Company created', 'success');
+      toast(isTrust ? 'Trust created' : 'Entity created', 'success');
       onCreated(data);
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to create company'), 'error');
+      toast(getErrorMessage(err, 'Failed to create entity'), 'error');
     } finally {
       setSaving(false);
       setConfirmingNoAbn(false);
@@ -101,7 +101,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-[17px] font-semibold leading-tight text-foreground">New {isTrust ? 'Trust' : 'Company'}</h3>
+              <h3 className="text-[17px] font-semibold leading-tight text-foreground">New {isTrust ? 'Trust' : 'Entity'}</h3>
               <p className="text-[13px] text-muted-foreground">
                 {isTrust ? 'Add a trust — capture its structure next' : 'Add a business to your portfolio'}
               </p>
@@ -182,7 +182,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" variant="primary" size="md" loading={saving}>Create {isTrust ? 'Trust' : 'Company'}</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving}>Create {isTrust ? 'Trust' : 'Entity'}</Button>
           </div>
         </form>
       </div>
@@ -220,7 +220,7 @@ export default function Companies() {
         setCompanies(data.items);
         setTotal(data.total);
       })
-      .catch(() => toast('Failed to load companies', 'error'))
+      .catch(() => toast('Failed to load entities', 'error'))
       .finally(() => setLoading(false));
   };
 
@@ -237,12 +237,12 @@ export default function Companies() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Companies"
-        subtitle={`${total} compan${total === 1 ? 'y' : 'ies'}`}
+        title="Entities"
+        subtitle={`${total} entit${total === 1 ? 'y' : 'ies'}`}
         action={
           <div className="flex gap-2">
             <Button onClick={() => setShowDedupe(true)} variant="secondary" size="sm">Find Duplicates</Button>
-            <Button onClick={() => setShowNew(true)} variant="primary" size="sm">New Company</Button>
+            <Button onClick={() => setShowNew(true)} variant="primary" size="sm">New Entity</Button>
           </div>
         }
       />
@@ -268,9 +268,9 @@ export default function Companies() {
           </div>
         ) : companies.length === 0 ? (
           search ? (
-            <p className="text-center py-12 text-muted-foreground">No companies match your search.</p>
+            <p className="text-center py-12 text-muted-foreground">No entities match your search.</p>
           ) : (
-            <EmptyState title="No companies yet" description='Click "New Company" to add one.' />
+            <EmptyState title="No entities yet" description='Click "New Entity" to add one.' />
           )
         ) : (
           <>

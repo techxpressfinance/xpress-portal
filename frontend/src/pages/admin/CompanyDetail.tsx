@@ -65,10 +65,10 @@ function EditCompanyModal({ company, onClose, onSaved }: {
         notes: form.notes.trim() || null,
         ...(noAbnConfirmed && { no_abn_confirmed: true }),
       });
-      toast('Company updated', 'success');
+      toast('Entity updated', 'success');
       onSaved({ ...company, ...data });
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to update company'), 'error');
+      toast(getErrorMessage(err, 'Failed to update entity'), 'error');
     } finally {
       setSaving(false);
       setConfirmingNoAbn(false);
@@ -96,7 +96,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
-        <h3 className="text-[17px] font-semibold text-foreground mb-4">Edit {isTrust ? 'Trust' : 'Company'}</h3>
+        <h3 className="text-[17px] font-semibold text-foreground mb-4">Edit {isTrust ? 'Trust' : 'Entity'}</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
@@ -290,13 +290,13 @@ export default function CompanyDetail() {
     if (!id) return;
     api.get<OrganizationDetail>(`/organizations/${id}`)
       .then(({ data }) => setCompany(data))
-      .catch(() => toast('Failed to load company', 'error'))
+      .catch(() => toast('Failed to load entity', 'error'))
       .finally(() => setLoading(false));
   }, [id]);
 
   const handleUnlink = async (contactId: string) => {
     if (!company) return;
-    if (!confirm('Unlink this contact from the company?')) return;
+    if (!confirm('Unlink this contact from the entity?')) return;
     setUnlinkingId(contactId);
     try {
       await api.delete(`/organizations/${company.id}/contacts/${contactId}`);
@@ -319,10 +319,10 @@ export default function CompanyDetail() {
     setDeleting(true);
     try {
       await api.delete(`/organizations/${company.id}`);
-      toast('Company deleted', 'success');
+      toast('Entity deleted', 'success');
       navigate('/admin/companies');
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to delete company'), 'error');
+      toast(getErrorMessage(err, 'Failed to delete entity'), 'error');
       setDeleting(false);
     }
   };
@@ -331,7 +331,7 @@ export default function CompanyDetail() {
     return <DetailSkeleton blocks={3} />;
   }
 
-  if (!company) return <p className="text-center py-20 text-muted-foreground">Company not found.</p>;
+  if (!company) return <p className="text-center py-20 text-muted-foreground">Entity not found.</p>;
 
   const excludeIds = new Set(company.contacts.map(c => c.id));
   const isTrust = company.entity_type === 'trust';
@@ -339,7 +339,7 @@ export default function CompanyDetail() {
   return (
     <div className="space-y-6">
       <Breadcrumbs items={[
-        { label: 'Companies', href: '/admin/companies' },
+        { label: 'Entities', href: '/admin/companies' },
         { label: company.name },
       ]} />
       <PageHeader
@@ -349,7 +349,7 @@ export default function CompanyDetail() {
             ? `ABN ${company.abn}`
             : isTrust
               ? (company.no_abn_confirmed ? 'Trust · no ABN (confirmed with accountant)' : 'Trust · no ABN on file')
-              : 'Company'
+              : 'Entity'
         }
         action={
           <div className="flex gap-2">
@@ -361,7 +361,7 @@ export default function CompanyDetail() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <GlassCard>
-          <h3 className="text-lg font-semibold mb-4">{isTrust ? 'Trust' : 'Company'} Information</h3>
+          <h3 className="text-lg font-semibold mb-4">{isTrust ? 'Trust' : 'Entity'} Information</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between"><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{company.name}</dd></div>
             <div className="flex justify-between">
@@ -469,7 +469,7 @@ export default function CompanyDetail() {
           <span className="ml-2 text-sm font-normal text-muted-foreground">({company.applications.length})</span>
         </h3>
         {company.applications.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">No applications linked to this company yet.</p>
+          <p className="text-sm text-muted-foreground py-2">No applications linked to this entity yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -141,7 +141,7 @@ export default function GlobalSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Search applications, contacts, companies, documents..."
+              placeholder="Search applications, contacts, entities, documents..."
               className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/60 outline-none"
             />
             {loading && (
@@ -261,7 +261,7 @@ export default function GlobalSearch() {
               {(results.organizations ?? []).length > 0 && (
                 <div>
                   <p className="px-4 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Companies
+                    Entities
                   </p>
                   {results.organizations.map((o) => {
                     const idx = currentFlatIndex++;
@@ -281,7 +281,7 @@ export default function GlobalSearch() {
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-medium text-foreground truncate">{o.name}</p>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {[o.abn && `ABN ${o.abn}`, o.industry].filter(Boolean).join(' · ') || 'Company'}
+                            {[o.abn && `ABN ${o.abn}`, o.industry].filter(Boolean).join(' · ') || 'Entity'}
                           </p>
                         </div>
                       </button>

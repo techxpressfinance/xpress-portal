@@ -286,7 +286,7 @@ export default function DuplicateReviewModal({
             </div>
             <div>
               <h3 className="text-[17px] font-semibold leading-tight text-foreground">
-                Duplicate {entityLabel === 'contacts' ? 'Contacts' : 'Companies'}
+                Duplicate {entityLabel === 'contacts' ? 'Contacts' : 'Entities'}
               </h3>
               <p className="text-[13px] text-muted-foreground">
                 {loading

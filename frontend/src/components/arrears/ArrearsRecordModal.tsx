@@ -347,7 +347,7 @@ export default function ArrearsRecordModal({
    *  required fields are spread over three groups and "why can't I save?" is
    *  otherwise a hunt. */
   const missing = [
-    !form.contact_id && !form.organization_id ? 'a client or company' : '',
+    !form.contact_id && !form.organization_id ? 'a client or entity' : '',
     form.lenders.length === 0 ? 'a lender' : '',
     !form.vin.trim() ? 'the VIN' : '',
     !form.in_arrears_since ? 'the in-arrears date' : '',
@@ -371,7 +371,7 @@ export default function ArrearsRecordModal({
 
         <div className="flex-1 divide-y divide-border overflow-y-auto px-6">
           {/* ── Who the contract belongs to ─────────────────────────────── */}
-          <FormSection title="Who" hint="The record shows on both the client's and the company's page.">
+          <FormSection title="Who" hint="The record shows on both the client's and the entity's page.">
             <div className="grid gap-4 sm:grid-cols-2">
               {linksLoading === 'contact' ? (
                 <FieldShell label="Client">Checking contacts linked to {form.organization_name}…</FieldShell>
@@ -406,11 +406,11 @@ export default function ArrearsRecordModal({
                 />
               )}
               {linksLoading === 'company' ? (
-                <FieldShell label="Company">Checking companies linked to {form.contact_name}…</FieldShell>
+                <FieldShell label="Entity">Checking entities linked to {form.contact_name}…</FieldShell>
               ) : companyOptions ? (
                 <div>
                   <Select
-                    label="Company"
+                    label="Entity"
                     value={form.organization_id ?? ''}
                     onChange={(e) => pickCompanyOption(e.target.value)}
                     disabled={Boolean(fixedOrganization)}
@@ -421,13 +421,13 @@ export default function ArrearsRecordModal({
                     ))}
                   </Select>
                   <p className="mt-1 text-[12px] text-muted-foreground">
-                    Companies linked to {form.contact_name}.
+                    Entities linked to {form.contact_name}.
                   </p>
                 </div>
               ) : (
                 <EntityPicker
                   kind="organization"
-                  label="Company"
+                  label="Entity"
                   value={form.organization_id}
                   valueLabel={form.organization_name}
                   disabled={Boolean(fixedOrganization)}

@@ -65,7 +65,7 @@ function EditReferrerModal({ referrer, onClose, onSaved }: { referrer: User; onC
           </div>
           <div>
             <label className={LABEL}>Organization</label>
-            <Input placeholder="Company or institution" value={form.organization_name} onChange={e => setForm(f => ({ ...f, organization_name: e.target.value }))} />
+            <Input placeholder="Entity or institution" value={form.organization_name} onChange={e => setForm(f => ({ ...f, organization_name: e.target.value }))} />
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -312,7 +312,7 @@ export default function ReferrerManagement() {
               <Input label="Full Name *" placeholder="John Smith" value={form.full_name} onChange={e => update('full_name', e.target.value)} error={errors.full_name} />
               <Input label="Email *" type="email" placeholder="referrer@example.com" value={form.email} onChange={e => update('email', e.target.value)} error={errors.email} />
               <Input label="Phone" type="tel" placeholder="+61 400 000 000" value={form.phone} onChange={e => update('phone', e.target.value)} />
-              <Input label="Organization" placeholder="Company or institution name" value={form.organization_name} onChange={e => update('organization_name', e.target.value)} />
+              <Input label="Organization" placeholder="Entity or institution name" value={form.organization_name} onChange={e => update('organization_name', e.target.value)} />
             </div>
 
             {/* Invoicing details. Optional here — the referrer is prompted to complete

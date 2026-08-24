@@ -410,7 +410,7 @@ export default function AllApplications() {
               <thead>
                 <tr>
                   <SortHead k="user_name">Applicant</SortHead>
-                  <th>Company</th>
+                  <th>Entity</th>
                   <th>ID</th>
                   <th>Type</th>
                   <SortHead k="amount" align="right">Amount</SortHead>

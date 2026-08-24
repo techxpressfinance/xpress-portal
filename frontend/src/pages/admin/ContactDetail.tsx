@@ -838,7 +838,7 @@ export default function ContactDetail() {
     try {
       await api.delete(`/contacts/${contact.id}/organizations/${orgId}`);
       setContact(prev => prev ? { ...prev, organizations: prev.organizations.filter(o => o.id !== orgId) } : prev);
-      toast('Company unlinked', 'success');
+      toast('Entity unlinked', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to unlink'), 'error');
     } finally {

@@ -186,7 +186,7 @@ class ArrearsRecordCreate(ArrearsRecordBase):
         # Every record must hang off a real contact and/or company so it maps
         # onto their detail pages — free-text party names are not accepted.
         if not self.contact_id and not self.organization_id:
-            raise ValueError("Select a client, a company, or both")
+            raise ValueError("Select a client, an entity, or both")
         if not self.lenders:
             raise ValueError("At least one lender is required")
         return self

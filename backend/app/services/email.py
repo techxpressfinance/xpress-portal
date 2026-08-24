@@ -10,7 +10,7 @@ from typing import Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.config import EMAIL_ENABLED, FRONTEND_URL, SES_CONFIGURATION_SET, SES_FROM_EMAIL, SES_REGION
+from app.config import EMAIL_ENABLED, FRONTEND_URL, REFERRER_EMAILS_ENABLED, SES_CONFIGURATION_SET, SES_FROM_EMAIL, SES_REGION
 
 
 def _esc(value: str) -> str:
@@ -276,6 +276,9 @@ def send_broker_welcome_email(to_email: str, name: str, temp_password: str) -> N
 
 def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) -> None:
     """Send referrer welcome email with login credentials. Non-blocking."""
+    if not REFERRER_EMAILS_ENABLED:
+        logger.debug("Referrer emails paused, skipping referrer welcome email for %s", to_email)
+        return
     if not EMAIL_ENABLED:
         logger.debug("Email not configured, skipping referrer welcome email for %s", to_email)
         return
@@ -319,6 +322,9 @@ def send_referrer_welcome_email(to_email: str, name: str, temp_password: str) ->
 
 def send_setup_account_email(to_email: str, name: str, setup_url: str, inviter_name: Optional[str] = None, role: str = "client") -> None:
     """Send account setup link to a newly invited user. Non-blocking."""
+    if role == "referrer" and not REFERRER_EMAILS_ENABLED:
+        logger.debug("Referrer emails paused, skipping setup account email for %s", to_email)
+        return
     if not EMAIL_ENABLED:
         logger.debug("Email not configured, skipping setup account email for %s", to_email)
         return
@@ -611,6 +617,9 @@ def send_direct_engagement_referrer_thankyou(
     client_email: str,
 ) -> None:
     """Thank-you email to referrer (CC client) when they choose Xpress Finance direct engagement. Non-blocking."""
+    if not REFERRER_EMAILS_ENABLED:
+        logger.debug("Referrer emails paused, skipping direct engagement referrer thank-you for %s", referrer_email)
+        return
     if not EMAIL_ENABLED:
         logger.debug("Email not configured, skipping direct engagement referrer thank-you for %s", referrer_email)
         return

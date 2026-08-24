@@ -56,7 +56,7 @@ from app.services.email import (
 )
 from app.services.notification_service import create_notification
 from app.services.contacts import ensure_contact
-from app.services.organizations import find_or_create_organization_by_abn, normalize_abn
+from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
     CorporateGuarantorCreate,
@@ -221,6 +221,8 @@ def create_application(
         app.client_invite_email = data.applicant_email.strip()
         app.client_invite_sent_at = datetime.now(timezone.utc)
         direct_engagement_invite_url = f"{FRONTEND_URL}/apply/{token}"
+
+    ensure_contact_organization_link(db, tenant_id, app.contact_id, app.business_organization_id)
 
     db.commit()
 
@@ -481,6 +483,7 @@ def clone_application(
         {"cloned_from": source.id, "loan_type": getattr(app.loan_type, "value", app.loan_type), "amount": str(app.amount)},
         tenant_id=tenant_id,
     )
+    ensure_contact_organization_link(db, tenant_id, app.contact_id, app.business_organization_id)
     db.commit()
 
     db.refresh(app, attribute_names=["user"])
@@ -901,6 +904,8 @@ def update_application(
     edited = field_changes(application, before)
     if edited:
         log_activity(db, current_user.id, "updated", "application", app_id, {"changes": edited}, tenant_id=tenant_id)
+
+    ensure_contact_organization_link(db, tenant_id, application.contact_id, application.business_organization_id)
 
     db.commit()
 

@@ -130,7 +130,7 @@ export function arrearsToCsv(records: ArrearsRecord[]): string {
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows: unknown[][] = [[
-    'Company', 'Client', 'Lenders', 'Loan type', 'Contract no.', 'VIN',
+    'Entity', 'Client', 'Lenders', 'Loan type', 'Contract no.', 'VIN',
     'Repayment', 'Frequency', 'Arrears amount', 'Days in arrears', 'Bucket',
     'In arrears since', 'Resolved', 'Proof of payment', 'Notes',
   ]];

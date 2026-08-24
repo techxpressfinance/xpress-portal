@@ -35,6 +35,10 @@ SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL", "")
 SES_CONFIGURATION_SET = os.getenv("SES_CONFIGURATION_SET", "")
 EMAIL_ENABLED = bool(SES_FROM_EMAIL)
 
+# Referrer-facing emails (welcome, onboarding invite, direct-engagement thank-you)
+# — paused for now. Set REFERRER_EMAILS_ENABLED=true to resume sending to referrers.
+REFERRER_EMAILS_ENABLED = os.getenv("REFERRER_EMAILS_ENABLED", "false").lower() == "true"
+
 # OpenAI / LLM analysis - optional, analysis feature disabled if no key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")

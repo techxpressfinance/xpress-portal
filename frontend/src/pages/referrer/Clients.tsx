@@ -90,7 +90,7 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ReferrerClie
             <Input type="tel" placeholder="04XX XXX XXX" {...field('mobile')} />
           </div>
           <div>
-            <label className={LABEL}>Company Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <label className={LABEL}>Entity Name <span className="font-normal text-muted-foreground">(optional)</span></label>
             <Input placeholder="Acme Pty Ltd" {...field('company_name')} />
           </div>
           <div className="flex gap-3 justify-end pt-2">
@@ -168,7 +168,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <Input type="tel" placeholder="04XX XXX XXX" {...field('mobile')} />
           </div>
           <div>
-            <label className={LABEL}>Company Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <label className={LABEL}>Entity Name <span className="font-normal text-muted-foreground">(optional)</span></label>
             <Input placeholder="Acme Pty Ltd" {...field('company_name')} />
           </div>
           <div className="flex gap-3 justify-end pt-2">
@@ -259,7 +259,7 @@ export default function ReferrerClients() {
                 <tr className="border-b border-border">
                   <th className="px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Client</th>
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Email</th>
-                  <th className="hidden md:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Company</th>
+                  <th className="hidden md:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Entity</th>
                   <th className="hidden sm:table-cell px-6 py-4 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Mobile</th>
                   <th className="px-6 py-4" />
                 </tr>

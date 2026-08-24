@@ -137,7 +137,7 @@ export default function ReferrerApplications() {
                 <thead>
                   <tr className="border-b border-border">
                     <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Client</th>
-                    <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Company</th>
+                    <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Entity</th>
                     <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Type</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Created</th>

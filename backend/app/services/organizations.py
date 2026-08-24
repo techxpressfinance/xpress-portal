@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.contact import Organization
+from app.models.contact import ContactOrganization, Organization
 
 
 def normalize_abn(value: Optional[str]) -> Optional[str]:
@@ -63,3 +63,37 @@ def find_or_create_organization_by_abn(
     db.add(org)
     db.flush()
     return org
+
+
+def ensure_contact_organization_link(
+    db: Session,
+    tenant_id: str,
+    contact_id: Optional[str],
+    organization_id: Optional[str],
+) -> None:
+    """Link a contact to an organization when both are present and not yet linked.
+
+    An application can carry both a client (contact) and a business entity
+    (organization); when it does, the entity should surface on the client's page
+    and the client on the entity's page. Idempotent — an existing link is left
+    untouched, so a role already set by hand is never overwritten.
+    """
+    if not contact_id or not organization_id:
+        return
+    existing = (
+        db.query(ContactOrganization)
+        .filter(
+            ContactOrganization.contact_id == contact_id,
+            ContactOrganization.organization_id == organization_id,
+        )
+        .first()
+    )
+    if existing:
+        return
+    db.add(
+        ContactOrganization(
+            tenant_id=tenant_id,
+            contact_id=contact_id,
+            organization_id=organization_id,
+        )
+    )

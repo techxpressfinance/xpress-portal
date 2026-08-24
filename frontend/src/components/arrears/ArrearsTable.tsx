@@ -38,7 +38,7 @@ export default function ArrearsTable({
       <table className="w-full min-w-[880px] text-left text-[13px]">
         <thead>
           <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-            <th className="py-2 pl-4 pr-3 font-medium">Client / Company</th>
+            <th className="py-2 pl-4 pr-3 font-medium">Client / Entity</th>
             <th className="px-3 py-2 font-medium">Lender</th>
             <th className="px-3 py-2 font-medium">Asset</th>
             <th className="px-3 py-2 font-medium">Age</th>
@@ -125,7 +125,7 @@ export function ArrearsPrintTable({ records }: { records: ArrearsRecord[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #333' }}>
-          {['Company', 'Client', 'Lender', 'Repayment', 'Arrears', 'Days', 'Bucket', 'Contract no.', 'VIN', 'Asset', 'Loan type', 'Resolved', 'Proof'].map((h) => (
+          {['Entity', 'Client', 'Lender', 'Repayment', 'Arrears', 'Days', 'Bucket', 'Contract no.', 'VIN', 'Asset', 'Loan type', 'Resolved', 'Proof'].map((h) => (
             <th key={h} style={{ padding: '4px 5px', textAlign: 'left', color: '#111' }}>{h}</th>
           ))}
         </tr>

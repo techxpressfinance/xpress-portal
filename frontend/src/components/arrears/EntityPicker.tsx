@@ -106,7 +106,7 @@ export default function EntityPicker({
         className="led-input !h-10 !text-[14px]"
         value={query}
         disabled={disabled}
-        placeholder={placeholder ?? `Search ${kind === 'contact' ? 'clients' : 'companies'}…`}
+        placeholder={placeholder ?? `Search ${kind === 'contact' ? 'clients' : 'entities'}…`}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
       />

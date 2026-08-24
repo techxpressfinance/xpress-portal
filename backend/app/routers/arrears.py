@@ -232,7 +232,7 @@ def _validate_links(
     if organization_id and not db.query(Organization.id).filter(
         Organization.id == organization_id, Organization.tenant_id == tenant_id
     ).first():
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(status_code=404, detail="Entity not found")
     if application_id and not db.query(LoanApplication.id).filter(
         LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id
     ).first():
@@ -564,7 +564,7 @@ def arrears_lender_options(
     applications. Deduped by name, preferring entries linked to a lender row.
     """
     if not contact_id and not organization_id:
-        raise HTTPException(status_code=400, detail="Provide a client or a company")
+        raise HTTPException(status_code=400, detail="Provide a client or an entity")
 
     found: dict[str, dict] = {}
 
@@ -770,7 +770,7 @@ def update_arrears_record(
     next_contact = updates.get("contact_id", record.contact_id)
     next_org = updates.get("organization_id", record.organization_id)
     if not next_contact and not next_org:
-        raise HTTPException(status_code=400, detail="A record must stay linked to a client or a company")
+        raise HTTPException(status_code=400, detail="A record must stay linked to a client or an entity")
 
     now = datetime.now(timezone.utc)
     for field, (on_type, off_type, on_text, off_text) in _TRACKED_FLAGS.items():
