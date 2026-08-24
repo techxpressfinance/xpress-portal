@@ -46,20 +46,80 @@ class ArrearsNoteCreate(BaseModel):
         return v.strip()[:5000]
 
 
-class ArrearsRecordBase(BaseModel):
-    contact_id: Optional[str] = None
-    organization_id: Optional[str] = None
-    application_id: Optional[str] = None
+ATTEMPT_METHODS = ("phone", "email", "text")
+
+
+class ArrearsAttemptCreate(BaseModel):
+    """Log a collections touch. `attempted_at` is the caller's local wall-clock
+    time (sent naive from the datetime-local input and stored as-is); aware
+    values are normalised to naive UTC like every other timestamp here."""
+
+    method: str
+    attempted_at: datetime
+    note: Optional[str] = None
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        if v not in ATTEMPT_METHODS:
+            raise ValueError(f"method must be one of: {', '.join(ATTEMPT_METHODS)}")
+        return v
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip()[:2000] if v and v.strip() else None
+
+
+class ArrearsAttemptUpdate(BaseModel):
+    method: Optional[str] = None
+    attempted_at: Optional[datetime] = None
+    # Explicit null clears the note.
+    note: Optional[str] = None
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ATTEMPT_METHODS:
+            raise ValueError(f"method must be one of: {', '.join(ATTEMPT_METHODS)}")
+        return v
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip()[:2000] if v and v.strip() else None
+
+
+class ArrearsAttemptAttachmentOut(BaseModel):
+    """Evidence hanging off one contact attempt — a screenshot, a photo, or the
+    chase email itself. Email rows carry their parsed headers so the attempt can
+    show "Re: arrears — from broker@…" instead of a bare .eml filename."""
+
+    id: str
+    original_filename: str
+    kind: str
+    email_subject: Optional[str] = None
+    email_from: Optional[str] = None
+    email_sent_at: Optional[datetime] = None
+
+
+class ArrearsAttemptOut(BaseModel):
+    id: str
+    method: str
+    attempted_at: datetime
+    note: Optional[str] = None
+    attachments: List[ArrearsAttemptAttachmentOut] = []
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArrearsLenderIn(BaseModel):
+    """One lender on a contract. `lender_id` is null for lenders typed by hand
+    that aren't in the lender book; the name is always sent and stored."""
+
     lender_id: Optional[str] = None
     lender_name: str
-    contract_number: Optional[str] = None
-    asset_details: Optional[str] = None
-    file_type: str
-    repayment_amount: Optional[Decimal] = None
-    repayment_frequency: Optional[str] = None
-    arrears_amount: Optional[Decimal] = None
-    in_arrears_since: date
-    notes: Optional[str] = None
 
     @field_validator("lender_name")
     @classmethod
@@ -68,12 +128,42 @@ class ArrearsRecordBase(BaseModel):
             raise ValueError("Lender name is required")
         return v.strip()
 
+
+class ArrearsLenderOut(BaseModel):
+    lender_id: Optional[str] = None
+    lender_name: str
+
+
+class ArrearsRecordBase(BaseModel):
+    contact_id: Optional[str] = None
+    organization_id: Optional[str] = None
+    application_id: Optional[str] = None
+    # Co-financed contracts have several; the first is the primary lender.
+    lenders: List[ArrearsLenderIn] = []
+    contract_number: Optional[str] = None
+    # VIN/chassis number of the secured asset — mandatory on new records.
+    vin: str
+    asset_details: Optional[str] = None
+    file_type: str
+    repayment_amount: Optional[Decimal] = None
+    repayment_frequency: Optional[str] = None
+    arrears_amount: Optional[Decimal] = None
+    in_arrears_since: date
+    notes: Optional[str] = None
+
     @field_validator("file_type")
     @classmethod
     def validate_file_type(cls, v: str) -> str:
         if v not in ARREARS_FILE_TYPES:
             raise ValueError(f"file_type must be one of: {', '.join(ARREARS_FILE_TYPES)}")
         return v
+
+    @field_validator("vin")
+    @classmethod
+    def validate_vin(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("VIN number is required")
+        return v.strip().upper()
 
     @field_validator("repayment_frequency")
     @classmethod
@@ -97,6 +187,8 @@ class ArrearsRecordCreate(ArrearsRecordBase):
         # onto their detail pages — free-text party names are not accepted.
         if not self.contact_id and not self.organization_id:
             raise ValueError("Select a client, a company, or both")
+        if not self.lenders:
+            raise ValueError("At least one lender is required")
         return self
 
 
@@ -107,9 +199,11 @@ class ArrearsRecordUpdate(BaseModel):
     contact_id: Optional[str] = None
     organization_id: Optional[str] = None
     application_id: Optional[str] = None
-    lender_id: Optional[str] = None
-    lender_name: Optional[str] = None
+    # Sending the list replaces the whole set (the first entry becomes the
+    # primary lender); omit it to leave lenders untouched.
+    lenders: Optional[List[ArrearsLenderIn]] = None
     contract_number: Optional[str] = None
+    vin: Optional[str] = None
     asset_details: Optional[str] = None
     file_type: Optional[str] = None
     repayment_amount: Optional[Decimal] = None
@@ -136,12 +230,21 @@ class ArrearsRecordUpdate(BaseModel):
             raise ValueError(f"repayment_frequency must be one of: {', '.join(REPAYMENT_FREQUENCIES)}")
         return v
 
-    @field_validator("lender_name")
+    @field_validator("lenders")
     @classmethod
-    def validate_lender_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_lenders(cls, v: Optional[List[ArrearsLenderIn]]) -> Optional[List[ArrearsLenderIn]]:
+        if v is not None and not v:
+            raise ValueError("At least one lender is required")
+        return v
+
+    @field_validator("vin")
+    @classmethod
+    def validate_vin(cls, v: Optional[str]) -> Optional[str]:
+        # Optional so flag-only PATCHes (resolve/proof/delinquent) never need
+        # it — but an explicitly sent value can't be blank.
         if v is not None and not v.strip():
-            raise ValueError("Lender name is required")
-        return v.strip() if v else v
+            raise ValueError("VIN number cannot be blank")
+        return v.strip().upper() if v else v
 
     @field_validator("in_arrears_since")
     @classmethod
@@ -158,9 +261,13 @@ class ArrearsRecordOut(BaseModel):
     organization_id: Optional[str] = None
     organization_name: Optional[str] = None
     application_id: Optional[str] = None
+    # Primary lender (first of the list) kept for the table, filters, and PDF —
+    # `lenders` carries the full co-financed set.
     lender_id: Optional[str] = None
     lender_name: str
+    lenders: List[ArrearsLenderOut] = []
     contract_number: Optional[str] = None
+    vin: Optional[str] = None
     asset_details: Optional[str] = None
     file_type: str
     repayment_amount: Optional[Decimal] = None
@@ -189,6 +296,7 @@ class ArrearsRecordOut(BaseModel):
 
 class ArrearsRecordDetailOut(ArrearsRecordOut):
     attachments: List[ArrearsAttachmentOut] = []
+    attempts: List[ArrearsAttemptOut] = []
     events: List[ArrearsEventOut] = []
 
 

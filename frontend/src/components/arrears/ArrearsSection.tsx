@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../Toast';
 import { Button, GlassCard } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
-import { formatMoney } from '../../lib/arrears';
+import { downloadArrearsCsv, formatMoney } from '../../lib/arrears';
 import type { ArrearsRecord } from '../../types';
 import ArrearsDetailPanel from './ArrearsDetailPanel';
 import ArrearsRecordModal from './ArrearsRecordModal';
@@ -26,6 +26,7 @@ export default function ArrearsSection({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ArrearsRecord | null>(null);
   const [creating, setCreating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -46,6 +47,31 @@ export default function ArrearsSection({
 
   useEffect(() => { load(); }, [load]);
 
+  /** One-click CSV of everything in this party's book — the "download the
+   *  arrears records for this client" action, right where the book lives.
+   *  Pulled from /arrears/report, which is unpaginated: a page size would
+   *  silently truncate the export for a party with a long book. */
+  const downloadCsv = async () => {
+    setDownloading(true);
+    try {
+      const { data } = await api.get<ArrearsRecord[]>('/arrears/report', {
+        params: {
+          contact_id: contact?.id,
+          organization_id: organization?.id,
+        },
+      });
+      if (data.length === 0) {
+        toast('No arrears recorded against this party', 'error');
+        return;
+      }
+      downloadArrearsCsv(data, `arrears-${(contact?.name ?? organization?.name ?? 'party').replace(/[^\w-]+/g, '_')}`);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Download failed'), 'error');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const open = records.filter((r) => !r.resolved);
   const outstanding = open.reduce((sum, r) => sum + Number(r.arrears_amount || 0), 0);
 
@@ -62,7 +88,12 @@ export default function ArrearsSection({
                 : `${open.length} of ${records.length} contract${records.length === 1 ? '' : 's'} unresolved · ${formatMoney(outstanding)} outstanding`}
           </p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>Add contract</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={downloadCsv} loading={downloading} disabled={loading}>
+            Download CSV
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>Add contract</Button>
+        </div>
       </div>
 
       {!loading && (

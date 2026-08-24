@@ -20,19 +20,31 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import or_
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.middleware.rate_limit import RateLimiter
-from app.models.arrears import ArrearsAttachment, ArrearsEvent, ArrearsRecord, ArrearsSnapshot
+from app.models.arrears import (
+    ArrearsAttachment,
+    ArrearsContactAttempt,
+    ArrearsEvent,
+    ArrearsRecord,
+    ArrearsRecordLender,
+    ArrearsSnapshot,
+)
 from app.models.contact import Contact, Organization
 from app.models.lender import Lender
+from app.models.lending_history_entry import LendingHistoryEntry
+from app.models.lender_submission import LenderSubmission
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.arrears import (
+    ArrearsAttemptCreate,
+    ArrearsAttemptUpdate,
     ArrearsBucketCount,
+    ArrearsLenderOut,
     ArrearsMonthSummary,
     ArrearsNoteCreate,
     ArrearsRecordCreate,
@@ -65,6 +77,9 @@ attachment_upload_limiter = RateLimiter(max_requests=30, window_seconds=60)
 # Cap on how many rows one PDF report may contain — the report endpoint is
 # unpaginated by design, and html2pdf falls over well before this.
 MAX_REPORT_ROWS = 1000
+
+# Contact-attempt methods and how each reads on the record timeline.
+ATTEMPT_LABELS = {"phone": "Phone call attempted", "email": "Email attempted", "text": "Text message attempted"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -133,6 +148,12 @@ def _serialize(
         repayment_amount = record.repayment_amount
 
     attachments = record.attachments or []
+    # Records written before the lenders table only have the parent columns;
+    # read those as a single-element list so every consumer sees one shape.
+    lenders = [
+        {"lender_id": rl.lender_id, "lender_name": rl.lender_name}
+        for rl in record.record_lenders
+    ] or ([{"lender_id": record.lender_id, "lender_name": record.lender_name}] if record.lender_name else [])
     return {
         "id": record.id,
         "contact_id": record.contact_id,
@@ -142,7 +163,9 @@ def _serialize(
         "application_id": record.application_id,
         "lender_id": record.lender_id,
         "lender_name": record.lender_name,
+        "lenders": lenders,
         "contract_number": record.contract_number,
+        "vin": record.vin,
         "asset_details": record.asset_details,
         "file_type": record.file_type,
         "repayment_amount": repayment_amount,
@@ -159,12 +182,19 @@ def _serialize(
         "delinquent_at": record.delinquent_at,
         "delinquent_reason": record.delinquent_reason,
         "notes": record.notes,
-        "attachment_count": sum(1 for a in attachments if a.kind != "email"),
-        "email_count": sum(1 for a in attachments if a.kind == "email"),
+        "attachment_count": sum(1 for a in attachments if a.kind != "email" and not a.contact_attempt_id),
+        "email_count": sum(1 for a in attachments if a.kind == "email" and not a.contact_attempt_id),
         "created_by_name": users.get(record.created_by_id),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
+
+
+def _naive(value: datetime) -> datetime:
+    """Normalise an incoming timestamp to naive UTC (see the email-upload path
+    for the same convention); naive values from the datetime-local input pass
+    through unchanged so the broker's wall-clock time round-trips."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
 def _log_event(
@@ -191,7 +221,7 @@ def _validate_links(
     contact_id: Optional[str],
     organization_id: Optional[str],
     application_id: Optional[str],
-    lender_id: Optional[str],
+    lender_ids: Optional[list[str]],
 ) -> None:
     """Reject ids that don't exist in this tenant — links are the whole point of
     the arrears book mapping onto contact/company pages."""
@@ -207,10 +237,40 @@ def _validate_links(
         LoanApplication.id == application_id, LoanApplication.tenant_id == tenant_id
     ).first():
         raise HTTPException(status_code=404, detail="Application not found")
-    if lender_id and not db.query(Lender.id).filter(
-        Lender.id == lender_id, Lender.tenant_id == tenant_id
-    ).first():
-        raise HTTPException(status_code=404, detail="Lender not found")
+    ids = [i for i in (lender_ids or []) if i]
+    if ids:
+        known = {
+            row[0]
+            for row in db.query(Lender.id).filter(Lender.id.in_(ids), Lender.tenant_id == tenant_id)
+        }
+        missing = [i for i in ids if i not in known]
+        if missing:
+            raise HTTPException(status_code=404, detail="Lender not found")
+
+
+def _set_lenders(record: ArrearsRecord, lenders: list[dict]) -> None:
+    """Replace the record's lender set. The parent's lender_id/lender_name are
+    re-synced to the first entry — list views, search, and the lender filter
+    read the parent row, and _serialize prefers children with a parent
+    fallback, so both copies must agree."""
+    record.record_lenders = []
+    for position, item in enumerate(lenders):
+        record.record_lenders.append(ArrearsRecordLender(
+            tenant_id=record.tenant_id,
+            lender_id=item.get("lender_id") or None,
+            lender_name=item["lender_name"].strip(),
+            position=position,
+        ))
+    record.lender_id = lenders[0].get("lender_id") or None
+    record.lender_name = lenders[0]["lender_name"].strip()
+
+
+def _lender_names(record: ArrearsRecord) -> list[str]:
+    """Names as they should appear in events/logs — children when present,
+    the legacy parent copy otherwise."""
+    if record.record_lenders:
+        return [rl.lender_name for rl in record.record_lenders]
+    return [record.lender_name] if record.lender_name else []
 
 
 def _matching_contact_ids(db: Session, tenant_id: str, search: str) -> set[str]:
@@ -245,7 +305,15 @@ def _base_query(
     if organization_id:
         query = query.filter(ArrearsRecord.organization_id == organization_id)
     if lender_id:
-        query = query.filter(ArrearsRecord.lender_id == lender_id)
+        # The filter must catch secondary lenders too, not just the primary
+        # copy on the parent row.
+        query = query.filter(or_(
+            ArrearsRecord.lender_id == lender_id,
+            exists(select(ArrearsRecordLender.id).where(
+                ArrearsRecordLender.arrears_record_id == ArrearsRecord.id,
+                ArrearsRecordLender.lender_id == lender_id,
+            )),
+        ))
     if file_type:
         query = query.filter(ArrearsRecord.file_type == file_type)
     if resolved is not None:
@@ -269,7 +337,12 @@ def _base_query(
         contact_ids = _matching_contact_ids(db, tenant_id, term)
         clauses = [
             ArrearsRecord.lender_name.ilike(pattern),
+            exists(select(ArrearsRecordLender.id).where(
+                ArrearsRecordLender.arrears_record_id == ArrearsRecord.id,
+                ArrearsRecordLender.lender_name.ilike(pattern),
+            )),
             ArrearsRecord.contract_number.ilike(pattern),
+            ArrearsRecord.vin.ilike(pattern),
             ArrearsRecord.asset_details.ilike(pattern),
         ]
         if contact_ids:
@@ -476,6 +549,84 @@ def arrears_report(
     return result.items
 
 
+@router.get("/lender-options", response_model=list[ArrearsLenderOut])
+def arrears_lender_options(
+    contact_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Lenders already associated with the chosen client/company, so the
+    arrears modal's lender picker only offers lenders that business actually
+    uses. Sources: their existing arrears contracts (all lenders per record),
+    the client's lending history, and lender submissions on their
+    applications. Deduped by name, preferring entries linked to a lender row.
+    """
+    if not contact_id and not organization_id:
+        raise HTTPException(status_code=400, detail="Provide a client or a company")
+
+    found: dict[str, dict] = {}
+
+    def add(lender_id: Optional[str], name: Optional[str]) -> None:
+        name = (name or "").strip()
+        if not name:
+            return
+        key = name.lower()
+        current = found.get(key)
+        if current is None or (current["lender_id"] is None and lender_id):
+            found[key] = {"lender_id": lender_id, "lender_name": name}
+
+    party_clauses = []
+    if contact_id:
+        party_clauses += [ArrearsRecord.contact_id == contact_id]
+    if organization_id:
+        party_clauses += [ArrearsRecord.organization_id == organization_id]
+    for r in db.query(ArrearsRecord).filter(
+        ArrearsRecord.tenant_id == tenant_id, or_(*party_clauses)
+    ).all():
+        add(r.lender_id, r.lender_name)
+        for rl in r.record_lenders:
+            add(rl.lender_id, rl.lender_name)
+
+    if contact_id:
+        for (name,) in (
+            db.query(LendingHistoryEntry.lender_name)
+            .filter(
+                LendingHistoryEntry.tenant_id == tenant_id,
+                LendingHistoryEntry.contact_id == contact_id,
+            )
+            .distinct()
+        ):
+            add(None, name)
+
+    app_clauses = []
+    if contact_id:
+        app_clauses.append(LoanApplication.contact_id == contact_id)
+    if organization_id:
+        app_clauses.append(LoanApplication.business_organization_id == organization_id)
+    submission_lender_ids = {
+        row[0]
+        for row in (
+            db.query(LenderSubmission.lender_id)
+            .join(LoanApplication, LoanApplication.id == LenderSubmission.application_id)
+            .filter(
+                LoanApplication.tenant_id == tenant_id,
+                LenderSubmission.tenant_id == tenant_id,
+                or_(*app_clauses),
+            )
+            .distinct()
+        )
+    }
+    if submission_lender_ids:
+        for lender in db.query(Lender).filter(
+            Lender.id.in_(submission_lender_ids), Lender.tenant_id == tenant_id
+        ):
+            add(lender.id, lender.name)
+
+    return sorted(found.values(), key=lambda item: item["lender_name"].lower())
+
+
 @router.get("/{record_id}", response_model=ArrearsRecordDetailOut)
 def get_arrears_record(
     record_id: str,
@@ -499,7 +650,32 @@ def get_arrears_record(
             "uploaded_by_name": a.uploaded_by.full_name if a.uploaded_by else None,
             "uploaded_at": a.uploaded_at,
         }
+        # Attempt snips render inside the attempts section, not here.
         for a in sorted(record.attachments, key=lambda a: a.uploaded_at, reverse=True)
+        if not a.contact_attempt_id
+    ]
+    data["attempts"] = [
+        {
+            "id": a.id,
+            "method": a.method,
+            "attempted_at": a.attempted_at,
+            "note": a.note,
+            "attachments": [
+                {
+                    "id": f.id,
+                    "original_filename": f.original_filename,
+                    "kind": f.kind,
+                    "email_subject": f.email_subject,
+                    "email_from": f.email_from,
+                    "email_sent_at": f.email_sent_at,
+                }
+                for f in a.attachments
+            ],
+            "created_by_name": a.created_by.full_name if a.created_by else None,
+            "created_at": a.created_at,
+            "updated_at": a.updated_at,
+        }
+        for a in record.contact_attempts
     ]
     data["events"] = [
         {
@@ -535,19 +711,25 @@ def create_arrears_record(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    _validate_links(db, tenant_id, data.contact_id, data.organization_id, data.application_id, data.lender_id)
+    _validate_links(
+        db, tenant_id, data.contact_id, data.organization_id, data.application_id,
+        [entry.lender_id for entry in data.lenders],
+    )
 
     record = ArrearsRecord(
         tenant_id=tenant_id,
         created_by_id=current_user.id,
-        **data.model_dump(),
+        **data.model_dump(exclude={"lenders"}),
     )
     db.add(record)
+    # Before flush: lender_name is NOT NULL on the parent, so the primary copy
+    # must be synced first — the children pick up the record id at flush time.
+    _set_lenders(record, [entry.model_dump() for entry in data.lenders])
     db.flush()
-    _log_event(db, record, current_user, "created", f"{record.lender_name} — in arrears since {record.in_arrears_since:%d %b %Y}")
+    _log_event(db, record, current_user, "created", f"{' & '.join(_lender_names(record))} — in arrears since {record.in_arrears_since:%d %b %Y}")
     log_activity(
         db, current_user.id, "arrears_created", "arrears_record", record.id,
-        {"lender": record.lender_name, "contract_number": record.contract_number}, tenant_id,
+        {"lenders": _lender_names(record), "contract_number": record.contract_number}, tenant_id,
     )
     db.commit()
     db.refresh(record)
@@ -575,11 +757,13 @@ def update_arrears_record(
 ):
     record = _load(db, record_id, tenant_id)
     updates = data.model_dump(exclude_unset=True)
+    lenders_payload = updates.pop("lenders", None)
 
     _validate_links(
         db, tenant_id,
         updates.get("contact_id"), updates.get("organization_id"),
-        updates.get("application_id"), updates.get("lender_id"),
+        updates.get("application_id"),
+        [entry.get("lender_id") for entry in lenders_payload] if lenders_payload is not None else None,
     )
 
     # Clearing both party links would orphan the record from every detail page.
@@ -609,10 +793,18 @@ def update_arrears_record(
             record.delinquent_reason = None
 
     changed_details = [
-        f for f in ("lender_name", "contract_number", "asset_details", "file_type",
+        f for f in ("contract_number", "vin", "asset_details", "file_type",
                     "repayment_amount", "repayment_frequency", "arrears_amount", "in_arrears_since")
         if f in updates and updates[f] != getattr(record, f)
     ]
+
+    # Lenders get their own event naming the full new set, so co-financing
+    # changes read as "Lenders: A, B" rather than a bare "lender name" diff.
+    if lenders_payload is not None:
+        names_before = [n.lower() for n in _lender_names(record)]
+        _set_lenders(record, lenders_payload)
+        if [n.lower() for n in _lender_names(record)] != names_before:
+            _log_event(db, record, current_user, "lenders_updated", f"Lenders: {' & '.join(_lender_names(record))}")
 
     for field, value in updates.items():
         setattr(record, field, value)
@@ -640,7 +832,7 @@ def delete_arrears_record(
     for attachment in record.attachments:
         delete_file(attachment.file_path)
     log_activity(db, current_user.id, "arrears_deleted", "arrears_record", record.id,
-                 {"lender": record.lender_name}, tenant_id)
+                 {"lenders": _lender_names(record)}, tenant_id)
     # Snapshots are intentionally left behind — a deleted record must not erase
     # the months it was reported in.
     db.delete(record)
@@ -665,21 +857,24 @@ def add_arrears_note(
     return get_arrears_record(record.id, db, current_user, tenant_id)
 
 
-# ── Attachments (screenshots, documents, dropped emails) ─────────────────────
+# ── Contact attempts (phone / email / text) ──────────────────────────────────
 
 
-@router.post("/{record_id}/attachments", response_model=ArrearsRecordDetailOut, status_code=status.HTTP_201_CREATED)
-def upload_arrears_attachment(
-    record_id: str,
-    request: Request,
+def _build_attachment(
+    tenant_id: str,
+    record: ArrearsRecord,
     file: UploadFile,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    record = _load(db, record_id, tenant_id)
-    attachment_upload_limiter.check(request)
+    current_user: User,
+    contact_attempt_id: Optional[str] = None,
+) -> tuple[ArrearsAttachment, str]:
+    """Turn an upload into an unsaved ArrearsAttachment plus its timeline wording.
 
+    Shared by record-level attachments and the evidence hanging off a single
+    contact attempt, so a chase email dropped on the "Email attempted" entry is
+    parsed exactly like one dropped on the record — same allowlist, same header
+    extraction. `contact_attempt_id` is what makes the file belong to the
+    attempt instead of the record's own list.
+    """
     contents = file.file.read()
     filename = safe_filename(file.filename or "unknown")
     ext = os.path.splitext(filename)[1].lower()
@@ -690,6 +885,7 @@ def upload_arrears_attachment(
         attachment = ArrearsAttachment(
             tenant_id=tenant_id,
             arrears_record_id=record.id,
+            contact_attempt_id=contact_attempt_id,
             kind="email",
             file_path=upload_file(contents, stored_name),
             original_filename=filename,
@@ -713,6 +909,7 @@ def upload_arrears_attachment(
         attachment = ArrearsAttachment(
             tenant_id=tenant_id,
             arrears_record_id=record.id,
+            contact_attempt_id=contact_attempt_id,
             kind=kind,
             file_path=upload_file(contents, stored_name),
             original_filename=filename,
@@ -720,6 +917,142 @@ def upload_arrears_attachment(
         event_detail = f"{'Screenshot' if kind == 'screenshot' else 'File'} attached: {filename}"
 
     attachment.uploaded_by_id = current_user.id
+    return attachment, event_detail
+
+
+def _load_attempt(db: Session, record: ArrearsRecord, attempt_id: str) -> ArrearsContactAttempt:
+    attempt = db.query(ArrearsContactAttempt).filter(
+        ArrearsContactAttempt.id == attempt_id,
+        ArrearsContactAttempt.arrears_record_id == record.id,
+    ).first()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Contact attempt not found")
+    return attempt
+
+
+@router.post("/{record_id}/attempts", response_model=ArrearsRecordDetailOut, status_code=status.HTTP_201_CREATED)
+def add_contact_attempt(
+    record_id: str,
+    data: ArrearsAttemptCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    record = _load(db, record_id, tenant_id)
+    attempt = ArrearsContactAttempt(
+        tenant_id=tenant_id,
+        arrears_record_id=record.id,
+        method=data.method,
+        attempted_at=_naive(data.attempted_at),
+        note=data.note,
+        created_by_id=current_user.id,
+    )
+    db.add(attempt)
+    db.flush()
+    _log_event(db, record, current_user, "attempt_logged",
+               f"{ATTEMPT_LABELS[attempt.method]} — {attempt.attempted_at:%d %b %Y, %I:%M %p}")
+    log_activity(db, current_user.id, "arrears_attempt_logged", "arrears_record", record.id,
+                 {"method": attempt.method}, tenant_id)
+    db.commit()
+    db.refresh(record)
+    return get_arrears_record(record.id, db, current_user, tenant_id)
+
+
+@router.patch("/{record_id}/attempts/{attempt_id}", response_model=ArrearsRecordDetailOut)
+def update_contact_attempt(
+    record_id: str,
+    attempt_id: str,
+    data: ArrearsAttemptUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    record = _load(db, record_id, tenant_id)
+    attempt = _load_attempt(db, record, attempt_id)
+    updates = data.model_dump(exclude_unset=True)
+    if "attempted_at" in updates and updates["attempted_at"] is not None:
+        updates["attempted_at"] = _naive(updates["attempted_at"])
+    changed = [f for f, v in updates.items() if v != getattr(attempt, f)]
+    for field, value in updates.items():
+        setattr(attempt, field, value)
+    if changed:
+        _log_event(db, record, current_user, "attempt_updated",
+                   f"Contact attempt edited ({ATTEMPT_LABELS[attempt.method].lower()})")
+    db.commit()
+    db.refresh(record)
+    return get_arrears_record(record.id, db, current_user, tenant_id)
+
+
+@router.delete("/{record_id}/attempts/{attempt_id}", response_model=ArrearsRecordDetailOut)
+def delete_contact_attempt(
+    record_id: str,
+    attempt_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    record = _load(db, record_id, tenant_id)
+    attempt = _load_attempt(db, record, attempt_id)
+    for attachment in attempt.attachments:
+        delete_file(attachment.file_path)
+    _log_event(db, record, current_user, "attempt_removed",
+               f"{ATTEMPT_LABELS[attempt.method]} entry removed")
+    db.delete(attempt)
+    db.commit()
+    db.refresh(record)
+    return get_arrears_record(record.id, db, current_user, tenant_id)
+
+
+@router.post("/{record_id}/attempts/{attempt_id}/attachments", response_model=ArrearsRecordDetailOut, status_code=status.HTTP_201_CREATED)
+def upload_attempt_attachment(
+    record_id: str,
+    attempt_id: str,
+    request: Request,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """The evidence for one contact attempt: a screenshot of the call log, a
+    photo, or the chase email itself. Same file kinds as a record-level
+    attachment — an "Email attempted" entry should carry the actual email,
+    parsed for its subject and sender, not a picture of one.
+    """
+    record = _load(db, record_id, tenant_id)
+    attempt = _load_attempt(db, record, attempt_id)
+    attachment_upload_limiter.check(request)
+
+    attachment, event_detail = _build_attachment(
+        tenant_id, record, file, current_user, contact_attempt_id=attempt.id,
+    )
+    db.add(attachment)
+    _log_event(db, record, current_user, "attachment_added",
+               f"{event_detail} (on {ATTEMPT_LABELS[attempt.method].lower()})")
+    log_activity(db, current_user.id, "arrears_attempt_attachment_uploaded", "arrears_record", record.id,
+                 {"filename": attachment.original_filename, "kind": attachment.kind,
+                  "method": attempt.method}, tenant_id)
+    db.commit()
+    db.refresh(record)
+    return get_arrears_record(record.id, db, current_user, tenant_id)
+
+
+# ── Attachments (screenshots, documents, dropped emails) ─────────────────────
+
+
+@router.post("/{record_id}/attachments", response_model=ArrearsRecordDetailOut, status_code=status.HTTP_201_CREATED)
+def upload_arrears_attachment(
+    record_id: str,
+    request: Request,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    record = _load(db, record_id, tenant_id)
+    attachment_upload_limiter.check(request)
+
+    attachment, event_detail = _build_attachment(tenant_id, record, file, current_user)
+    filename = attachment.original_filename
     db.add(attachment)
     _log_event(db, record, current_user, "attachment_added", event_detail)
     log_activity(db, current_user.id, "arrears_attachment_uploaded", "arrears_record", record.id,

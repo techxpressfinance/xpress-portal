@@ -1000,6 +1000,13 @@ export interface ArrearsEvent {
   created_at: string;
 }
 
+/** One lender on an arrears contract — `lender_id` is null for lenders typed
+ *  by hand that aren't in the lender book. */
+export interface ArrearsLender {
+  lender_id: string | null;
+  lender_name: string;
+}
+
 export interface ArrearsRecord {
   id: string;
   contact_id: string | null;
@@ -1007,9 +1014,14 @@ export interface ArrearsRecord {
   organization_id: string | null;
   organization_name: string | null;
   application_id: string | null;
+  /** Primary lender (first of the list) — kept for table/filters/PDF. */
   lender_id: string | null;
   lender_name: string;
+  /** Full co-financed set; legacy single-lender rows read back as one entry. */
+  lenders: ArrearsLender[];
   contract_number: string | null;
+  /** VIN/chassis number of the secured asset — required on new records. */
+  vin: string | null;
   asset_details: string | null;
   file_type: ArrearsFileType;
   repayment_amount: number | null;
@@ -1034,8 +1046,36 @@ export interface ArrearsRecord {
   updated_at: string;
 }
 
+export type ArrearsAttemptMethod = 'phone' | 'email' | 'text';
+
+/** Evidence on one contact attempt: a screenshot of the call log, a photo, or
+ *  the chase email itself. Email rows carry parsed headers so the attempt can
+ *  show the subject and sender rather than a bare .eml filename. */
+export interface ArrearsAttemptAttachment {
+  id: string;
+  original_filename: string;
+  kind: ArrearsAttachmentKind;
+  email_subject: string | null;
+  email_from: string | null;
+  email_sent_at: string | null;
+}
+
+/** One collections touch — phone/email/text. `attempted_at` is the
+ *  user-editable "when it happened"; created/updated are the audit stamps. */
+export interface ArrearsAttempt {
+  id: string;
+  method: ArrearsAttemptMethod;
+  attempted_at: string;
+  note: string | null;
+  attachments: ArrearsAttemptAttachment[];
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ArrearsRecordDetail extends ArrearsRecord {
   attachments: ArrearsAttachment[];
+  attempts: ArrearsAttempt[];
   events: ArrearsEvent[];
 }
 

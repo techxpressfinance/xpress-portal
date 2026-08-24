@@ -6,16 +6,74 @@ import { Badge, Button } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import {
   ARREARS_ACCEPT,
+  ATTEMPT_METHODS,
   EVENT_LABELS,
+  attemptMethodLabel,
   bucketClass,
   bucketLabel,
   fileTypeLabel,
   formatMoney,
   formatRepayment,
   formatStamp,
+  lenderNames,
+  saveBlob,
+  toDatetimeLocal,
 } from '../../lib/arrears';
-import type { ArrearsAttachment, ArrearsRecord, ArrearsRecordDetail } from '../../types';
+import type {
+  ArrearsAttachment,
+  ArrearsAttempt,
+  ArrearsAttemptMethod,
+  ArrearsRecord,
+  ArrearsRecordDetail,
+} from '../../types';
 import FileDropzone from '../FileDropzone';
+
+/** "Now" as a datetime-local value (local wall clock, no timezone shift). */
+const localNow = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};
+
+/** True when the row was genuinely touched after creation. Rows written before
+ *  updated_at was seeded from created_at have the two stamps a few microseconds
+ *  apart, so anything under a second counts as "never edited". */
+const wasEdited = (a: ArrearsAttempt) =>
+  new Date(a.updated_at).getTime() - new Date(a.created_at).getTime() > 1000;
+
+const downloadAttachment = async (recordId: string, attachmentId: string, filename: string) => {
+  const { data } = await api.get(`/arrears/${recordId}/attachments/${attachmentId}/download`, {
+    responseType: 'blob',
+  });
+  saveBlob(data as Blob, filename);
+};
+
+/** One titled block in the panel. Consistent heading weight and an optional
+ *  count so the eye can skip a section without reading into it. */
+function Section({
+  title,
+  count,
+  hint,
+  children,
+}: {
+  title: string;
+  count?: number;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <h4 className="text-[13px] font-semibold text-foreground">{title}</h4>
+        {count !== undefined && count > 0 && (
+          <span className="text-[12px] tabular-nums text-muted-foreground">{count}</span>
+        )}
+      </div>
+      {hint && <p className="mb-2 text-[12px] text-muted-foreground">{hint}</p>}
+      {children}
+    </section>
+  );
+}
 
 /** Emails carry their own header block; everything else is a plain file row. */
 function AttachmentRow({
@@ -29,17 +87,7 @@ function AttachmentRow({
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  const download = async () => {
-    const { data } = await api.get(`/arrears/${recordId}/attachments/${attachment.id}/download`, {
-      responseType: 'blob',
-    });
-    const url = URL.createObjectURL(data as Blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = attachment.original_filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  const download = () => downloadAttachment(recordId, attachment.id, attachment.original_filename);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">
@@ -96,6 +144,225 @@ function AttachmentRow({
   );
 }
 
+/** What "evidence" means for each attempt type — a phone call gets a snip of
+ *  the call log, an email gets the message itself. Drives the button, the
+ *  dropzone copy, and nothing else: the API accepts any of them either way, so
+ *  a broker who screenshots their sent mail isn't blocked. */
+const ATTEMPT_EVIDENCE: Record<ArrearsAttemptMethod, { action: string; prompt: string }> = {
+  phone: { action: 'Add screenshot', prompt: 'Paste, drop, or click to add a snip of the call log' },
+  email: { action: 'Attach email', prompt: 'Drop the email itself, or paste a screenshot of it' },
+  text: { action: 'Add screenshot', prompt: 'Paste, drop, or click to add a snip of the message' },
+};
+
+/** The log-attempt composer's own evidence field, per attempt type. A phone call
+ *  takes a snip of the call log, a text takes a snip of the thread, and an email
+ *  takes the message itself — dragged straight out of Outlook desktop (.msg/.eml)
+ *  or pasted as a screenshot. Drives only this field; the API accepts any of them. */
+const ATTEMPT_EVIDENCE_FIELD: Record<
+  ArrearsAttemptMethod,
+  { label: string; prompt: string; hint: string; accept: string }
+> = {
+  phone: {
+    label: 'Call log screenshot',
+    prompt: 'Paste, drop, or click to add a snip of the call log',
+    hint: 'JPG or PNG screenshot',
+    accept: '.jpg,.jpeg,.png',
+  },
+  email: {
+    label: 'Email',
+    prompt: 'Drop the email from Outlook, or click to browse',
+    hint: 'Drag a message out of Outlook desktop (.msg / .eml) — or paste a screenshot',
+    accept: ARREARS_ACCEPT,
+  },
+  text: {
+    label: 'Message screenshot',
+    prompt: 'Paste, drop, or click to add a snip of the message',
+    hint: 'JPG or PNG screenshot',
+    accept: '.jpg,.jpeg,.png',
+  },
+};
+
+/** One phone/email/text attempt — inline-editable, with its own evidence. */
+function AttemptRow({
+  attempt,
+  recordId,
+  onSaved,
+  onDeleted,
+  onAttach,
+  onAttachmentRemoved,
+  attachBusy,
+}: {
+  attempt: ArrearsAttempt;
+  recordId: string;
+  onSaved: (method: ArrearsAttemptMethod, attemptedAt: string, note: string) => Promise<void>;
+  onDeleted: () => Promise<void>;
+  onAttach: (file: File) => Promise<void>;
+  onAttachmentRemoved: (attachmentId: string) => Promise<void>;
+  attachBusy: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [attaching, setAttaching] = useState(false);
+  const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
+  const [attemptedAt, setAttemptedAt] = useState(toDatetimeLocal(attempt.attempted_at));
+  const [note, setNote] = useState(attempt.note ?? '');
+
+  /** Seed the form from the row's current props every time it opens — the row
+   *  isn't remounted when a save swaps the record in, so state set at mount
+   *  goes stale as soon as anything else on the record changes. */
+  const startEdit = () => {
+    setMethod(attempt.method);
+    setAttemptedAt(toDatetimeLocal(attempt.attempted_at));
+    setNote(attempt.note ?? '');
+    setEditing(true);
+  };
+
+  const save = async () => {
+    if (!attemptedAt) return;
+    await onSaved(method, attemptedAt, note.trim());
+    setEditing(false);
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      {!editing ? (
+        <>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-foreground">
+                {attemptMethodLabel(attempt.method)} · {formatStamp(attempt.attempted_at)}
+              </p>
+              {attempt.note && (
+                <p className="mt-0.5 whitespace-pre-wrap text-[13px] text-foreground">{attempt.note}</p>
+              )}
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Logged {formatStamp(attempt.created_at)}
+                {attempt.created_by_name ? ` by ${attempt.created_by_name}` : ''}
+                {wasEdited(attempt) ? ` · Edited ${formatStamp(attempt.updated_at)}` : ''}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={startEdit} className="text-[12px] font-medium text-primary hover:underline">
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => setAttaching((v) => !v)}
+                className="text-[12px] font-medium text-primary hover:underline"
+              >
+                {attaching ? 'Cancel' : ATTEMPT_EVIDENCE[attempt.method].action}
+              </button>
+              <button
+                type="button"
+                onClick={() => { if (window.confirm('Remove this attempt and everything attached to it?')) onDeleted(); }}
+                className="text-[12px] font-medium text-muted-foreground hover:text-destructive"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          {attempt.attachments.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {/* An email carries a subject and a sender worth reading; a snip
+                  is just a file, so it stays a compact pill. */}
+              {attempt.attachments.filter((f) => f.kind === 'email').map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-start justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => downloadAttachment(recordId, f.id, f.original_filename)}
+                      className="block w-full truncate text-left text-[12px] font-medium text-foreground hover:underline"
+                    >
+                      {f.email_subject || f.original_filename}
+                    </button>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {f.email_from || 'Unknown sender'}
+                      {f.email_sent_at ? ` · ${formatStamp(f.email_sent_at)}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentRemoved(f.id)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    aria-label={`Remove ${f.email_subject || f.original_filename}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-1.5">
+                {attempt.attachments.filter((f) => f.kind !== 'email').map((f) => (
+                  <span
+                    key={f.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[12px] text-foreground"
+                  >
+                    <button type="button" onClick={() => downloadAttachment(recordId, f.id, f.original_filename)} className="hover:underline">
+                      {f.original_filename}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAttachmentRemoved(f.id)}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${f.original_filename}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select
+              className="led-input !h-9 !text-[13px] cursor-pointer"
+              value={method}
+              onChange={(e) => setMethod(e.target.value as ArrearsAttemptMethod)}
+            >
+              {ATTEMPT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <input
+              type="datetime-local"
+              className="led-input !h-9 !text-[13px]"
+              value={attemptedAt}
+              onChange={(e) => setAttemptedAt(e.target.value)}
+            />
+          </div>
+          <input
+            className="led-input !h-9 !text-[13px]"
+            placeholder="How did it go? (optional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" onClick={save} disabled={!attemptedAt}>Save</Button>
+          </div>
+        </div>
+      )}
+      {attaching && !editing && (
+        <div className="mt-3">
+          <FileDropzone
+            uploading={attachBusy}
+            onFile={onAttach}
+            accept={ARREARS_ACCEPT}
+            maxSizeMb={15}
+            prompt={ATTEMPT_EVIDENCE[attempt.method].prompt}
+            hint="PDF, JPG, PNG, or a dropped .eml / .msg email"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ArrearsDetailPanel({
   recordId,
   onClose,
@@ -115,6 +382,12 @@ export default function ArrearsDetailPanel({
   const [savingNote, setSavingNote] = useState(false);
   const [flagging, setFlagging] = useState(false);
   const [delinquentReason, setDelinquentReason] = useState('');
+  const [attemptMethod, setAttemptMethod] = useState<ArrearsAttemptMethod>('phone');
+  const [attemptAt, setAttemptAt] = useState(localNow);
+  const [attemptNote, setAttemptNote] = useState('');
+  const [pendingEvidence, setPendingEvidence] = useState<File | null>(null);
+  const [savingAttempt, setSavingAttempt] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -196,24 +469,118 @@ export default function ArrearsDetailPanel({
     }
   };
 
+  const addAttempt = async () => {
+    if (!attemptAt) return;
+    setSavingAttempt(true);
+    try {
+      const existingIds = new Set((record?.attempts ?? []).map((a) => a.id));
+      const { data } = await api.post<ArrearsRecordDetail>(`/arrears/${recordId}/attempts`, {
+        method: attemptMethod,
+        attempted_at: attemptAt,
+        note: attemptNote.trim() || null,
+      });
+      // Attach the evidence field's file to the freshly created attempt. The
+      // create response is the full record, so diff its attempt ids to find the
+      // new row, then upload through the existing attempt-attachment endpoint.
+      const created = data.attempts.find((a) => !existingIds.has(a.id));
+      if (pendingEvidence && created) {
+        const body = new FormData();
+        body.append('file', pendingEvidence);
+        const { data: withEvidence } = await api.post<ArrearsRecordDetail>(
+          `/arrears/${recordId}/attempts/${created.id}/attachments`, body,
+        );
+        apply(withEvidence);
+      } else {
+        apply(data);
+      }
+      setAttemptNote('');
+      setAttemptAt(localNow());
+      setPendingEvidence(null);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to log attempt'), 'error');
+    } finally {
+      setSavingAttempt(false);
+    }
+  };
+
+  const saveAttempt = async (attemptId: string, method: ArrearsAttemptMethod, attemptedAt: string, note: string) => {
+    try {
+      const { data } = await api.patch<ArrearsRecordDetail>(`/arrears/${recordId}/attempts/${attemptId}`, {
+        method,
+        attempted_at: attemptedAt,
+        note: note || null,
+      });
+      apply(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update attempt'), 'error');
+    }
+  };
+
+  const deleteAttempt = async (attemptId: string) => {
+    try {
+      const { data } = await api.delete<ArrearsRecordDetail>(`/arrears/${recordId}/attempts/${attemptId}`);
+      apply(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove attempt'), 'error');
+    }
+  };
+
+  /** Evidence for one attempt — a snip, a photo, or the chase email itself.
+   *  Same endpoint whichever it is; the server parses emails for their headers. */
+  const uploadAttemptFile = async (attemptId: string, file: File) => {
+    setAttachBusy(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const { data } = await api.post<ArrearsRecordDetail>(
+        `/arrears/${recordId}/attempts/${attemptId}/attachments`, body,
+      );
+      apply(data);
+      toast('Attached to the attempt', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Upload failed'), 'error');
+    } finally {
+      setAttachBusy(false);
+    }
+  };
+
+  /** Attempt evidence is an ArrearsAttachment like any other, so it deletes
+   *  through the record-level endpoint. */
+  const removeAttemptFile = async (attachmentId: string) => {
+    try {
+      const { data } = await api.delete<ArrearsRecordDetail>(`/arrears/${recordId}/attachments/${attachmentId}`);
+      apply(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove attachment'), 'error');
+    }
+  };
+
+  const bucketMeta = record
+    ? { label: bucketLabel(record.bucket), className: bucketClass(record.bucket) }
+    : null;
+
+  // Portals mount into document.body, outside the .ledger-theme host that
+  // declares every --led-* variable, so led-btn / led-input / led-chip render
+  // with no background, border, or colour unless the theme is re-declared here.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="ledger-theme fixed inset-0 z-50 flex justify-end">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-[560px] flex-col overflow-y-auto border-l border-border bg-background shadow-xl">
+      <div className="relative flex h-full w-full max-w-[620px] flex-col overflow-y-auto border-l border-border bg-background shadow-xl">
         {loading || !record ? (
           <div className="p-6 text-[14px] text-muted-foreground">Loading…</div>
         ) : (
           <>
-            <div className="sticky top-0 z-10 border-b border-border bg-background px-6 py-4">
+            {/* Header answers the three questions a broker opens this for:
+                who, how much, how late. Everything else is below the fold. */}
+            <div className="sticky top-0 z-10 border-b border-border bg-background px-6 pb-4 pt-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[16px] font-semibold text-foreground">
-                    {record.organization_name || record.contact_name || 'Arrears record'}
+                  <p className="truncate text-[17px] font-semibold text-foreground">
+                    {record.contact_name || record.organization_name || 'Arrears record'}
                   </p>
-                  <p className="truncate text-[13px] text-muted-foreground">
-                    {record.lender_name}
-                    {record.contract_number ? ` · ${record.contract_number}` : ''}
-                  </p>
+                  {record.contact_name && record.organization_name && (
+                    <p className="truncate text-[13px] text-muted-foreground">{record.organization_name}</p>
+                  )}
                 </div>
                 <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Close">
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
@@ -221,50 +588,47 @@ export default function ArrearsDetailPanel({
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge type="custom" value={record.bucket} label={`${record.days_in_arrears} days · ${bucketLabel(record.bucket)}`} className={bucketClass(record.bucket)} />
-                <Badge type="custom" value={record.file_type} label={fileTypeLabel(record.file_type)} />
-                {record.resolved && <Badge type="custom" value="resolved" label="Resolved" className="led-chip-success" />}
+
+              <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1">
+                <p className="text-[24px] font-semibold tabular-nums text-foreground">
+                  {formatMoney(record.arrears_amount)}
+                </p>
+                <p
+                  className={`rounded-md px-2 py-0.5 text-[13px] font-medium ${bucketMeta?.className}`}
+                >
+                  {record.days_in_arrears} days · {bucketMeta?.label}
+                </p>
+                {record.resolved && (
+                  <Badge type="custom" value="resolved" label="Resolved" className="led-chip-success" />
+                )}
+                {record.proof_of_payment_received && (
+                  <Badge type="custom" value="proof" label="Proof received" className="led-chip-info" />
+                )}
               </div>
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                {lenderNames(record)} · {fileTypeLabel(record.file_type)} · in arrears since{' '}
+                {new Date(`${record.in_arrears_since}T00:00:00`).toLocaleDateString('en-AU')}
+              </p>
             </div>
 
             <div className="space-y-6 px-6 py-5">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
-                {[
-                  ['Client', record.contact_name || '—'],
-                  ['Company', record.organization_name || '—'],
-                  ['Lender', record.lender_name],
-                  ['Contract number', record.contract_number || '—'],
-                  ['Repayment', formatRepayment(record.repayment_amount, record.repayment_frequency)],
-                  ['Amount in arrears', formatMoney(record.arrears_amount)],
-                  ['In arrears since', new Date(`${record.in_arrears_since}T00:00:00`).toLocaleDateString('en-AU')],
-                  ['File type', fileTypeLabel(record.file_type)],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-                    <dd className="mt-0.5 text-foreground">{value}</dd>
-                  </div>
-                ))}
-                <div className="col-span-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Asset details</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap text-foreground">{record.asset_details || '—'}</dd>
-                </div>
-              </dl>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant={record.resolved ? 'secondary' : 'primary'}
-                  onClick={() => patch({ resolved: !record.resolved })}
-                >
-                  {record.resolved ? 'Reopen arrears' : 'Mark resolved'}
-                </Button>
+              {/* The actions a broker takes on this record, in the order they
+                  usually take them. Editing the record itself is a rarer,
+                  quieter action, so it sits apart. */}
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant={record.proof_of_payment_received ? 'secondary' : 'primary'}
                   onClick={() => patch({ proof_of_payment_received: !record.proof_of_payment_received })}
                 >
                   {record.proof_of_payment_received ? 'Clear proof of payment' : 'Proof of payment received'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={record.resolved ? 'secondary' : 'primary'}
+                  onClick={() => patch({ resolved: !record.resolved })}
+                >
+                  {record.resolved ? 'Reopen arrears' : 'Mark resolved'}
                 </Button>
                 <Button
                   size="sm"
@@ -276,12 +640,18 @@ export default function ArrearsDetailPanel({
                 >
                   {record.delinquent ? 'Remove delinquent flag' : 'Flag delinquent'}
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => onEdit(record)}>Edit details</Button>
+                <button
+                  type="button"
+                  onClick={() => onEdit(record)}
+                  className="ml-auto text-[12px] font-medium text-primary hover:underline"
+                >
+                  Edit details
+                </button>
               </div>
 
               {record.delinquent && record.delinquent_reason && (
-                <p className="text-[12px] text-muted-foreground">
-                  Delinquent: {record.delinquent_reason}
+                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-foreground">
+                  <span className="font-medium">Delinquent:</span> {record.delinquent_reason}
                   {record.delinquent_at ? ` · flagged ${formatStamp(record.delinquent_at)}` : ''}
                 </p>
               )}
@@ -303,8 +673,131 @@ export default function ArrearsDetailPanel({
                 </div>
               )}
 
-              <section>
-                <h4 className="mb-2 text-[13px] font-semibold text-foreground">Attachments & emails</h4>
+              {/* Chasing the debt is the daily job, so it comes before the
+                  reference detail rather than after it. */}
+              <Section
+                title="Contact attempts"
+                count={record.attempts.length}
+                hint="Phone, email, and text touches. Log one as you make it, then attach its evidence — a snip of the call log, or the chase email itself."
+              >
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)]">
+                    <select
+                      className="led-input !h-9 !text-[13px] cursor-pointer"
+                      value={attemptMethod}
+                      onChange={(e) => {
+                        setAttemptMethod(e.target.value as ArrearsAttemptMethod);
+                        setPendingEvidence(null);
+                      }}
+                      aria-label="Attempt type"
+                    >
+                      {ATTEMPT_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="datetime-local"
+                      className="led-input !h-9 !text-[13px]"
+                      value={attemptAt}
+                      onChange={(e) => setAttemptAt(e.target.value)}
+                      aria-label="When the attempt happened"
+                      title="When the attempt happened — edit freely"
+                    />
+                  </div>
+                  <div className="mt-2">
+                    {pendingEvidence ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            {ATTEMPT_EVIDENCE_FIELD[attemptMethod].label}
+                          </p>
+                          <p className="truncate text-[12px] text-foreground">{pendingEvidence.name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPendingEvidence(null)}
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                          aria-label="Remove evidence"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <FileDropzone
+                        uploading={false}
+                        onFile={setPendingEvidence}
+                        accept={ATTEMPT_EVIDENCE_FIELD[attemptMethod].accept}
+                        maxSizeMb={15}
+                        prompt={ATTEMPT_EVIDENCE_FIELD[attemptMethod].prompt}
+                        hint={ATTEMPT_EVIDENCE_FIELD[attemptMethod].hint}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      className="led-input !h-9 min-w-0 flex-1 !text-[13px]"
+                      placeholder="How did it go? (optional)"
+                      value={attemptNote}
+                      onChange={(e) => setAttemptNote(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addAttempt(); }}
+                    />
+                    <Button size="sm" onClick={addAttempt} loading={savingAttempt} disabled={!attemptAt}>
+                      Log attempt
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {record.attempts.length === 0 && (
+                    <p className="px-1 text-[13px] text-muted-foreground">
+                      No attempts logged yet.
+                    </p>
+                  )}
+                  {record.attempts.map((a) => (
+                    <AttemptRow
+                      key={a.id}
+                      attempt={a}
+                      recordId={record.id}
+                      onSaved={(method, attemptedAt, note) => saveAttempt(a.id, method, attemptedAt, note)}
+                      onDeleted={() => deleteAttempt(a.id)}
+                      onAttach={(file) => uploadAttemptFile(a.id, file)}
+                      onAttachmentRemoved={removeAttemptFile}
+                      attachBusy={attachBusy}
+                    />
+                  ))}
+                </div>
+              </Section>
+
+              <Section title="Contract details">
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+                  {[
+                    ['Lenders', lenderNames(record)],
+                    ['Repayment', formatRepayment(record.repayment_amount, record.repayment_frequency)],
+                    ['Contract number', record.contract_number || '—'],
+                    ['VIN', record.vin || '—'],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+                      <dd className="mt-0.5 break-words text-foreground">{value}</dd>
+                    </div>
+                  ))}
+                  <div className="col-span-2">
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Asset</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-foreground">{record.asset_details || '—'}</dd>
+                  </div>
+                  {record.notes && (
+                    <div className="col-span-2">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Notes</dt>
+                      <dd className="mt-0.5 whitespace-pre-wrap text-foreground">{record.notes}</dd>
+                    </div>
+                  )}
+                </dl>
+              </Section>
+
+              <Section
+                title="Attachments & emails"
+                count={record.attachments.length}
+                hint="Evidence for the contract as a whole. Anything tied to a specific call or email belongs on that attempt above."
+              >
                 <FileDropzone
                   uploading={uploading}
                   onFile={upload}
@@ -314,18 +807,14 @@ export default function ArrearsDetailPanel({
                   prompt="Drop an email or file, click to browse, or paste a snip"
                   hint="Drag a message from Outlook desktop, or save it from Gmail/Outlook Web and drop the .eml — PDF, JPG, PNG also accepted"
                 />
-                <div className="mt-3 space-y-2">
-                  {record.attachments.length === 0 && (
-                    <p className="text-[13px] text-muted-foreground">Nothing attached yet.</p>
-                  )}
+                <div className="mt-2 space-y-2">
                   {record.attachments.map((a) => (
                     <AttachmentRow key={a.id} attachment={a} recordId={record.id} onDelete={removeAttachment} />
                   ))}
                 </div>
-              </section>
+              </Section>
 
-              <section>
-                <h4 className="mb-2 text-[13px] font-semibold text-foreground">History</h4>
+              <Section title="History">
                 <div className="flex gap-2">
                   <input
                     className="led-input !h-9 !text-[13px]"
@@ -347,7 +836,7 @@ export default function ArrearsDetailPanel({
                     </li>
                   ))}
                 </ol>
-              </section>
+              </Section>
             </div>
           </>
         )}

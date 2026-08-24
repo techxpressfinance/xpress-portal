@@ -54,6 +54,10 @@ class ArrearsRecord(Base):
     lender_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     contract_number: Mapped[Optional[str]] = mapped_column(String(100), index=True, nullable=True)
+    # Vehicle Identification Number (or chassis number) of the secured asset.
+    # Required on new records; nullable only because rows written before the
+    # column existed can't be backfilled.
+    vin: Mapped[Optional[str]] = mapped_column(String(50), index=True, nullable=True)
     asset_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # One of ARREARS_FILE_TYPES (services/arrears.py).
     file_type: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -97,6 +101,30 @@ class ArrearsRecord(Base):
     lender = relationship("Lender", foreign_keys=[lender_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
 
+    # Co-financed contracts carry several lenders. The parent's lender_id /
+    # lender_name stay a denormalised copy of the *first* lender so list views,
+    # search, and the lender filter keep working off the single row they were
+    # built on (see _set_lenders in routers/arrears.py).
+    record_lenders = relationship(
+        "ArrearsRecordLender",
+        back_populates="record",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ArrearsRecordLender.position",
+    )
+
+    # Collections touch log — phone/email/text attempts. Unlike the append-only
+    # events timeline, attempt rows are editable (the attempted-at time is often
+    # backfilled); every add/edit still stamps an ArrearsEvent so the audit
+    # trail survives the edits.
+    contact_attempts = relationship(
+        "ArrearsContactAttempt",
+        back_populates="record",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ArrearsContactAttempt.attempted_at.desc()",
+    )
+
     attachments = relationship(
         "ArrearsAttachment",
         back_populates="record",
@@ -108,6 +136,76 @@ class ArrearsRecord(Base):
         back_populates="record",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+
+
+class ArrearsRecordLender(Base):
+    """One of a contract's lenders.
+
+    Lender rows created before this table only have the parent columns; reads
+    fall back to the parent's lender_id/lender_name when no children exist,
+    and any create/update that sends a lender list writes children plus the
+    synced parent copy — so legacy rows need no backfill.
+    """
+
+    __tablename__ = "arrears_record_lenders"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    arrears_record_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("arrears_records.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Null for lenders typed by hand that aren't in the lender book — the name
+    # is always stored so the record survives renames/deletes, same as the parent.
+    lender_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lenders.id"), nullable=True)
+    lender_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    record = relationship("ArrearsRecord", back_populates="record_lenders")
+
+
+class ArrearsContactAttempt(Base):
+    """One collections touch on a contract — a phone call, email, or text attempt.
+
+    `attempted_at` is the user-editable "when it happened" (brokers log attempts
+    after the fact); created_at / updated_at are the system audit of when the
+    entry itself was written and last touched, which the UI shows alongside it.
+    Snips/pics hang off ArrearsAttachment rows via `contact_attempt_id`.
+    """
+
+    __tablename__ = "arrears_contact_attempts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    arrears_record_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("arrears_records.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # One of ATTEMPT_METHODS (routers/arrears.py).
+    method: Mapped[str] = mapped_column(String(10), nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Seeded from created_at rather than a second now() call: two independent
+    # now() defaults land microseconds apart, which reads as "edited" to the UI
+    # the instant the row is written.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda ctx: ctx.get_current_parameters()["created_at"],
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    record = relationship("ArrearsRecord", back_populates="contact_attempts")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    attachments = relationship(
+        "ArrearsAttachment",
+        back_populates="contact_attempt",
+        cascade="all, delete-orphan",
+        order_by="ArrearsAttachment.uploaded_at",
     )
 
 
@@ -171,8 +269,14 @@ class ArrearsAttachment(Base):
 
     uploaded_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Set when the file is a snip/pic attached to a contact attempt instead of
+    # a record-level attachment — the attempt owns its display then.
+    contact_attempt_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("arrears_contact_attempts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     record = relationship("ArrearsRecord", back_populates="attachments")
+    contact_attempt = relationship("ArrearsContactAttempt", back_populates="attachments")
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 

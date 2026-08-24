@@ -45,8 +45,10 @@ from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 �
 from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
 from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsAttachment,
+    ArrearsContactAttempt,
     ArrearsEvent,
     ArrearsRecord,
+    ArrearsRecordLender,
     ArrearsSnapshot,
 )
 from app.constants import DEFAULT_KANBAN_COLUMNS
@@ -63,6 +65,8 @@ Base.metadata.create_all(bind=engine)
 
 # Idempotent migrations for columns added after initial create_all
 _MIGRATIONS = [
+    ("arrears_records", "vin", "VARCHAR(50)"),
+    ("arrears_attachments", "contact_attempt_id", "VARCHAR(36) REFERENCES arrears_contact_attempts(id)"),
     ("loan_applications", "analysis_status", "VARCHAR(10)"),
     ("loan_applications", "analysis_result", "TEXT"),
     ("loan_applications", "analysis_error", "VARCHAR(500)"),
