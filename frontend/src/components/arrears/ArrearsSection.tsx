@@ -3,10 +3,12 @@ import api from '../../api/client';
 import { useToast } from '../Toast';
 import { Button, GlassCard } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
+import { downloadElementPdf } from '../../lib/pdfExport';
 import { downloadArrearsCsv, formatMoney } from '../../lib/arrears';
-import type { ArrearsRecord } from '../../types';
+import type { ArrearsRecord, ArrearsRecordDetail } from '../../types';
 import ArrearsDetailPanel from './ArrearsDetailPanel';
 import ArrearsRecordModal from './ArrearsRecordModal';
+import ArrearsRecordPrint from './ArrearsRecordPrint';
 import ArrearsTable from './ArrearsTable';
 
 /**
@@ -27,6 +29,8 @@ export default function ArrearsSection({
   const [editing, setEditing] = useState<ArrearsRecord | null>(null);
   const [creating, setCreating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [printRecords, setPrintRecords] = useState<ArrearsRecordDetail[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +79,35 @@ export default function ArrearsSection({
   const open = records.filter((r) => !r.resolved);
   const outstanding = open.reduce((sum, r) => sum + Number(r.arrears_amount || 0), 0);
 
+  /** Full-detail PDF for every contract in this party's book — each record's
+   *  facts plus its contact attempts and history. The report endpoint returns
+   *  summaries, so fetch each record's detail (unpaginated, same as the CSV). */
+  const downloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      const { data } = await api.get<ArrearsRecord[]>('/arrears/report', {
+        params: { contact_id: contact?.id, organization_id: organization?.id },
+      });
+      if (data.length === 0) {
+        toast('No arrears recorded against this party', 'error');
+        return;
+      }
+      const details = await Promise.all(
+        data.map((r) => api.get<ArrearsRecordDetail>(`/arrears/${r.id}`).then((res) => res.data)),
+      );
+      setPrintRecords(details);
+      // Let React paint the off-screen print block before html2pdf reads it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const name = (contact?.name ?? organization?.name ?? 'party').replace(/[^\w-]+/g, '_');
+      await downloadElementPdf('arrears-client-print', `arrears-${name}.pdf`, 'portrait');
+    } catch (err) {
+      toast(getErrorMessage(err, 'PDF export failed'), 'error');
+    } finally {
+      setPrintRecords([]);
+      setDownloadingPdf(false);
+    }
+  };
+
   return (
     <GlassCard className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -91,6 +124,9 @@ export default function ArrearsSection({
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={downloadCsv} loading={downloading} disabled={loading}>
             Download CSV
+          </Button>
+          <Button size="sm" variant="secondary" onClick={downloadPdf} loading={downloadingPdf} disabled={loading}>
+            Download PDF
           </Button>
           <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>Add contract</Button>
         </div>
@@ -121,6 +157,15 @@ export default function ArrearsSection({
           onClose={() => { setCreating(false); setEditing(null); }}
           onSaved={() => { setCreating(false); setEditing(null); load(); }}
         />
+      )}
+
+      {/* Off-screen print source for the party-level PDF. */}
+      {printRecords.length > 0 && (
+        <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
+          <div id="arrears-client-print">
+            <ArrearsRecordPrint records={printRecords} />
+          </div>
+        </div>
       )}
     </GlassCard>
   );

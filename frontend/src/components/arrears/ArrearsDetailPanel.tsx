@@ -27,6 +27,8 @@ import type {
   ArrearsRecordDetail,
 } from '../../types';
 import FileDropzone from '../FileDropzone';
+import { downloadElementPdf } from '../../lib/pdfExport';
+import ArrearsRecordPrint from './ArrearsRecordPrint';
 
 /** "Now" as a datetime-local value (local wall clock, no timezone shift). */
 const localNow = () => {
@@ -388,6 +390,7 @@ export default function ArrearsDetailPanel({
   const [pendingEvidence, setPendingEvidence] = useState<File | null>(null);
   const [savingAttempt, setSavingAttempt] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const load = async () => {
     try {
@@ -555,6 +558,23 @@ export default function ArrearsDetailPanel({
     }
   };
 
+  /** Full record PDF — contract facts, every contact attempt (with evidence),
+   *  attachments, and the event timeline, rendered off-screen and captured. */
+  const downloadPdf = async () => {
+    if (!record) return;
+    setDownloadingPdf(true);
+    try {
+      // Let React paint the off-screen print block before html2pdf reads it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const name = (record.contact_name || record.organization_name || 'arrears').replace(/[^\w-]+/g, '_');
+      await downloadElementPdf('arrears-record-print', `arrears-${name}.pdf`, 'portrait');
+    } catch (err) {
+      toast(getErrorMessage(err, 'PDF export failed'), 'error');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const bucketMeta = record
     ? { label: bucketLabel(record.bucket), className: bucketClass(record.bucket) }
     : null;
@@ -563,9 +583,9 @@ export default function ArrearsDetailPanel({
   // declares every --led-* variable, so led-btn / led-input / led-chip render
   // with no background, border, or colour unless the theme is re-declared here.
   return createPortal(
-    <div className="ledger-theme fixed inset-0 z-50 flex justify-end">
+    <div className="ledger-theme fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-[620px] flex-col overflow-y-auto border-l border-border bg-background shadow-xl">
+      <div className="relative flex max-h-[90vh] w-full max-w-[720px] flex-col overflow-y-auto rounded-2xl border border-border bg-background shadow-xl">
         {loading || !record ? (
           <div className="p-6 text-[14px] text-muted-foreground">Loading…</div>
         ) : (
@@ -582,11 +602,16 @@ export default function ArrearsDetailPanel({
                     <p className="truncate text-[13px] text-muted-foreground">{record.organization_name}</p>
                   )}
                 </div>
-                <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Close">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={downloadPdf} loading={downloadingPdf}>
+                    Download PDF
+                  </Button>
+                  <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1">
@@ -841,6 +866,15 @@ export default function ArrearsDetailPanel({
           </>
         )}
       </div>
+
+      {/* Off-screen print source for the single-record PDF. */}
+      {downloadingPdf && record && (
+        <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
+          <div id="arrears-record-print">
+            <ArrearsRecordPrint records={[record]} />
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
