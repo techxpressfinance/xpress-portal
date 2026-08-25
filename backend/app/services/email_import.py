@@ -8,7 +8,8 @@ download the message first.
 
 `.eml` is handled by the stdlib. `.msg` needs the optional `extract-msg`
 dependency; when it isn't installed we say so rather than storing a blob the
-user can't read.
+user can't read. Outlook *for Mac* muddies this: it writes a `.msg` that is
+really a MIME message, so the bytes — not the extension — pick the parser.
 """
 from __future__ import annotations
 
@@ -99,7 +100,25 @@ def _parse_eml(contents: bytes) -> ParsedEmail:
     )
 
 
+def _looks_like_rfc822(contents: bytes) -> bool:
+    """True when the bytes are a MIME message rather than an OLE2 .msg.
+
+    Outlook for Mac (and several "save as" paths) write a `.msg` that is really
+    an RFC822 message, so the extension alone can't pick the parser.
+    """
+    head = contents[:2048].lstrip()
+    return any(
+        head[: len(marker)].lower() == marker
+        for marker in (b"from:", b"received:", b"return-path:", b"message-id:", b"subject:", b"date:", b"mime-version:")
+    )
+
+
 def _parse_msg(contents: bytes) -> ParsedEmail:
+    # Outlook for Mac hands over a MIME message under a .msg name; it never opens
+    # as OLE2, so sniff the bytes before reaching for extract_msg.
+    if _looks_like_rfc822(contents):
+        return _parse_eml(contents)
+
     try:
         import extract_msg
     except ImportError:
@@ -112,7 +131,29 @@ def _parse_msg(contents: bytes) -> ParsedEmail:
 
     import io
 
-    with extract_msg.Message(io.BytesIO(contents)) as message:
+    try:
+        return _parse_msg_ole(extract_msg, io.BytesIO(contents))
+    except Exception:
+        # A .msg extract_msg can't open used to escape as a 500, losing the
+        # upload with no usable message. Fall back to MIME, then give up loudly.
+        logger.warning("Could not parse dropped .msg as OLE2", exc_info=True)
+        try:
+            parsed = _parse_eml(contents)
+        except Exception:
+            parsed = None
+        if parsed and (parsed.subject or parsed.sender):
+            return parsed
+
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=400,
+            detail="That .msg couldn't be read as an Outlook message. Open it in Outlook and use Save As → .eml, then drop that instead.",
+        )
+
+
+def _parse_msg_ole(extract_msg, stream) -> ParsedEmail:
+    with extract_msg.Message(stream) as message:
         sent_at = message.date if isinstance(message.date, datetime) else None
         if sent_at is not None and sent_at.tzinfo is None:
             sent_at = sent_at.replace(tzinfo=timezone.utc)

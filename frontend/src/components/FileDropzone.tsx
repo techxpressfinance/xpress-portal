@@ -11,10 +11,57 @@ const PASTE_EXTENSIONS: Record<string, string> = {
 
 /**
  * Paste listeners of every mounted dropzone, oldest first. A paste is a page-level
- * event, so only the most recently mounted zone handles it — otherwise two zones on
- * one page would each upload the same screenshot.
+ * event, so only one zone handles it — otherwise two zones on one page would each
+ * upload the same screenshot. The winner is the highest `pastePriority`, ties going
+ * to the most recently mounted, so a zone the user has deliberately opened (an
+ * attempt's evidence field) can claim the paste over a passive zone further down
+ * the page that merely happens to have mounted later.
  */
-const pasteHandlers: ((e: ClipboardEvent) => void)[] = [];
+const pasteHandlers: { fn: (e: ClipboardEvent) => void; priority: number }[] = [];
+
+const pasteWinner = () =>
+  pasteHandlers.reduce<typeof pasteHandlers[number] | null>(
+    (best, h) => (best === null || h.priority >= best.priority ? h : best),
+    null,
+  );
+
+/** Read a virtual-file entry into a real File. */
+const entryToFile = (entry: FileSystemFileEntry) =>
+  new Promise<File>((resolve, reject) => entry.file(resolve, reject));
+
+/**
+ * The files behind a drop.
+ *
+ * A message dragged out of the Outlook *desktop* client never reaches
+ * `dataTransfer.files`: Outlook offers it as a promised "virtual file"
+ * (CFSTR_FILEDESCRIPTOR + FILECONTENTS) rather than a path on disk, and Chrome
+ * surfaces those only through `webkitGetAsEntry()`. Reading `.files` alone
+ * drops every dragged email on the floor.
+ *
+ * `webkitGetAsEntry()` must be called synchronously — the drag data store is
+ * emptied the moment the drop handler returns — so the entries are collected up
+ * front and only their contents are awaited.
+ */
+function droppedFiles(dt: DataTransfer): Promise<File[]> {
+  const direct = Array.from(dt.files ?? []);
+  if (direct.length) return Promise.resolve(direct);
+
+  const entries = Array.from(dt.items ?? [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.webkitGetAsEntry())
+    .filter((entry): entry is FileSystemFileEntry => !!entry && entry.isFile);
+
+  return Promise.all(entries.map(entryToFile));
+}
+
+/** True when a drop carried only a link — what Gmail and Outlook Web hand over. */
+const isLinkOnlyDrop = (dt: DataTransfer) => {
+  const types = Array.from(dt.types ?? []);
+  return (
+    !types.includes('Files') &&
+    (types.includes('text/uri-list') || types.includes('text/html') || types.includes('text/plain'))
+  );
+};
 
 function pastedImage(e: ClipboardEvent): File | null {
   const items = Array.from(e.clipboardData?.items ?? []);
@@ -33,6 +80,8 @@ interface Props {
   maxSizeMb?: number;
   /** Replaces the default "Drop a file…" copy — e.g. to mention dropped emails. */
   prompt?: string;
+  /** Higher wins the page-level paste when several zones are on screen. */
+  pastePriority?: number;
 }
 
 /** Generic drag-and-drop / paste / click-to-browse file upload zone (screenshots, PDFs, etc). */
@@ -44,6 +93,7 @@ export default function FileDropzone({
   hint = 'PDF, JPG, PNG — up to 10 MB',
   maxSizeMb = DEFAULT_MAX_MB,
   prompt,
+  pastePriority = 0,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -88,16 +138,17 @@ export default function FileDropzone({
       upload(new File([image], `screenshot-${stamp}.${ext}`, { type: image.type }));
     };
 
-    pasteHandlers.push(onPaste);
+    const entry = { fn: onPaste, priority: pastePriority };
+    pasteHandlers.push(entry);
     const dispatch = (e: ClipboardEvent) => {
-      if (pasteHandlers[pasteHandlers.length - 1] === onPaste) onPaste(e);
+      if (pasteWinner() === entry) onPaste(e);
     };
     document.addEventListener('paste', dispatch);
     return () => {
       document.removeEventListener('paste', dispatch);
-      pasteHandlers.splice(pasteHandlers.indexOf(onPaste), 1);
+      pasteHandlers.splice(pasteHandlers.indexOf(entry), 1);
     };
-  }, []);
+  }, [pastePriority]);
 
   return (
     <div
@@ -108,8 +159,22 @@ export default function FileDropzone({
       onDrop={(e) => {
         e.preventDefault();
         setIsDragOver(false);
-        const file = e.dataTransfer.files?.[0];
-        if (file) handleFile(file);
+        const linkOnly = isLinkOnlyDrop(e.dataTransfer);
+        // Collect synchronously: the drag data store dies with this handler.
+        droppedFiles(e.dataTransfer)
+          .then((files) => {
+            const file = files[0];
+            if (file) {
+              handleFile(file);
+            } else if (linkOnly) {
+              onError?.(
+                'That drag carried only a link. Gmail and Outlook Web can\'t hand over the message itself — save it as .eml and drop that, or paste a screenshot.',
+              );
+            } else {
+              onError?.("That drop didn't contain a file. Try dragging the message again, or click to browse.");
+            }
+          })
+          .catch(() => onError?.('Could not read the dropped file. Try saving it to disk first, then drop it.'));
       }}
     >
       <input

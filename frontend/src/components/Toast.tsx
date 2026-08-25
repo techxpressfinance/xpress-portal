@@ -54,7 +54,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+      {/* Above every modal: full-screen portals (arrears detail panel, record
+          modal, global search) mount onto document.body after this container,
+          so anything below their z-index gets painted under their backdrop and
+          the confirmation is never seen. */}
+      <div className="fixed bottom-6 right-6 z-[200] flex flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}

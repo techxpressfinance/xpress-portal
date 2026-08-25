@@ -55,6 +55,15 @@ const downloadAttachment = async (recordId: string, attachmentId: string, filena
  *  "call log.jpg" with kind "file", so go by name rather than kind. */
 const isImage = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename);
 
+/** What to call the thing that just landed, so the confirmation names it back to
+ *  the broker ("Snip added") rather than saying a generic "Attached". */
+const evidenceNoun = (file: File) => {
+  if (/\.(msg|eml)$/i.test(file.name)) return 'Email';
+  if (/^screenshot-/i.test(file.name)) return 'Snip';
+  if (isImage(file.name)) return 'Screenshot';
+  return 'File';
+};
+
 /** Full-screen image viewer for screenshot evidence. Mounts on document.body so
  *  it sits above the detail panel's own portal. */
 function ImageViewer({ src, label, onClose }: { src: string; label: string; onClose: () => void }) {
@@ -246,11 +255,13 @@ function AttemptRow({
   recordId: string;
   onSaved: (method: ArrearsAttemptMethod, attemptedAt: string, note: string) => Promise<void>;
   onDeleted: () => Promise<void>;
-  onAttach: (file: File) => Promise<void>;
+  /** Resolves true once the file is on the server, so the zone can close itself. */
+  onAttach: (file: File) => Promise<boolean>;
   onAttachmentRemoved: (attachmentId: string) => Promise<void>;
   onView: (id: string, filename: string) => void;
   attachBusy: boolean;
 }) {
+  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
@@ -435,11 +446,15 @@ function AttemptRow({
       )}
       {attaching && !editing && (
         <div className="mt-3">
+          {/* An open evidence zone is what the broker is aiming a paste at, so it
+              outranks the passive record-level zone further down the panel. */}
           <FileDropzone
             uploading={attachBusy}
-            onFile={onAttach}
+            onFile={async (file) => { if (await onAttach(file)) setAttaching(false); }}
+            onError={(m) => toast(m, 'error')}
             accept={ARREARS_ACCEPT}
             maxSizeMb={15}
+            pastePriority={2}
             prompt={ATTEMPT_EVIDENCE[attempt.method].prompt}
             hint="PDF, JPG, PNG, or a dropped .eml / .msg email"
           />
@@ -549,7 +564,7 @@ export default function ArrearsDetailPanel({
       body.append('file', file);
       const { data } = await api.post<ArrearsRecordDetail>(`/arrears/${recordId}/attachments`, body);
       apply(data);
-      toast('Attached', 'success');
+      toast(`${evidenceNoun(file)} added to this record`, 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
     } finally {
@@ -561,6 +576,7 @@ export default function ArrearsDetailPanel({
     try {
       const { data } = await api.delete<ArrearsRecordDetail>(`/arrears/${recordId}/attachments/${attachmentId}`);
       apply(data);
+      toast('Attachment removed', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to remove attachment'), 'error');
     }
@@ -597,16 +613,27 @@ export default function ArrearsDetailPanel({
       if (pendingEvidence && created) {
         const body = new FormData();
         body.append('file', pendingEvidence);
-        const { data: withEvidence } = await api.post<ArrearsRecordDetail>(
-          `/arrears/${recordId}/attempts/${created.id}/attachments`, body,
-        );
-        apply(withEvidence);
+        // The attempt already exists at this point, so a failed evidence upload
+        // must not read as a failed attempt — report the two separately and keep
+        // the file staged so it can be retried from the attempt's own row.
+        try {
+          const { data: withEvidence } = await api.post<ArrearsRecordDetail>(
+            `/arrears/${recordId}/attempts/${created.id}/attachments`, body,
+          );
+          apply(withEvidence);
+          toast(`Attempt logged with the ${evidenceNoun(pendingEvidence).toLowerCase()}`, 'success');
+          setPendingEvidence(null);
+        } catch (err) {
+          apply(data);
+          toast(getErrorMessage(err, 'Attempt logged, but the evidence failed to upload'), 'error');
+        }
       } else {
         apply(data);
+        toast('Attempt logged', 'success');
+        setPendingEvidence(null);
       }
       setAttemptNote('');
       setAttemptAt(localNow());
-      setPendingEvidence(null);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to log attempt'), 'error');
     } finally {
@@ -647,9 +674,11 @@ export default function ArrearsDetailPanel({
         `/arrears/${recordId}/attempts/${attemptId}/attachments`, body,
       );
       apply(data);
-      toast('Attached to the attempt', 'success');
+      toast(`${evidenceNoun(file)} saved to this attempt`, 'success');
+      return true;
     } catch (err) {
       toast(getErrorMessage(err, 'Upload failed'), 'error');
+      return false;
     } finally {
       setAttachBusy(false);
     }
@@ -661,6 +690,7 @@ export default function ArrearsDetailPanel({
     try {
       const { data } = await api.delete<ArrearsRecordDetail>(`/arrears/${recordId}/attachments/${attachmentId}`);
       apply(data);
+      toast('Attachment removed', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to remove attachment'), 'error');
     }
@@ -820,6 +850,7 @@ export default function ArrearsDetailPanel({
                       value={attemptMethod}
                       onChange={(e) => {
                         setAttemptMethod(e.target.value as ArrearsAttemptMethod);
+                        if (pendingEvidence) toast('Evidence cleared — attempt type changed', 'info');
                         setPendingEvidence(null);
                       }}
                       aria-label="Attempt type"
@@ -839,16 +870,27 @@ export default function ArrearsDetailPanel({
                   </div>
                   <div className="mt-2">
                     {pendingEvidence ? (
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+                      /* The snip isn't on the server yet — it uploads with "Log
+                         attempt" — so the row says so outright rather than
+                         letting a filename imply it's already filed. */
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2">
+                        <span className="shrink-0 text-success" aria-hidden>
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.25} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                          </svg>
+                        </span>
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                            {ATTEMPT_EVIDENCE_FIELD[attemptMethod].label}
+                            {ATTEMPT_EVIDENCE_FIELD[attemptMethod].label} attached
                           </p>
-                          <p className="truncate text-[12px] text-foreground">{pendingEvidence.name}</p>
+                          <p className="truncate text-[12px] font-medium text-foreground">{pendingEvidence.name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Saves with the attempt — press Log attempt to file it.
+                          </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setPendingEvidence(null)}
+                          onClick={() => { setPendingEvidence(null); toast('Evidence discarded', 'info'); }}
                           className="shrink-0 text-muted-foreground hover:text-destructive"
                           aria-label="Remove evidence"
                         >
@@ -856,11 +898,19 @@ export default function ArrearsDetailPanel({
                         </button>
                       </div>
                     ) : (
+                      /* The composer is the field a broker is aiming a pasted snip
+                         at, so it outranks the record-level zone below, which
+                         mounts later and would otherwise swallow every paste. */
                       <FileDropzone
                         uploading={false}
-                        onFile={setPendingEvidence}
+                        onFile={(file) => {
+                          setPendingEvidence(file);
+                          toast(`${evidenceNoun(file)} attached — log the attempt to save it`, 'success');
+                        }}
+                        onError={(m) => toast(m, 'error')}
                         accept={ATTEMPT_EVIDENCE_FIELD[attemptMethod].accept}
                         maxSizeMb={15}
+                        pastePriority={1}
                         prompt={ATTEMPT_EVIDENCE_FIELD[attemptMethod].prompt}
                         hint={ATTEMPT_EVIDENCE_FIELD[attemptMethod].hint}
                       />
@@ -938,6 +988,7 @@ export default function ArrearsDetailPanel({
                   onError={(m) => toast(m, 'error')}
                   accept={ARREARS_ACCEPT}
                   maxSizeMb={15}
+                  pastePriority={0}
                   prompt="Drop an email or file, click to browse, or paste a snip"
                   hint="Drag a message from Outlook desktop, or save it from Gmail/Outlook Web and drop the .eml — PDF, JPG, PNG also accepted"
                 />
