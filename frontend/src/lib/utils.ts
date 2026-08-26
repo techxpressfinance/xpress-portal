@@ -9,7 +9,9 @@ export function getErrorMessage(err: unknown, fallback: string): string {
     // Pydantic v2 validation errors: array of {msg, loc, type, input}
     if (Array.isArray(detail)) {
       const msg = detail[0]?.msg;
-      if (typeof msg === 'string') return msg;
+      // Pydantic prefixes custom validator messages with "Value error, " —
+      // drop it so the toast reads as a sentence.
+      if (typeof msg === 'string') return msg.replace(/^Value error,\s*/, '');
     }
     if (typeof detail === 'string' && detail) return detail;
   }

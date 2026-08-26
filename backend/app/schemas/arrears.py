@@ -7,7 +7,7 @@ from typing import List, Optional
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.pagination import PaginatedResponse
-from app.services.arrears import ARREARS_FILE_TYPES, REPAYMENT_FREQUENCIES
+from app.services.arrears import ARREARS_FILE_TYPES, REPAYMENT_FREQUENCIES, VIN_LENGTH
 
 
 class ArrearsAttachmentOut(BaseModel):
@@ -165,7 +165,10 @@ class ArrearsRecordBase(BaseModel):
     def validate_vin(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("VIN number is required")
-        return v.strip().upper()
+        v = v.strip().upper()
+        if len(v) != VIN_LENGTH:
+            raise ValueError(f"VIN number must be exactly {VIN_LENGTH} characters")
+        return v
 
     @field_validator("repayment_frequency")
     @classmethod
@@ -244,9 +247,14 @@ class ArrearsRecordUpdate(BaseModel):
     def validate_vin(cls, v: Optional[str]) -> Optional[str]:
         # Optional so flag-only PATCHes (resolve/proof/delinquent) never need
         # it — but an explicitly sent value can't be blank.
-        if v is not None and not v.strip():
+        if v is None:
+            return v
+        v = v.strip().upper()
+        if not v:
             raise ValueError("VIN number cannot be blank")
-        return v.strip().upper() if v else v
+        if len(v) != VIN_LENGTH:
+            raise ValueError(f"VIN number must be exactly {VIN_LENGTH} characters")
+        return v
 
     @field_validator("in_arrears_since")
     @classmethod

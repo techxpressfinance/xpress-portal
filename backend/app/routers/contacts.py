@@ -63,8 +63,29 @@ def _app_counts(db: Session, contact_ids: list[str]) -> dict[str, int]:
     return {cid: cnt for cid, cnt in rows if cid}
 
 
-def _serialize_contact(contact: Contact, app_count: int) -> dict:
-    """Serialize a contact — caller passes the precomputed application count."""
+def _linked_orgs(db: Session, contact_ids: list[str]) -> dict[str, list[dict]]:
+    """Linked companies for a page of contacts, in one query — a picker needs
+    them to tell two same-named clients apart, and per-contact fetches would be
+    N round trips."""
+    if not contact_ids:
+        return {}
+    rows = (
+        db.query(ContactOrganization, Organization)
+        .join(Organization, Organization.id == ContactOrganization.organization_id)
+        .filter(ContactOrganization.contact_id.in_(contact_ids))
+        .all()
+    )
+    out: dict[str, list[dict]] = {}
+    for link, org in rows:
+        out.setdefault(link.contact_id, []).append(
+            {"id": org.id, "name": org.name, "abn": org.abn, "role": link.role}
+        )
+    return out
+
+
+def _serialize_contact(contact: Contact, app_count: int, orgs: list[dict] | None = None) -> dict:
+    """Serialize a contact — caller passes the precomputed application count,
+    and the linked companies when the caller asked for them."""
     return {
         "id": contact.id,
         "first_name": contact.first_name,
@@ -80,6 +101,7 @@ def _serialize_contact(contact: Contact, app_count: int) -> dict:
         "postcode": contact.postcode,
         "notes": contact.notes,
         "application_count": app_count,
+        "organizations": orgs or [],
         "created_at": contact.created_at,
         "updated_at": contact.updated_at,
     }
@@ -98,6 +120,9 @@ def list_contacts(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
+    include_organizations: bool = Query(
+        False, description="Attach each contact's linked companies (id/name/abn/role)"
+    ),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -112,8 +137,9 @@ def list_contacts(
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()
         counts = _app_counts(db, [c.id for c in items])
+        orgs = _linked_orgs(db, [c.id for c in items]) if include_organizations else {}
         return PaginatedContacts(
-            items=[_serialize_contact(c, counts.get(c.id, 0)) for c in items],
+            items=[_serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id)) for c in items],
             total=total,
             page=page,
             per_page=per_page,
@@ -157,8 +183,9 @@ def list_contacts(
     by_id = {c.id: c for c in db.query(Contact).filter(Contact.id.in_(page_ids)).all()}
     ordered = [by_id[cid] for cid in page_ids if cid in by_id]
     counts = _app_counts(db, page_ids)
+    orgs = _linked_orgs(db, page_ids) if include_organizations else {}
     return PaginatedContacts(
-        items=[_serialize_contact(c, counts.get(c.id, 0)) for c in ordered],
+        items=[_serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id)) for c in ordered],
         total=total,
         page=page,
         per_page=per_page,

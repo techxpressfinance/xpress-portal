@@ -15,6 +15,7 @@ import {
   formatMoney,
   formatRepayment,
   formatStamp,
+  isImageAttachment,
   lenderNames,
   saveBlob,
   toDatetimeLocal,
@@ -29,6 +30,7 @@ import type {
 import FileDropzone from '../FileDropzone';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import ArrearsRecordPrint from './ArrearsRecordPrint';
+import { loadArrearsPrintImages, type ArrearsPrintImages } from './printImages';
 
 /** "Now" as a datetime-local value (local wall clock, no timezone shift). */
 const localNow = () => {
@@ -50,17 +52,12 @@ const downloadAttachment = async (recordId: string, attachmentId: string, filena
   saveBlob(data as Blob, filename);
 };
 
-/** A file is a viewable image if its name carries an image extension — a pasted
- *  screenshot arrives as "screenshot-….png", but a dropped snip may be a plain
- *  "call log.jpg" with kind "file", so go by name rather than kind. */
-const isImage = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename);
-
 /** What to call the thing that just landed, so the confirmation names it back to
  *  the broker ("Snip added") rather than saying a generic "Attached". */
 const evidenceNoun = (file: File) => {
   if (/\.(msg|eml)$/i.test(file.name)) return 'Email';
   if (/^screenshot-/i.test(file.name)) return 'Snip';
-  if (isImage(file.name)) return 'Screenshot';
+  if (isImageAttachment(file.name)) return 'Screenshot';
   return 'File';
 };
 
@@ -87,6 +84,77 @@ function ImageViewer({ src, label, onClose }: { src: string; label: string; onCl
           >
             Close
           </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** The email fields both record-level attachments and attempt evidence carry. */
+type ViewableEmail = Pick<
+  ArrearsAttachment,
+  'id' | 'original_filename' | 'email_subject' | 'email_from' | 'email_to' | 'email_body' | 'email_sent_at'
+>;
+
+/** Reader for a dropped .eml/.msg. A chase email is evidence that gets read in
+ *  full, so it opens like the image viewer rather than expanding a cramped row
+ *  inside the panel — and it opens even when the body couldn't be extracted,
+ *  where the original file is the only way to read it. */
+function EmailViewer({
+  email,
+  onDownload,
+  onClose,
+}: {
+  email: ViewableEmail;
+  onDownload: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const header: [string, string][] = [
+    ['From', email.email_from || 'Unknown sender'],
+    ['To', email.email_to || '—'],
+    ['Sent', email.email_sent_at ? formatStamp(email.email_sent_at) : '—'],
+  ];
+
+  return createPortal(
+    <div className="ledger-theme fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex max-h-[90vh] w-full max-w-[760px] flex-col rounded-2xl border border-border bg-background shadow-2xl">
+        <div className="border-b border-border px-5 py-4">
+          <p className="text-[15px] font-semibold text-foreground">
+            {email.email_subject || email.original_filename}
+          </p>
+          <dl className="mt-2 grid gap-x-4 gap-y-1 text-[12px] sm:grid-cols-[auto_1fr]">
+            {header.map(([term, value]) => (
+              <div key={term} className="flex gap-2 sm:contents">
+                <dt className="shrink-0 uppercase tracking-wide text-muted-foreground sm:text-right">{term}</dt>
+                <dd className="min-w-0 break-words text-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {email.email_body ? (
+            <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-foreground">
+              {email.email_body}
+            </pre>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">
+              No readable text could be pulled out of this message — download the original
+              to open it in your mail client.
+            </p>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
+          <p className="mr-auto truncate text-[12px] text-muted-foreground">{email.original_filename}</p>
+          <Button size="sm" variant="secondary" onClick={onDownload}>Download original</Button>
+          <Button size="sm" onClick={onClose}>Close</Button>
         </div>
       </div>
     </div>,
@@ -127,16 +195,16 @@ function AttachmentRow({
   recordId,
   onDelete,
   onView,
+  onReadEmail,
 }: {
   attachment: ArrearsAttachment;
   recordId: string;
   onDelete: (id: string) => void;
   onView: (id: string, filename: string) => void;
+  onReadEmail: (email: ViewableEmail) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-
   const download = () => downloadAttachment(recordId, attachment.id, attachment.original_filename);
-  const viewable = isImage(attachment.original_filename);
+  const viewable = isImageAttachment(attachment.original_filename);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">
@@ -163,13 +231,15 @@ function AttachmentRow({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {attachment.kind === 'email' && attachment.email_body && (
+          {/* Always offered for an email, body or no body — the viewer is also
+              where "we couldn't read this one, here's the original" is said. */}
+          {attachment.kind === 'email' && (
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={() => onReadEmail(attachment)}
               className="text-[12px] font-medium text-primary hover:underline"
             >
-              {expanded ? 'Hide' : 'Read'}
+              Read
             </button>
           )}
           {viewable && (
@@ -193,11 +263,6 @@ function AttachmentRow({
           </button>
         </div>
       </div>
-      {expanded && attachment.email_body && (
-        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-secondary/50 p-3 text-[12px] text-foreground">
-          {attachment.email_body}
-        </pre>
-      )}
     </div>
   );
 }
@@ -249,6 +314,7 @@ function AttemptRow({
   onAttach,
   onAttachmentRemoved,
   onView,
+  onReadEmail,
   attachBusy,
 }: {
   attempt: ArrearsAttempt;
@@ -259,6 +325,7 @@ function AttemptRow({
   onAttach: (file: File) => Promise<boolean>;
   onAttachmentRemoved: (attachmentId: string) => Promise<void>;
   onView: (id: string, filename: string) => void;
+  onReadEmail: (email: ViewableEmail) => void;
   attachBusy: boolean;
 }) {
   const { toast } = useToast();
@@ -267,15 +334,6 @@ function AttemptRow({
   const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
   const [attemptedAt, setAttemptedAt] = useState(toDatetimeLocal(attempt.attempted_at));
   const [note, setNote] = useState(attempt.note ?? '');
-  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
-
-  const toggleEmail = (id: string) => {
-    setExpandedEmails((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
 
   /** Seed the form from the row's current props every time it opens — the row
    *  isn't remounted when a save swaps the record in, so state set at mount
@@ -351,15 +409,13 @@ function AttemptRow({
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {f.email_body && (
-                        <button
-                          type="button"
-                          onClick={() => toggleEmail(f.id)}
-                          className="text-[11px] font-medium text-primary hover:underline"
-                        >
-                          {expandedEmails.has(f.id) ? 'Hide' : 'Read'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => onReadEmail(f)}
+                        className="text-[11px] font-medium text-primary hover:underline"
+                      >
+                        Read
+                      </button>
                       <button
                         type="button"
                         onClick={() => downloadAttachment(recordId, f.id, f.original_filename)}
@@ -377,11 +433,6 @@ function AttemptRow({
                       </button>
                     </div>
                   </div>
-                  {expandedEmails.has(f.id) && f.email_body && (
-                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-secondary/50 p-2.5 text-[12px] text-foreground">
-                      {f.email_body}
-                    </pre>
-                  )}
                 </div>
               ))}
               <div className="flex flex-wrap gap-1.5">
@@ -390,7 +441,7 @@ function AttemptRow({
                     key={f.id}
                     className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[12px] text-foreground"
                   >
-                    {isImage(f.original_filename) && (
+                    {isImageAttachment(f.original_filename) && (
                       <button type="button" onClick={() => onView(f.id, f.original_filename)} className="font-medium text-primary hover:underline">
                         View
                       </button>
@@ -455,6 +506,7 @@ function AttemptRow({
             accept={ARREARS_ACCEPT}
             maxSizeMb={15}
             pastePriority={2}
+            multiple
             prompt={ATTEMPT_EVIDENCE[attempt.method].prompt}
             hint="PDF, JPG, PNG, or a dropped .eml / .msg email"
           />
@@ -486,11 +538,15 @@ export default function ArrearsDetailPanel({
   const [attemptMethod, setAttemptMethod] = useState<ArrearsAttemptMethod>('phone');
   const [attemptAt, setAttemptAt] = useState(localNow);
   const [attemptNote, setAttemptNote] = useState('');
-  const [pendingEvidence, setPendingEvidence] = useState<File | null>(null);
+  // Several snips can be staged before the attempt exists — a chase often has a
+  // call log, the message thread, and the email all worth keeping together.
+  const [pendingEvidence, setPendingEvidence] = useState<File[]>([]);
   const [savingAttempt, setSavingAttempt] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [printImages, setPrintImages] = useState<ArrearsPrintImages>({});
   const [imageView, setImageView] = useState<{ url: string; label: string } | null>(null);
+  const [emailView, setEmailView] = useState<ViewableEmail | null>(null);
   const imageUrlRef = useRef<string | null>(null);
 
   const viewImage = async (attachmentId: string, filename: string) => {
@@ -606,31 +662,53 @@ export default function ArrearsDetailPanel({
         attempted_at: attemptAt,
         note: attemptNote.trim() || null,
       });
-      // Attach the evidence field's file to the freshly created attempt. The
-      // create response is the full record, so diff its attempt ids to find the
-      // new row, then upload through the existing attempt-attachment endpoint.
+      // Attach the staged evidence to the freshly created attempt. The create
+      // response is the full record, so diff its attempt ids to find the new
+      // row, then upload through the existing attempt-attachment endpoint —
+      // one at a time, since each response is the whole record.
       const created = data.attempts.find((a) => !existingIds.has(a.id));
-      if (pendingEvidence && created) {
-        const body = new FormData();
-        body.append('file', pendingEvidence);
+      if (pendingEvidence.length && created) {
+        let latest = data;
+        const failed: File[] = [];
+        let lastError: unknown = null;
+        for (const file of pendingEvidence) {
+          try {
+            const { data: withEvidence } = await api.post<ArrearsRecordDetail>(
+              `/arrears/${recordId}/attempts/${created.id}/attachments`,
+              (() => { const body = new FormData(); body.append('file', file); return body; })(),
+            );
+            latest = withEvidence;
+          } catch (err) {
+            failed.push(file);
+            lastError = err;
+          }
+        }
+        apply(latest);
         // The attempt already exists at this point, so a failed evidence upload
         // must not read as a failed attempt — report the two separately and keep
-        // the file staged so it can be retried from the attempt's own row.
-        try {
-          const { data: withEvidence } = await api.post<ArrearsRecordDetail>(
-            `/arrears/${recordId}/attempts/${created.id}/attachments`, body,
+        // the failures staged so they can be retried.
+        setPendingEvidence(failed);
+        if (failed.length === 0) {
+          const uploaded = pendingEvidence.length;
+          toast(
+            uploaded === 1
+              ? `Attempt logged with the ${evidenceNoun(pendingEvidence[0]).toLowerCase()}`
+              : `Attempt logged with ${uploaded} files`,
+            'success',
           );
-          apply(withEvidence);
-          toast(`Attempt logged with the ${evidenceNoun(pendingEvidence).toLowerCase()}`, 'success');
-          setPendingEvidence(null);
-        } catch (err) {
-          apply(data);
-          toast(getErrorMessage(err, 'Attempt logged, but the evidence failed to upload'), 'error');
+        } else {
+          toast(
+            getErrorMessage(
+              lastError,
+              `Attempt logged, but ${failed.length} of ${pendingEvidence.length} files failed to upload`,
+            ),
+            'error',
+          );
         }
       } else {
         apply(data);
         toast('Attempt logged', 'success');
-        setPendingEvidence(null);
+        setPendingEvidence([]);
       }
       setAttemptNote('');
       setAttemptAt(localNow());
@@ -696,12 +774,16 @@ export default function ArrearsDetailPanel({
     }
   };
 
-  /** Full record PDF — contract facts, every contact attempt (with evidence),
-   *  attachments, and the event timeline, rendered off-screen and captured. */
+  /** Full record PDF — contract facts, every contact attempt (with its
+   *  screenshots), the record's attachments, and the event timeline, rendered
+   *  off-screen and captured. */
   const downloadPdf = async () => {
     if (!record) return;
     setDownloadingPdf(true);
     try {
+      // Inline the screenshots first: they live behind an authenticated
+      // endpoint, so html2canvas can only paint them as data URLs.
+      setPrintImages(await loadArrearsPrintImages([record]));
       // Let React paint the off-screen print block before html2pdf reads it.
       await new Promise((resolve) => setTimeout(resolve, 50));
       const name = (record.contact_name || record.organization_name || 'arrears').replace(/[^\w-]+/g, '_');
@@ -710,6 +792,7 @@ export default function ArrearsDetailPanel({
       toast(getErrorMessage(err, 'PDF export failed'), 'error');
     } finally {
       setDownloadingPdf(false);
+      setPrintImages({});
     }
   };
 
@@ -850,8 +933,8 @@ export default function ArrearsDetailPanel({
                       value={attemptMethod}
                       onChange={(e) => {
                         setAttemptMethod(e.target.value as ArrearsAttemptMethod);
-                        if (pendingEvidence) toast('Evidence cleared — attempt type changed', 'info');
-                        setPendingEvidence(null);
+                        if (pendingEvidence.length) toast('Evidence cleared — attempt type changed', 'info');
+                        setPendingEvidence([]);
                       }}
                       aria-label="Attempt type"
                     >
@@ -868,12 +951,15 @@ export default function ArrearsDetailPanel({
                       title="When the attempt happened — edit freely"
                     />
                   </div>
-                  <div className="mt-2">
-                    {pendingEvidence ? (
-                      /* The snip isn't on the server yet — it uploads with "Log
-                         attempt" — so the row says so outright rather than
-                         letting a filename imply it's already filed. */
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2">
+                  <div className="mt-2 space-y-2">
+                    {/* Nothing here is on the server yet — it uploads with "Log
+                        attempt" — so each row says so outright rather than
+                        letting a filename imply it's already filed. */}
+                    {pendingEvidence.map((file, i) => (
+                      <div
+                        key={`${file.name}:${file.lastModified}:${i}`}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2"
+                      >
                         <span className="shrink-0 text-success" aria-hidden>
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.25} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
@@ -883,38 +969,45 @@ export default function ArrearsDetailPanel({
                           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                             {ATTEMPT_EVIDENCE_FIELD[attemptMethod].label} attached
                           </p>
-                          <p className="truncate text-[12px] font-medium text-foreground">{pendingEvidence.name}</p>
+                          <p className="truncate text-[12px] font-medium text-foreground">{file.name}</p>
                           <p className="text-[11px] text-muted-foreground">
                             Saves with the attempt — press Log attempt to file it.
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => { setPendingEvidence(null); toast('Evidence discarded', 'info'); }}
+                          onClick={() => {
+                            setPendingEvidence((prev) => prev.filter((_, x) => x !== i));
+                            toast('Evidence discarded', 'info');
+                          }}
                           className="shrink-0 text-muted-foreground hover:text-destructive"
-                          aria-label="Remove evidence"
+                          aria-label={`Remove ${file.name}`}
                         >
                           ×
                         </button>
                       </div>
-                    ) : (
-                      /* The composer is the field a broker is aiming a pasted snip
-                         at, so it outranks the record-level zone below, which
-                         mounts later and would otherwise swallow every paste. */
-                      <FileDropzone
-                        uploading={false}
-                        onFile={(file) => {
-                          setPendingEvidence(file);
-                          toast(`${evidenceNoun(file)} attached — log the attempt to save it`, 'success');
-                        }}
-                        onError={(m) => toast(m, 'error')}
-                        accept={ATTEMPT_EVIDENCE_FIELD[attemptMethod].accept}
-                        maxSizeMb={15}
-                        pastePriority={1}
-                        prompt={ATTEMPT_EVIDENCE_FIELD[attemptMethod].prompt}
-                        hint={ATTEMPT_EVIDENCE_FIELD[attemptMethod].hint}
-                      />
-                    )}
+                    ))}
+                    {/* The zone stays put once something is staged, so a second
+                        snip goes where the first one did. The composer is also
+                        what a pasted snip is aimed at, so it outranks the
+                        record-level zone below, which mounts later and would
+                        otherwise swallow every paste. */}
+                    <FileDropzone
+                      uploading={false}
+                      onFile={(file) => {
+                        setPendingEvidence((prev) => [...prev, file]);
+                        toast(`${evidenceNoun(file)} attached — log the attempt to save it`, 'success');
+                      }}
+                      onError={(m) => toast(m, 'error')}
+                      accept={ATTEMPT_EVIDENCE_FIELD[attemptMethod].accept}
+                      maxSizeMb={15}
+                      pastePriority={1}
+                      multiple
+                      prompt={pendingEvidence.length
+                        ? 'Add another — paste, drop, or click to browse'
+                        : ATTEMPT_EVIDENCE_FIELD[attemptMethod].prompt}
+                      hint={ATTEMPT_EVIDENCE_FIELD[attemptMethod].hint}
+                    />
                   </div>
                   <div className="mt-2 flex gap-2">
                     <input
@@ -945,6 +1038,7 @@ export default function ArrearsDetailPanel({
                       onAttach={(file) => uploadAttemptFile(a.id, file)}
                       onAttachmentRemoved={removeAttemptFile}
                       onView={viewImage}
+                      onReadEmail={setEmailView}
                       attachBusy={attachBusy}
                     />
                   ))}
@@ -989,12 +1083,20 @@ export default function ArrearsDetailPanel({
                   accept={ARREARS_ACCEPT}
                   maxSizeMb={15}
                   pastePriority={0}
+                  multiple
                   prompt="Drop an email or file, click to browse, or paste a snip"
                   hint="Drag a message from Outlook desktop, or save it from Gmail/Outlook Web and drop the .eml — PDF, JPG, PNG also accepted"
                 />
                 <div className="mt-2 space-y-2">
                   {record.attachments.map((a) => (
-                    <AttachmentRow key={a.id} attachment={a} recordId={record.id} onDelete={removeAttachment} onView={viewImage} />
+                    <AttachmentRow
+                      key={a.id}
+                      attachment={a}
+                      recordId={record.id}
+                      onDelete={removeAttachment}
+                      onView={viewImage}
+                      onReadEmail={setEmailView}
+                    />
                   ))}
                 </div>
               </Section>
@@ -1031,7 +1133,7 @@ export default function ArrearsDetailPanel({
       {downloadingPdf && record && (
         <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
           <div id="arrears-record-print">
-            <ArrearsRecordPrint records={[record]} />
+            <ArrearsRecordPrint records={[record]} images={printImages} />
           </div>
         </div>
       )}
@@ -1039,12 +1141,17 @@ export default function ArrearsDetailPanel({
     document.body,
   );
 
-  return imageView ? (
+  return (
     <>
       {panel}
-      <ImageViewer src={imageView.url} label={imageView.label} onClose={closeImage} />
+      {imageView && <ImageViewer src={imageView.url} label={imageView.label} onClose={closeImage} />}
+      {emailView && (
+        <EmailViewer
+          email={emailView}
+          onDownload={() => downloadAttachment(recordId, emailView.id, emailView.original_filename)}
+          onClose={() => setEmailView(null)}
+        />
+      )}
     </>
-  ) : (
-    panel
   );
 }

@@ -66,6 +66,53 @@ def _html_to_text(html: str) -> str:
     return unescape(text)
 
 
+def _part_text(part) -> str | None:
+    """Decoded text of one MIME part, whichever way it will give it up."""
+    try:
+        content = part.get_content()
+        if isinstance(content, str):
+            return content
+    except Exception:  # unknown charset, broken CTE, defective part
+        logger.debug("get_content failed on a MIME part", exc_info=True)
+    raw = part.get_payload(decode=True)
+    if isinstance(raw, bytes):
+        # A header can name a charset Python has never heard of ("cp-nonsense",
+        # "unicode-1-1-utf-7"); that must not cost us the whole email.
+        try:
+            return raw.decode(part.get_content_charset() or "utf-8", errors="replace")
+        except LookupError:
+            return raw.decode("utf-8", errors="replace")
+    return None
+
+
+def _walk_for_text(message) -> str | None:
+    """Deepest fallback: scan every part for something readable.
+
+    `get_body()` gives up on messages whose structure it doesn't recognise —
+    Outlook's multipart/related nesting and forwarded-as-attachment threads are
+    both common ways to end up with a stored email nobody can read. Plain text
+    wins over HTML; attachments are skipped so a PDF's name doesn't become the
+    body.
+    """
+    html_fallback: str | None = None
+    for part in message.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        if part.get_content_disposition() == "attachment":
+            continue
+        ctype = part.get_content_type()
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        text = _part_text(part)
+        if not text or not text.strip():
+            continue
+        if ctype == "text/plain":
+            return text
+        if html_fallback is None:
+            html_fallback = _html_to_text(text)
+    return html_fallback
+
+
 def _parse_eml(contents: bytes) -> ParsedEmail:
     message = BytesParser(policy=policy.default).parsebytes(contents)
 
@@ -73,10 +120,16 @@ def _parse_eml(contents: bytes) -> ParsedEmail:
     try:
         part = message.get_body(preferencelist=("plain", "html"))
         if part is not None:
-            raw = part.get_content()
-            body = raw if part.get_content_subtype() == "plain" else _html_to_text(raw)
-    except Exception:  # malformed multipart — fall back to the raw payload
-        logger.debug("Falling back to raw payload for dropped .eml", exc_info=True)
+            raw = _part_text(part)
+            if raw:
+                body = raw if part.get_content_subtype() == "plain" else _html_to_text(raw)
+    except Exception:  # malformed multipart — the walk below picks up the pieces
+        logger.debug("get_body failed on a dropped .eml", exc_info=True)
+
+    if not (body and body.strip()):
+        body = _walk_for_text(message)
+
+    if not (body and body.strip()):
         payload = message.get_payload(decode=True)
         if isinstance(payload, bytes):
             body = payload.decode("utf-8", errors="replace")
@@ -158,7 +211,15 @@ def _parse_msg_ole(extract_msg, stream) -> ParsedEmail:
         if sent_at is not None and sent_at.tzinfo is None:
             sent_at = sent_at.replace(tzinfo=timezone.utc)
         recipients = ", ".join(p for p in [message.to, message.cc] if p)
-        body = message.body or (_html_to_text(message.htmlBody.decode("utf-8", errors="replace")) if message.htmlBody else None)
+        # extract_msg hands back htmlBody as bytes on most messages and str on
+        # some; assuming bytes threw AttributeError, which the caller could only
+        # read as "unparseable .msg" and reject an email it had in fact opened.
+        body = message.body
+        if not (body and body.strip()):
+            html = message.htmlBody
+            if isinstance(html, bytes):
+                html = html.decode("utf-8", errors="replace")
+            body = _html_to_text(html) if html else None
         return ParsedEmail(
             subject=_header(message.subject),
             sender=_header(message.sender),

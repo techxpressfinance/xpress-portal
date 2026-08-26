@@ -63,15 +63,20 @@ const isLinkOnlyDrop = (dt: DataTransfer) => {
   );
 };
 
-function pastedImage(e: ClipboardEvent): File | null {
-  const items = Array.from(e.clipboardData?.items ?? []);
-  const item = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'));
-  return item?.getAsFile() ?? null;
+/** Every image on the clipboard — a paste can carry several, and taking only
+ *  the first silently loses the rest. */
+function pastedImages(e: ClipboardEvent): File[] {
+  return Array.from(e.clipboardData?.items ?? [])
+    .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    .map((i) => i.getAsFile())
+    .filter((f): f is File => f !== null);
 }
 
 interface Props {
   uploading: boolean;
-  onFile: (file: File) => void;
+  /** Called once per accepted file. Return a promise to have a multi-file
+   *  drop uploaded one at a time instead of all at once. */
+  onFile: (file: File) => void | Promise<unknown>;
   onError?: (msg: string) => void;
   accept?: string;
   hint?: string;
@@ -82,6 +87,10 @@ interface Props {
   prompt?: string;
   /** Higher wins the page-level paste when several zones are on screen. */
   pastePriority?: number;
+  /** Accept a whole batch — a multi-file drop, a multi-select in the browser
+   *  dialog, or several images on the clipboard. Off by default so existing
+   *  single-file callers keep their behaviour. */
+  multiple?: boolean;
 }
 
 /** Generic drag-and-drop / paste / click-to-browse file upload zone (screenshots, PDFs, etc). */
@@ -94,48 +103,65 @@ export default function FileDropzone({
   maxSizeMb = DEFAULT_MAX_MB,
   prompt,
   pastePriority = 0,
+  multiple = false,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleFile = (file: File) => {
-    if (file.size > maxSizeMb * 1024 * 1024) {
-      onError?.(`File size exceeds ${maxSizeMb}MB limit`);
-      return;
-    }
-    onFile(file);
+  /**
+   * Hand the files up one at a time, awaiting each. Uploads that all fire at
+   * once race each other's responses (every arrears upload returns the whole
+   * record), so the list would settle on whichever landed last and appear to
+   * have swallowed the others.
+   */
+  const handleFiles = async (files: File[]) => {
+    const accepted = files.filter((f) => {
+      if (f.size > maxSizeMb * 1024 * 1024) {
+        onError?.(`${f.name} exceeds the ${maxSizeMb}MB limit`);
+        return false;
+      }
+      return true;
+    });
     if (fileInput.current) fileInput.current.value = '';
+    for (const file of multiple ? accepted : accepted.slice(0, 1)) {
+      await onFile(file);
+    }
   };
 
   /* Keep the latest props for the paste listener without re-registering it each render. */
-  const latest = useRef({ uploading, handleFile, onError });
+  const latest = useRef({ uploading, handleFiles, onError });
   useEffect(() => {
-    latest.current = { uploading, handleFile, onError };
+    latest.current = { uploading, handleFiles, onError };
   });
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      const { uploading: busy, handleFile: upload, onError: err } = latest.current;
+      const { uploading: busy, handleFiles: upload, onError: err } = latest.current;
       if (busy) return;
 
       // Rich-text targets insert the image themselves — don't also upload it.
       const target = e.target as HTMLElement | null;
       if (target?.closest?.('[contenteditable="true"]')) return;
 
-      const image = pastedImage(e);
-      if (!image) return;
+      const images = pastedImages(e);
+      if (images.length === 0) return;
       e.preventDefault();
 
-      const ext = PASTE_EXTENSIONS[image.type];
-      if (!ext) {
-        err?.('Pasted image must be PNG or JPG');
-        return;
-      }
-
-      // Clipboard files arrive unnamed or as a generic "image.png" — stamp them so
-      // several pasted screenshots stay distinguishable in the attachment list.
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-      upload(new File([image], `screenshot-${stamp}.${ext}`, { type: image.type }));
+      const named: File[] = [];
+      images.forEach((image, i) => {
+        const ext = PASTE_EXTENSIONS[image.type];
+        if (!ext) {
+          err?.('Pasted image must be PNG or JPG');
+          return;
+        }
+        // Clipboard files arrive unnamed or as a generic "image.png" — stamp them
+        // so several pasted screenshots stay distinguishable in the list, with a
+        // counter in case two land inside the same second.
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const suffix = images.length > 1 ? `-${i + 1}` : '';
+        named.push(new File([image], `screenshot-${stamp}${suffix}.${ext}`, { type: image.type }));
+      });
+      if (named.length) upload(named);
     };
 
     const entry = { fn: onPaste, priority: pastePriority };
@@ -163,9 +189,8 @@ export default function FileDropzone({
         // Collect synchronously: the drag data store dies with this handler.
         droppedFiles(e.dataTransfer)
           .then((files) => {
-            const file = files[0];
-            if (file) {
-              handleFile(file);
+            if (files.length) {
+              handleFiles(files);
             } else if (linkOnly) {
               onError?.(
                 'That drag carried only a link. Gmail and Outlook Web can\'t hand over the message itself — save it as .eml and drop that, or paste a screenshot.',
@@ -181,10 +206,11 @@ export default function FileDropzone({
         ref={fileInput}
         type="file"
         accept={accept}
+        multiple={multiple}
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFile(file);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) handleFiles(files);
         }}
         disabled={uploading}
       />

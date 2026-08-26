@@ -928,6 +928,16 @@ export interface ContactApplication {
   updated_at: string;
 }
 
+/** A company a contact is linked to, as returned inline on contact lists
+ *  asked for with `?include_organizations=1`. The full company shape is
+ *  `ContactOrganization`, returned on the contact detail view. */
+export interface ContactOrganizationLite {
+  id: string;
+  name: string;
+  abn: string | null;
+  role: string | null;
+}
+
 export interface Contact {
   id: string;
   first_name: string;
@@ -943,6 +953,8 @@ export interface Contact {
   postcode: string | null;
   notes: string | null;
   application_count: number;
+  /** Only present when the list was fetched with `include_organizations`. */
+  organizations?: ContactOrganizationLite[];
   created_at: string;
   updated_at: string;
 }

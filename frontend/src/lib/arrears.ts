@@ -69,6 +69,14 @@ export const ARREARS_FILE_TYPES: { value: ArrearsFileType; label: string }[] = [
 export const fileTypeLabel = (value: ArrearsFileType) =>
   ARREARS_FILE_TYPES.find((t) => t.value === value)?.label ?? value;
 
+/** A file is a viewable image if its name carries an image extension — a pasted
+ *  screenshot arrives as "screenshot-….png", but a dropped snip may be a plain
+ *  "call log.jpg" stored with kind "file", so go by name rather than kind. */
+export const isImageAttachment = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename);
+
+/** ISO 3779 VIN length — the backend rejects anything else on an arrears record. */
+export const VIN_LENGTH = 17;
+
 export const ARREARS_FREQUENCIES: { value: ArrearsRepaymentFrequency; label: string }[] = [
   { value: 'weekly', label: 'Weekly' },
   { value: 'fortnightly', label: 'Fortnightly' },

@@ -8,6 +8,8 @@ import ArrearsDetailPanel from '../../components/arrears/ArrearsDetailPanel';
 import ArrearsRecordModal from '../../components/arrears/ArrearsRecordModal';
 import ArrearsReportModal from '../../components/arrears/ArrearsReportModal';
 import { downloadElementPdf } from '../../lib/pdfExport';
+import ArrearsPrintHeader from '../../components/arrears/ArrearsPrintHeader';
+import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { getErrorMessage } from '../../lib/utils';
 import { ARREARS_BUCKETS, ARREARS_FILE_TYPES, formatMoney } from '../../lib/arrears';
 import type { ArrearsBucket, ArrearsFileType, ArrearsRecord, ArrearsSummary } from '../../types';
@@ -249,12 +251,16 @@ export default function ArrearsBook() {
       {/* Off-screen print source for the PDF export. */}
       {printRows.length > 0 && (
         <div style={{ position: 'fixed', left: -10000, top: 0, width: 1100 }} aria-hidden>
-          <div id="arrears-report" style={{ background: '#fff', padding: 16, width: 1100 }}>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: 0 }}>Arrears Book</h1>
-            <p style={{ fontSize: 10, color: '#444', margin: '2px 0 10px' }}>
-              {`As at ${new Date().toLocaleDateString('en-AU')} · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}
-            </p>
-            <ArrearsPrintTable records={printRows} />
+          <div id="arrears-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+            <ArrearsPrintHeader
+              eyebrow="Collections · Arrears Book"
+              title="Arrears Book"
+              subtitle={`As at ${new Date().toLocaleDateString('en-AU')} · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}
+            />
+            {/* The inset sits below the full-bleed masthead. */}
+            <div style={{ padding: `0 ${PRINT_INSET}px` }}>
+              <ArrearsPrintTable records={printRows} />
+            </div>
           </div>
         </div>
       )}

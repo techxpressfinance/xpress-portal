@@ -39,6 +39,15 @@ class ContactApplicationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ContactOrganizationLite(BaseModel):
+    """Just enough of a linked company to tell two same-named clients apart in
+    a picker — the full company comes from OrganizationOut on the detail view."""
+    id: str
+    name: str
+    abn: Optional[str] = None
+    role: Optional[str] = None
+
+
 class ContactOut(BaseModel):
     id: str
     first_name: str
@@ -54,6 +63,9 @@ class ContactOut(BaseModel):
     postcode: Optional[str]
     notes: Optional[str]
     application_count: int = 0
+    # Only populated when the list is asked for it (?include_organizations=1);
+    # ContactDetailOut overrides this with the full OrganizationOut rows.
+    organizations: list[ContactOrganizationLite] = []
     created_at: datetime
     updated_at: datetime
 

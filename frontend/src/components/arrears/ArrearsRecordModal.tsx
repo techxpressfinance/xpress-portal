@@ -11,6 +11,7 @@ import {
   bucketForDays,
   bucketLabel,
   daysInArrears,
+  VIN_LENGTH,
 } from '../../lib/arrears';
 import type {
   ArrearsFileType,
@@ -34,8 +35,15 @@ interface Props {
   onSaved: (record: ArrearsRecord) => void;
 }
 
-/** What EntityPicker hands back on a pick — see EntityPicker's own Picked. */
-type Picked = { id: string; label: string };
+/** What EntityPicker hands back on a pick — see EntityPicker's own Picked.
+ *  A contact row picked by relation carries the company with it; `null` is the
+ *  deliberate "no entity" row, `undefined` means the row said nothing either way. */
+type Picked = { id: string; label: string; organization?: { id: string; name: string } | null };
+
+/** Companies are listed by name, their role on the contact, and their ABN —
+ *  the ABN is what separates two similarly-named entities. */
+const orgOptionLabel = (o: { name: string; role?: string | null; abn?: string | null }) =>
+  [o.name, o.role, o.abn ? `ABN ${o.abn}` : null].filter(Boolean).join(' · ');
 
 interface FormState {
   contact_id: string | null;
@@ -60,6 +68,33 @@ const today = () => new Date().toISOString().slice(0, 10);
 /** Sentinel option value for typing a lender that isn't in the pick list. */
 const OTHER_LENDER = '__other__';
 
+/** The fields the backend refuses a record without, in form order. */
+const REQUIRED_FIELDS = ['party', 'lenders', 'vin', 'in_arrears_since'] as const;
+type RequiredField = (typeof REQUIRED_FIELDS)[number];
+
+const FIELD_LABELS: Record<RequiredField, string> = {
+  party: 'client / entity',
+  lenders: 'lenders',
+  vin: 'VIN number',
+  in_arrears_since: 'in arrears since',
+};
+
+/** The modal is a portal in document.body and the fields sit in a scroll box,
+ *  so jumping to a failed field means finding its wrapper by id. */
+const FIELD_ANCHORS: Record<RequiredField, string> = {
+  party: 'arrears-field-party',
+  lenders: 'arrears-field-lenders',
+  vin: 'arrears-field-vin',
+  in_arrears_since: 'arrears-field-since',
+};
+
+const focusField = (field: RequiredField) => {
+  const el = document.getElementById(FIELD_ANCHORS[field]);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true });
+};
+
 export default function ArrearsRecordModal({
   record,
   fixedContact,
@@ -70,6 +105,9 @@ export default function ArrearsRecordModal({
   const { toast } = useToast();
   const [lenderBook, setLenderBook] = useState<Lender[]>([]);
   const [saving, setSaving] = useState(false);
+  // Errors stay hidden until the first Save press so a half-filled form isn't
+  // shouting at the broker while they're still working down it.
+  const [attempted, setAttempted] = useState(false);
   const [form, setForm] = useState<FormState>(() => ({
     contact_id: record?.contact_id ?? fixedContact?.id ?? null,
     contact_name: record?.contact_name ?? fixedContact?.name ?? null,
@@ -261,9 +299,19 @@ export default function ArrearsRecordModal({
   };
 
   const pickContact = (p: Picked | null) => {
-    setForm((f) => ({ ...f, contact_id: p?.id ?? null, contact_name: p?.label ?? null }));
+    setForm((f) => ({
+      ...f,
+      contact_id: p?.id ?? null,
+      contact_name: p?.label ?? null,
+      // Picking a specific client↔company relation fills the entity in the same
+      // click; the "no entity" row clears it for a consumer contract.
+      ...(p && p.organization !== undefined
+        ? { organization_id: p.organization?.id ?? null, organization_name: p.organization?.name ?? null }
+        : {}),
+    }));
     setContactOptions(null);
-    if (p) loadCompanyOptions(p.id, true);
+    // Only auto-fill a lone company when the row didn't already settle it.
+    if (p) loadCompanyOptions(p.id, p.organization === undefined);
     // Clearing the client leaves the company as the anchor: constrain the
     // client field to its contacts instead of leaving both loose.
     else if (form.organization_id) loadContactOptions(form.organization_id, false);
@@ -309,12 +357,49 @@ export default function ArrearsRecordModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const valid =
-    (form.contact_id || form.organization_id) && form.lenders.length > 0
-    && form.vin.trim() && form.in_arrears_since;
+  // Full ISO 3779 VIN only — a partial chassis number can't be matched back to
+  // the asset, so a short one is treated the same as a missing one.
+  const vinValid = form.vin.trim().length === VIN_LENGTH;
+
+  /** One message per required field, in the order the fields appear in the
+   *  form, so the first failure is also the topmost one to scroll to. */
+  const errors: Record<RequiredField, string> = {
+    party: !form.contact_id && !form.organization_id
+      ? 'Pick a client, an entity, or both — a record has to hang off a real party'
+      : '',
+    lenders: form.lenders.length === 0 ? 'Add at least one lender' : '',
+    vin: !form.vin.trim()
+      ? 'VIN number is required'
+      : !vinValid
+        ? `Must be exactly ${VIN_LENGTH} characters (${form.vin.trim().length} entered)`
+        : '',
+    in_arrears_since: !form.in_arrears_since ? 'Pick the date the contract fell into arrears' : '',
+  };
+  const failing = REQUIRED_FIELDS.filter((f) => errors[f]);
+  const valid = failing.length === 0;
+
+  /** Show a field's error once Save has been pressed. The VIN is the exception:
+   *  its length rule can only be broken by typing, so flagging it live beats
+   *  letting the broker finish the form on a VIN that was never going to pass. */
+  const errorFor = (field: RequiredField) =>
+    (attempted || (field === 'vin' && form.vin.trim().length > 0)) && errors[field]
+      ? errors[field]
+      : undefined;
 
   const save = async () => {
-    if (!valid) return;
+    if (!valid) {
+      // Don't leave a dead button — name what's wrong, mark the fields, and
+      // take the broker to the first one instead of making them hunt.
+      setAttempted(true);
+      toast(
+        failing.length === 1
+          ? errors[failing[0]]
+          : `${failing.length} fields need attention: ${failing.map((f) => FIELD_LABELS[f]).join(', ')}`,
+        'error',
+      );
+      focusField(failing[0]);
+      return;
+    }
     setSaving(true);
     const payload = {
       contact_id: form.contact_id,
@@ -343,15 +428,6 @@ export default function ArrearsRecordModal({
     }
   };
 
-  /** Say what's still missing rather than leaving a dead Save button — the
-   *  required fields are spread over three groups and "why can't I save?" is
-   *  otherwise a hunt. */
-  const missing = [
-    !form.contact_id && !form.organization_id ? 'a client or entity' : '',
-    form.lenders.length === 0 ? 'a lender' : '',
-    !form.vin.trim() ? 'the VIN' : '',
-    !form.in_arrears_since ? 'the in-arrears date' : '',
-  ].filter(Boolean);
 
   // Portals mount into document.body, outside the .ledger-theme host that
   // declares every --led-* variable, so led-btn / led-input / led-chip render
@@ -371,8 +447,11 @@ export default function ArrearsRecordModal({
 
         <div className="flex-1 divide-y divide-border overflow-y-auto px-6">
           {/* ── Who the contract belongs to ─────────────────────────────── */}
-          <FormSection title="Who" hint="The record shows on both the client's and the entity's page.">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <FormSection
+            title="Who"
+            hint="At least one of the two — the record shows on both the client's and the entity's page."
+          >
+            <div id={FIELD_ANCHORS.party} className="grid gap-4 sm:grid-cols-2">
               {linksLoading === 'contact' ? (
                 <FieldShell label="Client">Checking contacts linked to {form.organization_name}…</FieldShell>
               ) : contactOptions ? (
@@ -417,7 +496,7 @@ export default function ArrearsRecordModal({
                   >
                     <option value="">— None (consumer loan) —</option>
                     {companyOptions.map((o) => (
-                      <option key={o.id} value={o.id}>{o.role ? `${o.name} · ${o.role}` : o.name}</option>
+                      <option key={o.id} value={o.id}>{orgOptionLabel(o)}</option>
                     ))}
                   </Select>
                   <p className="mt-1 text-[12px] text-muted-foreground">
@@ -435,13 +514,17 @@ export default function ArrearsRecordModal({
                 />
               )}
             </div>
+            {errorFor('party') && (
+              <p role="alert" className="text-[12px] font-medium text-destructive">{errors.party}</p>
+            )}
           </FormSection>
 
           {/* ── The contract itself ─────────────────────────────────────── */}
           <FormSection title="The contract">
-            <div>
+            <div id={FIELD_ANCHORS.lenders}>
               <label className="mb-1.5 block text-[13px] font-medium text-foreground">
-                Lenders <span className="font-normal text-muted-foreground">· co-financed contracts can have several</span>
+                Lenders <span className="text-destructive">*</span>{' '}
+                <span className="font-normal text-muted-foreground">· co-financed contracts can have several</span>
               </label>
               {form.lenders.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
@@ -503,15 +586,22 @@ export default function ArrearsRecordModal({
                 </Button>
               </div>
               <p className="mt-1 text-[12px] text-muted-foreground">{lenderHint}</p>
+              {errorFor('lenders') && (
+                <p role="alert" className="mt-1 text-[12px] font-medium text-destructive">{errors.lenders}</p>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
-              <Input
-                label="VIN number"
-                value={form.vin}
-                onChange={(e) => set('vin', e.target.value.toUpperCase())}
-                placeholder="JALC4W88767001234"
-              />
+              <div id={FIELD_ANCHORS.vin}>
+                <Input
+                  label="VIN number *"
+                  value={form.vin}
+                  onChange={(e) => set('vin', e.target.value.toUpperCase().slice(0, VIN_LENGTH))}
+                  maxLength={VIN_LENGTH}
+                  placeholder="JALC4W88767001234"
+                  error={errorFor('vin')}
+                />
+              </div>
               <Input
                 label="Contract number"
                 value={form.contract_number}
@@ -569,11 +659,12 @@ export default function ArrearsRecordModal({
               />
             </div>
 
-            <div className="sm:max-w-[320px]">
+            <div id={FIELD_ANCHORS.in_arrears_since} className="sm:max-w-[320px]">
               <DatePicker
-                label="In arrears since"
+                label="In arrears since *"
                 value={form.in_arrears_since}
                 onChange={(v) => set('in_arrears_since', v)}
+                error={errorFor('in_arrears_since')}
               />
               {/* Show the consequence of the date immediately — this is the one
                   field that decides which bucket the contract reports in. */}
@@ -603,13 +694,22 @@ export default function ArrearsRecordModal({
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
-          {missing.length > 0 && (
-            <p className="mr-auto text-[12px] text-muted-foreground">
-              Still needed: {missing.join(', ')}
+          {!valid && (
+            <p className={`mr-auto text-[12px] ${attempted ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
+              Still needed:{' '}
+              {failing.map((f, i) => (
+                <span key={f}>
+                  {i > 0 && ', '}
+                  {/* Clickable so the hint doubles as a jump to the field. */}
+                  <button type="button" className="underline underline-offset-2" onClick={() => focusField(f)}>
+                    {FIELD_LABELS[f]}
+                  </button>
+                </span>
+              ))}
             </p>
           )}
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} loading={saving} disabled={!valid}>
+          <Button onClick={save} loading={saving}>
             {record ? 'Save changes' : 'Add to arrears book'}
           </Button>
         </div>

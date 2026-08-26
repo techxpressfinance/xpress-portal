@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../../api/client';
 import type { Contact, Organization } from '../../types';
 
-type Picked = { id: string; label: string };
+/** A pick carries the company when the chosen row was a specific
+ *  client↔company relation, so the modal can fill both sides at once. */
+type Picked = { id: string; label: string; organization?: { id: string; name: string } | null };
+
+/** A row in the dropdown: the pick itself plus the line under it that says
+ *  which relation this is — the whole point when one person sits on several
+ *  entities and only one of them holds the contract. */
+type Row = Picked & { sublabel?: string };
+
+/** ABNs are stored as typed, so show them as stored (matching Companies). */
+const abnLine = (abn: string | null) => (abn ? `ABN ${abn}` : 'No ABN recorded');
 
 /**
  * Type-ahead over contacts or companies. Arrears records must attach to a real
@@ -28,7 +38,7 @@ export default function EntityPicker({
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Picked[]>([]);
+  const [results, setResults] = useState<Row[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -53,19 +63,40 @@ export default function EntityPicker({
       try {
         if (kind === 'contact') {
           const { data } = await api.get<{ items: Contact[] }>('/contacts', {
-            params: { search: term, per_page: 8 },
+            params: { search: term, per_page: 8, include_organizations: true },
           });
-          if (!cancelled) {
-            setResults(data.items.map((c) => ({
-              id: c.id,
-              label: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'Unnamed',
-            })));
-          }
+          if (cancelled) return;
+          // One row per relation, not per person: a director of three entities
+          // is three different contracts to choose between, and the sub-line
+          // is what tells them apart. The trailing entity-less row keeps a
+          // genuinely consumer contract from being pinned to a company.
+          setResults(data.items.flatMap((c) => {
+            const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'Unnamed';
+            const orgs = c.organizations ?? [];
+            if (orgs.length === 0) return [{ id: c.id, label: name, sublabel: c.email ?? undefined }];
+            return [
+              ...orgs.map((o) => ({
+                id: c.id,
+                label: name,
+                organization: { id: o.id, name: o.name },
+                sublabel: [o.name, o.role, abnLine(o.abn)].filter(Boolean).join(' · '),
+              })),
+              { id: c.id, label: name, organization: null, sublabel: 'No entity — consumer contract' },
+            ];
+          }));
         } else {
           const { data } = await api.get<{ items: Organization[] }>('/organizations', {
             params: { search: term, per_page: 8 },
           });
-          if (!cancelled) setResults(data.items.map((o) => ({ id: o.id, label: o.name })));
+          if (!cancelled) {
+            setResults(data.items.map((o) => ({
+              id: o.id,
+              label: o.name,
+              sublabel: o.entity_type === 'trust' && !o.abn && o.no_abn_confirmed
+                ? 'No ABN (confirmed)'
+                : abnLine(o.abn),
+            })));
+          }
         }
       } catch {
         if (!cancelled) setResults([]);
@@ -120,12 +151,15 @@ export default function EntityPicker({
           )}
           {results.map((r) => (
             <button
-              key={r.id}
+              key={`${r.id}:${r.organization?.id ?? 'none'}`}
               type="button"
               onClick={() => { onChange(r); setQuery(''); setOpen(false); }}
-              className="block w-full truncate px-3 py-2 text-left text-[13px] text-foreground hover:bg-secondary"
+              className="block w-full px-3 py-2 text-left hover:bg-secondary"
             >
-              {r.label}
+              <span className="block truncate text-[13px] text-foreground">{r.label}</span>
+              {r.sublabel && (
+                <span className="block truncate text-[12px] text-muted-foreground">{r.sublabel}</span>
+              )}
             </button>
           ))}
         </div>

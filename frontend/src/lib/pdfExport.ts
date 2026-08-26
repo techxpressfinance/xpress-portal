@@ -106,6 +106,24 @@ function paintXpressFooter(pdf: PdfDoc): void {
 }
 
 /**
+ * html2canvas paints whatever an `<img>` holds at capture time, so one that
+ * hasn't decoded yet comes out blank. Wait for them all — a broken image is
+ * skipped rather than blocking the export.
+ */
+async function waitForImages(root: HTMLElement): Promise<void> {
+  await Promise.all(
+    Array.from(root.querySelectorAll('img')).map(async (img) => {
+      if (img.complete && img.naturalWidth > 0) return;
+      try {
+        await img.decode();
+      } catch {
+        /* nothing to paint for this one */
+      }
+    }),
+  );
+}
+
+/**
  * Render an arbitrary DOM element to an A4 PDF. Used by report exports (e.g.
  * the arrears book), where the printable markup is a plain table rather than
  * the styled quote sheet below. Every page carries the Xpress footer band.
@@ -121,14 +139,21 @@ export async function downloadElementPdf(
     return;
   }
 
+  // Decode before cloning: the clone's images share the same (data) source, so
+  // they're ready by the time html2canvas reads them.
+  await waitForImages(el);
+
   const clone = el.cloneNode(true) as HTMLElement;
   (el.parentElement ?? document.body).appendChild(clone);
   try {
     stripModernColors(clone);
     await pdfWorker()
       .set({
-        // Bottom margin reserves room for the painted footer band.
-        margin: [10, 8, 22, 8],
+        // No side or top margins: the source is sized to A4_PRINT_WIDTH_PX (see
+        // lib/printPage), so the masthead can bleed to the paper edge as on the
+        // quote sheet and the print block owns its own inset. The bottom margin
+        // reserves room for the painted footer band.
+        margin: [0, 0, 22, 0],
         filename,
         // Only blocks explicitly marked .break-inside-avoid are protected — see
         // the note in downloadQuoteSheetPdf on why 'avoid-all' leaves blank gaps.

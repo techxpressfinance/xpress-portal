@@ -5,6 +5,8 @@ import { useToast } from '../Toast';
 import { Button, Select } from '../ui';
 import DatePicker from '../ui/DatePicker';
 import { downloadElementPdf } from '../../lib/pdfExport';
+import ArrearsPrintHeader from './ArrearsPrintHeader';
+import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { getErrorMessage } from '../../lib/utils';
 import {
   ARREARS_FILE_TYPES,
@@ -234,13 +236,16 @@ export default function ArrearsReportModal({ onClose }: { onClose: () => void })
       {/* Off-screen print source for this report. */}
       {printRows.length > 0 && (
         <div style={{ position: 'fixed', left: -10000, top: 0, width: 1100 }} aria-hidden>
-          <div id="arrears-custom-report" style={{ background: '#fff', padding: 16, width: 1100 }}>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: 0 }}>Arrears Book — Custom Report</h1>
-            <p style={{ fontSize: 10, color: '#444', margin: '2px 0 10px' }}>
-              {describe()} · As at {new Date().toLocaleDateString('en-AU')}
-              {` · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}
-            </p>
-            <ArrearsPrintTable records={printRows} />
+          <div id="arrears-custom-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+            <ArrearsPrintHeader
+              eyebrow="Collections · Custom Report"
+              title="Arrears Book — Custom Report"
+              subtitle={`${describe()} · As at ${new Date().toLocaleDateString('en-AU')} · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}
+            />
+            {/* The inset sits below the full-bleed masthead. */}
+            <div style={{ padding: `0 ${PRINT_INSET}px` }}>
+              <ArrearsPrintTable records={printRows} />
+            </div>
           </div>
         </div>
       )}

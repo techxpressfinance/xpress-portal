@@ -9,6 +9,7 @@ import type { ArrearsRecord, ArrearsRecordDetail } from '../../types';
 import ArrearsDetailPanel from './ArrearsDetailPanel';
 import ArrearsRecordModal from './ArrearsRecordModal';
 import ArrearsRecordPrint from './ArrearsRecordPrint';
+import { loadArrearsPrintImages, type ArrearsPrintImages } from './printImages';
 import ArrearsTable from './ArrearsTable';
 
 /**
@@ -31,6 +32,7 @@ export default function ArrearsSection({
   const [downloading, setDownloading] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [printRecords, setPrintRecords] = useState<ArrearsRecordDetail[]>([]);
+  const [printImages, setPrintImages] = useState<ArrearsPrintImages>({});
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +98,9 @@ export default function ArrearsSection({
         data.map((r) => api.get<ArrearsRecordDetail>(`/arrears/${r.id}`).then((res) => res.data)),
       );
       setPrintRecords(details);
+      // Screenshots sit behind an authenticated endpoint, so they have to be
+      // inlined as data URLs before html2canvas can paint them.
+      setPrintImages(await loadArrearsPrintImages(details));
       // Let React paint the off-screen print block before html2pdf reads it.
       await new Promise((resolve) => setTimeout(resolve, 50));
       const name = (contact?.name ?? organization?.name ?? 'party').replace(/[^\w-]+/g, '_');
@@ -104,6 +109,7 @@ export default function ArrearsSection({
       toast(getErrorMessage(err, 'PDF export failed'), 'error');
     } finally {
       setPrintRecords([]);
+      setPrintImages({});
       setDownloadingPdf(false);
     }
   };
@@ -163,7 +169,11 @@ export default function ArrearsSection({
       {printRecords.length > 0 && (
         <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
           <div id="arrears-client-print">
-            <ArrearsRecordPrint records={printRecords} />
+            <ArrearsRecordPrint
+              records={printRecords}
+              images={printImages}
+              subject={contact?.name ?? organization?.name}
+            />
           </div>
         </div>
       )}
