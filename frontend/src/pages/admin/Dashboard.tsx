@@ -109,7 +109,7 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
-            <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
+            <p className="mt-3 break-words text-[32px] font-semibold leading-9 tracking-[-0.05em] led-tnum text-[var(--led-ink)]">
               {loading ? <Skeleton width={80} height={36} className="mt-1" /> : value}
             </p>
           </div>
@@ -716,7 +716,7 @@ export default function AdminDashboard() {
                           {ACTION_ICON_CONFIG[log.action]?.icon || '•'}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[13px] leading-6 text-[var(--led-ink)]">
+                          <p className="break-words text-[13px] leading-6 text-[var(--led-ink)]">
                             <span className="font-semibold">{log.user_name || 'System'}</span>
                             <span className="mx-1.5 text-[var(--led-muted)]">{ACTION_LABELS[log.action]?.toLowerCase() || log.action}</span>
                             <span className="font-medium">{log.entity_type}</span>
