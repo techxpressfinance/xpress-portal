@@ -13,7 +13,7 @@ columns.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import uuid4
@@ -320,9 +320,22 @@ def _base_query(
         query = query.filter(ArrearsRecord.resolved == resolved)
     if proof is not None:
         query = query.filter(ArrearsRecord.proof_of_payment_received == proof)
+    # The date window asks which contracts were in arrears during it, not which
+    # ones *entered* arrears during it: a contract already three months overdue
+    # on date_from is exactly what "in arrears from" is asking about. So the two
+    # bounds are an overlap test against the record's arrears period
+    # [in_arrears_since, resolved_at or still open) rather than a range on the
+    # start date alone.
     if date_from:
-        query = query.filter(ArrearsRecord.in_arrears_since >= _parse_date(date_from, "date_from"))
+        # Still in arrears on date_from — i.e. not resolved before it. A resolved
+        # row with no resolved_at (resolved before the stamp was recorded) is
+        # kept: we can't prove it had already ended.
+        query = query.filter(or_(
+            ArrearsRecord.resolved_at.is_(None),
+            ArrearsRecord.resolved_at >= datetime.combine(_parse_date(date_from, "date_from"), time.min),
+        ))
     if date_to:
+        # Already in arrears by date_to.
         query = query.filter(ArrearsRecord.in_arrears_since <= _parse_date(date_to, "date_to"))
 
     if search and search.strip():

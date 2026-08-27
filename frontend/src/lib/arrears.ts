@@ -74,6 +74,13 @@ export const fileTypeLabel = (value: ArrearsFileType) =>
  *  "call log.jpg" stored with kind "file", so go by name rather than kind. */
 export const isImageAttachment = (filename: string) => /\.(png|jpe?g|gif|webp)$/i.test(filename);
 
+/** An attachment is an email if it was parsed as one, or simply looks like one:
+ *  rows dropped before the parser shipped — and any whose bytes the parser
+ *  couldn't read — are stored with kind "file", and going by name too is what
+ *  gets them the same Read/Download treatment on an older contract. */
+export const isEmailAttachment = (a: { kind: string; original_filename: string }) =>
+  a.kind === 'email' || /\.(eml|msg)$/i.test(a.original_filename);
+
 /** ISO 3779 VIN length — the backend rejects anything else on an arrears record. */
 export const VIN_LENGTH = 17;
 

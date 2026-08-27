@@ -6,6 +6,7 @@ import {
   formatMoney,
   formatRepayment,
   formatStamp,
+  isEmailAttachment,
   isImageAttachment,
   lenderNames,
 } from '../../lib/arrears';
@@ -75,7 +76,7 @@ function AttemptEvidence({
       {attachments.map((a) => (
         <div key={a.id} style={{ paddingLeft: 10 }}>
           <div style={{ fontSize: 9.5, color: '#444' }}>
-            {a.kind === 'email'
+            {isEmailAttachment(a)
               ? `Email: ${a.email_subject || a.original_filename}${a.email_from ? ` — from ${a.email_from}` : ''}${a.email_sent_at ? ` (${formatStamp(a.email_sent_at)})` : ''}`
               : `${a.kind === 'screenshot' ? 'Snip' : 'File'}: ${a.original_filename}`}
           </div>
@@ -151,7 +152,7 @@ function RecordBlock({ record, images }: { record: ArrearsRecordDetail; images: 
         record.attachments.map((a) => (
           <div key={a.id} style={{ padding: '2px 0' }}>
             <div style={{ fontSize: 10, color: '#333' }}>
-              {a.kind === 'email'
+              {isEmailAttachment(a)
                 ? `Email: ${a.email_subject || a.original_filename}${a.email_from ? ` — from ${a.email_from}` : ''}${a.email_sent_at ? ` (${formatStamp(a.email_sent_at)})` : ''}`
                 : `${a.kind === 'screenshot' ? 'Snip' : 'File'}: ${a.original_filename}`}
               <span style={{ color: '#999' }}> · added {formatStamp(a.uploaded_at)}{a.uploaded_by_name ? ` by ${a.uploaded_by_name}` : ''}</span>

@@ -15,6 +15,7 @@ import {
   formatMoney,
   formatRepayment,
   formatStamp,
+  isEmailAttachment,
   isImageAttachment,
   lenderNames,
   saveBlob,
@@ -205,12 +206,13 @@ function AttachmentRow({
 }) {
   const download = () => downloadAttachment(recordId, attachment.id, attachment.original_filename);
   const viewable = isImageAttachment(attachment.original_filename);
+  const isEmail = isEmailAttachment(attachment);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {attachment.kind === 'email' ? (
+          {isEmail ? (
             <>
               <p className="truncate text-[13px] font-medium text-foreground">
                 {attachment.email_subject || attachment.original_filename}
@@ -224,7 +226,7 @@ function AttachmentRow({
             <p className="truncate text-[13px] font-medium text-foreground">{attachment.original_filename}</p>
           )}
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {attachment.kind === 'screenshot' ? 'Snip' : attachment.kind === 'email' ? 'Email' : 'File'}
+            {attachment.kind === 'screenshot' ? 'Snip' : isEmail ? 'Email' : 'File'}
             {' · added '}
             {formatStamp(attachment.uploaded_at)}
             {attachment.uploaded_by_name ? ` by ${attachment.uploaded_by_name}` : ''}
@@ -233,7 +235,7 @@ function AttachmentRow({
         <div className="flex shrink-0 items-center gap-2">
           {/* Always offered for an email, body or no body — the viewer is also
               where "we couldn't read this one, here's the original" is said. */}
-          {attachment.kind === 'email' && (
+          {isEmail && (
             <button
               type="button"
               onClick={() => onReadEmail(attachment)}
@@ -393,7 +395,7 @@ function AttemptRow({
             <div className="mt-2 space-y-1.5">
               {/* An email carries a subject, a sender, and a body worth reading;
                   a snip is just a file, so it stays a compact pill. */}
-              {attempt.attachments.filter((f) => f.kind === 'email').map((f) => (
+              {attempt.attachments.filter(isEmailAttachment).map((f) => (
                 <div
                   key={f.id}
                   className="rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5"
@@ -436,7 +438,7 @@ function AttemptRow({
                 </div>
               ))}
               <div className="flex flex-wrap gap-1.5">
-                {attempt.attachments.filter((f) => f.kind !== 'email').map((f) => (
+                {attempt.attachments.filter((f) => !isEmailAttachment(f)).map((f) => (
                   <span
                     key={f.id}
                     className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[12px] text-foreground"

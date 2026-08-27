@@ -668,6 +668,66 @@ try:
 except Exception as _e:
     _logger.warning("Settled-deal archiving startup sweep failed: %s", _e)
 
+# Backfill arrears email attachments that landed before the .eml/.msg parser
+# shipped. Those rows were stored as plain files, so an older contract shows a
+# bare filename with no subject, no sender, and nothing to read — this re-parses
+# them out of storage so old records read exactly like new ones. Idempotent: a
+# row stops qualifying the moment it is marked kind="email", and one that still
+# can't be parsed (missing file, extract-msg not installed) is simply left for
+# the next startup.
+try:
+    from sqlalchemy import or_ as _or
+
+    from app.database import SessionLocal as _SessionLocal
+    from app.models.arrears import ArrearsAttachment as _ArrearsAttachment
+    from app.services.email_import import parse_email as _parse_email
+    from app.services.s3_storage import download_file as _dl_file, file_exists as _file_exists
+
+    _mail_session = _SessionLocal()
+    try:
+        _legacy = (
+            _mail_session.query(_ArrearsAttachment)
+            .filter(
+                _ArrearsAttachment.kind != "email",
+                _or(
+                    _ArrearsAttachment.original_filename.ilike("%.eml"),
+                    _ArrearsAttachment.original_filename.ilike("%.msg"),
+                ),
+            )
+            .all()
+        )
+        _parsed_count = 0
+        for _att in _legacy:
+            try:
+                if not _file_exists(_att.file_path):
+                    continue
+                _p = _parse_email(_att.original_filename, _dl_file(_att.file_path))
+            except Exception:
+                continue  # Unreadable one row at a time; the rest still backfill.
+            _att.kind = "email"
+            _att.email_from = _p.sender
+            _att.email_to = _p.recipients
+            _att.email_subject = _p.subject
+            _att.email_body = _p.body
+            # Naive datetimes are serialized as UTC app-wide, so normalise the
+            # sender's offset rather than storing it unconverted.
+            _att.email_sent_at = (
+                _p.sent_at.astimezone(timezone.utc).replace(tzinfo=None)
+                if _p.sent_at and _p.sent_at.tzinfo
+                else _p.sent_at
+            )
+            _parsed_count += 1
+        _mail_session.commit()
+        if _parsed_count:
+            _logger.info("Backfilled %d legacy arrears email attachment(s)", _parsed_count)
+    except Exception as _e:
+        _mail_session.rollback()
+        _logger.warning("Arrears email backfill failed: %s", _e)
+    finally:
+        _mail_session.close()
+except Exception as _e:
+    _logger.warning("Arrears email backfill setup failed: %s", _e)
+
 # Seed super_admin user if none exists
 with engine.begin() as conn:
     _sa_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")).scalar()

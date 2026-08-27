@@ -73,7 +73,7 @@ export default function ArrearsReportModal({ onClose }: { onClose: () => void })
       lenderName ? `Lender: ${lenderName}` : '',
       fileType ? `Loan type: ${fileTypeLabel(fileType)}` : '',
       resolved === 'true' ? 'Resolved only' : resolved === 'false' ? 'Unresolved only' : '',
-      dateFrom || dateTo ? `In arrears since ${dateFrom || '…'} → ${dateTo || '…'}` : '',
+      dateFrom || dateTo ? `In arrears during ${dateFrom || '…'} → ${dateTo || '…'}` : '',
     ].filter(Boolean);
     return bits.join(' · ') || 'Whole book';
   };
@@ -178,9 +178,15 @@ export default function ArrearsReportModal({ onClose }: { onClose: () => void })
             </Select>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DatePicker label="In arrears from" value={dateFrom} clearable onChange={(v) => { setDateFrom(v); setResults(null); }} />
-            <DatePicker label="In arrears to" value={dateTo} clearable onChange={(v) => { setDateTo(v); setResults(null); }} />
+          <div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <DatePicker label="In arrears from" value={dateFrom} clearable onChange={(v) => { setDateFrom(v); setResults(null); }} />
+              <DatePicker label="In arrears to" value={dateTo} clearable onChange={(v) => { setDateTo(v); setResults(null); }} />
+            </div>
+            <p className="mt-1.5 text-[12px] text-muted-foreground">
+              Any contract in arrears during this window — including ones that fell into
+              arrears earlier and were still overdue, not only those that started here.
+            </p>
           </div>
 
           <div className="flex items-center gap-3">

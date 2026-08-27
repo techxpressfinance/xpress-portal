@@ -6,13 +6,23 @@ import type { Contact, Organization } from '../../types';
  *  client↔company relation, so the modal can fill both sides at once. */
 type Picked = { id: string; label: string; organization?: { id: string; name: string } | null };
 
-/** A row in the dropdown: the pick itself plus the line under it that says
- *  which relation this is — the whole point when one person sits on several
- *  entities and only one of them holds the contract. */
-type Row = Picked & { sublabel?: string };
+/** A row in the dropdown: the pick itself plus the two lines under it —
+ *  `entityLine` says which relation this is (the whole point when one person
+ *  sits on several entities and only one of them holds the contract), and
+ *  `detailLine` carries the identifiers used to confirm it's the right person
+ *  before a contract is pinned to them. */
+type Row = Picked & { entityLine?: string; detailLine?: string };
 
 /** ABNs are stored as typed, so show them as stored (matching Companies). */
 const abnLine = (abn: string | null) => (abn ? `ABN ${abn}` : 'No ABN recorded');
+
+/** DOBs are stored as YYYY-MM-DD; show them the Australian way, and leave
+ *  anything that isn't that shape untouched rather than guessing at it. */
+const dobLine = (dob: string | null | undefined) => {
+  if (!dob) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);
+  return `DOB ${m ? `${m[3]}/${m[2]}/${m[1]}` : dob}`;
+};
 
 /**
  * Type-ahead over contacts or companies. Arrears records must attach to a real
@@ -72,16 +82,21 @@ export default function EntityPicker({
           // genuinely consumer contract from being pinned to a company.
           setResults(data.items.flatMap((c) => {
             const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'Unnamed';
+            // The identifiers a broker checks before pinning a contract to a
+            // person — two clients can share a name, none share all of these.
+            const detailLine = [dobLine(c.date_of_birth), c.email, c.phone]
+              .filter(Boolean).join(' · ') || undefined;
             const orgs = c.organizations ?? [];
-            if (orgs.length === 0) return [{ id: c.id, label: name, sublabel: c.email ?? undefined }];
+            if (orgs.length === 0) return [{ id: c.id, label: name, detailLine }];
             return [
               ...orgs.map((o) => ({
                 id: c.id,
                 label: name,
                 organization: { id: o.id, name: o.name },
-                sublabel: [o.name, o.role, abnLine(o.abn)].filter(Boolean).join(' · '),
+                entityLine: [o.name, o.role, abnLine(o.abn)].filter(Boolean).join(' · '),
+                detailLine,
               })),
-              { id: c.id, label: name, organization: null, sublabel: 'No entity — consumer contract' },
+              { id: c.id, label: name, organization: null, entityLine: 'No entity — consumer contract', detailLine },
             ];
           }));
         } else {
@@ -92,7 +107,7 @@ export default function EntityPicker({
             setResults(data.items.map((o) => ({
               id: o.id,
               label: o.name,
-              sublabel: o.entity_type === 'trust' && !o.abn && o.no_abn_confirmed
+              entityLine: o.entity_type === 'trust' && !o.abn && o.no_abn_confirmed
                 ? 'No ABN (confirmed)'
                 : abnLine(o.abn),
             })));
@@ -142,7 +157,7 @@ export default function EntityPicker({
         onFocus={() => setOpen(true)}
       />
       {open && query.trim().length >= 2 && (
-        <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+        <div className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
           {searching && <p className="px-3 py-2 text-[13px] text-muted-foreground">Searching…</p>}
           {!searching && results.length === 0 && (
             <p className="px-3 py-2 text-[13px] text-muted-foreground">
@@ -157,8 +172,11 @@ export default function EntityPicker({
               className="block w-full px-3 py-2 text-left hover:bg-secondary"
             >
               <span className="block truncate text-[13px] text-foreground">{r.label}</span>
-              {r.sublabel && (
-                <span className="block truncate text-[12px] text-muted-foreground">{r.sublabel}</span>
+              {r.entityLine && (
+                <span className="block truncate text-[12px] text-muted-foreground">{r.entityLine}</span>
+              )}
+              {r.detailLine && (
+                <span className="block truncate text-[12px] text-muted-foreground/80">{r.detailLine}</span>
               )}
             </button>
           ))}
