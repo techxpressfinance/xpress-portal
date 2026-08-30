@@ -96,7 +96,7 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
       <div
         ref={dropdownRef}
         style={dropdownStyle}
-        className="rounded-xl border border-slate-200 bg-white shadow-xl p-3"
+        className="rounded-xl border border-[var(--led-line)] bg-[var(--led-surface)] shadow-xl p-3"
       >
         <DayPicker
           mode="single"
@@ -109,22 +109,22 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
             months: 'flex flex-col gap-3',
             month: 'flex flex-col gap-2',
             nav: 'flex justify-between items-center mb-1',
-            button_previous: 'h-7 w-7 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 transition-colors',
-            button_next: 'h-7 w-7 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 transition-colors',
+            button_previous: 'h-7 w-7 flex items-center justify-center rounded-lg text-[var(--led-ink-2)] hover:bg-[var(--led-bg-2)] transition-colors',
+            button_next: 'h-7 w-7 flex items-center justify-center rounded-lg text-[var(--led-ink-2)] hover:bg-[var(--led-bg-2)] transition-colors',
             month_caption: 'flex justify-center items-center gap-2 px-2',
             caption_label: 'hidden',
             dropdowns: 'flex gap-1',
-            dropdown: 'text-[13px] bg-slate-100 border border-slate-200 rounded-md px-2 py-1 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer',
+            dropdown: 'text-[13px] bg-[var(--led-bg-2)] border border-[var(--led-line)] rounded-md px-2 py-1 text-[var(--led-ink)] font-medium focus:outline-none focus:ring-1 focus:ring-[var(--led-muted-2)] cursor-pointer',
             month_grid: 'w-full border-collapse',
             weekdays: 'flex',
-            weekday: 'w-9 h-8 text-[11px] font-semibold text-slate-400 uppercase text-center flex items-center justify-center',
+            weekday: 'w-9 h-8 text-[11px] font-semibold text-[var(--led-muted-2)] uppercase text-center flex items-center justify-center',
             week: 'flex w-full mt-0.5',
             day: 'w-9 h-9 p-0 flex items-center justify-center',
-            day_button: 'w-full h-full flex items-center justify-center rounded-lg text-[13px] font-medium text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors',
-            selected: '[&>button]:bg-slate-800 [&>button]:text-white [&>button]:hover:bg-slate-700',
-            today: '[&>button]:ring-1 [&>button]:ring-slate-400 [&>button]:font-semibold',
-            outside: '[&>button]:text-slate-300',
-            disabled: '[&>button]:text-slate-300 [&>button]:cursor-not-allowed [&>button]:hover:bg-transparent',
+            day_button: 'w-full h-full flex items-center justify-center rounded-lg text-[13px] font-medium text-[var(--led-ink-2)] cursor-pointer hover:bg-[var(--led-bg-2)] transition-colors',
+            selected: '[&>button]:bg-[var(--led-ink)] [&>button]:text-white [&>button]:hover:bg-[var(--led-ink-2)]',
+            today: '[&>button]:ring-1 [&>button]:ring-[var(--led-muted-2)] [&>button]:font-semibold',
+            outside: '[&>button]:text-[var(--led-muted-2)]',
+            disabled: '[&>button]:text-[var(--led-muted-2)] [&>button]:cursor-not-allowed [&>button]:hover:bg-transparent',
           }}
         />
       </div>,
@@ -154,12 +154,12 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
                 role="button"
                 tabIndex={-1}
                 onClick={handleClear}
-                className="flex items-center justify-center w-4 h-4 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                className="flex items-center justify-center w-4 h-4 rounded-sm text-[var(--led-muted-2)] hover:text-[var(--led-ink-2)] hover:bg-[var(--led-bg-2)] transition-colors"
               >
                 <XMarkIcon className="h-3 w-3" />
               </span>
             )}
-            <CalendarIcon className="h-4 w-4 text-slate-400" />
+            <CalendarIcon className="h-4 w-4 text-[var(--led-muted-2)]" />
           </div>
         </button>
         {error && <p className="mt-1.5 text-[12px] text-destructive font-medium">{error}</p>}

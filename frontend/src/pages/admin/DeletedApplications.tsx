@@ -89,8 +89,8 @@ export default function DeletedApplications() {
       onClick={() => setActiveTab(tab)}
       className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeTab === tab
-          ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+          ? 'bg-[var(--led-surface)] text-[var(--led-ink)] shadow-sm border border-[var(--led-line)]'
+          : 'text-[var(--led-muted)] hover:text-[var(--led-ink-2)] hover:bg-[var(--led-surface-2)]'
       }`}
     >
       {label}
@@ -105,11 +105,11 @@ export default function DeletedApplications() {
             <Icon name="trash" size={20} />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Deleted</h1>
-            <p className="text-sm text-gray-500">Soft-deleted applications and clients.</p>
+            <h1 className="text-xl font-semibold text-[var(--led-ink)]">Deleted</h1>
+            <p className="text-sm text-[var(--led-muted)]">Soft-deleted applications and clients.</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+        <div className="flex gap-1 bg-[var(--led-bg-2)] p-1 rounded-lg">
           {tabButton('applications', 'Applications')}
           {tabButton('clients', 'Clients')}
         </div>
@@ -117,62 +117,62 @@ export default function DeletedApplications() {
 
       {activeTab === 'applications' && (
         appsLoading ? (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+          <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={6} widths={[150, 90, 70, 110, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-gray-100" />
+                <TableSkeleton rows={6} widths={[150, 90, 70, 110, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line-2)]" />
               </tbody>
             </table>
           </div>
         ) : apps.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
+          <div className="flex flex-col items-center justify-center py-20 text-[var(--led-muted-2)] gap-3">
             <Icon name="trash" size={40} className="opacity-30" />
             <p className="text-sm">No deleted applications</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+          <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-[var(--led-surface-2)] border-b border-[var(--led-line)]">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Applicant</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Type</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Amount</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Status at deletion</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Deleted</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Applicant</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Type</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Amount</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Status at deletion</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Deleted</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[var(--led-line-2)]">
                 {apps.map(app => (
-                  <tr key={app.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={app.id} className="hover:bg-[var(--led-surface-2)] transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">
+                      <div className="font-medium text-[var(--led-ink)]">
                         {applicantDisplayName(app, '—')}
                       </div>
                       {app.user_email && (
-                        <div className="text-xs text-gray-400">{app.user_email}</div>
+                        <div className="text-xs text-[var(--led-muted-2)]">{app.user_email}</div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-600">
+                      <div className="flex items-center gap-1.5 text-[var(--led-ink-2)]">
                         <Icon name={LOAN_TYPE_ICON[app.loan_type] || 'briefcase'} size={13} />
                         <span>{LOAN_TYPE_LABEL[app.loan_type] || app.loan_type}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 text-[var(--led-ink-2)]">
                       {fmtMoneyK(Number(app.amount) || 0)}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-[var(--led-muted)]">
                       {STATUS_LABEL[app.status] || app.status}
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
+                    <td className="px-4 py-3 text-[var(--led-muted-2)] text-xs">
                       {app.deleted_at ? relativeTime(app.deleted_at) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => handleRestore(app.id)}
                         disabled={restoring === app.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--led-line)] bg-[var(--led-surface)] hover:bg-[var(--led-surface-2)] text-[var(--led-ink-2)] disabled:opacity-50 transition-colors"
                       >
                         {restoring === app.id ? (
                           <Icon name="loader" size={12} className="animate-spin" />
@@ -192,59 +192,59 @@ export default function DeletedApplications() {
 
       {activeTab === 'clients' && (
         clientsLoading ? (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+          <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={6} widths={[160, 180, 60, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-gray-100" />
+                <TableSkeleton rows={6} widths={[160, 180, 60, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line-2)]" />
               </tbody>
             </table>
           </div>
         ) : clients.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
+          <div className="flex flex-col items-center justify-center py-20 text-[var(--led-muted-2)] gap-3">
             <Icon name="trash" size={40} className="opacity-30" />
             <p className="text-sm">No deleted clients</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+          <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-[var(--led-surface-2)] border-b border-[var(--led-line)]">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Email</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Applications</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">Deleted</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Name</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Email</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Applications</th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--led-muted)]">Deleted</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[var(--led-line-2)]">
                 {clients.map(client => (
-                  <tr key={client.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={client.id} className="hover:bg-[var(--led-surface-2)] transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                        <div className="h-8 w-8 rounded-full bg-[var(--led-bg-2)] flex items-center justify-center text-[var(--led-muted)]">
                           <Icon name="user" size={14} />
                         </div>
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-[var(--led-ink)]">
                           {client.original_name || '—'}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-[var(--led-ink-2)]">
                       {client.original_email || '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-600">
+                      <div className="flex items-center gap-1.5 text-[var(--led-ink-2)]">
                         <Icon name="folder" size={13} />
                         <span>{client.application_count}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
+                    <td className="px-4 py-3 text-[var(--led-muted-2)] text-xs">
                       {client.deleted_at ? relativeTime(client.deleted_at) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         to={`/admin/users/${client.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--led-line)] bg-[var(--led-surface)] hover:bg-[var(--led-surface-2)] text-[var(--led-ink-2)] transition-colors"
                       >
                         <Icon name="eye" size={12} />
                         View
