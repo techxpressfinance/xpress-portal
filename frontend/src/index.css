@@ -495,8 +495,12 @@ table {
   font-family: 'AppNumbers';
   /* Tabular figures for money columns, served from our own origin. */
   src: local('JetBrains Mono'), url('/fonts/jetbrains-mono-400-latin.woff2') format('woff2');
-  unicode-range: U+0030-0039, U+0024, U+002C, U+002E, U+0025;
-  /* 0-9, $, comma, period, percent */
+  /* Digits and currency marks only. Comma and period were in this range and
+     so every full stop and comma in ordinary prose rendered at monospace
+     width, which read as a stray floating dot mid-sentence. Number columns
+     still line up: the .ledger-theme subtree sets tabular-nums, so the
+     separators align in the fallback face. */
+  unicode-range: U+0030-0039, U+0024, U+0025;
 }
 
 .dark .ledger-theme {
