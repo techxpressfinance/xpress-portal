@@ -12,7 +12,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Badge, Button, Skeleton, EmptyState, LoanTypeIcon } from '../../components/ui';
+import { Card, Badge, Button, Skeleton, EmptyState, LoanTypeIcon } from '../../components/ui';
 import { formatShortDate, formatDateTime } from '../../lib/utils';
 import type { ExternalReferrerStats, LoanApplication } from '../../types';
 
@@ -82,7 +82,7 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
   };
 
   return (
-    <GlassCard padding="none" className="h-full">
+    <Card padding="none" className="h-full">
       <div className={`h-1 ${toneStyles[tone].line}`} />
       <div className="p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
@@ -91,7 +91,7 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
         </p>
         <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{loading ? <Skeleton width={160} height={16} /> : detail}</p>
       </div>
-    </GlassCard>
+    </Card>
   );
 }
 
@@ -239,7 +239,7 @@ export default function ReferrerDashboard() {
           </div>
 
           {/* Referral funnel */}
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Referral Pipeline</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Funnel Overview</h2>
@@ -259,12 +259,12 @@ export default function ReferrerDashboard() {
                 </div>
               ))}
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Charts row */}
           <div className="grid gap-5 xl:grid-cols-2">
             {/* Pipeline by status */}
-            <GlassCard padding="none" className="flex flex-col">
+            <Card padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Pipeline Staging</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Stage Allocation</h2>
@@ -298,10 +298,10 @@ export default function ReferrerDashboard() {
                   <EmptyState title="No pipeline data" description="Stage allocation will appear here once applications are submitted." />
                 )}
               </div>
-            </GlassCard>
+            </Card>
 
             {/* Volume by loan type */}
-            <GlassCard padding="none" className="flex flex-col">
+            <Card padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Portfolio Mix</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Volume by Product</h2>
@@ -349,11 +349,11 @@ export default function ReferrerDashboard() {
                   <EmptyState title="No product data" description="Loan type breakdown will appear here once applications are submitted." />
                 )}
               </div>
-            </GlassCard>
+            </Card>
           </div>
 
           {/* Monthly trend chart */}
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
@@ -419,10 +419,10 @@ export default function ReferrerDashboard() {
                 </div>
               )}
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Applications table */}
-          <GlassCard padding="none" className="flex min-h-[400px] flex-col overflow-hidden">
+          <Card padding="none" className="flex min-h-[400px] flex-col overflow-hidden">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -511,13 +511,13 @@ export default function ReferrerDashboard() {
                 </tbody>
               </table>
             </div>
-          </GlassCard>
+          </Card>
         </div>
 
         {/* Sidebar */}
         <div className="flex flex-col gap-5 lg:col-span-4">
           {/* Conversion summary */}
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Conversion</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Referral Funnel</h2>
@@ -553,10 +553,10 @@ export default function ReferrerDashboard() {
                 </div>
               ))}
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Settled value */}
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Settled</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Settlement Summary</h2>
@@ -584,10 +584,10 @@ export default function ReferrerDashboard() {
                 </div>
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Quick links */}
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Quick Access</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Navigation</h2>
@@ -609,7 +609,7 @@ export default function ReferrerDashboard() {
                 </Link>
               ))}
             </div>
-          </GlassCard>
+          </Card>
         </div>
       </div>
 

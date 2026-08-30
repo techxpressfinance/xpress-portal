@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { User } from '../types';
+import { rafThrottle } from '../lib/utils';
 
 const initials = (name: string) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
@@ -48,11 +49,12 @@ export function BrokerPicker({
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const reposition = () => updatePosition();
+    const reposition = rafThrottle(() => updatePosition());
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     return () => {
+      reposition.cancel();
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
@@ -211,11 +213,12 @@ export function ClientPicker({
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const reposition = () => updatePosition();
+    const reposition = rafThrottle(() => updatePosition());
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     return () => {
+      reposition.cancel();
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);

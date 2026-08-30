@@ -3,8 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { GlassCard, Badge, Button, Input, Breadcrumbs } from '../../components/ui';
+import { Card, Badge, Button, Input, Breadcrumbs } from '../../components/ui';
 import type { Lender, LenderContact } from '../../types';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
@@ -13,6 +14,7 @@ const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: 
 export default function LenderDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const isReadOnly = user?.role !== 'admin';
   const [lender, setLender] = useState<Lender | null>(null);
@@ -132,7 +134,13 @@ export default function LenderDetail() {
   };
 
   const handleDeleteContact = async (contactId: string) => {
-    if (!id || !confirm('Delete this contact?')) return;
+    if (!id) return;
+    if (!(await confirm({
+      title: 'Delete this contact?',
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     try {
       await api.delete(`/lenders/${id}/contacts/${contactId}`);
       setLender((prev) => prev ? { ...prev, contacts: prev.contacts.filter((c) => c.id !== contactId) } : prev);
@@ -145,13 +153,13 @@ export default function LenderDetail() {
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl">
-        <GlassCard>
+        <Card>
           <div className="space-y-4">
             <div className="h-6 w-48 rounded-lg shimmer" />
             <div className="h-4 w-32 rounded-lg shimmer" />
             <div className="h-4 w-64 rounded-lg shimmer" />
           </div>
-        </GlassCard>
+        </Card>
       </div>
     );
   }
@@ -159,12 +167,12 @@ export default function LenderDetail() {
   if (!lender) {
     return (
       <div className="mx-auto max-w-2xl">
-        <GlassCard>
+        <Card>
           <p className="text-[14px] text-muted-foreground">Lender not found or has been removed.</p>
           <Link to="/admin/lenders">
             <Button variant="secondary" className="mt-4">Back to Lenders</Button>
           </Link>
-        </GlassCard>
+        </Card>
       </div>
     );
   }
@@ -177,7 +185,7 @@ export default function LenderDetail() {
       ]} />
 
       {/* Lender info */}
-      <GlassCard className="mb-4">
+      <Card className="mb-4">
         {editing ? (
           <div className="space-y-4">
             <Input label="Name *" value={editName} onChange={(e) => setEditName(e.target.value)} />
@@ -228,10 +236,10 @@ export default function LenderDetail() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Contacts */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-semibold text-foreground">
             Contacts · {lender.contacts.length}
@@ -325,7 +333,7 @@ export default function LenderDetail() {
             ))}
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

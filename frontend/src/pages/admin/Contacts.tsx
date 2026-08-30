@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import DuplicateReviewModal from '../../components/DuplicateReviewModal';
 import { DuplicateWarning } from '../../components/DuplicateWarning';
 import { useContactDuplicateCheck } from '../../hooks/useDuplicateCheck';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
+import { Card, PageHeader, Button, Badge, Input, Select, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
 import { LOAN_CATEGORIES, findLoanSubType, subTypeToLoanType } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
 import type { Contact, KanbanBoard, KanbanBoardListItem, PaginatedResponse } from '../../types';
@@ -319,7 +319,7 @@ export default function Contacts() {
         }
       />
 
-      <GlassCard>
+      <Card>
         <form onSubmit={handleSearch} className="flex items-center gap-3 mb-4">
           <Input
             placeholder="Search name, email, phone, licence, suburb…"
@@ -401,7 +401,7 @@ export default function Contacts() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {showDedupe && (
         <DuplicateReviewModal

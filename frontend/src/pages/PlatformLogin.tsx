@@ -37,7 +37,7 @@ export default function PlatformLogin() {
   };
 
   return (
-    <div className="ledger-theme flex min-h-screen bg-background" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-[100dvh] bg-background">
       {/* Left - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-secondary relative overflow-hidden items-center justify-center">
         <div

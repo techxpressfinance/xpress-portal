@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatTime, relativeTime, getInitials } from '../../lib/utils';
-import { Button, GlassCard } from '../../components/ui';
+import { Button, Card } from '../../components/ui';
 import { useAuth } from '../../hooks/useAuth';
 import type { ClientConversation, ClientMessage, User } from '../../types';
 
@@ -186,7 +186,7 @@ export default function ClientMessages() {
       </div>
 
       {conversations.length === 0 && !selectedConv && allStaff.length === 0 ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--led-surface-2)]">
               <Ic d={ICON.chat} className="h-8 w-8 text-[var(--led-muted)]" />
@@ -194,9 +194,9 @@ export default function ClientMessages() {
             <p className="mb-1 text-[14px] font-medium text-[var(--led-ink)]">No messages yet</p>
             <p className="text-[13px] text-[var(--led-muted)]">Your broker will appear here once your account is set up</p>
           </div>
-        </GlassCard>
+        </Card>
       ) : (
-        <GlassCard padding="none" className="overflow-hidden">
+        <Card padding="none" className="overflow-hidden">
           <div className="flex h-[calc(100vh-16rem)] min-h-[520px]">
             {/* Thread list */}
             <div className={`flex-col border-r border-[var(--led-line)] ${selectedConv ? 'hidden sm:flex sm:w-[320px] sm:shrink-0' : 'flex w-full sm:w-[320px] sm:shrink-0'}`}>
@@ -410,7 +410,7 @@ export default function ClientMessages() {
               )}
             </div>
           </div>
-        </GlassCard>
+        </Card>
       )}
     </div>
   );

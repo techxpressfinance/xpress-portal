@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatTime } from '../../lib/utils';
-import { GlassCard, PageHeader, Button } from '../../components/ui';
+import { Card, PageHeader, Button } from '../../components/ui';
 import type { ClientConversation, ClientMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -152,7 +152,7 @@ export default function ReferrerMessages() {
 
       {/* New staff chat search */}
       {showStaffSearch && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a broker</h3>
           <input
             type="text"
@@ -183,11 +183,11 @@ export default function ReferrerMessages() {
               ))
             )}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       {conversations.length === 0 && !showStaffSearch && !selectedConv ? (
-        <GlassCard>
+        <Card>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
               <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -197,9 +197,9 @@ export default function ReferrerMessages() {
             <p className="text-[15px] font-medium text-muted-foreground">No conversations yet</p>
             <p className="text-[13px] text-muted-foreground mt-1">Use "Message Broker" above to start a conversation</p>
           </div>
-        </GlassCard>
+        </Card>
       ) : (conversations.length > 0 || !!selectedConv) && (
-        <GlassCard className="p-0 overflow-hidden border-0">
+        <Card className="p-0 overflow-hidden border-0">
           <div className="flex h-[560px]">
             {/* Conversation list */}
             <div className={`flex flex-col border-r border-border/60 ${selectedConv ? 'hidden sm:flex sm:w-72' : 'flex w-full sm:w-72'}`}>
@@ -338,7 +338,7 @@ export default function ReferrerMessages() {
               )}
             </div>
           </div>
-        </GlassCard>
+        </Card>
       )}
     </div>
   );

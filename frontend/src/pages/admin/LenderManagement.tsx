@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Badge } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Badge } from '../../components/ui';
 import type { Lender, LenderContact } from '../../types';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
@@ -219,7 +219,7 @@ export default function LenderManagement() {
       </div>
 
       {showForm && (
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">
             {editingId ? 'Edit Lender' : 'Add New Lender'}
           </h3>
@@ -365,10 +365,10 @@ export default function LenderManagement() {
               </form>
             )}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -409,7 +409,7 @@ export default function LenderManagement() {
             </tbody>
           </table>
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

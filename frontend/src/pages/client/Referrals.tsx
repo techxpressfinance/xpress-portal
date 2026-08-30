@@ -3,7 +3,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useClipboard } from '../../hooks/useClipboard';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { Button, GlassCard } from '../../components/ui';
+import { Button, Card } from '../../components/ui';
 import type { Referral, ReferralStats } from '../../types';
 
 export default function Referrals() {
@@ -98,31 +98,31 @@ export default function Referrals() {
 
       {stats && (
         <div className="grid gap-5 sm:grid-cols-3 mb-8">
-          <GlassCard padding="none" className="h-full">
+          <Card padding="none" className="h-full">
             <div className="h-1 bg-[var(--led-accent)]" />
             <div className="p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Total Referred</p>
               <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">{stats.total_referred}</p>
             </div>
-          </GlassCard>
-          <GlassCard padding="none" className="h-full">
+          </Card>
+          <Card padding="none" className="h-full">
             <div className="h-1 bg-[var(--led-success)]" />
             <div className="p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Signed Up</p>
               <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">{stats.signed_up}</p>
             </div>
-          </GlassCard>
-          <GlassCard padding="none" className="h-full">
+          </Card>
+          <Card padding="none" className="h-full">
             <div className="h-1 bg-[var(--led-warning)]" />
             <div className="p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Applied</p>
               <p className="mt-3 text-[32px] font-semibold tracking-[-0.05em] led-tnum text-[var(--led-ink)]">{stats.applied}</p>
             </div>
-          </GlassCard>
+          </Card>
         </div>
       )}
 
-      <GlassCard padding="none" className="mb-6">
+      <Card padding="none" className="mb-6">
         <div className="border-b border-[var(--led-line)] px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Share</p>
           <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Your Referral Link</h2>
@@ -141,9 +141,9 @@ export default function Referrals() {
             </Button>
           </div>
         </div>
-      </GlassCard>
+      </Card>
 
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         <div className="border-b border-[var(--led-line)] px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Invite</p>
           <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Invite by Email</h2>
@@ -173,9 +173,9 @@ export default function Referrals() {
             </Button>
           </form>
         </div>
-      </GlassCard>
+      </Card>
 
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="border-b border-[var(--led-line)] px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
@@ -226,7 +226,7 @@ export default function Referrals() {
             ))}
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
 import { LOAN_CATEGORIES } from '../../lib/constants';
 import { LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
@@ -189,7 +189,7 @@ export default function SettledDealsAnalyticsPage() {
       </div>
 
       {/* Monthly settlements by category — click a segment to drill down */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground">Settlements per Month by Category</h3>
           <p className="text-[12px] text-muted-foreground">Click a bar segment to see the deals behind it</p>
@@ -220,10 +220,10 @@ export default function SettledDealsAnalyticsPage() {
             {loading ? 'Loading...' : 'No settled deals in this period'}
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Monthly volume */}
-      <GlassCard>
+      <Card>
         <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Volume</h3>
         {!loading && monthlyRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={280}>
@@ -247,11 +247,11 @@ export default function SettledDealsAnalyticsPage() {
             {loading ? 'Loading...' : 'No settled deals in this period'}
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* By lender / by referrer */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">By Lender</h3>
           </div>
@@ -279,9 +279,9 @@ export default function SettledDealsAnalyticsPage() {
           ) : (
             <div className="py-8"><EmptyState title="No lender data" description="No settled deals in this period." /></div>
           )}
-        </GlassCard>
+        </Card>
 
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">By Referrer</h3>
           </div>
@@ -309,11 +309,11 @@ export default function SettledDealsAnalyticsPage() {
           ) : (
             <div className="py-8"><EmptyState title="No referrer data" description="No settled deals in this period." /></div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Drill-down: settled deals list */}
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border/60">
           <h3 className="text-[15px] font-semibold text-foreground">{dealsTitle}</h3>
           {(selectedMonth || selectedCategory) && (
@@ -363,7 +363,7 @@ export default function SettledDealsAnalyticsPage() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

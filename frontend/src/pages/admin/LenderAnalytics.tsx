@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker } from '../../components/ui';
+import { Card, StatCard, DatePicker } from '../../components/ui';
 import type { LenderAnalytics } from '../../types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -124,7 +124,7 @@ export default function LenderAnalyticsPage() {
       {/* Charts Row 1 */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar Chart - Submissions by Lender */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Submissions by Lender</h3>
           {!loading && data && data.by_lender.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -148,10 +148,10 @@ export default function LenderAnalyticsPage() {
               {loading ? 'Loading...' : 'No submission data yet'}
             </div>
           )}
-        </GlassCard>
+        </Card>
 
         {/* Pie Chart - Outcome Breakdown */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Outcome Breakdown</h3>
           {!loading && pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -180,13 +180,13 @@ export default function LenderAnalyticsPage() {
               {loading ? 'Loading...' : 'No submission data yet'}
             </div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Charts Row 2 */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Line Chart - Monthly Trend */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Trend</h3>
           {!loading && data && data.monthly_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -207,10 +207,10 @@ export default function LenderAnalyticsPage() {
               {loading ? 'Loading...' : 'No monthly data yet'}
             </div>
           )}
-        </GlassCard>
+        </Card>
 
         {/* Bar Chart - Approval Rate by Lender */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Approval Rate by Lender</h3>
           {!loading && data && data.by_lender.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -230,12 +230,12 @@ export default function LenderAnalyticsPage() {
               {loading ? 'Loading...' : 'No submission data yet'}
             </div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Summary Table */}
       {!loading && data && data.by_lender.length > 0 && (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">Lender Summary</h3>
           </div>
@@ -269,7 +269,7 @@ export default function LenderAnalyticsPage() {
               </tbody>
             </table>
           </div>
-        </GlassCard>
+        </Card>
       )}
     </div>
   );

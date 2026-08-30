@@ -8,7 +8,7 @@ import DuplicateReviewModal from '../../components/DuplicateReviewModal';
 import { DuplicateWarning } from '../../components/DuplicateWarning';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import { useOrganizationDuplicateCheck } from '../../hooks/useDuplicateCheck';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
+import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
@@ -247,7 +247,7 @@ export default function Companies() {
         }
       />
 
-      <GlassCard>
+      <Card>
         <form onSubmit={handleSearch} className="flex items-center gap-3 mb-4">
           <Input
             placeholder="Search by name or ABN…"
@@ -328,7 +328,7 @@ export default function Companies() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {showDedupe && (
         <DuplicateReviewModal

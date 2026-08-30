@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { formatDate } from '../../lib/utils';
-import { GlassCard, Badge, Button, Skeleton, EmptyState } from '../../components/ui';
+import { Card, Badge, Button, Skeleton, EmptyState } from '../../components/ui';
 import type { LoanApplication } from '../../types';
 
 export default function ClientDashboard() {
@@ -84,7 +84,7 @@ export default function ClientDashboard() {
       <div className="grid flex-1 grid-cols-1 items-start gap-5 lg:grid-cols-12">
         <div className="flex flex-col gap-5 lg:col-span-8">
           <div className="grid gap-5 sm:grid-cols-2">
-            <GlassCard padding="none" className="h-full">
+            <Card padding="none" className="h-full">
               <div className="h-1 bg-[var(--led-accent)]" />
               <div className="p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Total Applications</p>
@@ -93,8 +93,8 @@ export default function ClientDashboard() {
                 </p>
                 <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">Applications you have submitted</p>
               </div>
-            </GlassCard>
-            <GlassCard padding="none" className="h-full">
+            </Card>
+            <Card padding="none" className="h-full">
               <div className="h-1 bg-[var(--led-success)]" />
               <div className="p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Active</p>
@@ -103,10 +103,10 @@ export default function ClientDashboard() {
                 </p>
                 <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">Applications currently in progress</p>
               </div>
-            </GlassCard>
+            </Card>
           </div>
 
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Files</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Recent Applications</h2>
@@ -169,11 +169,11 @@ export default function ClientDashboard() {
                 ))}
               </div>
             )}
-          </GlassCard>
+          </Card>
         </div>
 
         <div className="flex flex-col gap-5 lg:col-span-4">
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Quick Access</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Navigation</h2>
@@ -195,7 +195,7 @@ export default function ClientDashboard() {
                 </Link>
               ))}
             </div>
-          </GlassCard>
+          </Card>
         </div>
       </div>
     </div>

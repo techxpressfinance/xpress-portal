@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { formatDate, formatDateTime, getErrorMessage, toDateTimeLocalInput, dateTimeLocalToUTC } from '../../lib/utils';
 import { TASK_PRIORITY_BADGE } from '../../lib/constants';
 import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
@@ -40,6 +41,7 @@ export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,7 +153,13 @@ export default function TaskDetail() {
   };
 
   const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this task?')) return;
+    if (!id) return;
+    if (!(await confirm({
+      title: 'Delete this task?',
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     setDeleting(true);
     try {
       await api.delete(`/tasks/${id}`);

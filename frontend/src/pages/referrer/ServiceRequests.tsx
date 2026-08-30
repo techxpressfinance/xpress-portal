@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, GlassCard, PageHeader } from '../../components/ui';
+import { Button, Card, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
 import type { ServiceRequest, ServiceRequestAttachment, ServiceRequestStatus } from '../../types';
@@ -241,13 +241,13 @@ export default function ReferrerServiceRequests() {
       </div>
 
       {loading ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="p-4 space-y-3">
             {[1, 2, 3].map((i) => <div key={i} className="h-12 rounded-xl shimmer" />)}
           </div>
-        </GlassCard>
+        </Card>
       ) : displayed.length === 0 ? (
-        <GlassCard className="px-6 py-12 text-center">
+        <Card className="px-6 py-12 text-center">
           <p className="text-[14px] font-medium text-foreground">
             {tab === 'active' ? 'No active requests' : 'No completed requests'}
           </p>
@@ -255,13 +255,13 @@ export default function ReferrerServiceRequests() {
             {tab === 'active' ? 'Submit a request and your broker will be notified' : 'Resolved requests will appear here'}
           </p>
           {tab === 'active' && <Button onClick={openModal}>New Request</Button>}
-        </GlassCard>
+        </Card>
       ) : (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="divide-y divide-border">
             {displayed.map(renderRow)}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       <input

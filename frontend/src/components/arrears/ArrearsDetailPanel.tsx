@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { Badge, Button } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import {
@@ -331,6 +332,7 @@ function AttemptRow({
   attachBusy: boolean;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
@@ -384,7 +386,14 @@ function AttemptRow({
               </button>
               <button
                 type="button"
-                onClick={() => { if (window.confirm('Remove this attempt and everything attached to it?')) onDeleted(); }}
+                onClick={async () => {
+                  if (await confirm({
+                    title: 'Remove this attempt?',
+                    message: 'Everything attached to it is removed as well.',
+                    confirmText: 'Remove',
+                    variant: 'danger',
+                  })) onDeleted();
+                }}
                 className="text-[12px] font-medium text-muted-foreground hover:text-destructive"
               >
                 Remove

@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
+import { Card, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
@@ -1267,7 +1267,7 @@ export default function NewApplication() {
           <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Important Information</h1>
           <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Please read the following information carefully before proceeding</p>
         </div>
-        <GlassCard>
+        <Card>
           <div className="max-h-80 overflow-y-auto rounded-xl bg-[var(--led-surface-2)] p-5 text-[14px] text-[var(--led-ink)] leading-relaxed space-y-4">
             <h3 className="text-[15px] font-semibold">Loan Application Disclosure</h3>
             <p>By submitting a loan application through this portal, you acknowledge and agree to the following terms and conditions. Please read this information carefully before proceeding.</p>
@@ -1283,7 +1283,7 @@ export default function NewApplication() {
               <span className="text-[13px] text-[var(--led-ink)]">I have read and understood the above information</span>
             </label>
           </div>
-        </GlassCard>
+        </Card>
         <div className="mt-6 flex gap-3">
           <Button size="lg" disabled={!checked} onClick={() => setAcknowledged(true)}>Continue</Button>
           <Button variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>Cancel</Button>
@@ -1370,7 +1370,7 @@ export default function NewApplication() {
             {lendEnabled && (
               <>
                 {isSectionVisible('loan_details') && (<>
-                <GlassCard>
+                <Card>
                   <label className={LABEL_CLS}>Select Loan Type(s)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {LEND_LOAN_TYPES.map(type => {
@@ -1390,10 +1390,10 @@ export default function NewApplication() {
                     })}
                   </div>
                   {loanTypeError && <p className="mt-2 text-[12px] text-destructive">{loanTypeError}</p>}
-                </GlassCard>
+                </Card>
 
                 {selectedLoanTypes.includes('equipment_finance') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="equipment_finance" className="h-5 w-5 text-[var(--led-muted)]" /> Equipment Finance Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
@@ -1443,11 +1443,11 @@ export default function NewApplication() {
                         <Input type="number" min="0" max="100" placeholder="80" {...register('eq_business_use_pct')} />
                       </div>
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('business_loan') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="business_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Business Loan Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Loan Purpose <span className="font-normal">(Optional)</span></label>
@@ -1469,11 +1469,11 @@ export default function NewApplication() {
                         {['Working Capital', 'Growth', 'Refinance', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('commercial_property') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="commercial_property" className="h-5 w-5 text-[var(--led-muted)]" /> Commercial Property Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
@@ -1502,11 +1502,11 @@ export default function NewApplication() {
                         </div>
                       )}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('home_loan') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="home_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Home Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
@@ -1540,7 +1540,7 @@ export default function NewApplication() {
                         </div>
                       )}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 </>)}
@@ -1564,7 +1564,7 @@ export default function NewApplication() {
                 </div>
 
                 {/* Loan types for the active category, with comprehensive fields */}
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Select Loan Type</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {(LOAN_CATEGORIES.find(c => c.value === tab)?.types ?? []).map(type => {
@@ -1970,10 +1970,10 @@ export default function NewApplication() {
                       <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
                       <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
                     </div>
-            </GlassCard>
+            </Card>
 
             {/* ── Loan Amount ── */}
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Loan Amount</h3>
               <div>
                 <label className={LABEL_CLS}>Loan Amount ($) *</label>
@@ -1990,13 +1990,13 @@ export default function NewApplication() {
                 </div>
                 {errors.amount && <p className="mt-1 text-[12px] text-destructive">{errors.amount.message}</p>}
               </div>
-            </GlassCard>
+            </Card>
             </>
           )}
 
             {/* Document upload */}
             {isSectionVisible('documents') && (
-                <GlassCard className="space-y-4">
+                <Card className="space-y-4">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
                     <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files are uploaded when you submit.</p>
@@ -2065,12 +2065,12 @@ export default function NewApplication() {
                       </div>
                     </div>
                   )}
-                </GlassCard>
+                </Card>
                 )}
 
         {/* ── Identification ── */}
           {isSectionVisible('personal') && (
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Personal Details</h3>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
@@ -2120,10 +2120,10 @@ export default function NewApplication() {
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('identification') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Identification</h3>
               <div>
                 <label className={LABEL_CLS}>ID Type{prefillTag('id_type')}</label>
@@ -2159,9 +2159,9 @@ export default function NewApplication() {
                   />
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status{prefillTag('residency_status')}</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'].map(r => (
@@ -2174,11 +2174,11 @@ export default function NewApplication() {
               {residencyStatus === 'Other' && (
                 <Input placeholder="Please specify..." {...register('residency_other')} />
               )}
-            </GlassCard>
+            </Card>
             </>)}
 
             {!lendEnabled && businessSubType && isSectionVisible('business') && (
-              <GlassCard className="space-y-4">
+              <Card className="space-y-4">
                 <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>
                   <label className={LABEL_CLS}>Industry</label>
@@ -2209,11 +2209,11 @@ export default function NewApplication() {
                     </div>
                   </div>
                 </div>
-            </GlassCard>
+            </Card>
             )}
 
             {isSectionVisible('contact') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Contact Details</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2231,13 +2231,13 @@ export default function NewApplication() {
                   {['Email', 'Mobile', 'Either'].map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
         {/* ── Living & Employment ── */}
         {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('living') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Living Situation</h3>
               <div>
                 <label className={LABEL_CLS}>Residential Status{prefillTag('residential_status')}</label>
@@ -2274,9 +2274,9 @@ export default function NewApplication() {
                 <label className={LABEL_CLS}>Time at Current Address{prefillTag('time_at_address')}</label>
                 <Input placeholder="e.g. 3 years" {...register('time_at_address')} />
               </div>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Household</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
@@ -2300,11 +2300,11 @@ export default function NewApplication() {
                   </div>
                 )}
               </div>
-            </GlassCard>
+            </Card>
             </>)}
 
             {isSectionVisible('employment') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Employment</h3>
               <div>
                 <label className={LABEL_CLS}>Employment Type</label>
@@ -2431,10 +2431,10 @@ export default function NewApplication() {
                   </div>
                 </>
               )}
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('income') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Income</h3>
               <div className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
                 <p className="text-[13px] font-semibold text-[var(--led-ink)]">Primary Income</p>
@@ -2490,7 +2490,7 @@ export default function NewApplication() {
                 </div>
               )}
               <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, blankIncome()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Additional Income</button>
-            </GlassCard>)}
+            </Card>)}
           </>
         )}
 
@@ -2498,7 +2498,7 @@ export default function NewApplication() {
         {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('assets') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Real Estate Assets</h3>
               {realEstateAssets.map((asset, idx) => (
                 <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
@@ -2563,9 +2563,9 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setRealEstateAssets(prev => [...prev, blankRealEstate()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Property</button>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Other Assets</h3>
               {otherAssets.map((asset, idx) => (
                 <div key={idx} className="flex items-end gap-3">
@@ -2583,11 +2583,11 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setOtherAssets(prev => [...prev, blankOtherAsset()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Asset</button>
-            </GlassCard>
+            </Card>
             </>)}
 
             {isSectionVisible('liabilities') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Liabilities</h3>
               {liabilities.map((liability, idx) => (
                 <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
@@ -2624,10 +2624,10 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setLiabilities(prev => [...prev, blankLiability()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Liability</button>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('expenses') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Monthly Expenses</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2647,13 +2647,13 @@ export default function NewApplication() {
                   <Input type="number" step="0.01" min="0" placeholder="500" {...register('other_commitments')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
           </>
         )}
 
         {/* ── Declarations ── */}
             {isSectionVisible('declarations') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Credit History</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2671,10 +2671,10 @@ export default function NewApplication() {
                   </select>
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('emergency') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Emergency Contact</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
@@ -2690,20 +2690,20 @@ export default function NewApplication() {
                   <Input type="tel" placeholder="04XX XXX XXX" {...register('emergency_contact_phone')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('declarations') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Signature</h3>
               <div>
                 <label className={LABEL_CLS}>Digital Signature — Type your full name</label>
                 <Input placeholder="Your full legal name" {...register('signature_name')} />
               </div>
               <p className="text-[12px] text-[var(--led-muted)]">Date: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            </GlassCard>)}
+            </Card>)}
 
         {/* ── Review ── */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Review Your Application</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
@@ -2754,7 +2754,7 @@ export default function NewApplication() {
               )}
             </div>
             <p className="text-[13px] text-[var(--led-muted)]">Please review the details above. Once you submit, you can upload supporting documents on the next screen.</p>
-          </GlassCard>
+          </Card>
 
         {/* ── Submit ── */}
         <div className="flex flex-wrap gap-3">

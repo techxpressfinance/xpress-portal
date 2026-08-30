@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, forwardRef, type InputHTMLAttributes } fro
 import { createPortal } from 'react-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
+import { rafThrottle } from '../../lib/utils';
 
 interface DatePickerProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {
   label?: string;
@@ -56,7 +57,7 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape') setOpen(false);
       };
-      const handleReposition = () => { if (open) updatePosition(); };
+      const handleReposition = rafThrottle(() => { if (open) updatePosition(); });
       if (open) {
         document.addEventListener('mousedown', handleClick);
         document.addEventListener('keydown', handleEscape);
@@ -64,6 +65,7 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
         window.addEventListener('resize', handleReposition);
       }
       return () => {
+        handleReposition.cancel();
         document.removeEventListener('mousedown', handleClick);
         document.removeEventListener('keydown', handleEscape);
         window.removeEventListener('scroll', handleReposition, true);

@@ -5,6 +5,7 @@ import ImpersonationBanner from './components/ImpersonationBanner';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ToastProvider } from './components/Toast';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { TenantProvider } from './contexts/TenantContext';
 import { useAuth } from './hooks/useAuth';
@@ -81,6 +82,7 @@ export default function App() {
       <TenantProvider>
       <AuthProvider>
         <ToastProvider>
+        <ConfirmProvider>
           <ImpersonationBanner />
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
@@ -488,6 +490,7 @@ export default function App() {
             </Route>
           </Routes>
           </Suspense>
+        </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>
       </TenantProvider>

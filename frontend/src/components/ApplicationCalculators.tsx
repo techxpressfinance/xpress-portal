@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
-import { Button, GlassCard } from './ui';
+import { Button, Card } from './ui';
 import { BASCalculator, PayCalculator, RatiosCalculator } from '../pages/admin/BasCalculator';
 import type { BASCalcState, PayCalcState, RatiosCalcState } from '../pages/admin/BasCalculator';
 import { formatDate } from '../lib/utils';
@@ -165,20 +165,20 @@ export default function ApplicationCalculators({ applicationId }: { applicationI
       )}
 
       {loading ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="p-4 space-y-3">
             {[1, 2].map(i => <div key={i} className="h-10 rounded-lg shimmer" />)}
           </div>
-        </GlassCard>
+        </Card>
       ) : savedCalcs.length === 0 && !activeCalcType ? (
-        <GlassCard className="py-8 text-center">
+        <Card className="py-8 text-center">
           <p className="text-[14px] text-muted-foreground">No saved calculators yet.</p>
           <p className="text-[13px] text-muted-foreground mt-1">
             Add a BAS, Pay, or Ratios calculator to analyse this application.
           </p>
-        </GlassCard>
+        </Card>
       ) : savedCalcs.length > 0 ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="divide-y divide-border">
             {savedCalcs.map(calc => (
               <div key={calc.id} className="flex items-center gap-3 px-4 py-3">
@@ -213,7 +213,7 @@ export default function ApplicationCalculators({ applicationId }: { applicationI
               </div>
             ))}
           </div>
-        </GlassCard>
+        </Card>
       ) : null}
     </div>
   );

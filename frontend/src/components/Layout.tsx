@@ -109,7 +109,7 @@ export default function Layout() {
     navLinkClass(props.isActive, collapsed);
 
   return (
-    <div className="ledger-theme flex h-screen overflow-hidden text-foreground" style={{ background: 'var(--led-bg)', color: 'var(--led-ink)' }}>
+    <div className="ledger-theme flex h-[100dvh] overflow-hidden text-foreground" style={{ background: 'var(--led-bg)', color: 'var(--led-ink)' }}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div

@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { LOAN_CATEGORIES } from '../../lib/constants';
@@ -385,7 +385,7 @@ export default function BrokerManagement() {
 
       {/* Create broker form */}
       {showForm && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">New Broker</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -406,11 +406,11 @@ export default function BrokerManagement() {
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Broker table */}
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         {loadingBrokers ? (
           <div className="p-6 space-y-4">{[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}</div>
         ) : brokers.length === 0 ? (
@@ -476,12 +476,12 @@ export default function BrokerManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Broker Groups */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Broker Groups</h3>
       <div className="grid gap-6 lg:grid-cols-2">
-        <GlassCard>
+        <Card>
           <form onSubmit={handleCreateGroup} className="space-y-4">
             <h4 className="text-[14px] font-semibold text-foreground">New Group</h4>
             <p className="text-[13px] text-muted-foreground">Groups let you assign multiple brokers to applications at once.</p>
@@ -525,10 +525,10 @@ export default function BrokerManagement() {
             </div>
             <Button type="submit" loading={creatingGroup}>Create Group</Button>
           </form>
-        </GlassCard>
+        </Card>
 
         {groups.length > 0 && (
-          <GlassCard>
+          <Card>
             <h4 className="text-[14px] font-semibold text-foreground mb-4">Existing Groups</h4>
             <div className="space-y-2">
               {groups.map(group => (
@@ -603,12 +603,12 @@ export default function BrokerManagement() {
                 </div>
               ))}
             </div>
-          </GlassCard>
+          </Card>
         )}
       </div>
 
       {/* Invitation History */}
-      <GlassCard padding="none" className="mt-8">
+      <Card padding="none" className="mt-8">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited broker{historyTotal !== 1 ? 's' : ''}</p>
@@ -669,7 +669,7 @@ export default function BrokerManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {editingBroker && (
         <EditBrokerModal

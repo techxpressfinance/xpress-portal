@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
+import { useConfirm } from '../hooks/useConfirm';
 import { getErrorMessage } from '../lib/utils';
 import { CopyButton } from './ui/CopyButton';
 import type { LoanApplication, LoanApplicant } from '../types';
@@ -24,6 +25,7 @@ const partyStatus = (d: LoanApplicant) =>
 
 export default function DirectorsSection({ application, onChange, canManage = false, canReconcile = false }: Props) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [newDirectorEmail, setNewDirectorEmail] = useState('');
   const [newDirectorRole, setNewDirectorRole] = useState('director');
   const [addingDirector, setAddingDirector] = useState(false);
@@ -65,7 +67,11 @@ export default function DirectorsSection({ application, onChange, canManage = fa
   }, [application.id, newDirectorEmail, newDirectorRole, onChange, toast]);
 
   const handleRemoveDirector = useCallback(async (applicantId: string) => {
-    if (!confirm('Remove this person from the application?')) return;
+    if (!(await confirm({
+      title: 'Remove this person from the application?',
+      confirmText: 'Remove',
+      variant: 'danger',
+    }))) return;
     try {
       await api.delete(`/applications/${application.id}/directors/${applicantId}`);
       await onChange();
@@ -73,7 +79,7 @@ export default function DirectorsSection({ application, onChange, canManage = fa
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to remove'), 'error');
     }
-  }, [application.id, onChange, toast]);
+  }, [application.id, onChange, toast, confirm]);
 
   const handleReconcile = useCallback(async () => {
     setReconciling(true);
@@ -113,7 +119,12 @@ export default function DirectorsSection({ application, onChange, canManage = fa
   }, [application.id, gName, gAbn, onChange, toast]);
 
   const handleRemoveGuarantor = useCallback(async (guarantorId: string) => {
-    if (!confirm('Remove this corporate guarantor and all its signatories?')) return;
+    if (!(await confirm({
+      title: 'Remove this corporate guarantor?',
+      message: 'Its signatories are removed with it.',
+      confirmText: 'Remove',
+      variant: 'danger',
+    }))) return;
     try {
       await api.delete(`/applications/${application.id}/guarantors/${guarantorId}`);
       await onChange();
@@ -121,7 +132,7 @@ export default function DirectorsSection({ application, onChange, canManage = fa
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to remove corporate guarantor'), 'error');
     }
-  }, [application.id, onChange, toast]);
+  }, [application.id, onChange, toast, confirm]);
 
   const handleAddSignatory = useCallback(async (guarantorId: string) => {
     const email = (sigEmails[guarantorId] || '').trim();

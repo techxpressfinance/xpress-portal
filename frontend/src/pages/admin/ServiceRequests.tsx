@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, ConfirmDialog, GlassCard, PageHeader } from '../../components/ui';
+import { Button, ConfirmDialog, Card, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate, formatDateTime, dateTimeLocalToUTC } from '../../lib/utils';
 import { BrokerPicker, ClientPicker } from '../../components/ServiceRequestPickers';
@@ -398,13 +398,13 @@ export default function AdminServiceRequests() {
       </div>
 
       {loading ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="p-4 space-y-3">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 rounded-xl shimmer" />)}
           </div>
-        </GlassCard>
+        </Card>
       ) : displayed.length === 0 ? (
-        <GlassCard className="px-6 py-12 text-center">
+        <Card className="px-6 py-12 text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
             <svg className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -416,15 +416,15 @@ export default function AdminServiceRequests() {
           <p className="text-[13px] text-muted-foreground mt-1">
             {tab === 'active' ? 'All caught up!' : 'Resolved requests will appear here'}
           </p>
-        </GlassCard>
+        </Card>
       ) : tab === 'active' ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="divide-y divide-border">
             {displayed.map((r) => renderRow(r, true))}
           </div>
-        </GlassCard>
+        </Card>
       ) : (
-        <GlassCard padding="none">
+        <Card padding="none">
           <button
             onClick={() => setCompletedCollapsed((v) => !v)}
             className="flex w-full items-center justify-between px-4 py-3 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -439,7 +439,7 @@ export default function AdminServiceRequests() {
               {displayed.map((r) => renderRow(r))}
             </div>
           )}
-        </GlassCard>
+        </Card>
       )}
 
       {showCreate && createPortal(

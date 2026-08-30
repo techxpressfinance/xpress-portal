@@ -6,7 +6,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
 import { STATUS_LABEL, STATUS_BADGE, LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
 import type { ApplicationStatus, BrokerAnalytics, BrokerAnalyticsDeal } from '../../types';
@@ -216,7 +216,7 @@ export default function BrokerAnalyticsPage() {
       </div>
 
       {/* Monthly deals by status — click a segment to drill down */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground">Deals per Month by Status</h3>
           <p className="text-[12px] text-muted-foreground">Click a bar segment to see the deals behind it</p>
@@ -247,10 +247,10 @@ export default function BrokerAnalyticsPage() {
             {loading ? 'Loading...' : 'No deals in this period'}
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Monthly volume */}
-      <GlassCard>
+      <Card>
         <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Volume</h3>
         {!loading && monthlyRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={280}>
@@ -283,11 +283,11 @@ export default function BrokerAnalyticsPage() {
             {loading ? 'Loading...' : 'No deals in this period'}
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Broker leaderboard */}
       {!loading && data && data.by_broker.length > 0 && (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">Broker Performance</h3>
           </div>
@@ -328,11 +328,11 @@ export default function BrokerAnalyticsPage() {
               </tbody>
             </table>
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Drill-down: deals list */}
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border/60">
           <h3 className="text-[15px] font-semibold text-foreground">{dealsTitle}</h3>
           {(selectedMonth || selectedStatus) && (
@@ -385,7 +385,7 @@ export default function BrokerAnalyticsPage() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

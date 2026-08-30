@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
-import { Button, GlassCard } from './ui';
+import { Button, Card } from './ui';
 import type { QuoteSheet, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
@@ -604,7 +604,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
   const selectBase = `${fieldBase} px-3 appearance-none`;
 
   return (
-    <GlassCard>
+    <Card>
       <div className="space-y-6">
 
         {/* Sheet meta */}
@@ -1157,6 +1157,6 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
           </Button>
         </div>
       </div>
-    </GlassCard>
+    </Card>
   );
 }

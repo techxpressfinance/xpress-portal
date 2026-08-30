@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../Toast';
-import { Button, GlassCard } from '../ui';
+import { Button, Card } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import { downloadArrearsCsv, formatMoney } from '../../lib/arrears';
@@ -115,7 +115,7 @@ export default function ArrearsSection({
   };
 
   return (
-    <GlassCard className="p-4">
+    <Card className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-[14px] font-semibold text-foreground">Arrears</h3>
@@ -177,6 +177,6 @@ export default function ArrearsSection({
           </div>
         </div>
       )}
-    </GlassCard>
+    </Card>
   );
 }

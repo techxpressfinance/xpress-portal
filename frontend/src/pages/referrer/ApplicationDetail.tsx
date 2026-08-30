@@ -10,7 +10,7 @@ import DocumentUploader from '../../components/DocumentUploader';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
-import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -382,7 +382,7 @@ export default function ReferrerApplicationDetail() {
           {/* Main Content - Client Style */}
           <div className="lg:col-span-2 space-y-6">
             {/* Application Info */}
-            <GlassCard>
+            <Card>
               <div className="flex items-center justify-between mb-6">
                 <h1 className="text-[20px] font-semibold text-foreground capitalize">
                   {application.loan_type} Loan Application
@@ -463,10 +463,10 @@ export default function ReferrerApplicationDetail() {
                   </div>
                 </div>
               )}
-            </GlassCard>
+            </Card>
 
             {/* Personal Details */}
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Personal Details</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-secondary/50 p-3.5 sm:col-span-2">
@@ -504,10 +504,10 @@ export default function ReferrerApplicationDetail() {
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
             {/* Address & Living Situation */}
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Address & Living Situation</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-secondary/50 p-3.5 sm:col-span-2">
@@ -533,10 +533,10 @@ export default function ReferrerApplicationDetail() {
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.partner_working != null ? (application.partner_working ? 'Yes' : 'No') : '—'}</p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
             {/* Employment */}
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Employment</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-secondary/50 p-3.5 sm:col-span-2">
@@ -590,17 +590,17 @@ export default function ReferrerApplicationDetail() {
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.num_directors ?? '—'}</p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
             {/* Directors (commercial loans, read-only) */}
             {['business', 'business_loan', 'commercial_property', 'equipment_finance'].includes(application.loan_type) && (
-              <GlassCard>
+              <Card>
                 <DirectorsSection application={application} onChange={() => {}} />
-              </GlassCard>
+              </Card>
             )}
 
             {/* Emergency Contact */}
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Emergency Contact</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-secondary/50 p-3.5">
@@ -616,10 +616,10 @@ export default function ReferrerApplicationDetail() {
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.emergency_contact_phone || '—'}</p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
             {/* Documents */}
-            <GlassCard>
+            <Card>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
                 {documents.length > 0 && (
@@ -687,10 +687,10 @@ export default function ReferrerApplicationDetail() {
                   ))}
                 </div>
               )}
-            </GlassCard>
+            </Card>
 
             {/* Messages */}
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-5">Messages</h2>
               <div className="flex flex-col gap-4">
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
@@ -759,12 +759,12 @@ export default function ReferrerApplicationDetail() {
                   );
                 })()}
               </div>
-            </GlassCard>
+            </Card>
           </div>
 
           {/* Sidebar - Upload */}
           <div>
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-4">Upload Document</h2>
               <DocumentUploader
                 docType={docType as import('../../types').DocType}
@@ -778,11 +778,11 @@ export default function ReferrerApplicationDetail() {
                 onFileLabelChange={setFileLabel}
                 onError={(msg) => toast(msg, 'error')}
               />
-            </GlassCard>
+            </Card>
 
             {/* Assigned Brokers */}
             {application.assigned_brokers.length > 0 && (
-              <GlassCard className="mt-6">
+              <Card className="mt-6">
                 <h2 className="text-[15px] font-semibold text-foreground mb-4">Assigned Brokers</h2>
                 <div className="space-y-2">
                   {application.assigned_brokers.map((ab) => (
@@ -794,7 +794,7 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   ))}
                 </div>
-              </GlassCard>
+              </Card>
             )}
           </div>
         </div>
@@ -956,7 +956,7 @@ export default function ReferrerApplicationDetail() {
                 )}
 
                 {/* Application info */}
-                <GlassCard>
+                <Card>
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                     <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
                       {application.loan_type} Loan
@@ -1120,7 +1120,7 @@ export default function ReferrerApplicationDetail() {
                       </div>
                     </dl>
                   )}
-                </GlassCard>
+                </Card>
 
                 {/* Client Info */}
                 {(() => {
@@ -1134,7 +1134,7 @@ export default function ReferrerApplicationDetail() {
                   const displayPhone = isDirectLead ? application.applicant_mobile : client?.phone;
                   if (!displayName) return null;
                   return (
-                    <GlassCard>
+                    <Card>
                       <h2 className="text-[15px] font-semibold text-foreground mb-5">Client Information</h2>
                       <div className="flex items-center gap-4 mb-5">
                         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
@@ -1151,7 +1151,7 @@ export default function ReferrerApplicationDetail() {
                           <dd className="mt-1 text-[14px] font-medium text-foreground">{displayPhone || 'Not provided'}</dd>
                         </div>
                       </dl>
-                    </GlassCard>
+                    </Card>
                   );
                 })()}
 
@@ -1164,7 +1164,7 @@ export default function ReferrerApplicationDetail() {
               <>
                 {/* Draft Actions */}
                 {isDraft && (
-                  <GlassCard className="mb-6 border-primary/20 bg-primary/5">
+                  <Card className="mb-6 border-primary/20 bg-primary/5">
                     <h2 className="text-[15px] font-semibold text-foreground mb-4">Draft Actions</h2>
                     <div className="mb-4">
                       <h3 className="text-[13px] font-medium text-foreground mb-3">Recommended Documents</h3>
@@ -1212,12 +1212,12 @@ export default function ReferrerApplicationDetail() {
                     <Button variant={allDocsUploaded ? 'success' : 'primary'} size="lg" className="w-full" onClick={() => setConfirmBrokerSubmit(true)} disabled={submittingOnBehalf} loading={submittingOnBehalf}>
                       Submit Application
                     </Button>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {/* Document Requests */}
                 {docRequests.length > 0 && (
-                  <GlassCard className="mb-6 border-warning/20 bg-warning/5">
+                  <Card className="mb-6 border-warning/20 bg-warning/5">
                     <h2 className="text-[15px] font-semibold text-foreground mb-4">Document Requests</h2>
                     <div className="space-y-2">
                       {docRequests.map((req) => (
@@ -1252,11 +1252,11 @@ export default function ReferrerApplicationDetail() {
                         </div>
                       ))}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {/* Documents list */}
-                <GlassCard>
+                <Card>
                   <div className="flex items-center justify-between mb-5">
                     <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
                     <div className="flex items-center gap-2">
@@ -1383,13 +1383,13 @@ export default function ReferrerApplicationDetail() {
                       ))}
                     </div>
                   )}
-                </GlassCard>
+                </Card>
               </>
             )}
 
             {/* ── MESSAGES ── */}
             {activeTab === 'messages' && (
-              <GlassCard>
+              <Card>
                 {(() => {
                   const broker = application?.assigned_brokers?.[0] ?? null;
                   const canChat = !!broker && !!currentUser?.id;
@@ -1479,7 +1479,7 @@ export default function ReferrerApplicationDetail() {
                     </div>
                   );
                 })()}
-              </GlassCard>
+              </Card>
             )}
           </div>
         </div>
@@ -1489,7 +1489,7 @@ export default function ReferrerApplicationDetail() {
           {/* Actions */}
           {/* Assigned Brokers */}
           {application.assigned_brokers.length > 0 && (
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-4">Assigned Brokers</h2>
               <div className="space-y-2">
                 {application.assigned_brokers.map((ab) => (
@@ -1501,7 +1501,7 @@ export default function ReferrerApplicationDetail() {
                   </div>
                 ))}
               </div>
-            </GlassCard>
+            </Card>
           )}
         </div>
       </div>

@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
@@ -241,7 +241,7 @@ export default function AdminManagement() {
 
       {/* Create admin form */}
       {showForm && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">New Admin</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -255,11 +255,11 @@ export default function AdminManagement() {
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Admin table */}
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         {loadingAdmins ? (
           <div className="p-6 space-y-4">{[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}</div>
         ) : admins.length === 0 ? (
@@ -324,10 +324,10 @@ export default function AdminManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Invitation History */}
-      <GlassCard padding="none" className="mt-8">
+      <Card padding="none" className="mt-8">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited admin{historyTotal !== 1 ? 's' : ''}</p>
@@ -388,7 +388,7 @@ export default function AdminManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {editingAdmin && (
         <EditAdminModal

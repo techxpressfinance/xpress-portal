@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { Button, GlassCard, EmptyState, ListSkeleton } from '../../components/ui';
+import { Button, Card, EmptyState, ListSkeleton } from '../../components/ui';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import { QUOTE_SHEET_STATUS_BADGE } from '../../lib/constants';
@@ -89,9 +89,9 @@ export default function QuoteSheets() {
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Quote Sheets</h1>
           <p className="text-sm text-muted-foreground mt-1">Create and manage standalone finance quotes</p>
         </div>
-        <GlassCard>
+        <Card>
           <ListSkeleton rows={4} rowHeight={84} />
-        </GlassCard>
+        </Card>
       </div>
     );
   }
@@ -132,7 +132,7 @@ export default function QuoteSheets() {
 
       {/* Viewing Mode */}
       {viewingSheet && !showForm && !editingSheet && (
-        <GlassCard key={`view-${viewingSheet.id}-${viewKeyRef.current}`}>
+        <Card key={`view-${viewingSheet.id}-${viewKeyRef.current}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <button
@@ -175,12 +175,12 @@ export default function QuoteSheets() {
             </p>
           )}
           <QuoteSheetComparison quoteSheet={viewingSheet} showBrokerNotes />
-        </GlassCard>
+        </Card>
       )}
 
       {/* List Mode */}
       {!showForm && !editingSheet && !viewingSheet && (
-        <GlassCard>
+        <Card>
           {quoteSheets.length === 0 ? (
             <EmptyState
               title="No quote sheets yet"
@@ -308,7 +308,7 @@ export default function QuoteSheets() {
               ))}
             </div>
           )}
-        </GlassCard>
+        </Card>
       )}
 
       {/* Off-screen PDF render */}

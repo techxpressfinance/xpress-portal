@@ -9,7 +9,7 @@ import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
-import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
 import { DOC_TYPE_LABELS, LOAN_CATEGORIES, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, categoryForSubType, findLoanSubType } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { useAuth } from '../../hooks/useAuth';
@@ -288,7 +288,7 @@ export default function ApplicationDetail() {
       </div>
 
       {/* Status Timeline */}
-      <GlassCard padding="none" className="mb-6">
+      <Card padding="none" className="mb-6">
         <div className="border-b border-[var(--led-line)] px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Progress</p>
           <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Progress</h2>
@@ -296,7 +296,7 @@ export default function ApplicationDetail() {
         <div className="p-6">
           <StatusTimeline currentStatus={application.status} clientView />
         </div>
-      </GlassCard>
+      </Card>
 
       <div className={`grid gap-6 ${activeTab === 'documents' ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
         <div className={`space-y-6 ${activeTab === 'documents' ? '' : 'lg:col-span-2'}`}>
@@ -322,7 +322,7 @@ export default function ApplicationDetail() {
 
           {activeTab === 'overview' && (
           <>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Summary</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Overview</h2>
@@ -371,7 +371,7 @@ export default function ApplicationDetail() {
               </div>
             )}
           </div>
-          </GlassCard>
+          </Card>
 
           </>
           )}
@@ -380,7 +380,7 @@ export default function ApplicationDetail() {
           <>
           {/* Personal Details */}
           {sectionVisible('personal', 'contact', 'living') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Applicant</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Personal Details</h2>
@@ -431,12 +431,12 @@ export default function ApplicationDetail() {
               )}
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Address & Living Situation */}
           {sectionVisible('living') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Residence</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Address & Living Situation</h2>
@@ -467,12 +467,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Employment */}
           {sectionVisible('employment', 'business') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Work</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Employment</h2>
@@ -531,12 +531,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Directors (commercial loans) */}
           {['business', 'business_loan', 'commercial_property', 'equipment_finance'].includes(application.loan_type) && (
-            <GlassCard padding="none" className="mt-6">
+            <Card padding="none" className="mt-6">
               <div className="p-6">
                 <DirectorsSection
                   application={application}
@@ -547,7 +547,7 @@ export default function ApplicationDetail() {
                   canManage
                 />
               </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Loan Type Details (from lend_extra_data) */}
@@ -557,7 +557,7 @@ export default function ApplicationDetail() {
               const loanDetails = extraData.loan_type_details;
               if (!loanDetails) return null;
               return (
-                <GlassCard>
+                <Card>
                   <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-5">Loan Type Details</h2>
                   <div className="space-y-4">
                     {(() => {
@@ -647,7 +647,7 @@ export default function ApplicationDetail() {
                       </div>
                     )}
                   </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -656,7 +656,7 @@ export default function ApplicationDetail() {
 
           {/* Emergency Contact */}
           {sectionVisible('emergency') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Contact</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Emergency Contact</h2>
@@ -677,12 +677,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Referrer Info */}
           {application.referrer && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Referral</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Referred By</h2>
@@ -717,12 +717,12 @@ export default function ApplicationDetail() {
                 </div>
               )}
             </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Applicant Details */}
           {application.applicant_first_name && sectionVisible('personal', 'contact', 'living', 'employment', 'business', 'loan_details', 'emergency', 'declarations') && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Full Details</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Applicant Details</h2>
@@ -1036,7 +1036,7 @@ export default function ApplicationDetail() {
                 </div>
               )}
             </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Loan Type Details from lend_extra_data */}
@@ -1047,7 +1047,7 @@ export default function ApplicationDetail() {
               if (!loanDetails || Object.keys(loanDetails).length === 0) return null;
 
               return (
-                <GlassCard padding="none">
+                <Card padding="none">
                   <div className="border-b border-[var(--led-line)] px-6 py-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Financing</p>
                     <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Loan Type Details</h2>
@@ -1358,7 +1358,7 @@ export default function ApplicationDetail() {
                     )}
                   </div>
                 </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -1402,7 +1402,7 @@ export default function ApplicationDetail() {
               if (!hasIdentification && !hasEmployment && !hasIncome && !hasAssets && !hasLiabilities && !hasExpenses && !hasOtherDirectors) return null;
 
               return (
-                <GlassCard padding="none">
+                <Card padding="none">
                   <div className="border-b border-[var(--led-line)] px-6 py-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Finances</p>
                     <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Financial Position</h2>
@@ -1606,7 +1606,7 @@ export default function ApplicationDetail() {
                     </div>
                   )}
                 </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -1620,7 +1620,7 @@ export default function ApplicationDetail() {
           <div className="space-y-6">
             {/* Pending Document Requests */}
             {docRequests.some((r) => r.status === 'pending') && (
-              <GlassCard className="border-warning/30 bg-[var(--led-warning)]/5">
+              <Card className="border-warning/30 bg-[var(--led-warning)]/5">
                 <div className="flex items-start gap-3 mb-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--led-warning)]/15">
                     <svg className="h-4 w-4 text-[var(--led-warning)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
@@ -1672,13 +1672,13 @@ export default function ApplicationDetail() {
                     );
                   })}
                 </div>
-              </GlassCard>
+              </Card>
             )}
 
             {/* Upload + uploaded docs side by side on large screens */}
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Upload */}
-              <GlassCard>
+              <Card>
                 <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-4">Upload Document</h2>
                 <DocumentUploader
                   docType={docType as import('../../types').DocType}
@@ -1689,10 +1689,10 @@ export default function ApplicationDetail() {
                   onFileLabelChange={setDocLabel}
                   onError={(msg) => toast(msg, 'error')}
                 />
-              </GlassCard>
+              </Card>
 
               {/* Recommended checklist */}
-              <GlassCard>
+              <Card>
                 <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-4">Document Checklist</h2>
                 <div className="space-y-2">
                   {RECOMMENDED_DOC_TYPES.map((type) => (
@@ -1712,12 +1712,12 @@ export default function ApplicationDetail() {
                     All recommended documents uploaded
                   </p>
                 )}
-              </GlassCard>
+              </Card>
             </div>
 
             {/* Uploaded files list */}
             {documents.length > 0 && (
-              <GlassCard padding="none">
+              <Card padding="none">
                 <div className="px-6 py-4 border-b border-[var(--led-line)]">
                   <h2 className="text-[15px] font-semibold text-[var(--led-ink)]">Uploaded Documents <span className="ml-1.5 text-[13px] font-normal text-[var(--led-muted)]">({documents.length})</span></h2>
                 </div>
@@ -1737,7 +1737,7 @@ export default function ApplicationDetail() {
                     </div>
                   ))}
                 </div>
-              </GlassCard>
+              </Card>
             )}
 
             {documents.length === 0 && (
@@ -1752,7 +1752,7 @@ export default function ApplicationDetail() {
 
           {activeTab === 'messages' && (
           <>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Chat</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Messages</h2>
@@ -1826,7 +1826,7 @@ export default function ApplicationDetail() {
               })()}
             </div>
           </div>
-          </GlassCard>
+          </Card>
           </>
           )}
 
@@ -1834,7 +1834,7 @@ export default function ApplicationDetail() {
           <>
           {/* Quote Sheets (sent by broker) */}
           {quoteSheets.length > 0 && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Quotes</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Quote Sheets</h2>
@@ -1887,7 +1887,7 @@ export default function ApplicationDetail() {
                 )}
               </div>
             </div>
-            </GlassCard>
+            </Card>
           )}
           </>
           )}
@@ -1895,7 +1895,7 @@ export default function ApplicationDetail() {
 
         {/* Activity Sidebar — hidden on Documents tab (full-width there) */}
         {activeTab !== 'documents' && <div>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Timeline</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Activity</h2>
@@ -1936,7 +1936,7 @@ export default function ApplicationDetail() {
                 </div>
               </div>
             </div>
-          </GlassCard>
+          </Card>
         </div>}
       </div>
 

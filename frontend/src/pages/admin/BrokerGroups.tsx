@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Button, ListSkeleton } from '../../components/ui';
+import { Card, Button, ListSkeleton } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import type { BrokerGroup, User } from '../../types';
 
@@ -163,7 +163,7 @@ export default function BrokerGroups() {
 
       {/* Create / Edit Form */}
       {showForm && (
-        <GlassCard className="mb-6 border-primary/20 bg-primary/5">
+        <Card className="mb-6 border-primary/20 bg-primary/5">
           <h2 className="text-[15px] font-semibold text-foreground mb-4">
             {editingGroup ? 'Edit Group' : 'Create Group'}
           </h2>
@@ -219,12 +219,12 @@ export default function BrokerGroups() {
               <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Groups List */}
       {groups.length === 0 ? (
-        <GlassCard>
+        <Card>
           <div className="py-12 text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
               <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -234,7 +234,7 @@ export default function BrokerGroups() {
             <p className="text-[14px] font-medium text-foreground">No broker groups yet</p>
             <p className="mt-1 text-[13px] text-muted-foreground">Create a group to bulk-assign brokers to applications.</p>
           </div>
-        </GlassCard>
+        </Card>
       ) : (
         <div className="space-y-4">
           {groups.map((group) => {
@@ -242,7 +242,7 @@ export default function BrokerGroups() {
             const groupBrokers = brokers.filter((b) => !group.members.some((m) => m.id === b.id));
 
             return (
-              <GlassCard key={group.id} padding="none">
+              <Card key={group.id} padding="none">
                 {/* Group header */}
                 <div className="flex items-center justify-between p-5">
                   <div className="flex items-center gap-3 min-w-0">
@@ -371,7 +371,7 @@ export default function BrokerGroups() {
                     )}
                   </div>
                 )}
-              </GlassCard>
+              </Card>
             );
           })}
         </div>

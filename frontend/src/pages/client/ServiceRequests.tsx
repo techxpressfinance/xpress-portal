@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, GlassCard } from '../../components/ui';
+import { Button, Card } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
 import type { ServiceRequest, ServiceRequestAttachment, ServiceRequestStatus } from '../../types';
@@ -159,13 +159,13 @@ export default function ClientServiceRequests() {
       </div>
 
       {loading ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="p-4 space-y-3">
             {[1, 2, 3].map((i) => <div key={i} className="h-12 rounded-xl shimmer" />)}
           </div>
-        </GlassCard>
+        </Card>
       ) : displayed.length === 0 ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--led-surface-2)]">
               <svg className="h-8 w-8 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -180,9 +180,9 @@ export default function ClientServiceRequests() {
             </p>
             {tab === 'active' && <Button onClick={openModal}>New Request</Button>}
           </div>
-        </GlassCard>
+        </Card>
       ) : (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="divide-y divide-[var(--led-line)]">
             {displayed.map((req) => {
               const isDone = DONE_STATUSES.includes(req.status);
@@ -270,7 +270,7 @@ export default function ClientServiceRequests() {
               );
             })}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       <input

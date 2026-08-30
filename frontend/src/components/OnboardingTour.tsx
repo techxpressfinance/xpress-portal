@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { rafThrottle } from '../lib/utils';
 
 export interface TourStep {
   target?: string;
@@ -126,14 +127,15 @@ export default function OnboardingTour({ steps, open, onClose, onFinish }: Props
   // Recalc rect on resize/scroll
   useEffect(() => {
     if (!open || !step?.target) return;
-    const recalc = () => {
+    const recalc = rafThrottle(() => {
       const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
       if (el) setRect(el.getBoundingClientRect());
       force((n) => n + 1);
-    };
+    });
     window.addEventListener('resize', recalc);
     window.addEventListener('scroll', recalc, true);
     return () => {
+      recalc.cancel();
       window.removeEventListener('resize', recalc);
       window.removeEventListener('scroll', recalc, true);
     };

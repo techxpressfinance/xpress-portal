@@ -5,7 +5,7 @@ import api from '../api/client';
 import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import { getErrorMessage } from '../lib/utils';
-import { Button, Input, GlassCard, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
+import { Button, Input, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
 
 interface ResetForm {
   password: string;
@@ -34,7 +34,7 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="ledger-theme min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="ledger-theme min-h-[100dvh] flex items-center justify-center p-4 bg-background">
         <p className="text-muted-foreground text-[15px]">
           Invalid reset link.{' '}
           <Link to="/forgot-password" className="text-primary hover:text-primary/70">
@@ -57,20 +57,9 @@ export default function ResetPassword() {
   };
 
   return (
-    <div
-      className="ledger-theme min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
-      style={{ fontFamily: "'Outfit', sans-serif" }}
-    >
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full bg-primary/20 blur-[120px] opacity-50 animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-info/20 blur-[100px] opacity-40 animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-      </div>
-
-      <div
-        className="relative z-10 w-full max-w-[420px]"
-        style={{ animation: `fadeInUp 0.8s ${easing} both` }}
-      >
-        <GlassCard padding="none" className="p-6 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
+    <div className="ledger-theme min-h-[100dvh] w-full flex flex-col items-center justify-center p-4 sm:p-6" style={{ background: 'var(--led-bg)' }}>
+      <div className="w-full max-w-[420px] led-fade-up">
+        <div className="led-card p-6 sm:p-10 flex flex-col">
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center mb-6">
               <img
@@ -154,7 +143,7 @@ export default function ResetPassword() {
               </div>
             </form>
           )}
-        </GlassCard>
+        </div>
 
         <div
           className="mt-8 text-center"

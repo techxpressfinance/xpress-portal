@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Input } from '../../components/ui';
+import { Card, PageHeader, Button, Input } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 
 interface ReferrerClient {
@@ -216,7 +216,7 @@ export default function ReferrerClients() {
         }
       />
 
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <Input
             placeholder="Search by name, email or company..."
@@ -302,7 +302,7 @@ export default function ReferrerClients() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {showModal && (
         <NewContactModal

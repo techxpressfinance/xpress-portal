@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { GlassCard } from '../../components/ui';
+import { Card } from '../../components/ui';
 import { useTabParam } from '../../hooks/useTabParam';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -358,7 +358,7 @@ export function BASCalculator({ initialState, onStateChange }: {
   const tableColCount = 2 + periodCount + 1;
 
   return (
-    <GlassCard padding="none" className="flex flex-col">
+    <Card padding="none" className="flex flex-col">
       {/* Card header */}
       <div className="border-b border-[var(--led-line)] px-6 py-5">
         <div className="flex flex-wrap items-center gap-4">
@@ -828,7 +828,7 @@ export function BASCalculator({ initialState, onStateChange }: {
           </div>
         )}
       </div>
-    </GlassCard>
+    </Card>
   );
 }
 
@@ -1010,7 +1010,7 @@ export function PayCalculator({ initialState, onStateChange }: {
   ];
 
   return (
-    <GlassCard padding="none" className="flex flex-col">
+    <Card padding="none" className="flex flex-col">
       <div className="border-b border-[var(--led-line)] px-6 py-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Australian Income Tax</p>
         <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Pay Calculator</h2>
@@ -1086,7 +1086,7 @@ export function PayCalculator({ initialState, onStateChange }: {
           )}
         </div>
       </div>
-    </GlassCard>
+    </Card>
   );
 }
 
@@ -1215,7 +1215,7 @@ export function RatiosCalculator({ initialState, onStateChange }: {
   );
 
   return (
-    <GlassCard padding="none" className="flex flex-col">
+    <Card padding="none" className="flex flex-col">
       <div className="border-b border-[var(--led-line)] px-6 py-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Credit &amp; Financial Analysis</p>
         <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Financial Ratios</h2>
@@ -1279,7 +1279,7 @@ export function RatiosCalculator({ initialState, onStateChange }: {
           </div>
         </div>
       </div>
-    </GlassCard>
+    </Card>
   );
 }
 

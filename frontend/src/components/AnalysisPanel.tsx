@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage, formatDateTime } from '../lib/utils';
-import { GlassCard, Badge, Button } from './ui';
+import { Card, Badge, Button } from './ui';
 import {
   ANALYSIS_STATUS_BADGE,
   FLAG_SEVERITY_STYLES,
@@ -107,7 +107,7 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
   }
 
   return (
-    <GlassCard>
+    <Card>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-[15px] font-semibold text-foreground">AI Document Analysis</h2>
         {analysisStatus && (
@@ -305,6 +305,6 @@ export default function AnalysisPanel({ application, documents, onStatusChange }
           </pre>
         </div>
       )}
-    </GlassCard>
+    </Card>
   );
 }

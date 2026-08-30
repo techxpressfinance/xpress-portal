@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, PageHeader, Button, Select, Input } from '../../components/ui';
+import { Card, PageHeader, Button, Select, Input } from '../../components/ui';
 import { LOAN_TYPE_LABELS } from '../../lib/constants';
 
 import type { LoanApplication } from '../../types';
@@ -76,7 +76,7 @@ export default function ReferrerApplications() {
       </Link>
 
       {/* Filters */}
-      <GlassCard className="mb-6">
+      <Card className="mb-6">
         <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
           <Select
             label="Loan Type"
@@ -102,10 +102,10 @@ export default function ReferrerApplications() {
             </div>
           </div>
         </form>
-      </GlassCard>
+      </Card>
 
       {/* Table */}
-      <GlassCard padding="none">
+      <Card padding="none">
         {loading ? (
           <div className="p-6">
             <div className="space-y-4">
@@ -217,7 +217,7 @@ export default function ReferrerApplications() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

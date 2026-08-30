@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import { useConfirm } from '../../hooks/useConfirm';
+import { Card, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
@@ -822,6 +823,7 @@ function LendingEntryModal({ contactId, entry, onClose, onSaved }: {
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [contact, setContact] = useState<ContactDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -833,7 +835,10 @@ export default function ContactDetail() {
 
   const handleUnlinkCompany = async (orgId: string) => {
     if (!contact) return;
-    if (!confirm('Unlink this company from the contact?')) return;
+    if (!(await confirm({
+      title: 'Unlink this company from the contact?',
+      confirmText: 'Unlink',
+    }))) return;
     setUnlinkingOrgId(orgId);
     try {
       await api.delete(`/contacts/${contact.id}/organizations/${orgId}`);
@@ -848,7 +853,12 @@ export default function ContactDetail() {
 
   const handleDeleteLendingEntry = async (entryId: string) => {
     if (!contact) return;
-    if (!confirm('Delete this lending entry? This cannot be undone.')) return;
+    if (!(await confirm({
+      title: 'Delete this lending entry?',
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     setDeletingEntryId(entryId);
     try {
       await api.delete(`/contacts/${contact.id}/lending-history/${entryId}`);
@@ -894,7 +904,7 @@ export default function ContactDetail() {
 
       {/* Contact Info */}
       <div className="grid gap-6 md:grid-cols-2">
-        <GlassCard>
+        <Card>
           <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
@@ -920,9 +930,9 @@ export default function ContactDetail() {
               <dd>{contact.drivers_license_number || '—'}</dd>
             </div>
           </dl>
-        </GlassCard>
+        </Card>
 
-        <GlassCard>
+        <Card>
           <h3 className="text-lg font-semibold mb-4">Address</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
@@ -948,11 +958,11 @@ export default function ContactDetail() {
               <p className="text-sm mt-1">{contact.notes}</p>
             </div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Companies */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
             Entities
@@ -1009,10 +1019,10 @@ export default function ContactDetail() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Lending History */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
             Lending History
@@ -1153,7 +1163,7 @@ export default function ContactDetail() {
             </div>
           )}
         </div>
-      </GlassCard>
+      </Card>
 
       <ArrearsSection contact={{ id: contact.id, name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') }} />
 

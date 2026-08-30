@@ -139,7 +139,7 @@ export default function SetupAccount() {
   };
 
   return (
-    <div className="ledger-theme flex min-h-screen bg-background" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="ledger-theme flex min-h-[100dvh] bg-background">
       {/* Left panel — branding */}
       <div className="hidden lg:flex lg:w-[45%] bg-secondary relative overflow-hidden items-center justify-center">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">

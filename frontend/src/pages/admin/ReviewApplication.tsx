@@ -15,7 +15,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
-import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName } from '../../lib/applicantName';
@@ -872,10 +872,10 @@ export default function ReviewApplication() {
       </div>
 
       {/* Status Timeline */}
-      <GlassCard className="mb-6">
+      <Card className="mb-6">
         <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
         <StatusTimeline currentStatus={application.status} />
-      </GlassCard>
+      </Card>
 
       {/* High alerts — broker/admin only, surfaced prominently at the top */}
       {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && alerts.some((a) => a.is_high_priority) && (
@@ -977,7 +977,7 @@ export default function ReviewApplication() {
 
                 {/* Referrer — admin/broker only (this whole page is staff-gated) */}
                 {!referrer && client && (
-                  <GlassCard>
+                  <Card>
                     <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
                     <p className="text-[13px] text-muted-foreground mb-4">
                       No referrer is linked to this application. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
@@ -1006,10 +1006,10 @@ export default function ReviewApplication() {
                       </Button>
                     </div>
                     )}
-                  </GlassCard>
+                  </Card>
                 )}
                 {referrer && (
-                  <GlassCard>
+                  <Card>
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Referrer</h2>
                       {client && (
@@ -1042,7 +1042,7 @@ export default function ReviewApplication() {
                         </dd>
                       </div>
                     </dl>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {/* Comprehensive Loan Type Details */}
@@ -1053,7 +1053,7 @@ export default function ReviewApplication() {
                     if (!loanDetails) return null;
 
                     return (
-                      <GlassCard>
+                      <Card>
                         <h2 className="text-[15px] font-semibold text-foreground mb-5">Loan Type Details</h2>
                         <div className="space-y-4">
                           {/* Category + selected loan type */}
@@ -1331,7 +1331,7 @@ export default function ReviewApplication() {
                             </div>
                           )}
                         </div>
-                      </GlassCard>
+                      </Card>
                     );
                   } catch {
                     return null;
@@ -1339,7 +1339,7 @@ export default function ReviewApplication() {
                 })()}
 
                 {/* Application Info */}
-                <GlassCard>
+                <Card>
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                     <div>
                       <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground tracking-tight">
@@ -2095,7 +2095,7 @@ export default function ReviewApplication() {
                       </div>
                     </dl>
                   )}
-                </GlassCard>
+                </Card>
 
                 {/* Financial Position — always shown, with empty-state placeholders */}
                 {(() => {
@@ -2109,7 +2109,7 @@ export default function ReviewApplication() {
                   const expenses = (extra.expenses as Record<string, number> | undefined) || {};
                   const emptyHint = <p className="text-[13px] text-muted-foreground">Not provided</p>;
                   return (
-                    <GlassCard>
+                    <Card>
                       <h2 className="text-[15px] font-semibold text-foreground mb-5">Financial Position</h2>
                       <div className="space-y-5">
 
@@ -2204,7 +2204,7 @@ export default function ReviewApplication() {
                           ) : emptyHint}
                         </div>
                       </div>
-                    </GlassCard>
+                    </Card>
                   );
                 })()}
 
@@ -2216,7 +2216,7 @@ export default function ReviewApplication() {
               <>
                 {/* Draft Actions (Required Docs & Submit) */}
                 {isDraft && (
-                  <GlassCard className="mb-6 border-primary/20 bg-primary/5">
+                  <Card className="mb-6 border-primary/20 bg-primary/5">
                     <h2 className="text-[15px] font-semibold text-foreground mb-4">Draft Actions</h2>
 
                     <div className="mb-4">
@@ -2281,12 +2281,12 @@ export default function ReviewApplication() {
                     >
                       Submit Application
                     </Button>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {/* Document Requests */}
                 {docRequests.length > 0 && (
-                  <GlassCard className="mb-6 border-warning/20 bg-warning/5">
+                  <Card className="mb-6 border-warning/20 bg-warning/5">
                     <h2 className="text-[15px] font-semibold text-foreground mb-4">Document Requests</h2>
                     <div className="space-y-2">
                       {docRequests.map((req) => (
@@ -2321,11 +2321,11 @@ export default function ReviewApplication() {
                         </div>
                       ))}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {/* Documents */}
-                <GlassCard>
+                <Card>
                   <div className="flex items-center justify-between mb-5">
                     <h2 className="text-[15px] font-semibold text-foreground">Documents</h2>
                     <div className="flex items-center gap-2">
@@ -2481,7 +2481,7 @@ export default function ReviewApplication() {
                       ))}
                     </div>
                   )}
-                </GlassCard>
+                </Card>
 
                 {/* AI Document Analysis */}
                 <AnalysisPanel
@@ -2497,7 +2497,7 @@ export default function ReviewApplication() {
               <>
                 {/* Applicant Summary */}
                 {(applicantFormName || application.business_name) && (
-                  <GlassCard>
+                  <Card>
                     <h2 className="text-[15px] font-semibold text-foreground mb-5">Applicant Details</h2>
                     <dl className="grid gap-3 sm:grid-cols-2">
                       {applicantFormName && (
@@ -2549,7 +2549,7 @@ export default function ReviewApplication() {
                         </>
                       )}
                     </dl>
-                  </GlassCard>
+                  </Card>
                 )}
 
               </>
@@ -2557,7 +2557,7 @@ export default function ReviewApplication() {
 
             {activeTab === 'submissions' && (
               <>
-                <GlassCard>
+                <Card>
                   <div className="flex items-center justify-between mb-5">
                     <h2 className="text-[15px] font-semibold text-foreground">Lender Submissions</h2>
                     {!showSubForm && (
@@ -2765,12 +2765,12 @@ export default function ReviewApplication() {
                       ))}
                     </div>
                   )}
-                </GlassCard>
+                </Card>
               </>
             )}
             {activeTab === 'messages' && (
               <>
-                <GlassCard>
+                <Card>
                   {/* Tab bar */}
                   <div className="flex items-center gap-1 border-b border-border pb-4 mb-4 bg-secondary/50 rounded-xl p-1">
                     {([
@@ -3268,7 +3268,7 @@ export default function ReviewApplication() {
                       </div>
                     </div>
                   )}
-                </GlassCard>
+                </Card>
               </>
             )}
 
@@ -3291,7 +3291,7 @@ export default function ReviewApplication() {
                     onCancel={() => { setShowQuoteForm(false); setEditingQuoteSheet(null); }}
                   />
                 ) : viewingQuoteSheet ? (
-                  <GlassCard key={`view-${viewingQuoteSheet.id}-${viewKeyRef.current}`}>
+                  <Card key={`view-${viewingQuoteSheet.id}-${viewKeyRef.current}`}>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <button
@@ -3328,10 +3328,10 @@ export default function ReviewApplication() {
                       </div>
                     </div>
                     <QuoteSheetComparison quoteSheet={viewingQuoteSheet} showBrokerNotes />
-                  </GlassCard>
+                  </Card>
                 ) : (
                   <>
-                  <GlassCard>
+                  <Card>
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
                       <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
@@ -3455,7 +3455,7 @@ export default function ReviewApplication() {
                         ))}
                       </div>
                     )}
-                  </GlassCard>
+                  </Card>
                   <ApplicationCalculators applicationId={id!} />
                   </>
                 )}
@@ -3549,7 +3549,7 @@ export default function ReviewApplication() {
             )}
 
             {activeTab === 'activity' && (
-              <GlassCard padding="none">
+              <Card padding="none">
                 <div className="px-6 py-4 border-b border-border">
                   <h2 className="text-[15px] font-semibold text-foreground">Activity</h2>
                   <p className="text-[13px] text-muted-foreground mt-0.5">All actions recorded for this application</p>
@@ -3603,7 +3603,7 @@ export default function ReviewApplication() {
                     })}
                   </div>
                 )}
-              </GlassCard>
+              </Card>
             )}
           </div>
         </div>
@@ -3611,7 +3611,7 @@ export default function ReviewApplication() {
         {/* Sidebar Actions */}
         <div className="space-y-6 sticky top-6">
           {/* Status Actions */}
-          <GlassCard>
+          <Card>
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-[15px] font-semibold text-foreground">Status</h2>
               <Badge value={application.status} />
@@ -3645,11 +3645,11 @@ export default function ReviewApplication() {
                 ))}
               </div>
             )}
-          </GlassCard>
+          </Card>
 
           {/* Approval Conditions */}
           {!!application.approval_conditions?.length && (
-            <GlassCard>
+            <Card>
               <div className="flex items-center justify-between gap-3 mb-1">
                 <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
                 <span className="text-[12px] text-muted-foreground tabular-nums">
@@ -3690,14 +3690,14 @@ export default function ReviewApplication() {
                   </div>
                 ))}
               </div>
-            </GlassCard>
+            </Card>
           )}
 
 
 
           {/* Broker Assignment */}
           {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
-            <GlassCard>
+            <Card>
               <h2 className="text-[15px] font-semibold text-foreground mb-4">Assigned Brokers</h2>
               {brokers.length === 0 ? (
                 <p className="text-[13px] text-muted-foreground">No brokers available</p>
@@ -3758,7 +3758,7 @@ export default function ReviewApplication() {
                   </select>
                 </div>
               )}
-            </GlassCard>
+            </Card>
           )}
         </div>
       </div>

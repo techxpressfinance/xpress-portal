@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
+import { Card, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { activityEntityLink, describeActivity } from '../../lib/activityLog';
 import ActivityChanges from '../../components/ActivityChanges';
@@ -63,7 +63,7 @@ export default function ActivityLogs() {
       <PageHeader title="Activity Log" subtitle="Track all actions across the platform" />
 
       {/* Filters */}
-      <GlassCard className="mb-6">
+      <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-4">
           <Select
             label="Action Type"
@@ -138,10 +138,10 @@ export default function ActivityLogs() {
             </span>
           </div>
         </div>
-      </GlassCard>
+      </Card>
 
       {/* Log Entries */}
-      <GlassCard padding="none">
+      <Card padding="none">
         {loading ? (
           <div className="p-6">
             <div className="space-y-4">
@@ -233,7 +233,7 @@ export default function ActivityLogs() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }
