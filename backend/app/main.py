@@ -30,6 +30,7 @@ from app.models.external_referral import ExternalReferral  # noqa: F401 — ensu
 from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
+from app.models.approval_condition import ApprovalCondition  # noqa: F401 — ensure table is created
 from app.models.task_attachment import TaskAttachment  # noqa: F401 — ensure table is created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
@@ -277,6 +278,13 @@ _MIGRATIONS = [
     ("organizations", "no_abn_confirmed", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("organizations", "no_abn_confirmed_at", "TIMESTAMP"),
     ("organizations", "no_abn_confirmed_by_id", "VARCHAR(36) REFERENCES users(id)"),
+    # Lender name recorded when the application (re-)enters the Approval status
+    ("loan_applications", "approval_lender_name", "VARCHAR(200)"),
+    # Marks a Task as auto-generated from an application's approval conditions
+    ("tasks", "is_approval_conditions_task", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Links a checklist item back to the ApprovalCondition it mirrors, for
+    # two-way sync between a broker's task and the application's approval panel
+    ("checklist_items", "approval_condition_id", "VARCHAR(36) REFERENCES approval_conditions(id)"),
 ]
 
 _logger = logging.getLogger(__name__)

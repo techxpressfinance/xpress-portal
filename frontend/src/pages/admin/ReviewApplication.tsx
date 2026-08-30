@@ -134,6 +134,11 @@ export default function ReviewApplication() {
   const [reasonModalStatus, setReasonModalStatus] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState('');
   const [savingWithReason, setSavingWithReason] = useState(false);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvalLenderName, setApprovalLenderName] = useState('');
+  const [approvalConditions, setApprovalConditions] = useState<string[]>(['', '']);
+  const [savingApproval, setSavingApproval] = useState(false);
+  const [togglingConditionId, setTogglingConditionId] = useState<string | null>(null);
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingApp, setDeletingApp] = useState(false);
@@ -349,8 +354,46 @@ export default function ReviewApplication() {
     if (newStatus === 'rejected' || newStatus === 'not_proceeding') {
       setReasonText('');
       setReasonModalStatus(newStatus);
+    } else if (newStatus === 'approval') {
+      setApprovalLenderName(application?.approval_lender_name || '');
+      const existing = application?.approval_conditions?.map((c) => c.text) || [];
+      setApprovalConditions(existing.length ? existing : ['', '']);
+      setApprovalModalOpen(true);
     } else {
       setPendingStatus(newStatus);
+    }
+  };
+
+  const confirmApprovalStatus = async () => {
+    if (!id) return;
+    const cleanConditions = approvalConditions.map((c) => c.trim()).filter(Boolean);
+    if (!approvalLenderName.trim() || cleanConditions.length === 0) return;
+    setSavingApproval(true);
+    try {
+      const { data } = await api.patch(`/applications/${id}/status?status=approval`, {
+        lender_name: approvalLenderName.trim(),
+        conditions: cleanConditions,
+      });
+      setApplication(data);
+      toast('Status changed to approval', 'success');
+      setApprovalModalOpen(false);
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to change status'), 'error');
+    } finally {
+      setSavingApproval(false);
+    }
+  };
+
+  const handleToggleApprovalCondition = async (conditionId: string) => {
+    if (!id) return;
+    setTogglingConditionId(conditionId);
+    try {
+      await api.patch(`/applications/${id}/approval-conditions/${conditionId}/toggle`);
+      await refetchApplication();
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update condition'), 'error');
+    } finally {
+      setTogglingConditionId(null);
     }
   };
 
@@ -3604,6 +3647,52 @@ export default function ReviewApplication() {
             )}
           </GlassCard>
 
+          {/* Approval Conditions */}
+          {!!application.approval_conditions?.length && (
+            <GlassCard>
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
+                <span className="text-[12px] text-muted-foreground tabular-nums">
+                  {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
+                </span>
+              </div>
+              {application.approval_lender_name && (
+                <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
+              )}
+              <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
+                <div
+                  className="h-full rounded-full bg-success transition-all"
+                  style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
+                />
+              </div>
+              <div className="space-y-0.5">
+                {application.approval_conditions.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleApprovalCondition(item.id)}
+                      disabled={togglingConditionId === item.id}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                        item.is_completed
+                          ? 'border-muted-foreground bg-muted-foreground text-white'
+                          : 'border-border hover:border-primary hover:bg-primary/5'
+                      }`}
+                    >
+                      {item.is_completed && (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                      )}
+                    </button>
+                    <span className={`flex-1 text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                      {item.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
 
 
           {/* Broker Assignment */}
@@ -4022,6 +4111,78 @@ export default function ReviewApplication() {
                 onClick={confirmStatusWithReason}
               >
                 {reasonModalStatus === 'rejected' ? 'Reject' : 'Mark Not Proceeding'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {approvalModalOpen && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!savingApproval) setApprovalModalOpen(false); }} />
+          <div className="relative w-full max-w-md rounded-2xl bg-background border border-border p-6 shadow-xl">
+            <h3 className="text-[17px] font-semibold text-foreground mb-1">Move to Approval</h3>
+            <p className="text-[13px] text-muted-foreground mb-4">
+              Record the lender and the approval conditions — you'll be able to check them off as they're met.
+            </p>
+            <label className="text-[12px] font-medium text-muted-foreground mb-1.5 block">Lender name</label>
+            <input
+              autoFocus
+              type="text"
+              placeholder="e.g. ANZ, Pepper Money..."
+              value={approvalLenderName}
+              onChange={e => setApprovalLenderName(e.target.value)}
+              className="w-full rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
+            />
+            <label className="text-[12px] font-medium text-muted-foreground mb-1.5 block">Approval conditions</label>
+            <div className="space-y-2 mb-2">
+              {approvalConditions.map((cond, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder={`Condition ${i + 1}`}
+                    value={cond}
+                    onChange={e => setApprovalConditions(prev => prev.map((c, idx) => (idx === i ? e.target.value : c)))}
+                    className="flex-1 rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setApprovalConditions(prev => prev.filter((_, idx) => idx !== i))}
+                    disabled={approvalConditions.length <= 1}
+                    className="shrink-0 p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setApprovalConditions(prev => [...prev, ''])}
+              className="text-[13px] font-medium text-primary hover:underline mb-4"
+            >
+              + Add condition
+            </button>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="secondary"
+                size="md"
+                disabled={savingApproval}
+                onClick={() => setApprovalModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                loading={savingApproval}
+                disabled={!approvalLenderName.trim() || approvalConditions.every(c => !c.trim())}
+                onClick={confirmApprovalStatus}
+              >
+                Move to Approval
               </Button>
             </div>
           </div>

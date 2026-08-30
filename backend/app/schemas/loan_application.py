@@ -220,6 +220,23 @@ class ReferrerInfoOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ApprovalConditionOut(BaseModel):
+    id: str
+    text: str
+    is_completed: bool
+    sort_order: int
+
+    model_config = {"from_attributes": True}
+
+
+class ApprovalDetailsRequest(BaseModel):
+    """Lender name + conditions checklist required to move an application into
+    the Approval status — see change_application_status()."""
+
+    lender_name: str
+    conditions: list[str]
+
+
 class LoanApplicationOut(BaseModel):
     id: str
     user_id: str
@@ -316,6 +333,8 @@ class LoanApplicationOut(BaseModel):
     client_invite_sent_at: Optional[datetime] = None
     # Set only on the POST response that issues a direct-engagement invite
     invite_url: Optional[str] = None
+    approval_lender_name: Optional[str] = None
+    approval_conditions: list[ApprovalConditionOut] = []
 
     model_config = {"from_attributes": True}
 

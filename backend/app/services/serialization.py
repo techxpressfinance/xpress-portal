@@ -170,6 +170,11 @@ def app_with_user(
     guarantors = [guarantor_dict(g) for g in app.corporate_guarantors]
     data["corporate_guarantors"] = guarantors
 
+    data["approval_conditions"] = [
+        {"id": c.id, "text": c.text, "is_completed": c.is_completed, "sort_order": c.sort_order}
+        for c in app.approval_conditions
+    ]
+
     # Entity-first commercial readiness: every direct party signed, and every
     # corporate guarantor has at least one signatory and all of them signed.
     # False when there is nothing to be ready for.

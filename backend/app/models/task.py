@@ -39,6 +39,9 @@ class Task(Base):
     reminder_due_soon_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     assigned_to_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     application_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("loan_applications.id"), nullable=True)
+    # Auto-generated when the linked application (re-)enters Approval status —
+    # see change_application_status(). Replaced wholesale on re-entry.
+    is_approval_conditions_task: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -73,6 +76,12 @@ class ChecklistItem(Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Set when this item mirrors an ApprovalCondition (one row per broker's
+    # auto-generated approval-conditions task); kept in sync both ways — see
+    # services/approval_conditions.py.
+    approval_condition_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("approval_conditions.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     task = relationship("Task", back_populates="checklist_items")

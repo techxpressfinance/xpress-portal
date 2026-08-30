@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -14,6 +14,7 @@ from app.config import EMAIL_ENABLED, FRONTEND_URL, LLM_ANALYSIS_ENABLED
 from app.database import SessionLocal, get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.application_broker import ApplicationBroker
+from app.models.approval_condition import ApprovalCondition
 from app.models.document import DocType, Document
 from app.models.external_referral import ExternalReferral, ExternalReferralStatus
 from app.models.loan_application import (
@@ -40,6 +41,7 @@ SECTION_KEYS = (
 )
 ALLOWED_SECTIONS = set(SECTION_KEYS)
 from app.services.application_status import change_application_status
+from app.services.approval_conditions import sync_condition_completion
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
@@ -59,6 +61,8 @@ from app.services.contacts import ensure_contact
 from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
+    ApprovalConditionOut,
+    ApprovalDetailsRequest,
     CorporateGuarantorCreate,
     CorporateGuarantorOut,
     LoanApplicantCreate,
@@ -917,6 +921,7 @@ def update_application(
 def change_status(
     app_id: str,
     new_status: ApplicationStatus = Query(..., alias="status"),
+    payload: Optional[ApprovalDetailsRequest] = Body(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -926,10 +931,46 @@ def change_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    change_application_status(db, application, new_status, current_user.id, tenant_id)
+    change_application_status(
+        db, application, new_status, current_user.id, tenant_id,
+        lender_name=payload.lender_name if payload else None,
+        conditions=payload.conditions if payload else None,
+    )
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application, db)
+
+
+@router.patch("/{app_id}/approval-conditions/{item_id}/toggle", response_model=ApprovalConditionOut)
+def toggle_approval_condition(
+    app_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    item = (
+        db.query(ApprovalCondition)
+        .join(LoanApplication, ApprovalCondition.application_id == LoanApplication.id)
+        .filter(
+            ApprovalCondition.id == item_id,
+            ApprovalCondition.application_id == app_id,
+            LoanApplication.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval condition not found")
+
+    new_value = not item.is_completed
+    sync_condition_completion(db, item.id, new_value)
+    log_activity(
+        db, current_user.id, "approval_condition_toggled", "application", app_id,
+        {"condition_id": item_id, "is_completed": new_value}, tenant_id=tenant_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.patch("/{app_id}/lock", response_model=LoanApplicationOut)

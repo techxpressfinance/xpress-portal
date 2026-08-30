@@ -197,6 +197,18 @@ export interface LoanApplication {
   hidden_from_client?: boolean;
   // Nested user object (returned by serializer)
   user?: { id: string; full_name: string; email: string } | null;
+  // Set when the application (re-)enters the Approval status
+  approval_lender_name?: string | null;
+  approval_conditions?: ApprovalCondition[];
+}
+
+// A lender-approval condition, checked off like a task checklist item. Replaced
+// wholesale each time the application (re-)enters the Approval status.
+export interface ApprovalCondition {
+  id: string;
+  text: string;
+  is_completed: boolean;
+  sort_order: number;
 }
 
 // A company guaranteeing a commercial loan; its directors each sign as signatories.
@@ -760,6 +772,9 @@ export interface ChecklistItem {
   title: string;
   is_completed: boolean;
   sort_order: number;
+  // Set when this item mirrors an application's ApprovalCondition; toggling
+  // either one is kept in sync server-side.
+  approval_condition_id?: string | null;
   created_at: string;
 }
 
@@ -785,6 +800,8 @@ export interface Task {
   application_label: string | null;
   created_by_id: string;
   created_by_name: string | null;
+  // Auto-generated when the linked application (re-)enters Approval status.
+  is_approval_conditions_task?: boolean;
   checklist_items: ChecklistItem[];
   attachments: TaskAttachment[];
   checklist_progress: string | null;
@@ -804,6 +821,7 @@ export interface TaskListItem {
   application_label: string | null;
   created_by_id: string;
   created_by_name: string | null;
+  is_approval_conditions_task?: boolean;
   checklist_total: number;
   checklist_completed: number;
   created_at: string;

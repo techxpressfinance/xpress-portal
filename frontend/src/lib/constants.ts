@@ -261,9 +261,11 @@ export const RECOMMENDED_DOC_TYPES: DocType[] = ['id_proof', 'address_proof', 'b
 // NOTE: backend source of truth at backend/app/constants.py — keep in sync
 export const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ['application_received', 'rejected', 'not_proceeding'],
-  application_received: ['application_assessed', 'submitted', 'settled', 'rejected', 'not_proceeding', 'draft'],
-  application_assessed: ['submitted', 'approval', 'settled', 'rejected', 'not_proceeding', 'application_received', 'draft'],
-  submitted: ['approval', 'settled', 'rejected', 'not_proceeding', 'application_assessed', 'application_received', 'draft'],
+  // Settled is reachable only via Approval — an application must be approved
+  // by a lender before it can be marked settled.
+  application_received: ['application_assessed', 'submitted', 'rejected', 'not_proceeding', 'draft'],
+  application_assessed: ['submitted', 'approval', 'rejected', 'not_proceeding', 'application_received', 'draft'],
+  submitted: ['approval', 'rejected', 'not_proceeding', 'application_assessed', 'application_received', 'draft'],
   approval: ['settled', 'rejected', 'not_proceeding', 'submitted'],
   settled: [],
   rejected: ['draft', 'application_received', 'application_assessed', 'submitted'],

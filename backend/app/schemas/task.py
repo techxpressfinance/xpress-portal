@@ -33,6 +33,7 @@ class ChecklistItemOut(BaseModel):
     title: str
     is_completed: bool
     sort_order: int
+    approval_condition_id: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -90,6 +91,7 @@ class TaskOut(BaseModel):
     application_label: Optional[str] = None
     created_by_id: str
     created_by_name: Optional[str] = None
+    is_approval_conditions_task: bool = False
     checklist_items: list[ChecklistItemOut] = []
     attachments: list[TaskAttachmentOut] = []
     checklist_progress: Optional[str] = None
@@ -111,6 +113,7 @@ class TaskListOut(BaseModel):
     application_label: Optional[str] = None
     created_by_id: str
     created_by_name: Optional[str] = None
+    is_approval_conditions_task: bool = False
     checklist_total: int = 0
     checklist_completed: int = 0
     created_at: datetime

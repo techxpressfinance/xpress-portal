@@ -203,6 +203,10 @@ class LoanApplication(Base):
     # referrer direct-engagement leads — broker configures sections, then invites).
     hidden_from_client: Mapped[bool] = mapped_column(default=False, nullable=False)
 
+    # Set when the application (re-)enters the Approval status; see
+    # change_application_status() and ApprovalCondition.
+    approval_lender_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
@@ -227,6 +231,16 @@ class LoanApplication(Base):
         "ApplicationGuarantor",
         back_populates="application",
         cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    # Lender-approval conditions checklist (replaced each time the application
+    # (re-)enters the Approval status).
+    approval_conditions = relationship(
+        "ApprovalCondition",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApprovalCondition.sort_order",
         lazy="selectin",
     )
 

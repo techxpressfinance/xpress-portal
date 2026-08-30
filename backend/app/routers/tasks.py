@@ -29,6 +29,7 @@ from app.schemas.task import (
 )
 from app.config import FRONTEND_URL
 from app.services.activity_log import log_activity
+from app.services.approval_conditions import sync_condition_completion
 from app.services.email import send_assignment_notification
 from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.services.tenant_scope import get_tenant_id
@@ -70,6 +71,7 @@ def _task_to_out(task: Task) -> dict:
         ),
         "created_by_id": task.created_by_id,
         "created_by_name": task.created_by.full_name if task.created_by else None,
+        "is_approval_conditions_task": task.is_approval_conditions_task,
         "checklist_items": [
             {
                 "id": i.id,
@@ -77,6 +79,7 @@ def _task_to_out(task: Task) -> dict:
                 "title": i.title,
                 "is_completed": i.is_completed,
                 "sort_order": i.sort_order,
+                "approval_condition_id": i.approval_condition_id,
                 "created_at": i.created_at,
             }
             for i in items
@@ -118,6 +121,7 @@ def _task_to_list_out(task: Task) -> dict:
         ),
         "created_by_id": task.created_by_id,
         "created_by_name": task.created_by.full_name if task.created_by else None,
+        "is_approval_conditions_task": task.is_approval_conditions_task,
         "checklist_total": total,
         "checklist_completed": completed,
         "created_at": task.created_at,
@@ -430,7 +434,10 @@ def update_checklist_item(
         item.title = title
 
     if data.is_completed is not None:
-        item.is_completed = data.is_completed
+        if item.approval_condition_id:
+            sync_condition_completion(db, item.approval_condition_id, data.is_completed)
+        else:
+            item.is_completed = data.is_completed
 
     if data.sort_order is not None:
         item.sort_order = data.sort_order
@@ -456,10 +463,14 @@ def toggle_checklist_item(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
 
-    item.is_completed = not item.is_completed
+    new_value = not item.is_completed
+    if item.approval_condition_id:
+        sync_condition_completion(db, item.approval_condition_id, new_value)
+    else:
+        item.is_completed = new_value
     log_activity(
         db, current_user.id, "checklist_item_toggled", "task", task_id,
-        {"item_title": item.title, "is_completed": item.is_completed},
+        {"item_title": item.title, "is_completed": new_value},
         tenant_id=tenant_id,
     )
     db.commit()

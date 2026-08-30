@@ -525,6 +525,8 @@ export default function KanbanBoardPage() {
     targetColumnStatus: ApplicationStatus | null;
   } | null>(null);
   const [movingApp, setMovingApp] = useState(false);
+  const [approvalLenderName, setApprovalLenderName] = useState('');
+  const [approvalConditions, setApprovalConditions] = useState<string[]>(['', '']);
 
   // Form state
   const [newBoardName, setNewBoardName] = useState('');
@@ -740,6 +742,12 @@ export default function KanbanBoardPage() {
     setDraggedApp(null);
     dragSourceColumn.current = null;
 
+    if (targetCol.mapped_status === 'approval') {
+      setApprovalLenderName(movedApp.approval_lender_name || '');
+      const existing = movedApp.approval_conditions?.map((c) => c.text) || [];
+      setApprovalConditions(existing.length ? existing : ['', '']);
+    }
+
     setPendingMove({
       app: movedApp,
       sourceColumnId: sourceColId,
@@ -749,8 +757,13 @@ export default function KanbanBoardPage() {
     });
   };
 
+  const isApprovalMove = pendingMove?.targetColumnStatus === 'approval';
+  const cleanApprovalConditions = approvalConditions.map((c) => c.trim()).filter(Boolean);
+  const approvalDetailsValid = approvalLenderName.trim().length > 0 && cleanApprovalConditions.length > 0;
+
   const confirmMoveApplication = async () => {
     if (!activeBoard || !pendingMove) return;
+    if (isApprovalMove && !approvalDetailsValid) return;
 
     setMovingApp(true);
     const prevApps = { ...appsByColumn };
@@ -766,11 +779,16 @@ export default function KanbanBoardPage() {
     });
 
     try {
-      await api.post(`/kanban/boards/${activeBoard.id}/columns/${pendingMove.targetColumnId}/move/${pendingMove.app.id}`);
+      await api.post(
+        `/kanban/boards/${activeBoard.id}/columns/${pendingMove.targetColumnId}/move/${pendingMove.app.id}`,
+        isApprovalMove ? { lender_name: approvalLenderName.trim(), conditions: cleanApprovalConditions } : undefined,
+      );
       setFlashIds(new Set([pendingMove.app.id]));
       setTimeout(() => setFlashIds(new Set()), 900);
       toast(`Moved to "${pendingMove.targetColumnTitle}"`, 'success');
       setPendingMove(null);
+      setApprovalLenderName('');
+      setApprovalConditions(['', '']);
     } catch (err: any) {
       setAppsByColumn(prevApps);
       const msg = err?.response?.data?.detail || 'Failed to move application';
@@ -1339,7 +1357,7 @@ export default function KanbanBoardPage() {
       )}
 
       <ConfirmDialog
-        open={!!pendingMove}
+        open={!!pendingMove && !isApprovalMove}
         title="Move card"
         message={pendingMove ? (
           <>
@@ -1357,6 +1375,74 @@ export default function KanbanBoardPage() {
           if (!movingApp) setPendingMove(null);
         }}
       />
+
+      {/* ── Approval Details Modal (lender + conditions checklist) ── */}
+      <Modal
+        open={!!pendingMove && isApprovalMove}
+        onClose={() => { if (!movingApp) setPendingMove(null); }}
+        title="Move to Approval"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="led-caption" style={{ margin: 0 }}>
+            Move <strong style={{ color: 'var(--led-ink)' }}>
+              {pendingMove ? applicantDisplayName(pendingMove.app, 'this application') : ''}
+            </strong> to Approval. Record the lender and the approval conditions — you'll be able to check them off as they're met.
+          </p>
+          <div>
+            <div className="led-label" style={{ marginBottom: 6 }}>Lender name</div>
+            <input
+              className="led-input"
+              placeholder="e.g. ANZ, Pepper Money..."
+              value={approvalLenderName}
+              onChange={(e) => setApprovalLenderName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div>
+            <div className="led-label" style={{ marginBottom: 6 }}>Approval conditions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {approvalConditions.map((cond, i) => (
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    className="led-input"
+                    placeholder={`Condition ${i + 1}`}
+                    value={cond}
+                    onChange={(e) => setApprovalConditions((prev) => prev.map((c, idx) => (idx === i ? e.target.value : c)))}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                    onClick={() => setApprovalConditions((prev) => prev.filter((_, idx) => idx !== i))}
+                    disabled={approvalConditions.length <= 1}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              style={{ marginTop: 8 }}
+              onClick={() => setApprovalConditions((prev) => [...prev, ''])}
+            >
+              + Add condition
+            </button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button type="button" className="led-btn led-btn-ghost" onClick={() => { if (!movingApp) setPendingMove(null); }}>Cancel</button>
+            <button
+              type="button"
+              className="led-btn led-btn-accent"
+              onClick={confirmMoveApplication}
+              disabled={!approvalDetailsValid || movingApp}
+            >
+              {movingApp ? 'Moving...' : 'Move to Approval'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

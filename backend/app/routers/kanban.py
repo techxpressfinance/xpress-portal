@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
@@ -13,6 +13,7 @@ from app.models.kanban import KanbanBoard, KanbanColumn
 from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User
+from app.schemas.loan_application import ApprovalDetailsRequest
 from app.schemas.kanban import (
     ColumnReorderRequest,
     KanbanBoardCreate,
@@ -425,6 +426,7 @@ def move_card(
     board_id: str,
     column_id: str,
     app_id: str,
+    payload: Optional[ApprovalDetailsRequest] = Body(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -446,6 +448,10 @@ def move_card(
     old_col_id = application.kanban_column_id
     application.kanban_column_id = column_id
     log_activity(db, current_user.id, "kanban_moved", "application", app_id, {"to_column": col.title, "from_column_id": old_col_id}, tenant_id=tenant_id)
-    change_application_status(db, application, new_status, current_user.id, tenant_id)
+    change_application_status(
+        db, application, new_status, current_user.id, tenant_id,
+        lender_name=payload.lender_name if payload else None,
+        conditions=payload.conditions if payload else None,
+    )
 
     return {"status": "ok", "column_id": column_id, "column_title": col.title, "application_status": new_status.value}
