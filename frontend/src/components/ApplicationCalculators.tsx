@@ -5,6 +5,7 @@ import { Button, Card } from './ui';
 import { BASCalculator, PayCalculator, RatiosCalculator } from '../pages/admin/BasCalculator';
 import type { BASCalcState, PayCalcState, RatiosCalcState } from '../pages/admin/BasCalculator';
 import { formatDate } from '../lib/utils';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 type CalcType = 'bas' | 'pay' | 'ratios';
 type AnyCalcState = BASCalcState | PayCalcState | RatiosCalcState;
@@ -206,9 +207,7 @@ export default function ApplicationCalculators({ applicationId }: { applicationI
                   className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
                   title="Delete"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
+                  <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                 </button>
               </div>
             ))}

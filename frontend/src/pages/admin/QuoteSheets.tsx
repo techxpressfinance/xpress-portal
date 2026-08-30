@@ -9,6 +9,7 @@ import { useToast } from '../../components/Toast';
 import api from '../../api/client';
 import { migrateQuoteParams, optionTermMonths, termLabel, termLabelShort } from '../../lib/quoteTerms';
 import type { QuoteSheet } from '../../types';
+import { ArrowDownTrayIcon, ArrowLeftIcon, EnvelopeIcon, PaperAirplaneIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function QuoteSheets() {
   const { toast } = useToast();
@@ -106,7 +107,7 @@ export default function QuoteSheets() {
         {!showForm && !editingSheet && !viewingSheet && (
           <Button onClick={() => { setShowForm(true); setViewingSheet(null); setEditingSheet(null); }}>
             <span className="flex items-center gap-1.5">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              <PlusIcon className="h-4 w-4" strokeWidth={2} />
               New Quote Sheet
             </span>
           </Button>
@@ -139,7 +140,7 @@ export default function QuoteSheets() {
                 onClick={() => setViewingSheet(null)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                <ArrowLeftIcon className="h-5 w-5" strokeWidth={2} />
               </button>
               <h3 className="text-[15px] font-semibold">
                 {viewingSheet.title || `Quote Sheet v${viewingSheet.version}`}
@@ -155,7 +156,7 @@ export default function QuoteSheets() {
                 onClick={() => handleDownloadPdf(viewingSheet, false)}
               >
                 <span className="flex items-center gap-1.5">
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                  <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
                   PDF
                 </span>
               </Button>
@@ -269,7 +270,7 @@ export default function QuoteSheets() {
                       className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
                     >
                       <span className="flex items-center gap-1">
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                        <EnvelopeIcon className="h-3 w-3" strokeWidth={2} />
                         Email
                       </span>
                     </button>
@@ -411,9 +412,7 @@ export default function QuoteSheets() {
             <div className="px-6 pt-6 pb-4">
               <div className="flex items-start gap-4">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                  <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                  </svg>
+                  <EnvelopeIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-[17px] font-semibold text-foreground">
@@ -427,7 +426,7 @@ export default function QuoteSheets() {
                   onClick={() => !sendingEmail && setEmailModalSheet(null)}
                   className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors -mt-1 -mr-1"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                 </button>
               </div>
             </div>
@@ -507,7 +506,7 @@ export default function QuoteSheets() {
                   onClick={handleSendEmail}
                 >
                   <span className="flex items-center gap-1.5">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                    <PaperAirplaneIcon className="h-3.5 w-3.5" strokeWidth={2} />
                     Send
                   </span>
                 </Button>

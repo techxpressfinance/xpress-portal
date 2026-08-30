@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import { Button, Input } from '../components/ui';
+import { CheckCircleIcon, EnvelopeIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface LoginForm {
   email: string;
@@ -92,9 +93,7 @@ export default function Login() {
               className="mb-6 flex items-center gap-3 rounded-xl bg-[#0071e3]/8 px-4 py-3 w-full text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#0071e3] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-              </svg>
+              <EnvelopeIcon className="h-4 w-4 text-[#0071e3] shrink-0" />
               <span className="text-[13px] text-[#0071e3]">Check your email to verify your account before signing in.</span>
             </div>
           )}
@@ -105,9 +104,7 @@ export default function Login() {
               className="mb-6 flex items-center gap-3 rounded-xl bg-[#34c759]/8 px-4 py-3 w-full text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#34c759] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
+              <CheckCircleIcon className="h-4 w-4 text-[#34c759] shrink-0" />
               <span className="text-[13px] text-[#34c759]">Email verified! You can now sign in.</span>
             </div>
           )}
@@ -118,9 +115,7 @@ export default function Login() {
               className="mb-6 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 w-full border border-destructive/20 text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
+              <ExclamationCircleIcon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1">
                 <span className="text-[13px] text-destructive leading-tight block">{error}</span>
                 {showResend && (

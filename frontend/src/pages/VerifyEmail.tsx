@@ -4,6 +4,7 @@ import api from '../api/client';
 import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
 import { Button } from '../components/ui';
+import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 const easing = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 
@@ -60,9 +61,7 @@ export default function VerifyEmail() {
         {status === 'success' && (
           <div>
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#34c759]/10">
-              <svg className="h-7 w-7 text-[#34c759]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
+              <CheckCircleIcon className="h-7 w-7 text-[#34c759]" />
             </div>
             <h1 className="text-[22px] font-semibold text-foreground mb-2">{message}</h1>
             <p className="text-[15px] text-muted-foreground mb-8">You can now sign in to your account.</p>
@@ -75,9 +74,7 @@ export default function VerifyEmail() {
         {status === 'error' && (
           <div>
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#ff3b30]/10">
-              <svg className="h-7 w-7 text-[#ff3b30]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
+              <ExclamationCircleIcon className="h-7 w-7 text-[#ff3b30]" />
             </div>
             <h1 className="text-[22px] font-semibold text-foreground mb-2">Verification Failed</h1>
             <p className="text-[15px] text-muted-foreground mb-8">{message}</p>

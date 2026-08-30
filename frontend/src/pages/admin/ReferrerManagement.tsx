@@ -9,6 +9,7 @@ import BusinessDetailsForm from '../../components/referrer/BusinessDetailsForm';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
+import { CheckCircleIcon, LinkIcon } from '@heroicons/react/24/outline';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
@@ -296,10 +297,10 @@ export default function ReferrerManagement() {
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">
         <StatCard label="Total Referrers" value={referrers.length} loading={loading} gradient="from-chart-4 to-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>}
+          icon={<LinkIcon className="h-5 w-5" />}
         />
         <StatCard label="Active" value={activeReferrers.length} loading={loading} gradient="from-success to-success" valueColor="text-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
       </div>
 

@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, dateTimeLocalToUTC } from '../../lib/utils';
 import { DatePicker, EmptyState } from '../../components/ui';
 import type { TaskListItem, User } from '../../types';
+import { CheckIcon, ChevronDownIcon, PlusIcon } from '@heroicons/react/24/outline';
 
 const STATUS_TABS = [
   { label: 'All', value: '' },
@@ -51,9 +52,7 @@ function CheckCircle({ priority, completed, toggling, onClick }: {
       className={`flex-none flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 transition-all disabled:opacity-50 ${ring}`}
     >
       {completed && (
-        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
+        <CheckIcon className="h-2.5 w-2.5" strokeWidth={3} />
       )}
     </button>
   );
@@ -315,12 +314,7 @@ export default function Tasks() {
                   onClick={() => setCompletedCollapsed((c) => !c)}
                   className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--led-muted)] uppercase tracking-widest mb-1.5 hover:text-foreground transition-colors"
                 >
-                  <svg
-                    className={`h-3 w-3 transition-transform ${completedCollapsed ? '-rotate-90' : ''}`}
-                    fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                  </svg>
+                  <ChevronDownIcon className={`h-3 w-3 transition-transform ${completedCollapsed ? '-rotate-90' : ''}`} strokeWidth={2.5} />
                   Completed · {completedTasks.length}
                 </button>
                 {!completedCollapsed && completedTasks.map(renderTask)}
@@ -432,12 +426,7 @@ export default function Tasks() {
               onClick={() => setShowAddForm(true)}
               className="flex items-center gap-2 w-full py-2 px-2 -mx-2 text-[14px] text-[var(--led-muted)] hover:text-[var(--led-accent)] rounded-lg hover:bg-[var(--led-surface-2)]/60 transition-colors group"
             >
-              <svg
-                className="h-4 w-4 transition-colors"
-                fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
+              <PlusIcon className="h-4 w-4 transition-colors" strokeWidth={2} />
               Add task
             </button>
           )}

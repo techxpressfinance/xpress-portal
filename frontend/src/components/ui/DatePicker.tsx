@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { rafThrottle } from '../../lib/utils';
+import { CalendarIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface DatePickerProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {
   label?: string;
@@ -155,14 +156,10 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
                 onClick={handleClear}
                 className="flex items-center justify-center w-4 h-4 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+                <XMarkIcon className="h-3 w-3" />
               </span>
             )}
-            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-            </svg>
+            <CalendarIcon className="h-4 w-4 text-slate-400" />
           </div>
         </button>
         {error && <p className="mt-1.5 text-[12px] text-destructive font-medium">{error}</p>}

@@ -6,6 +6,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input, PasswordRequirements, passwordMeetsRequirements } from '../components/ui';
+import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface ResetForm {
   password: string;
@@ -82,9 +83,7 @@ export default function ResetPassword() {
               className="mb-6 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 w-full border border-destructive/20 text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
+              <ExclamationCircleIcon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1">
                 <span className="text-[13px] text-destructive leading-tight block">{error}</span>
                 <Link to="/forgot-password" className="block mt-1.5 text-[13px] font-medium text-destructive/80 hover:text-destructive transition-colors duration-200">
@@ -99,9 +98,7 @@ export default function ResetPassword() {
               className="flex items-center gap-3 rounded-xl bg-[#34c759]/10 px-4 py-3 border border-[#34c759]/20"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#34c759] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
+              <CheckCircleIcon className="h-4 w-4 text-[#34c759] shrink-0" />
               <span className="text-[13px] text-[#34c759]">Password changed successfully.</span>
             </div>
           ) : (

@@ -5,6 +5,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
 import { Button, Input } from '../components/ui';
 import api from '../api/client';
+import { CheckIcon, ExclamationCircleIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 
 interface TokenInfo {
   valid: boolean;
@@ -179,7 +180,7 @@ export default function SetupAccount() {
               <div key={step.n} className="flex items-center gap-3">
                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-all duration-300 ${step.done ? 'bg-success text-white' : 'bg-secondary border border-border text-muted-foreground'}`}>
                   {step.done
-                    ? <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    ? <CheckIcon className="h-3.5 w-3.5" strokeWidth={3} />
                     : step.n}
                 </div>
                 <span className={`text-[14px] transition-colors duration-300 ${step.done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{step.label}</span>
@@ -214,9 +215,7 @@ export default function SetupAccount() {
             /* Invalid / expired state */
             <div style={{ animation: `fadeInUp 0.4s ${easing} both` }}>
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 mb-6">
-                <svg className="h-7 w-7 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                </svg>
+                <LockOpenIcon className="h-7 w-7 text-destructive" />
               </div>
               <h1 className="text-[26px] font-semibold text-foreground mb-2 tracking-tight">Link unavailable</h1>
               <p className="text-[15px] text-muted-foreground mb-6 leading-relaxed">
@@ -230,9 +229,7 @@ export default function SetupAccount() {
             /* Success state */
             <div className="flex flex-col items-center text-center py-8" style={{ animation: `fadeInUp 0.4s ${easing} both` }}>
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 mb-5">
-                <svg className="h-8 w-8 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
+                <CheckIcon className="h-8 w-8 text-success" strokeWidth={2} />
               </div>
               <h2 className="text-[24px] font-semibold text-foreground mb-2">All set!</h2>
               <p className="text-[15px] text-muted-foreground">Signing you in…</p>
@@ -265,9 +262,7 @@ export default function SetupAccount() {
 
               {error && (
                 <div className="mb-5 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 border border-destructive/20" style={{ animation: `fadeInUp 0.3s ${easing} both` }}>
-                  <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-                  </svg>
+                  <ExclamationCircleIcon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                   <span className="text-[13px] text-destructive">{error}</span>
                 </div>
               )}

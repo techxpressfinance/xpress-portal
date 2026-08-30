@@ -4,6 +4,7 @@ import api from '../api/client';
 import { useToast } from './Toast';
 import type { OcrStatus } from '../types';
 import { Button } from './ui';
+import { ArrowDownTrayIcon, ArrowsPointingOutIcon, CheckIcon, DocumentIcon, DocumentTextIcon, ExclamationTriangleIcon, EyeIcon, LockClosedIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -234,11 +235,11 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
           {/* File icon */}
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary">
             {fileType === 'pdf' ? (
-              <svg className="h-5 w-5 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+              <DocumentIcon className="h-5 w-5 text-destructive" />
             ) : fileType === 'image' ? (
               <svg className="h-5 w-5 text-chart-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" /></svg>
             ) : (
-              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+              <DocumentTextIcon className="h-5 w-5 text-muted-foreground" />
             )}
           </div>
 
@@ -257,13 +258,13 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                   'text-muted-foreground'
                 }`}>
                   {ocrStatus === 'completed' && (
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    <CheckIcon className="h-3 w-3" strokeWidth={2.5} />
                   )}
                   {ocrStatus === 'processing' && (
                     <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-chart-4" />
                   )}
                   {ocrStatus === 'failed' && (
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                    <XMarkIcon className="h-3 w-3" strokeWidth={2.5} />
                   )}
                   {ocrStatus === 'completed' ? 'Text extracted' :
                    ocrStatus === 'processing' ? 'Extracting text...' :
@@ -277,7 +278,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
           {/* Actions */}
           <div className="flex shrink-0 items-center gap-1.5">
             <Button variant="secondary" size="sm" onClick={handleDownload}>
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
               Download
             </Button>
             <button
@@ -288,14 +289,14 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
               {isFullscreen ? (
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" /></svg>
               ) : (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                <ArrowsPointingOutIcon className="h-4 w-4" strokeWidth={2} />
               )}
             </button>
             <button
               onClick={onClose}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              <XMarkIcon className="h-4 w-4" strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -312,7 +313,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
               }`}
             >
               <div className="flex items-center gap-2">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                <EyeIcon className="h-3.5 w-3.5" />
                 Preview
               </div>
               {activeTab === 'preview' && (
@@ -337,7 +338,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                   <span className="ml-0.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-chart-4" />
                 )}
                 {!ocrAvailable && ocrStatus !== 'processing' && (
-                  <svg className="h-3 w-3 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  <LockClosedIcon className="h-3 w-3 text-muted-foreground/40" strokeWidth={2} />
                 )}
               </div>
               {activeTab === 'ocr' && (
@@ -402,7 +403,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
               {error && !loading && (
                 <div className="flex h-full flex-col items-center justify-center p-6">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 mb-4">
-                    <svg className="h-6 w-6 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                    <ExclamationTriangleIcon className="h-6 w-6 text-destructive" />
                   </div>
                   <p className="text-[14px] font-medium text-foreground mb-1">Failed to load document</p>
                   <p className="text-[13px] text-muted-foreground mb-4">The document could not be retrieved. Please try again.</p>
@@ -424,7 +425,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                       {imageError ? (
                         <div className="flex flex-col items-center justify-center">
                           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 mb-4">
-                            <svg className="h-6 w-6 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                            <ExclamationTriangleIcon className="h-6 w-6 text-destructive" />
                           </div>
                           <p className="text-[14px] font-medium text-foreground mb-1">Failed to load image</p>
                           <p className="text-[13px] text-muted-foreground mb-4">The image file appears to be corrupted.</p>
@@ -451,12 +452,12 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                   {fileType === 'unknown' && (
                     <div className="flex h-full flex-col items-center justify-center p-6">
                       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary mb-4">
-                        <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <DocumentTextIcon className="h-6 w-6 text-muted-foreground" />
                       </div>
                       <p className="text-[14px] font-medium text-foreground mb-1">Preview not available</p>
                       <p className="text-[13px] text-muted-foreground mb-4">This file type can&apos;t be previewed. Download it to view.</p>
                       <Button variant="primary" size="sm" onClick={handleDownload}>
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                        <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
                         Download File
                       </Button>
                     </div>
@@ -488,7 +489,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
               {ocrError && ocrStatus === 'failed' && !ocrLoading && (
                 <div className="flex flex-col items-center justify-center py-16">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 mb-4">
-                    <svg className="h-6 w-6 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                    <ExclamationTriangleIcon className="h-6 w-6 text-destructive" />
                   </div>
                   <p className="text-[14px] font-medium text-foreground mb-1">Text extraction failed</p>
                   <p className="text-[13px] text-muted-foreground max-w-sm text-center">{ocrError}</p>
@@ -517,7 +518,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                     >
                       {copied ? (
                         <>
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                          <CheckIcon className="h-3.5 w-3.5" strokeWidth={2} />
                           Copied
                         </>
                       ) : (
@@ -537,7 +538,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentId, file
                   ) : (
                     <div className="flex flex-col items-center justify-center py-16 rounded-xl bg-card shadow-[0_0_0_1px_var(--border)]">
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary mb-3">
-                        <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <DocumentTextIcon className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <p className="text-[13px] text-muted-foreground">No text was extracted from this document</p>
                     </div>

@@ -8,6 +8,7 @@ import { TASK_PRIORITY_BADGE } from '../../lib/constants';
 import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
 import FileDropzone from '../../components/FileDropzone';
 import type { Task, ChecklistItem, TaskAttachment, User } from '../../types';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 function priorityDotClass(priority: string): string {
   switch (priority) {
@@ -29,9 +30,7 @@ function CheckCircle({ completed, onClick }: { completed: boolean; onClick: () =
       }`}
     >
       {completed && (
-        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
+        <CheckIcon className="h-3 w-3" strokeWidth={3} />
       )}
     </button>
   );
@@ -312,9 +311,7 @@ export default function TaskDetail() {
               onClick={() => handleDeleteItem(item.id)}
               className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded"
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
+              <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           </div>
         ))}
@@ -363,9 +360,7 @@ export default function TaskDetail() {
                 onClick={() => deleteAttachment(a.id)}
                 className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded shrink-0"
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+                <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
             </div>
           ))}

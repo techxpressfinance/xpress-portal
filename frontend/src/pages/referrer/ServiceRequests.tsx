@@ -6,6 +6,7 @@ import { Button, Card, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate } from '../../lib/utils';
 import type { ServiceRequest, ServiceRequestAttachment, ServiceRequestStatus } from '../../types';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
@@ -144,9 +145,7 @@ export default function ReferrerServiceRequests() {
       >
         <div className="flex items-start gap-3">
           {isDone ? (
-            <svg className="mt-1 h-5 w-5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
+            <CheckIcon className="mt-1 h-5 w-5 shrink-0 text-emerald-500" strokeWidth={2.5} />
           ) : (
             <svg className="mt-1 h-5 w-5 shrink-0 text-primary/50" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
@@ -284,9 +283,7 @@ export default function ReferrerServiceRequests() {
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[16px] font-semibold text-foreground">New Service Request</h2>
               <button onClick={() => setShowModal(false)} className="rounded-lg p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+                <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">

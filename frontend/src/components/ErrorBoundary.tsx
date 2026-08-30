@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   children: ReactNode;
@@ -26,9 +27,7 @@ export default class ErrorBoundary extends Component<Props, State> {
         <div className="flex min-h-[100dvh] items-center justify-center bg-background px-6">
           <div className="text-center max-w-md" style={{ animation: 'fadeInUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
-              <svg className="h-7 w-7 text-destructive" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
+              <ExclamationCircleIcon className="h-7 w-7 text-destructive" />
             </div>
             <h1 className="text-[22px] font-semibold text-foreground mb-2">Something went wrong</h1>
             <p className="text-[15px] text-muted-foreground mb-6">

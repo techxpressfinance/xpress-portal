@@ -26,6 +26,8 @@ import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import ActivityChanges from '../../components/ActivityChanges';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BookmarkIcon, BuildingOfficeIcon, ChatBubbleBottomCenterTextIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserGroupIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 
 export default function ReviewApplication() {
   const { id } = useParams<{ id: string }>();
@@ -801,7 +803,7 @@ export default function ReviewApplication() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary mb-4">
-          <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+          <DocumentTextIcon className="h-8 w-8 text-muted-foreground" />
         </div>
         <p className="text-[14px] text-muted-foreground font-medium">Application not found</p>
       </div>
@@ -827,12 +829,12 @@ export default function ReviewApplication() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
-            <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
             Download PDF
           </Button>
           {isDraft && (
             <Button variant="secondary" size="sm" onClick={openSectionsModal}>
-              <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" /></svg>
+              <Bars4Icon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
               Sections
             </Button>
           )}
@@ -847,12 +849,12 @@ export default function ReviewApplication() {
             >
               {application.is_locked ? (
                 <>
-                  <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  <LockOpenIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
                   Unlock
                 </>
               ) : (
                 <>
-                  <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  <LockClosedIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
                   Lock
                 </>
               )}
@@ -861,11 +863,11 @@ export default function ReviewApplication() {
           {/* Start another loan for this client — personal and company details
               carry over, loan details are entered fresh. */}
           <Button variant="secondary" size="sm" onClick={() => navigate(`/admin/applications/new?cloneFrom=${id}`)}>
-            <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
+            <DocumentDuplicateIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
             Clone
           </Button>
           <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
-            <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+            <TrashIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
             Delete
           </Button>
         </div>
@@ -881,7 +883,7 @@ export default function ReviewApplication() {
       {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && alerts.some((a) => a.is_high_priority) && (
         <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/8 px-5 py-4">
           <div className="flex items-center gap-2 mb-3">
-            <svg className="h-5 w-5 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+            <ExclamationTriangleIcon className="h-5 w-5 text-destructive shrink-0" strokeWidth={2} />
             <p className="text-[13px] font-semibold text-destructive">High alert{alerts.filter((a) => a.is_high_priority).length > 1 ? 's' : ''}</p>
           </div>
           <div className="space-y-2.5">
@@ -899,9 +901,7 @@ export default function ReviewApplication() {
       {(application.client_account_pending || application.hidden_from_client) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
         <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <svg className="h-5 w-5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-            </svg>
+            <EnvelopeIcon className="h-5 w-5 text-amber-500 shrink-0" strokeWidth={2} />
             <div>
               {application.hidden_from_client ? (
                 <>
@@ -968,7 +968,7 @@ export default function ReviewApplication() {
                 {/* Completion Banner */}
                 {application.completed_by_name && (
                   <div className="rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-center gap-3">
-                    <svg className="h-5 w-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    <CheckCircleIcon className="h-5 w-5 text-primary shrink-0" strokeWidth={2} />
                     <p className="text-[13px] font-medium text-primary">
                       Completed by {application.completed_by_name} on {formatDate(application.completed_at!)}
                     </p>
@@ -1350,9 +1350,7 @@ export default function ReviewApplication() {
                       </p>
                       {referrer && (referrer.organization_name || referrer.full_name) && (
                         <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[12px] font-semibold text-primary ring-1 ring-primary/20">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-                          </svg>
+                          <BuildingOfficeIcon className="h-3.5 w-3.5" strokeWidth={2} />
                           Referred by {referrer.organization_name || referrer.full_name}
                         </span>
                       )}
@@ -1362,9 +1360,7 @@ export default function ReviewApplication() {
                           onClick={() => navigate(`/admin/applications/${application.cloned_from_id}`)}
                           className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[12px] font-semibold text-muted-foreground ring-1 ring-border transition-colors hover:text-foreground"
                         >
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
-                          </svg>
+                          <DocumentDuplicateIcon className="h-3.5 w-3.5" strokeWidth={2} />
                           Cloned from APP-{application.cloned_from_id.replace(/-/g, '').slice(-6).toUpperCase()}
                         </button>
                       )}
@@ -1373,14 +1369,14 @@ export default function ReviewApplication() {
                       <Badge value={application.status} />
                       {application.is_locked && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-500/20">
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                          <LockClosedIcon className="h-3 w-3" strokeWidth={2.5} />
                           Client Locked
                         </span>
                       )}
                       {!editing && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
                           <span className="flex items-center gap-1.5">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                            <PencilSquareIcon className="h-3.5 w-3.5" strokeWidth={2} />
                             Edit
                           </span>
                         </Button>
@@ -2225,7 +2221,7 @@ export default function ReviewApplication() {
                         {RECOMMENDED_DOC_TYPES.map((type) => (
                           <div key={type} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/10 text-success border border-success/20' : 'bg-background border border-border/50 text-muted-foreground'}`}>
                             {uploadedDocTypes.has(type) ? (
-                              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                              <CheckIcon className="h-4 w-4 shrink-0" strokeWidth={2.5} />
                             ) : (
                               <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><circle cx="12" cy="12" r="9" /></svg>
                             )}
@@ -2265,7 +2261,7 @@ export default function ReviewApplication() {
                           {uploading ? (
                             <><svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Uploading...</>
                           ) : (
-                            <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg> Click to Upload</>
+                            <><ArrowUpTrayIcon className="h-4 w-4" strokeWidth={2} /> Click to Upload</>
                           )}
                         </div>
                       </div>
@@ -2293,9 +2289,9 @@ export default function ReviewApplication() {
                         <div key={req.id} className={`flex items-start gap-3 rounded-xl p-3.5 border ${req.status === 'fulfilled' ? 'bg-success/5 border-success/20' : 'bg-warning/5 border-warning/20'}`}>
                           <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${req.status === 'fulfilled' ? 'bg-success/20' : 'bg-warning/20'}`}>
                             {req.status === 'fulfilled' ? (
-                              <svg className="h-3 w-3 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                              <CheckIcon className="h-3 w-3 text-success" strokeWidth={2.5} />
                             ) : (
-                              <svg className="h-3 w-3 text-warning" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                              <ExclamationCircleIcon className="h-3 w-3 text-warning" strokeWidth={2} />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -2310,7 +2306,7 @@ export default function ReviewApplication() {
                                 onClick={() => downloadFile(req.document_id!, req.document_filename || 'document')}
                                 className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
                               >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                                <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                 {req.document_filename || 'Download'}
                               </button>
                             )}
@@ -2370,7 +2366,7 @@ export default function ReviewApplication() {
                           onClick={handleDownloadAll}
                           loading={downloadingAll}
                         >
-                          <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                          <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
                           Download All
                         </Button>
                       )}
@@ -2380,7 +2376,7 @@ export default function ReviewApplication() {
                         className="h-8"
                         onClick={() => setShowDocRequestForm((v) => !v)}
                       >
-                        <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        <PlusIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
                         Request Docs
                       </Button>
                     </div>
@@ -2408,7 +2404,7 @@ export default function ReviewApplication() {
                                 className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                                 title="Remove"
                               >
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                                <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                               </button>
                             )}
                           </div>
@@ -2419,7 +2415,7 @@ export default function ReviewApplication() {
                         onClick={() => setDocRequestItems((prev) => [...prev, ''])}
                         className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
                       >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
                         Add document
                       </button>
                       <div className="flex items-center gap-2 mt-3">
@@ -2434,7 +2430,7 @@ export default function ReviewApplication() {
                   )}
                   {documents.length === 0 ? (
                     <div className="rounded-xl bg-secondary/50 p-6 text-center">
-                      <svg className="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                      <DocumentTextIcon className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
                       <p className="text-[14px] text-muted-foreground">No documents uploaded</p>
                     </div>
                   ) : (
@@ -2443,7 +2439,7 @@ export default function ReviewApplication() {
                         <div key={doc.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl bg-secondary/30 p-4 transition-all duration-200 border border-border/50 hover:bg-secondary/60">
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background border border-border/50 shadow-sm">
-                              <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                              <DocumentTextIcon className="h-5 w-5 text-muted-foreground" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-[14px] font-semibold text-foreground mb-0.5">{doc.original_filename}</p>
@@ -2469,11 +2465,11 @@ export default function ReviewApplication() {
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
                             </button>
                             <button onClick={() => handleDownloadDoc(doc)} className="led-btn led-btn-ghost led-btn-sm !px-1.5" title="Download">
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                              <ArrowDownTrayIcon className="h-4 w-4" strokeWidth={2} />
                             </button>
                             {doc.ocr_status && (doc.ocr_status === 'failed' || doc.ocr_status === 'completed') && (
                               <button onClick={() => handleRetryOcr(doc.id)} disabled={retryingOcr === doc.id} className="led-btn led-btn-ghost led-btn-sm !px-1.5 disabled:opacity-50" title="Redo OCR">
-                                <svg className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                <ArrowPathIcon className={`h-4 w-4 ${retryingOcr === doc.id ? 'animate-spin' : ''}`} strokeWidth={2} />
                               </button>
                             )}
                           </div>
@@ -2798,7 +2794,7 @@ export default function ReviewApplication() {
                       {!referrer ? (
                         <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
                           <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                            <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+                            <LinkIcon className="h-6 w-6 text-muted-foreground" />
                           </div>
                           <p className="text-[13px] font-medium text-muted-foreground">No ref associated with this contact</p>
                         </div>
@@ -2807,7 +2803,7 @@ export default function ReviewApplication() {
                           <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
                             {referrerMessages.length === 0 ? (
                               <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
-                                <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                                <ChatBubbleBottomCenterTextIcon className="h-8 w-8 text-muted-foreground" />
                                 <p className="text-[13px] text-muted-foreground">No messages yet</p>
                               </div>
                             ) : (
@@ -2826,9 +2822,9 @@ export default function ReviewApplication() {
                                         title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
                                       >
                                         {isPinned ? (
-                                          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.32 2.577a49.255 49.255 0 0 1 11.36 0c1.497.174 2.57 1.46 2.57 2.93V21a.75.75 0 0 1-1.085.67L12 18.089l-7.165 3.583A.75.75 0 0 1 3.75 21V5.507c0-1.47 1.073-2.756 2.57-2.93Z" /></svg>
+                                          <BookmarkSolidIcon className="h-3 w-3" />
                                         ) : (
-                                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
+                                          <BookmarkIcon className="h-3 w-3" strokeWidth={2} />
                                         )}
                                       </button>
                                       {!isOwn && (
@@ -2843,7 +2839,7 @@ export default function ReviewApplication() {
                                           className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                           title="Delete"
                                         >
-                                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                          <TrashIcon className="h-3 w-3" strokeWidth={2} />
                                         </button>
                                       )}
                                     </div>
@@ -2897,7 +2893,7 @@ export default function ReviewApplication() {
                                   }
                                 }}
                               >
-                                <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                                <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
                                 Send
                               </Button>
                             </div>
@@ -2913,7 +2909,7 @@ export default function ReviewApplication() {
                       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
                         {clientMessages.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
-                            <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                            <ChatBubbleBottomCenterTextIcon className="h-8 w-8 text-muted-foreground" />
                             <p className="text-[13px] text-muted-foreground">No messages yet</p>
                           </div>
                         ) : (
@@ -2932,9 +2928,9 @@ export default function ReviewApplication() {
                                     title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
                                   >
                                     {isPinned ? (
-                                      <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6.32 2.577a49.255 49.255 0 0 1 11.36 0c1.497.174 2.57 1.46 2.57 2.93V21a.75.75 0 0 1-1.085.67L12 18.089l-7.165 3.583A.75.75 0 0 1 3.75 21V5.507c0-1.47 1.073-2.756 2.57-2.93Z" /></svg>
+                                      <BookmarkSolidIcon className="h-3 w-3" />
                                     ) : (
-                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
+                                      <BookmarkIcon className="h-3 w-3" strokeWidth={2} />
                                     )}
                                   </button>
                                   {!isOwn && (
@@ -2949,7 +2945,7 @@ export default function ReviewApplication() {
                                       className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                       title="Delete"
                                     >
-                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                      <TrashIcon className="h-3 w-3" strokeWidth={2} />
                                     </button>
                                   )}
                                 </div>
@@ -3003,7 +2999,7 @@ export default function ReviewApplication() {
                               }
                             }}
                           >
-                            <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                            <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
                             Send
                           </Button>
                         </div>
@@ -3018,7 +3014,7 @@ export default function ReviewApplication() {
                         {appNotes.filter((n) => n.visibility.length === 1 && (n.visibility[0] === 'broker' || n.visibility[0] === 'personal')).length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
                             <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                              <DocumentTextIcon className="h-6 w-6 text-muted-foreground" />
                             </div>
                             <p className="text-[13px] font-medium text-muted-foreground">No deal notes yet</p>
                           </div>
@@ -3043,7 +3039,7 @@ export default function ReviewApplication() {
                                         className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary"
                                         title="Edit"
                                       >
-                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                                        <PencilSquareIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                       </button>
                                     )}
                                     <button
@@ -3074,7 +3070,7 @@ export default function ReviewApplication() {
                                       className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                       title="Delete"
                                     >
-                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                      <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                     </button>
                                     <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(note.created_at)}</span>
                                   </div>
@@ -3098,7 +3094,7 @@ export default function ReviewApplication() {
                                     <p className="whitespace-pre-wrap">{note.content}</p>
                                   )}
                                   <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
-                                    <svg className="h-3.5 w-3.5 opacity-60 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                                    <LockClosedIcon className="h-3.5 w-3.5 opacity-60 shrink-0" strokeWidth={2} />
                                     <span className="text-[11px] font-medium opacity-60">{isPersonal ? 'Only you' : 'Internal (Brokers only)'}</span>
                                   </div>
                                 </div>
@@ -3124,12 +3120,12 @@ export default function ReviewApplication() {
                           >
                             {noteVisibility === 'personal' ? (
                               <>
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                                <UserIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                 Only me
                               </>
                             ) : (
                               <>
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                                <UserGroupIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                 Team
                               </>
                             )}
@@ -3154,7 +3150,7 @@ export default function ReviewApplication() {
                               }
                             }}
                           >
-                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                            <PlusIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
                             Add Note
                           </Button>
                         </div>
@@ -3169,7 +3165,7 @@ export default function ReviewApplication() {
                         {alerts.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
                             <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                              <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                              <ExclamationTriangleIcon className="h-6 w-6 text-muted-foreground" />
                             </div>
                             <p className="text-[13px] font-medium text-muted-foreground">No alerts for this client</p>
                           </div>
@@ -3201,7 +3197,7 @@ export default function ReviewApplication() {
                                     className="opacity-0 group-hover/alert:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                                     title="Delete"
                                   >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
                                   </button>
                                   <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(alert.created_at)}</span>
                                 </div>
@@ -3231,11 +3227,11 @@ export default function ReviewApplication() {
                           >
                             <span className={`flex items-center justify-center h-4 w-4 rounded-[5px] border transition-colors ${newAlertHighPriority ? 'bg-destructive border-destructive text-white' : 'border-border bg-background'}`}>
                               {newAlertHighPriority && (
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                                <CheckIcon className="h-3 w-3" strokeWidth={3} />
                               )}
                             </span>
                             <span className="flex items-center gap-1">
-                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                              <ExclamationTriangleIcon className="h-3.5 w-3.5" strokeWidth={2} />
                               {newAlertHighPriority ? 'High alert' : 'Mark as high alert'}
                             </span>
                           </button>
@@ -3261,7 +3257,7 @@ export default function ReviewApplication() {
                               }
                             }}
                           >
-                            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                            <ExclamationCircleIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
                             Add Alert
                           </Button>
                         </div>
@@ -3298,7 +3294,7 @@ export default function ReviewApplication() {
                           onClick={() => setViewingQuoteSheet(null)}
                           className="text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                          <ArrowLeftIcon className="h-5 w-5" strokeWidth={2} />
                         </button>
                         <h3 className="text-[15px] font-semibold">
                           {viewingQuoteSheet.title || `Quote Sheet v${viewingQuoteSheet.version}`}
@@ -3314,7 +3310,7 @@ export default function ReviewApplication() {
                           onClick={() => handleDownloadPdf(viewingQuoteSheet, false)}
                         >
                           <span className="flex items-center gap-1.5">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                            <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
                             PDF
                           </span>
                         </Button>
@@ -3336,7 +3332,7 @@ export default function ReviewApplication() {
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
                       <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
                         <span className="flex items-center gap-1.5">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                          <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
                           Create Quote Sheet
                         </span>
                       </Button>
@@ -3344,7 +3340,7 @@ export default function ReviewApplication() {
 
                     {quoteSheets.length === 0 ? (
                       <div className="rounded-xl bg-secondary/50 p-8 text-center">
-                        <svg className="mx-auto h-10 w-10 text-muted-foreground mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                        <ClipboardDocumentListIcon className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <p className="text-[14px] font-medium text-muted-foreground">No quote sheets yet</p>
                         <p className="text-[12px] text-muted-foreground mt-1">Create a quote sheet to compare lender options for this application</p>
                       </div>
@@ -3569,7 +3565,7 @@ export default function ReviewApplication() {
                 ) : activityLogs.length === 0 ? (
                   <div className="px-6 py-12 text-center">
                     <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-                      <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                      <ClockIcon className="h-8 w-8 text-muted-foreground" />
                     </div>
                     <p className="text-[14px] text-muted-foreground font-medium">No activity recorded yet</p>
                   </div>
@@ -3582,7 +3578,7 @@ export default function ReviewApplication() {
                         <div key={log.id} className="flex items-start gap-4 px-6 py-4 hover:bg-secondary/50 transition-colors">
                           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${actionConfig?.bg || 'bg-secondary text-muted-foreground'}`}>
                             {actionConfig?.icon || (
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                              <ClockIcon className="h-4 w-4" strokeWidth={2} />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -3638,9 +3634,7 @@ export default function ReviewApplication() {
                     }`}
                   >
                     <span className="capitalize">{STATUS_LABEL[s as keyof typeof STATUS_LABEL] || s.replace(/_/g, ' ')}</span>
-                    <svg className="h-4 w-4 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
+                    <ChevronRightIcon className="h-4 w-4 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
                   </button>
                 ))}
               </div>
@@ -3679,9 +3673,7 @@ export default function ReviewApplication() {
                       }`}
                     >
                       {item.is_completed && (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
+                        <CheckIcon className="h-3 w-3" strokeWidth={3} />
                       )}
                     </button>
                     <span className={`flex-1 text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
@@ -3718,7 +3710,7 @@ export default function ReviewApplication() {
                             className="text-muted-foreground hover:text-destructive transition-colors p-1"
                             title="Remove broker"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                            <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                           </button>
                         </div>
                       ))}
@@ -4152,9 +4144,7 @@ export default function ReviewApplication() {
                     disabled={approvalConditions.length <= 1}
                     className="shrink-0 p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
+                    <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                   </button>
                 </div>
               ))}

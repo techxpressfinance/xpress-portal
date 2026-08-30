@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { PageHeader, StatCard, Button } from '../../components/ui';
+import { CheckCircleIcon, NoSymbolIcon } from '@heroicons/react/24/outline';
 
 interface TenantSummary {
   total: number;
@@ -60,9 +61,7 @@ export default function PlatformDashboard() {
           loading={loading}
           valueColor="text-[#34c759]"
           icon={
-            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
+            <CheckCircleIcon className="h-[18px] w-[18px]" />
           }
           gradient=""
         />
@@ -72,9 +71,7 @@ export default function PlatformDashboard() {
           loading={loading}
           valueColor="text-muted-foreground"
           icon={
-            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" />
-            </svg>
+            <NoSymbolIcon className="h-[18px] w-[18px]" />
           }
           gradient=""
         />

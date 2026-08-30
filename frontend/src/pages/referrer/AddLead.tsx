@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
+import { CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
@@ -786,9 +787,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         <Card>
           <div className="text-center space-y-5 py-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
-              <svg className="h-7 w-7 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
+              <CheckIcon className="h-7 w-7 text-success" strokeWidth={2} />
             </div>
             <div>
               <p className="text-[18px] font-semibold text-foreground">
@@ -1719,7 +1718,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {additionalIncomes.map((inc, i) => (
               <div key={i} className="grid gap-3 sm:grid-cols-3 rounded-xl border border-border p-3 relative">
                 <button type="button" onClick={() => setAdditionalIncomes(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div>
                   <label className={LBL}>Income Type</label>
@@ -1787,7 +1786,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {realEstateAssets.map((asset, i) => (
               <div key={i} className="rounded-xl border border-border p-4 space-y-3 relative">
                 <button type="button" onClick={() => setRealEstateAssets(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <p className="text-[13px] font-medium text-foreground">Real Estate {i + 1}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1843,7 +1842,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {otherAssets.map((asset, i) => (
               <div key={i} className="grid gap-3 sm:grid-cols-2 rounded-xl border border-border p-3 relative">
                 <button type="button" onClick={() => setOtherAssets(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div>
                   <label className={LBL}>Asset Type</label>
@@ -1868,7 +1867,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {liabilities.map((liab, i) => (
               <div key={i} className="rounded-xl border border-border p-4 space-y-3 relative">
                 <button type="button" onClick={() => setLiabilities(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -2007,10 +2006,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           <div className="space-y-2">
             {files.map((f, i) => (
               <div key={i} className="flex items-center gap-3 rounded-lg bg-secondary px-3 py-2.5">
-                <svg className="h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                <DocumentTextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-[13px] text-foreground flex-1 truncate">{f.name}</span>
                 <button type="button" onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive transition-colors">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
               </div>
             ))}
