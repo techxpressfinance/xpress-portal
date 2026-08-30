@@ -9,7 +9,7 @@ export { default as ConfirmDialog } from './ConfirmDialog';
 export { default as PasswordRequirements, PASSWORD_REQUIREMENTS, passwordMeetsRequirements } from './PasswordRequirements';
 export { default as AbrResultCard } from './AbrResultCard';
 export { default as Skeleton } from './Skeleton';
-export { TableSkeleton, ListSkeleton, DetailSkeleton } from './Skeletons';
+export { TableSkeleton, ListSkeleton, DetailSkeleton, ChartSkeleton } from './Skeletons';
 export { default as EmptyState } from './EmptyState';
 export { default as Breadcrumbs } from './Breadcrumbs';
 export { default as DatePicker } from './DatePicker';

@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Card, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState, ChartSkeleton } from '../../components/ui';
 import { LOAN_CATEGORIES } from '../../lib/constants';
 import { LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
@@ -216,9 +216,11 @@ export default function SettledDealsAnalyticsPage() {
               ))}
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={320} />
         ) : (
           <div className="flex items-center justify-center h-[320px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No settled deals in this period'}
+            No settled deals in this period
           </div>
         )}
       </Card>
@@ -243,9 +245,11 @@ export default function SettledDealsAnalyticsPage() {
               />
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={280} />
         ) : (
           <div className="flex items-center justify-center h-[280px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No settled deals in this period'}
+            No settled deals in this period
           </div>
         )}
       </Card>

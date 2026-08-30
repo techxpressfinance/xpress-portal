@@ -6,7 +6,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { Card, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState, ChartSkeleton } from '../../components/ui';
 import { STATUS_LABEL, STATUS_BADGE, LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
 import type { ApplicationStatus, BrokerAnalytics, BrokerAnalyticsDeal } from '../../types';
@@ -243,9 +243,11 @@ export default function BrokerAnalyticsPage() {
               ))}
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={320} />
         ) : (
           <div className="flex items-center justify-center h-[320px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No deals in this period'}
+            No deals in this period
           </div>
         )}
       </Card>
@@ -279,9 +281,11 @@ export default function BrokerAnalyticsPage() {
               />
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={280} />
         ) : (
           <div className="flex items-center justify-center h-[280px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No deals in this period'}
+            No deals in this period
           </div>
         )}
       </Card>

@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Card, StatCard, DatePicker } from '../../components/ui';
+import { Card, StatCard, DatePicker, ChartSkeleton } from '../../components/ui';
 import type { LenderAnalytics } from '../../types';
 import { CheckCircleIcon, ClockIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
@@ -144,9 +144,11 @@ export default function LenderAnalyticsPage() {
                 <Bar dataKey="withdrawn" stackId="a" fill={STATUS_COLORS.withdrawn} name="Withdrawn" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
         </Card>
@@ -176,9 +178,11 @@ export default function LenderAnalyticsPage() {
                 />
               </PieChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
         </Card>
@@ -203,9 +207,11 @@ export default function LenderAnalyticsPage() {
                 <Line type="monotone" dataKey="approvals" stroke="oklch(0.72 0.19 150)" strokeWidth={2} name="Approvals" dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No monthly data yet'}
+              No monthly data yet
             </div>
           )}
         </Card>
@@ -226,9 +232,11 @@ export default function LenderAnalyticsPage() {
                 <Bar dataKey="approval_rate" fill="oklch(0.72 0.19 150)" radius={[8, 8, 0, 0]} name="Approval Rate" />
               </BarChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
         </Card>
