@@ -6,8 +6,9 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker } from '../../components/ui';
+import { Card, StatCard, DatePicker, ChartSkeleton } from '../../components/ui';
 import type { LenderAnalytics } from '../../types';
+import { CheckCircleIcon, ClockIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
 const STATUS_COLORS: Record<string, string> = {
   approved: 'oklch(0.72 0.19 150)',
@@ -103,28 +104,28 @@ export default function LenderAnalyticsPage() {
           value={data?.totals.total_submissions ?? 0}
           loading={loading}
           gradient="from-primary to-primary"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>}
+          icon={<PaperAirplaneIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Approval Rate"
           value={data ? `${data.totals.overall_approval_rate}%` : '0%'}
           loading={loading}
           gradient="from-success to-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Avg Turnaround"
           value={data?.totals.avg_turnaround_days != null ? `${data.totals.avg_turnaround_days}d` : 'N/A'}
           loading={loading}
           gradient="from-chart-4 to-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<ClockIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Charts Row 1 */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar Chart - Submissions by Lender */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Submissions by Lender</h3>
           {!loading && data && data.by_lender.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -143,15 +144,17 @@ export default function LenderAnalyticsPage() {
                 <Bar dataKey="withdrawn" stackId="a" fill={STATUS_COLORS.withdrawn} name="Withdrawn" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
-        </GlassCard>
+        </Card>
 
         {/* Pie Chart - Outcome Breakdown */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Outcome Breakdown</h3>
           {!loading && pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -175,18 +178,20 @@ export default function LenderAnalyticsPage() {
                 />
               </PieChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Charts Row 2 */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Line Chart - Monthly Trend */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Trend</h3>
           {!loading && data && data.monthly_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -202,15 +207,17 @@ export default function LenderAnalyticsPage() {
                 <Line type="monotone" dataKey="approvals" stroke="oklch(0.72 0.19 150)" strokeWidth={2} name="Approvals" dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No monthly data yet'}
+              No monthly data yet
             </div>
           )}
-        </GlassCard>
+        </Card>
 
         {/* Bar Chart - Approval Rate by Lender */}
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">Approval Rate by Lender</h3>
           {!loading && data && data.by_lender.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -225,17 +232,19 @@ export default function LenderAnalyticsPage() {
                 <Bar dataKey="approval_rate" fill="oklch(0.72 0.19 150)" radius={[8, 8, 0, 0]} name="Approval Rate" />
               </BarChart>
             </ResponsiveContainer>
+          ) : loading ? (
+            <ChartSkeleton height={300} />
           ) : (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-[14px]">
-              {loading ? 'Loading...' : 'No submission data yet'}
+              No submission data yet
             </div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Summary Table */}
       {!loading && data && data.by_lender.length > 0 && (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">Lender Summary</h3>
           </div>
@@ -269,7 +278,7 @@ export default function LenderAnalyticsPage() {
               </tbody>
             </table>
           </div>
-        </GlassCard>
+        </Card>
       )}
     </div>
   );

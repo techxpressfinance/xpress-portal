@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import type { AppNotification, NotificationType } from '../types';
+import { BellIcon, CheckCircleIcon, EnvelopeIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 function parseUTC(iso: string): Date {
   return !iso.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(iso) ? new Date(iso + 'Z') : new Date(iso);
@@ -21,15 +22,11 @@ function timeAgo(iso: string): string {
 function TypeIcon({ type }: { type: NotificationType }) {
   if (type === 'message') {
     return (
-      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-      </svg>
+      <EnvelopeIcon className="h-4 w-4" />
     );
   }
   return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-    </svg>
+    <CheckCircleIcon className="h-4 w-4" />
   );
 }
 
@@ -106,9 +103,7 @@ export default function NotificationCenter({ collapsed }: Props) {
         title="Notifications"
       >
         <div className="relative shrink-0">
-          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-          </svg>
+          <BellIcon className="h-[18px] w-[18px]" />
           {unreadCount > 0 && (
             <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
               {unreadCount > 9 ? '9+' : unreadCount}
@@ -152,9 +147,7 @@ export default function NotificationCenter({ collapsed }: Props) {
                   onClick={() => setOpen(false)}
                   className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
+                  <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                 </button>
               </div>
             </div>
@@ -164,9 +157,7 @@ export default function NotificationCenter({ collapsed }: Props) {
               {notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                    <svg className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-                    </svg>
+                    <BellIcon className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <p className="text-[14px] font-medium text-foreground">All caught up</p>
                   <p className="mt-1 text-[13px] text-muted-foreground">No new notifications</p>

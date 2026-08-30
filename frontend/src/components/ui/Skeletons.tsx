@@ -56,3 +56,25 @@ export function DetailSkeleton({ blocks = 3 }: { blocks?: number }) {
     </div>
   );
 }
+
+/**
+ * Shimmer stand-in for a chart. Draws bars of varying height so the
+ * placeholder occupies the same shape as the chart that replaces it,
+ * rather than collapsing to a line of centred "Loading..." text.
+ */
+export function ChartSkeleton({ height = 300, bars = 8 }: { height?: number; bars?: number }) {
+  // Fixed ratios, not random, so the shape does not reshuffle between renders.
+  const ratios = [0.72, 0.44, 0.9, 0.58, 0.34, 0.81, 0.5, 0.66, 0.4, 0.85];
+  return (
+    <div className="flex items-end gap-2 sm:gap-3 px-2 pb-2" style={{ height }} aria-hidden="true">
+      {Array.from({ length: bars }, (_, i) => (
+        <Skeleton
+          key={i}
+          width="100%"
+          height={`${Math.round(ratios[i % ratios.length] * 100)}%`}
+          className="!rounded-b-none"
+        />
+      ))}
+    </div>
+  );
+}

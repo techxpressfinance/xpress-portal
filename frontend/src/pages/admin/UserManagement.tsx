@@ -5,10 +5,11 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { loanTypeOptions } from '../../lib/constants';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, LoanApplication, LoanType, PaginatedResponse, User } from '../../types';
+import { UsersIcon } from '@heroicons/react/24/outline';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
@@ -255,12 +256,12 @@ export default function UserManagement() {
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-1 mb-8">
         <StatCard label="Total Clients" value={users.length} loading={loading} gradient="from-primary to-primary"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>}
+          icon={<UsersIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Client table */}
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         {loading ? (
           <div className="p-6 space-y-4">
             {[1, 2, 3].map(i => (
@@ -336,7 +337,7 @@ export default function UserManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Invite & Onboarding */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Invite & Onboarding</h3>
@@ -350,7 +351,7 @@ export default function UserManagement() {
         </div>
       )}
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
-        <GlassCard>
+        <Card>
           <h4 className="text-[14px] font-semibold text-foreground mb-1">Invite New Client</h4>
           <p className="text-[13px] text-muted-foreground mb-4">Invite a new client and create a draft application for them to complete.</p>
           <form onSubmit={handleStartApp} className="space-y-3">
@@ -383,9 +384,9 @@ export default function UserManagement() {
             <Button type="submit" size="sm" loading={startingApp} disabled={!inviteForm.full_name.trim() || !inviteForm.email.trim() || !inviteForm.amount} className="w-full">Invite & Create Application</Button>
           </form>
           {inviteLink && <div className="mt-3"><InviteLinkBox url={inviteLink} onDismiss={() => setInviteLink(null)} /></div>}
-        </GlassCard>
+        </Card>
 
-        <GlassCard>
+        <Card>
           <h4 className="text-[14px] font-semibold text-foreground mb-1">Remind to Complete Draft</h4>
           <p className="text-[13px] text-muted-foreground mb-4">Send a reminder to a client with an existing draft application.</p>
           <form onSubmit={handleCompleteInvite} className="space-y-3">
@@ -409,11 +410,11 @@ export default function UserManagement() {
             <Button type="submit" size="sm" variant="secondary" loading={sendingComplete} disabled={!selectedAppId} className="w-full">Send Reminder</Button>
           </form>
           {reminderLink && <div className="mt-3"><InviteLinkBox url={reminderLink} onDismiss={() => setReminderLink(null)} /></div>}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Invitation History */}
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited client{historyTotal !== 1 ? 's' : ''}</p>
@@ -494,7 +495,7 @@ export default function UserManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {editingUser && (
         <EditClientModal

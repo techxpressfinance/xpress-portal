@@ -124,3 +124,34 @@ export function daysSince(date: string | Date | null | undefined): number {
   if (Number.isNaN(then)) return 0;
   return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
 }
+
+/**
+ * Coalesce a handler to at most one call per animation frame.
+ *
+ * Used for scroll/resize reposition handlers on portal-anchored popovers.
+ * A raw scroll listener fires far more often than the screen repaints, so
+ * without this the layout read plus setState runs several times per frame.
+ * Call the returned `cancel` on cleanup so a queued frame cannot fire after
+ * the component unmounts.
+ */
+export function rafThrottle<T extends unknown[]>(fn: (...args: T) => void) {
+  let frame: number | null = null;
+  let lastArgs: T | null = null;
+
+  const throttled = (...args: T) => {
+    lastArgs = args;
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      if (lastArgs) fn(...lastArgs);
+    });
+  };
+
+  throttled.cancel = () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    lastArgs = null;
+  };
+
+  return throttled;
+}

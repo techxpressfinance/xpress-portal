@@ -1,4 +1,4 @@
-export { default as GlassCard } from './GlassCard';
+export { default as Card } from './Card';
 export { default as Button } from './Button';
 export { default as Input } from './Input';
 export { default as Select } from './Select';
@@ -9,7 +9,7 @@ export { default as ConfirmDialog } from './ConfirmDialog';
 export { default as PasswordRequirements, PASSWORD_REQUIREMENTS, passwordMeetsRequirements } from './PasswordRequirements';
 export { default as AbrResultCard } from './AbrResultCard';
 export { default as Skeleton } from './Skeleton';
-export { TableSkeleton, ListSkeleton, DetailSkeleton } from './Skeletons';
+export { TableSkeleton, ListSkeleton, DetailSkeleton, ChartSkeleton } from './Skeletons';
 export { default as EmptyState } from './EmptyState';
 export { default as Breadcrumbs } from './Breadcrumbs';
 export { default as DatePicker } from './DatePicker';

@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
-import { GlassCard, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
+import { Card, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
@@ -15,6 +15,7 @@ import {
 } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import type { DocType } from '../../types';
+import { ArrowUpTrayIcon, CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const SELECT_CLS = 'led-input';
 const TEXTAREA_CLS = 'w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent resize-none';
@@ -1267,7 +1268,7 @@ export default function NewApplication() {
           <h1 className="text-[26px] sm:text-[34px] font-semibold tracking-[-0.05em] text-[var(--led-ink)]">Important Information</h1>
           <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">Please read the following information carefully before proceeding</p>
         </div>
-        <GlassCard>
+        <Card>
           <div className="max-h-80 overflow-y-auto rounded-xl bg-[var(--led-surface-2)] p-5 text-[14px] text-[var(--led-ink)] leading-relaxed space-y-4">
             <h3 className="text-[15px] font-semibold">Loan Application Disclosure</h3>
             <p>By submitting a loan application through this portal, you acknowledge and agree to the following terms and conditions. Please read this information carefully before proceeding.</p>
@@ -1283,7 +1284,7 @@ export default function NewApplication() {
               <span className="text-[13px] text-[var(--led-ink)]">I have read and understood the above information</span>
             </label>
           </div>
-        </GlassCard>
+        </Card>
         <div className="mt-6 flex gap-3">
           <Button size="lg" disabled={!checked} onClick={() => setAcknowledged(true)}>Continue</Button>
           <Button variant="secondary" size="lg" onClick={() => navigate('/dashboard')}>Cancel</Button>
@@ -1343,7 +1344,7 @@ export default function NewApplication() {
           )}
           {saveStatus === 'saved' && lastSavedAt && (
             <>
-              <svg className="h-3.5 w-3.5 text-[var(--led-success,#22c55e)]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+              <CheckIcon className="h-3.5 w-3.5 text-[var(--led-success,#22c55e)]" strokeWidth={2.5} />
               <span>{completeId ? 'Saved' : 'Draft saved locally'} · {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </>
           )}
@@ -1370,7 +1371,7 @@ export default function NewApplication() {
             {lendEnabled && (
               <>
                 {isSectionVisible('loan_details') && (<>
-                <GlassCard>
+                <Card>
                   <label className={LABEL_CLS}>Select Loan Type(s)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {LEND_LOAN_TYPES.map(type => {
@@ -1378,7 +1379,7 @@ export default function NewApplication() {
                       return (
                         <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => toggleLoanType(type.value)}>
                           <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
-                            {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
+                            {active && <CheckIcon className="h-3 w-3 text-white" strokeWidth={3} />}
                           </div>
                           <LoanTypeIcon type={type.value} className="mt-0.5 h-6 w-6 shrink-0 text-[var(--led-muted)]" />
                           <div>
@@ -1390,10 +1391,10 @@ export default function NewApplication() {
                     })}
                   </div>
                   {loanTypeError && <p className="mt-2 text-[12px] text-destructive">{loanTypeError}</p>}
-                </GlassCard>
+                </Card>
 
                 {selectedLoanTypes.includes('equipment_finance') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="equipment_finance" className="h-5 w-5 text-[var(--led-muted)]" /> Equipment Finance Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
@@ -1443,11 +1444,11 @@ export default function NewApplication() {
                         <Input type="number" min="0" max="100" placeholder="80" {...register('eq_business_use_pct')} />
                       </div>
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('business_loan') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="business_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Business Loan Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Loan Purpose <span className="font-normal">(Optional)</span></label>
@@ -1469,11 +1470,11 @@ export default function NewApplication() {
                         {['Working Capital', 'Growth', 'Refinance', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('commercial_property') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="commercial_property" className="h-5 w-5 text-[var(--led-muted)]" /> Commercial Property Details</h3>
                     <div>
                       <label className={LABEL_CLS}>Purchase or Refinance? <span className="font-normal">(Optional)</span></label>
@@ -1502,11 +1503,11 @@ export default function NewApplication() {
                         </div>
                       )}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 {selectedLoanTypes.includes('home_loan') && (
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="flex items-center gap-2 text-[14px] font-semibold text-[var(--led-ink)]"><LoanTypeIcon type="home_loan" className="h-5 w-5 text-[var(--led-muted)]" /> Home Loan Details</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
@@ -1540,7 +1541,7 @@ export default function NewApplication() {
                         </div>
                       )}
                     </div>
-                  </GlassCard>
+                  </Card>
                 )}
 
                 </>)}
@@ -1564,7 +1565,7 @@ export default function NewApplication() {
                 </div>
 
                 {/* Loan types for the active category, with comprehensive fields */}
-                  <GlassCard className="space-y-4">
+                  <Card className="space-y-4">
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Select Loan Type</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {(LOAN_CATEGORIES.find(c => c.value === tab)?.types ?? []).map(type => {
@@ -1572,7 +1573,7 @@ export default function NewApplication() {
                         return (
                           <label key={type.value} className={`relative flex cursor-pointer items-start gap-3 rounded-2xl p-4 transition-all duration-200 ${active ? 'bg-[var(--led-accent)]/5 ring-2 ring-[var(--led-accent)]/30 shadow-[0_0_0_1px_var(--led-accent)]' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`} onClick={() => selectSubType(type.value)}>
                             <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--led-line)]" style={active ? { background: 'var(--led-accent)', borderColor: 'var(--led-accent)' } : {}}>
-                              {active && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
+                              {active && <CheckIcon className="h-3 w-3 text-white" strokeWidth={3} />}
                             </div>
                             <LoanTypeIcon type={type.value} className="mt-0.5 h-6 w-6 shrink-0 text-[var(--led-muted)]" />
                             <div>
@@ -1970,10 +1971,10 @@ export default function NewApplication() {
                       <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
                       <textarea {...register('notes')} rows={3} className={TEXTAREA_CLS} placeholder="Any additional information about your loan requirement..." />
                     </div>
-            </GlassCard>
+            </Card>
 
             {/* ── Loan Amount ── */}
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Loan Amount</h3>
               <div>
                 <label className={LABEL_CLS}>Loan Amount ($) *</label>
@@ -1990,13 +1991,13 @@ export default function NewApplication() {
                 </div>
                 {errors.amount && <p className="mt-1 text-[12px] text-destructive">{errors.amount.message}</p>}
               </div>
-            </GlassCard>
+            </Card>
             </>
           )}
 
             {/* Document upload */}
             {isSectionVisible('documents') && (
-                <GlassCard className="space-y-4">
+                <Card className="space-y-4">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Supporting Documents</h3>
                     <p className="text-[12px] text-[var(--led-muted)] mt-0.5">Optional — files are uploaded when you submit.</p>
@@ -2007,14 +2008,14 @@ export default function NewApplication() {
                       {pendingDocs.map((d, i) => (
                         <li key={i} className="flex items-center gap-3 rounded-xl border border-[var(--led-line)] bg-[var(--led-surface-2)]/40 px-3 py-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--led-accent)]/10">
-                            <svg className="h-4 w-4 text-[var(--led-accent)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                            <DocumentTextIcon className="h-4 w-4 text-[var(--led-accent)]" strokeWidth={1.75} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-[13px] font-medium text-[var(--led-ink)] truncate">{d.label || DOC_TYPE_LABELS[d.doc_type] || d.doc_type}</p>
                             <p className="text-[11px] text-[var(--led-muted)] truncate">{d.file.name}</p>
                           </div>
                           <button type="button" aria-label="Remove document" onClick={() => setPendingDocs(prev => prev.filter((_, idx) => idx !== i))} className="shrink-0 rounded-md p-1 text-[var(--led-muted)] transition-colors hover:text-destructive">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                            <XMarkIcon className="h-4 w-4" strokeWidth={2} />
                           </button>
                         </li>
                       ))}
@@ -2024,7 +2025,7 @@ export default function NewApplication() {
                   {stagedFile ? (
                     <div className="rounded-xl border border-primary/30 bg-[var(--led-accent)]/5 p-4 space-y-3">
                       <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-[var(--led-accent)] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <DocumentTextIcon className="h-4 w-4 text-[var(--led-accent)] shrink-0" strokeWidth={1.75} />
                         <span className="text-[13px] font-medium text-[var(--led-ink)] truncate">{stagedFile.name}</span>
                         <span className="ml-auto shrink-0 text-[11px] text-[var(--led-muted)]">{(stagedFile.size / 1024).toFixed(0)} KB</span>
                       </div>
@@ -2057,7 +2058,7 @@ export default function NewApplication() {
                     >
                       <input ref={pendingFileInput} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handlePickFile} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                       <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-[var(--led-accent)]/15' : 'bg-[var(--led-surface-2)]'}`}>
-                        <svg className={`h-5 w-5 transition-colors ${isDragOver ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                        <ArrowUpTrayIcon className={`h-5 w-5 transition-colors ${isDragOver ? 'text-[var(--led-accent)]' : 'text-[var(--led-muted)]'}`} strokeWidth={1.75} />
                       </div>
                       <div>
                         <p className="text-[13px] font-medium text-[var(--led-ink)]">{isDragOver ? 'Drop to upload' : 'Drop a file or click to browse'}</p>
@@ -2065,12 +2066,12 @@ export default function NewApplication() {
                       </div>
                     </div>
                   )}
-                </GlassCard>
+                </Card>
                 )}
 
         {/* ── Identification ── */}
           {isSectionVisible('personal') && (
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Personal Details</h3>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
@@ -2120,10 +2121,10 @@ export default function NewApplication() {
                   <Input type="number" min="0" max="20" {...register('num_dependants')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('identification') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Identification</h3>
               <div>
                 <label className={LABEL_CLS}>ID Type{prefillTag('id_type')}</label>
@@ -2159,9 +2160,9 @@ export default function NewApplication() {
                   />
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status{prefillTag('residency_status')}</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'].map(r => (
@@ -2174,11 +2175,11 @@ export default function NewApplication() {
               {residencyStatus === 'Other' && (
                 <Input placeholder="Please specify..." {...register('residency_other')} />
               )}
-            </GlassCard>
+            </Card>
             </>)}
 
             {!lendEnabled && businessSubType && isSectionVisible('business') && (
-              <GlassCard className="space-y-4">
+              <Card className="space-y-4">
                 <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>
                   <label className={LABEL_CLS}>Industry</label>
@@ -2209,11 +2210,11 @@ export default function NewApplication() {
                     </div>
                   </div>
                 </div>
-            </GlassCard>
+            </Card>
             )}
 
             {isSectionVisible('contact') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Contact Details</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2231,13 +2232,13 @@ export default function NewApplication() {
                   {['Email', 'Mobile', 'Either'].map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
         {/* ── Living & Employment ── */}
         {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('living') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Living Situation</h3>
               <div>
                 <label className={LABEL_CLS}>Residential Status{prefillTag('residential_status')}</label>
@@ -2274,9 +2275,9 @@ export default function NewApplication() {
                 <label className={LABEL_CLS}>Time at Current Address{prefillTag('time_at_address')}</label>
                 <Input placeholder="e.g. 3 years" {...register('time_at_address')} />
               </div>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Household</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
@@ -2300,11 +2301,11 @@ export default function NewApplication() {
                   </div>
                 )}
               </div>
-            </GlassCard>
+            </Card>
             </>)}
 
             {isSectionVisible('employment') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Employment</h3>
               <div>
                 <label className={LABEL_CLS}>Employment Type</label>
@@ -2431,10 +2432,10 @@ export default function NewApplication() {
                   </div>
                 </>
               )}
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('income') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Income</h3>
               <div className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
                 <p className="text-[13px] font-semibold text-[var(--led-ink)]">Primary Income</p>
@@ -2490,7 +2491,7 @@ export default function NewApplication() {
                 </div>
               )}
               <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, blankIncome()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Additional Income</button>
-            </GlassCard>)}
+            </Card>)}
           </>
         )}
 
@@ -2498,7 +2499,7 @@ export default function NewApplication() {
         {(!businessSubType || lendEnabled) && (
           <>
             {isSectionVisible('assets') && (<>
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Real Estate Assets</h3>
               {realEstateAssets.map((asset, idx) => (
                 <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
@@ -2563,9 +2564,9 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setRealEstateAssets(prev => [...prev, blankRealEstate()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Property</button>
-            </GlassCard>
+            </Card>
 
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Other Assets</h3>
               {otherAssets.map((asset, idx) => (
                 <div key={idx} className="flex items-end gap-3">
@@ -2583,11 +2584,11 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setOtherAssets(prev => [...prev, blankOtherAsset()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Asset</button>
-            </GlassCard>
+            </Card>
             </>)}
 
             {isSectionVisible('liabilities') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Liabilities</h3>
               {liabilities.map((liability, idx) => (
                 <div key={idx} className="rounded-xl bg-[var(--led-surface-2)]/40 p-4 space-y-3">
@@ -2624,10 +2625,10 @@ export default function NewApplication() {
                 </div>
               ))}
               <button type="button" onClick={() => setLiabilities(prev => [...prev, blankLiability()])} className="text-[13px] text-[var(--led-accent)] font-medium hover:underline">+ Add Liability</button>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('expenses') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Monthly Expenses</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2647,13 +2648,13 @@ export default function NewApplication() {
                   <Input type="number" step="0.01" min="0" placeholder="500" {...register('other_commitments')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
           </>
         )}
 
         {/* ── Declarations ── */}
             {isSectionVisible('declarations') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Credit History</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -2671,10 +2672,10 @@ export default function NewApplication() {
                   </select>
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('emergency') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Emergency Contact</h3>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
@@ -2690,20 +2691,20 @@ export default function NewApplication() {
                   <Input type="tel" placeholder="04XX XXX XXX" {...register('emergency_contact_phone')} />
                 </div>
               </div>
-            </GlassCard>)}
+            </Card>)}
 
             {isSectionVisible('declarations') && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Signature</h3>
               <div>
                 <label className={LABEL_CLS}>Digital Signature — Type your full name</label>
                 <Input placeholder="Your full legal name" {...register('signature_name')} />
               </div>
               <p className="text-[12px] text-[var(--led-muted)]">Date: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            </GlassCard>)}
+            </Card>)}
 
         {/* ── Review ── */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Review Your Application</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
@@ -2754,7 +2755,7 @@ export default function NewApplication() {
               )}
             </div>
             <p className="text-[13px] text-[var(--led-muted)]">Please review the details above. Once you submit, you can upload supporting documents on the next screen.</p>
-          </GlassCard>
+          </Card>
 
         {/* ── Submit ── */}
         <div className="flex flex-wrap gap-3">

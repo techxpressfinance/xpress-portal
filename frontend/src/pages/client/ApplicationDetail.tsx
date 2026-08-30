@@ -9,12 +9,13 @@ import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
-import { GlassCard, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
 import { DOC_TYPE_LABELS, LOAN_CATEGORIES, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, categoryForSubType, findLoanSubType } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { useAuth } from '../../hooks/useAuth';
 import { useTabParam } from '../../hooks/useTabParam';
 import type { ClientMessage, Document, DocumentRequest, LoanApplication, QuoteSheet } from '../../types';
+import { ArrowDownTrayIcon, ArrowRightIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, DocumentTextIcon, ExclamationCircleIcon, LockClosedIcon, PaperAirplaneIcon, TrashIcon, UserIcon } from '@heroicons/react/24/outline';
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -205,7 +206,7 @@ export default function ApplicationDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--led-surface-2)] mb-4">
-          <svg className="h-8 w-8 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+          <DocumentTextIcon className="h-8 w-8 text-[var(--led-muted)]" />
         </div>
         <p className="text-[15px] text-[var(--led-muted)] font-medium">Application not found</p>
       </div>
@@ -247,7 +248,7 @@ export default function ApplicationDetail() {
               />
               {application.is_locked && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-500/20">
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                  <LockClosedIcon className="h-3 w-3" strokeWidth={2.5} />
                   Locked
                 </span>
               )}
@@ -264,7 +265,7 @@ export default function ApplicationDetail() {
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
-              <svg className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
               Download PDF
             </Button>
             {application.status === 'draft' && (
@@ -277,7 +278,7 @@ export default function ApplicationDetail() {
                 className="px-5"
               >
                 Submit for Review
-                <svg className="h-3.5 w-3.5 ml-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" /></svg>
+                <ArrowRightIcon className="h-3.5 w-3.5 ml-1.5" strokeWidth={2.5} />
               </Button>
             )}
           </div>
@@ -288,7 +289,7 @@ export default function ApplicationDetail() {
       </div>
 
       {/* Status Timeline */}
-      <GlassCard padding="none" className="mb-6">
+      <Card padding="none" className="mb-6">
         <div className="border-b border-[var(--led-line)] px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Progress</p>
           <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Progress</h2>
@@ -296,7 +297,7 @@ export default function ApplicationDetail() {
         <div className="p-6">
           <StatusTimeline currentStatus={application.status} clientView />
         </div>
-      </GlassCard>
+      </Card>
 
       <div className={`grid gap-6 ${activeTab === 'documents' ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
         <div className={`space-y-6 ${activeTab === 'documents' ? '' : 'lg:col-span-2'}`}>
@@ -322,7 +323,7 @@ export default function ApplicationDetail() {
 
           {activeTab === 'overview' && (
           <>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Summary</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Overview</h2>
@@ -366,12 +367,12 @@ export default function ApplicationDetail() {
 
             {application.status === 'draft' && application.is_locked && (
               <div className="mt-6 flex items-center gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-                <svg className="h-4 w-4 shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                <LockClosedIcon className="h-4 w-4 shrink-0 text-amber-600" strokeWidth={2} />
                 <p className="text-[13px] font-medium text-amber-700">Your broker has locked this application. Contact them if you need to make changes.</p>
               </div>
             )}
           </div>
-          </GlassCard>
+          </Card>
 
           </>
           )}
@@ -380,7 +381,7 @@ export default function ApplicationDetail() {
           <>
           {/* Personal Details */}
           {sectionVisible('personal', 'contact', 'living') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Applicant</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Personal Details</h2>
@@ -431,12 +432,12 @@ export default function ApplicationDetail() {
               )}
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Address & Living Situation */}
           {sectionVisible('living') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Residence</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Address & Living Situation</h2>
@@ -467,12 +468,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Employment */}
           {sectionVisible('employment', 'business') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Work</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Employment</h2>
@@ -531,12 +532,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Directors (commercial loans) */}
           {['business', 'business_loan', 'commercial_property', 'equipment_finance'].includes(application.loan_type) && (
-            <GlassCard padding="none" className="mt-6">
+            <Card padding="none" className="mt-6">
               <div className="p-6">
                 <DirectorsSection
                   application={application}
@@ -547,7 +548,7 @@ export default function ApplicationDetail() {
                   canManage
                 />
               </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Loan Type Details (from lend_extra_data) */}
@@ -557,7 +558,7 @@ export default function ApplicationDetail() {
               const loanDetails = extraData.loan_type_details;
               if (!loanDetails) return null;
               return (
-                <GlassCard>
+                <Card>
                   <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-5">Loan Type Details</h2>
                   <div className="space-y-4">
                     {(() => {
@@ -647,7 +648,7 @@ export default function ApplicationDetail() {
                       </div>
                     )}
                   </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -656,7 +657,7 @@ export default function ApplicationDetail() {
 
           {/* Emergency Contact */}
           {sectionVisible('emergency') && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Contact</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Emergency Contact</h2>
@@ -677,12 +678,12 @@ export default function ApplicationDetail() {
               </div>
             </div>
           </div>
-          </GlassCard>
+          </Card>
           )}
 
           {/* Referrer Info */}
           {application.referrer && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Referral</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Referred By</h2>
@@ -690,7 +691,7 @@ export default function ApplicationDetail() {
               <div className="p-6">
               <div className="flex items-center gap-4 rounded-xl bg-[var(--led-surface-2)]/50 p-4">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--led-accent)]/10 text-[var(--led-accent)]">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                  <UserIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-semibold text-[var(--led-ink)]">{application.referrer.full_name || '—'}</p>
@@ -717,12 +718,12 @@ export default function ApplicationDetail() {
                 </div>
               )}
             </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Applicant Details */}
           {application.applicant_first_name && sectionVisible('personal', 'contact', 'living', 'employment', 'business', 'loan_details', 'emergency', 'declarations') && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Full Details</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Applicant Details</h2>
@@ -1036,7 +1037,7 @@ export default function ApplicationDetail() {
                 </div>
               )}
             </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Loan Type Details from lend_extra_data */}
@@ -1047,7 +1048,7 @@ export default function ApplicationDetail() {
               if (!loanDetails || Object.keys(loanDetails).length === 0) return null;
 
               return (
-                <GlassCard padding="none">
+                <Card padding="none">
                   <div className="border-b border-[var(--led-line)] px-6 py-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Financing</p>
                     <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Loan Type Details</h2>
@@ -1358,7 +1359,7 @@ export default function ApplicationDetail() {
                     )}
                   </div>
                 </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -1402,7 +1403,7 @@ export default function ApplicationDetail() {
               if (!hasIdentification && !hasEmployment && !hasIncome && !hasAssets && !hasLiabilities && !hasExpenses && !hasOtherDirectors) return null;
 
               return (
-                <GlassCard padding="none">
+                <Card padding="none">
                   <div className="border-b border-[var(--led-line)] px-6 py-5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Finances</p>
                     <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Financial Position</h2>
@@ -1606,7 +1607,7 @@ export default function ApplicationDetail() {
                     </div>
                   )}
                 </div>
-                </GlassCard>
+                </Card>
               );
             } catch {
               return null;
@@ -1620,10 +1621,10 @@ export default function ApplicationDetail() {
           <div className="space-y-6">
             {/* Pending Document Requests */}
             {docRequests.some((r) => r.status === 'pending') && (
-              <GlassCard className="border-warning/30 bg-[var(--led-warning)]/5">
+              <Card className="border-warning/30 bg-[var(--led-warning)]/5">
                 <div className="flex items-start gap-3 mb-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--led-warning)]/15">
-                    <svg className="h-4 w-4 text-[var(--led-warning)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                    <ExclamationCircleIcon className="h-4 w-4 text-[var(--led-warning)]" strokeWidth={2} />
                   </div>
                   <div>
                     <h2 className="text-[15px] font-semibold text-[var(--led-ink)]">Documents Requested</h2>
@@ -1636,7 +1637,7 @@ export default function ApplicationDetail() {
                     return (
                     <div key={req.id} className="flex items-center gap-3 rounded-xl bg-[var(--led-surface)]/70 border border-warning/20 p-3.5">
                       <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--led-warning)]/20">
-                        <svg className="h-3 w-3 text-[var(--led-warning)]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <DocumentTextIcon className="h-3 w-3 text-[var(--led-warning)]" strokeWidth={2} />
                       </div>
                       <p className="flex-1 min-w-0 text-[13px] text-[var(--led-ink)] font-medium">{req.description}</p>
                       <div className="relative shrink-0">
@@ -1672,13 +1673,13 @@ export default function ApplicationDetail() {
                     );
                   })}
                 </div>
-              </GlassCard>
+              </Card>
             )}
 
             {/* Upload + uploaded docs side by side on large screens */}
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Upload */}
-              <GlassCard>
+              <Card>
                 <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-4">Upload Document</h2>
                 <DocumentUploader
                   docType={docType as import('../../types').DocType}
@@ -1689,16 +1690,16 @@ export default function ApplicationDetail() {
                   onFileLabelChange={setDocLabel}
                   onError={(msg) => toast(msg, 'error')}
                 />
-              </GlassCard>
+              </Card>
 
               {/* Recommended checklist */}
-              <GlassCard>
+              <Card>
                 <h2 className="text-[15px] font-semibold text-[var(--led-ink)] mb-4">Document Checklist</h2>
                 <div className="space-y-2">
                   {RECOMMENDED_DOC_TYPES.map((type) => (
                     <div key={type} className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-[14px] transition-all duration-200 ${uploadedDocTypes.has(type) ? 'bg-success/8 text-success' : 'bg-[var(--led-surface-2)] text-[var(--led-muted)]'}`}>
                       {uploadedDocTypes.has(type) ? (
-                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                        <CheckIcon className="h-4 w-4 shrink-0" strokeWidth={2.5} />
                       ) : (
                         <div className="h-4 w-4 shrink-0 rounded-full border-2 border-current opacity-40" />
                       )}
@@ -1708,16 +1709,16 @@ export default function ApplicationDetail() {
                 </div>
                 {allDocsUploaded && (
                   <p className="mt-4 text-[13px] text-success font-medium flex items-center gap-1.5">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    <CheckIcon className="h-4 w-4" strokeWidth={2.5} />
                     All recommended documents uploaded
                   </p>
                 )}
-              </GlassCard>
+              </Card>
             </div>
 
             {/* Uploaded files list */}
             {documents.length > 0 && (
-              <GlassCard padding="none">
+              <Card padding="none">
                 <div className="px-6 py-4 border-b border-[var(--led-line)]">
                   <h2 className="text-[15px] font-semibold text-[var(--led-ink)]">Uploaded Documents <span className="ml-1.5 text-[13px] font-normal text-[var(--led-muted)]">({documents.length})</span></h2>
                 </div>
@@ -1725,7 +1726,7 @@ export default function ApplicationDetail() {
                   {documents.map((doc) => (
                     <div key={doc.id} className="flex items-center gap-3 px-6 py-3.5">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--led-surface-2)]">
-                        <svg className="h-4 w-4 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        <DocumentTextIcon className="h-4 w-4 text-[var(--led-muted)]" strokeWidth={1.75} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[14px] font-medium text-[var(--led-ink)] truncate">{doc.original_filename}</p>
@@ -1737,12 +1738,12 @@ export default function ApplicationDetail() {
                     </div>
                   ))}
                 </div>
-              </GlassCard>
+              </Card>
             )}
 
             {documents.length === 0 && (
               <div className="rounded-2xl border border-dashed border-[var(--led-line)] px-6 py-10 text-center text-[var(--led-muted)]">
-                <svg className="mx-auto h-8 w-8 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                <DocumentTextIcon className="mx-auto h-8 w-8 mb-2 opacity-40" />
                 <p className="text-[14px] font-medium">No documents uploaded yet</p>
                 <p className="text-[13px] mt-1">Use the uploader above to add your supporting documents.</p>
               </div>
@@ -1752,7 +1753,7 @@ export default function ApplicationDetail() {
 
           {activeTab === 'messages' && (
           <>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Chat</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Messages</h2>
@@ -1762,7 +1763,7 @@ export default function ApplicationDetail() {
               <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
                 {clientMessages.length === 0 ? (
                   <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-6 text-center">
-                    <svg className="mx-auto h-8 w-8 text-[var(--led-muted)] mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" /></svg>
+                    <ChatBubbleOvalLeftEllipsisIcon className="mx-auto h-8 w-8 text-[var(--led-muted)] mb-2" />
                     <p className="text-[14px] text-[var(--led-muted)]">No messages yet</p>
                   </div>
                 ) : (
@@ -1817,7 +1818,7 @@ export default function ApplicationDetail() {
                       }
                     }}
                   >
-                    <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                    <PaperAirplaneIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
                     Send
                   </Button>
                 </div>
@@ -1826,7 +1827,7 @@ export default function ApplicationDetail() {
               })()}
             </div>
           </div>
-          </GlassCard>
+          </Card>
           </>
           )}
 
@@ -1834,7 +1835,7 @@ export default function ApplicationDetail() {
           <>
           {/* Quote Sheets (sent by broker) */}
           {quoteSheets.length > 0 && (
-            <GlassCard padding="none">
+            <Card padding="none">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Quotes</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Quote Sheets</h2>
@@ -1859,7 +1860,7 @@ export default function ApplicationDetail() {
                         onClick={() => handleDownloadPdf(sheet)}
                       >
                         <span className="flex items-center gap-1.5">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                          <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
                           Download PDF
                         </span>
                       </Button>
@@ -1887,7 +1888,7 @@ export default function ApplicationDetail() {
                 )}
               </div>
             </div>
-            </GlassCard>
+            </Card>
           )}
           </>
           )}
@@ -1895,7 +1896,7 @@ export default function ApplicationDetail() {
 
         {/* Activity Sidebar — hidden on Documents tab (full-width there) */}
         {activeTab !== 'documents' && <div>
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Timeline</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Activity</h2>
@@ -1936,7 +1937,7 @@ export default function ApplicationDetail() {
                 </div>
               </div>
             </div>
-          </GlassCard>
+          </Card>
         </div>}
       </div>
 
@@ -2220,9 +2221,7 @@ export default function ApplicationDetail() {
             style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
           >
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--led-danger)]/10">
-              <svg className="h-6 w-6 text-[var(--led-danger)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-              </svg>
+              <TrashIcon className="h-6 w-6 text-[var(--led-danger)]" />
             </div>
             <h3 className="text-center text-[17px] font-semibold text-[var(--led-ink)] mb-1">
               Delete draft application?

@@ -6,10 +6,11 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState, ChartSkeleton } from '../../components/ui';
 import { STATUS_LABEL, STATUS_BADGE, LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
 import type { ApplicationStatus, BrokerAnalytics, BrokerAnalyticsDeal } from '../../types';
+import { ArrowTrendingUpIcon, CheckCircleIcon, CurrencyDollarIcon, FolderIcon } from '@heroicons/react/24/outline';
 
 // App-wide status colors (same hues as the applications list chips)
 const STATUS_COLORS: Record<ApplicationStatus, string> = {
@@ -190,33 +191,33 @@ export default function BrokerAnalyticsPage() {
           value={data?.totals.total_deals ?? 0}
           loading={loading}
           gradient="from-primary to-primary"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" /></svg>}
+          icon={<FolderIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Total Volume"
           value={fmtMoneyK(data?.totals.total_volume ?? 0)}
           loading={loading}
           gradient="from-chart-4 to-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CurrencyDollarIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Settled Volume"
           value={fmtMoneyK(data?.totals.settled_volume ?? 0)}
           loading={loading}
           gradient="from-success to-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Conversion Rate"
           value={data?.totals.conversion_rate != null ? `${data.totals.conversion_rate}%` : 'N/A'}
           loading={loading}
           gradient="from-chart-2 to-chart-2"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>}
+          icon={<ArrowTrendingUpIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Monthly deals by status — click a segment to drill down */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground">Deals per Month by Status</h3>
           <p className="text-[12px] text-muted-foreground">Click a bar segment to see the deals behind it</p>
@@ -242,15 +243,17 @@ export default function BrokerAnalyticsPage() {
               ))}
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={320} />
         ) : (
           <div className="flex items-center justify-center h-[320px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No deals in this period'}
+            No deals in this period
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Monthly volume */}
-      <GlassCard>
+      <Card>
         <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Volume</h3>
         {!loading && monthlyRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={280}>
@@ -278,16 +281,18 @@ export default function BrokerAnalyticsPage() {
               />
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={280} />
         ) : (
           <div className="flex items-center justify-center h-[280px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No deals in this period'}
+            No deals in this period
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Broker leaderboard */}
       {!loading && data && data.by_broker.length > 0 && (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">Broker Performance</h3>
           </div>
@@ -328,11 +333,11 @@ export default function BrokerAnalyticsPage() {
               </tbody>
             </table>
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Drill-down: deals list */}
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border/60">
           <h3 className="text-[15px] font-semibold text-foreground">{dealsTitle}</h3>
           {(selectedMonth || selectedStatus) && (
@@ -385,7 +390,7 @@ export default function BrokerAnalyticsPage() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

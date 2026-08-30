@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import api from '../../api/client';
 import { getErrorMessage, formatDateTime } from '../../lib/utils';
 import { PageHeader, Badge, Button, Input, DetailSkeleton } from '../../components/ui';
+import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface Tenant {
   id: string;
@@ -116,18 +117,14 @@ export default function TenantDetail() {
 
       {error && (
         <div className="mb-6 flex items-center gap-3 rounded-xl bg-[#ff3b30]/8 px-4 py-3">
-          <svg className="h-4 w-4 text-[#ff3b30] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-          </svg>
+          <ExclamationCircleIcon className="h-4 w-4 text-[#ff3b30] shrink-0" />
           <span className="text-[13px] text-[#ff3b30]">{error}</span>
         </div>
       )}
 
       {success && (
         <div className="mb-6 flex items-center gap-3 rounded-xl bg-[#34c759]/8 px-4 py-3">
-          <svg className="h-4 w-4 text-[#34c759] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-          </svg>
+          <CheckCircleIcon className="h-4 w-4 text-[#34c759] shrink-0" />
           <span className="text-[13px] text-[#34c759]">{success}</span>
         </div>
       )}

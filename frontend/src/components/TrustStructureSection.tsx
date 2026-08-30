@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import api from '../api/client';
 import { useToast } from './Toast';
-import { GlassCard, Button, Badge, Input, Select } from './ui';
+import { useConfirm } from '../hooks/useConfirm';
+import { Card, Button, Badge, Input, Select } from './ui';
 import { getErrorMessage } from '../lib/utils';
 import {
   TRUST_PARTY_KINDS,
@@ -239,11 +240,17 @@ export default function TrustStructureSection({ organizationId, parties, onChang
   onChange: (parties: TrustParty[]) => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [adding, setAdding] = useState<TrustPartyRole | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const remove = async (party: TrustParty) => {
-    if (!confirm(`Remove ${party.display_name} from this trust's structure?`)) return;
+    if (!(await confirm({
+      title: `Remove ${party.display_name}?`,
+      message: "They will be taken off this trust's structure.",
+      confirmText: 'Remove',
+      variant: 'danger',
+    }))) return;
     setRemovingId(party.id);
     try {
       await api.delete(`/organizations/${organizationId}/trust-parties/${party.id}`);
@@ -259,7 +266,7 @@ export default function TrustStructureSection({ organizationId, parties, onChang
   const hasTrustee = parties.some(p => p.role === 'trustee');
 
   return (
-    <GlassCard>
+    <Card>
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-lg font-semibold">
           Trust Structure
@@ -334,6 +341,6 @@ export default function TrustStructureSection({ organizationId, parties, onChang
           onAdded={(party) => { onChange([...parties, party]); setAdding(null); }}
         />
       )}
-    </GlassCard>
+    </Card>
   );
 }

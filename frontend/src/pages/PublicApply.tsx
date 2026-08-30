@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { getTenantSlug } from '../api/client';
 import DatePicker from '../components/ui/DatePicker';
+import { CheckCircleIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 const publicApi = axios.create({ baseURL: '/api' });
 publicApi.interceptors.request.use((config) => {
@@ -147,7 +148,7 @@ export default function PublicApply() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
       </div>
     );
@@ -155,12 +156,10 @@ export default function PublicApply() {
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="h-14 w-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="h-7 w-7 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-            </svg>
+            <ExclamationTriangleIcon className="h-7 w-7 text-red-500" strokeWidth={2} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link not found</h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm">This application link is invalid or has expired. Please contact Xpress Finance for a new link.</p>
@@ -171,12 +170,10 @@ export default function PublicApply() {
 
   if (alreadySubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="h-7 w-7 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
-            </svg>
+            <InformationCircleIcon className="h-7 w-7 text-blue-500" strokeWidth={2} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Already submitted</h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Your application has already been submitted. The Xpress Finance team will be in touch shortly.</p>
@@ -187,12 +184,10 @@ export default function PublicApply() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="h-14 w-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="h-7 w-7 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
+            <CheckCircleIcon className="h-7 w-7 text-green-500" strokeWidth={2} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Application submitted!</h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Thank you. The Xpress Finance team will review your details and be in touch shortly.</p>
@@ -202,7 +197,7 @@ export default function PublicApply() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-[100dvh] bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
@@ -231,9 +226,7 @@ export default function PublicApply() {
 
         {/* Info banner */}
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700 rounded-xl p-4 mb-6 flex gap-3">
-          <svg className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
-          </svg>
+          <InformationCircleIcon className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <p className="text-[13px] text-amber-700 dark:text-amber-300">
             You only need to fill in the fields you know. The application can be submitted even if some non-critical information is missing.
           </p>
@@ -246,9 +239,7 @@ export default function PublicApply() {
               <div className="flex items-center gap-2">
                 <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 transition-colors ${i < step ? 'bg-green-500 text-white' : i === step ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
                   {i < step ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
+                    <CheckIcon className="h-4 w-4" strokeWidth={2.5} />
                   ) : i + 1}
                 </div>
                 <span className={`text-[12px] font-medium hidden sm:block ${i === step ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>{label}</span>

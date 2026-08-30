@@ -14,7 +14,7 @@ import {
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Button, Skeleton, EmptyState } from '../../components/ui';
+import { Card, Button, Skeleton, EmptyState } from '../../components/ui';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { formatShortDate, formatTime } from '../../lib/utils';
@@ -103,7 +103,7 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
   };
 
   return (
-    <GlassCard padding="none" className="h-full">
+    <Card padding="none" className="h-full">
       <div className={`h-1 ${toneStyles[tone].line}`} />
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -117,7 +117,7 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
         </div>
         <p className="mt-4 text-[13px] leading-6 text-[var(--led-muted)]">{loading ? <Skeleton width={180} height={16} /> : detail}</p>
       </div>
-    </GlassCard>
+    </Card>
   );
 }
 
@@ -335,7 +335,7 @@ export default function AdminDashboard() {
           </div>
 
           {!isBroker && <div className="grid gap-5 xl:grid-cols-2">
-            <GlassCard padding="none" className="flex flex-col">
+            <Card padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                   <div>
@@ -407,9 +407,9 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
 
-            <GlassCard padding="none" className="flex flex-col">
+            <Card padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                   <div>
@@ -483,11 +483,11 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
           </div>}
 
           {/* Conversion Funnel */}
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Conversion Intelligence</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Pipeline Funnel</h2>
@@ -590,10 +590,10 @@ export default function AdminDashboard() {
                 );
               })()}
             </div>
-          </GlassCard>
+          </Card>
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <GlassCard padding="none" className="flex flex-col">
+            <Card padding="none" className="flex flex-col">
               <div className="border-b border-[var(--led-line)] px-6 py-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Lender Flow</p>
                 <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Top Lenders</h2>
@@ -635,14 +635,14 @@ export default function AdminDashboard() {
                   <EmptyState title="No lender data" description="Top lender approvals will appear here once applications progress." />
                 )}
               </div>
-            </GlassCard>
+            </Card>
 
           </div>
 
         </div>
 
         <div className="flex flex-col gap-5 lg:col-span-4">
-          <GlassCard padding="none" className="flex flex-col">
+          <Card padding="none" className="flex flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -686,9 +686,9 @@ export default function AdminDashboard() {
                 <EmptyState title="All clear" description="No open exception items on the desk." />
               )}
             </div>
-          </GlassCard>
+          </Card>
 
-          <GlassCard padding="none" className="flex min-h-[320px] flex-col">
+          <Card padding="none" className="flex min-h-[320px] flex-col">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Operations</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Activity Tape</h2>
@@ -735,7 +735,7 @@ export default function AdminDashboard() {
                 <EmptyState title="No activity" description="Recent operational activity will appear here." />
               )}
             </div>
-          </GlassCard>
+          </Card>
         </div>
       </div>
 

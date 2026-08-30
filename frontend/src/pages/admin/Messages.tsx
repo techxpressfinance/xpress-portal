@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatTime, relativeTime, getInitials } from '../../lib/utils';
-import { GlassCard, PageHeader, Button } from '../../components/ui';
+import { Card, PageHeader, Button } from '../../components/ui';
 import type { ClientConversation, ClientMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -221,7 +221,7 @@ export default function AdminMessages() {
         subtitle={`${plural(folderCounts.all, 'thread')} · ${plural(folderCounts.client, 'borrower')} · ${plural(folderCounts.broker, 'broker')} · ${plural(folderCounts.referrer, 'referrer')}`}
       />
 
-      <GlassCard padding="none" className="overflow-hidden">
+      <Card padding="none" className="overflow-hidden">
         <div className="flex h-[calc(100vh-13rem)] min-h-[560px]">
           {/* Folders rail */}
           <aside className="hidden w-[200px] shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--led-line)] p-3 lg:flex">
@@ -458,7 +458,7 @@ export default function AdminMessages() {
             )}
           </div>
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

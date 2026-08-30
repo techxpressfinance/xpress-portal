@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { User } from '../types';
+import { rafThrottle } from '../lib/utils';
+import { CheckIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 const initials = (name: string) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
@@ -48,11 +50,12 @@ export function BrokerPicker({
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const reposition = () => updatePosition();
+    const reposition = rafThrottle(() => updatePosition());
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     return () => {
+      reposition.cancel();
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
@@ -97,9 +100,7 @@ export function BrokerPicker({
               Assign broker
             </span>
           )}
-          <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
+          <ChevronDownIcon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={2} />
         </button>
       ) : (
         <button
@@ -116,9 +117,7 @@ export function BrokerPicker({
               </span>
             ))
           )}
-          <svg className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
+          <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2} />
         </button>
       )}
 
@@ -142,9 +141,7 @@ export function BrokerPicker({
                 >
                   <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-primary bg-primary text-white' : 'border-border'}`}>
                     {checked && (
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                      </svg>
+                      <CheckIcon className="h-3 w-3" strokeWidth={3} />
                     )}
                   </span>
                   <span className="truncate">{b.full_name}</span>
@@ -211,11 +208,12 @@ export function ClientPicker({
       const target = e.target as Node;
       if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const reposition = () => updatePosition();
+    const reposition = rafThrottle(() => updatePosition());
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     return () => {
+      reposition.cancel();
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
@@ -249,9 +247,7 @@ export function ClientPicker({
         <span className={`truncate ${label ? 'text-foreground' : 'text-muted-foreground'}`}>
           {label || placeholder}
         </span>
-        <svg className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
+        <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2} />
       </button>
 
       {open && createPortal(

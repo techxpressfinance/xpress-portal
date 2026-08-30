@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatTime } from '../../lib/utils';
-import { GlassCard, PageHeader, Button } from '../../components/ui';
+import { Card, PageHeader, Button } from '../../components/ui';
 import type { ClientConversation, ClientMessage, User } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
+import { ArrowLeftIcon, ChatBubbleBottomCenterTextIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
 export default function ReferrerMessages() {
   const { toast } = useToast();
@@ -152,7 +153,7 @@ export default function ReferrerMessages() {
 
       {/* New staff chat search */}
       {showStaffSearch && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[14px] font-semibold text-foreground mb-3">Message a broker</h3>
           <input
             type="text"
@@ -183,23 +184,21 @@ export default function ReferrerMessages() {
               ))
             )}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
       {conversations.length === 0 && !showStaffSearch && !selectedConv ? (
-        <GlassCard>
+        <Card>
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
-              </svg>
+              <ChatBubbleBottomCenterTextIcon className="h-8 w-8 text-muted-foreground" />
             </div>
             <p className="text-[15px] font-medium text-muted-foreground">No conversations yet</p>
             <p className="text-[13px] text-muted-foreground mt-1">Use "Message Broker" above to start a conversation</p>
           </div>
-        </GlassCard>
+        </Card>
       ) : (conversations.length > 0 || !!selectedConv) && (
-        <GlassCard className="p-0 overflow-hidden border-0">
+        <Card className="p-0 overflow-hidden border-0">
           <div className="flex h-[560px]">
             {/* Conversation list */}
             <div className={`flex flex-col border-r border-border/60 ${selectedConv ? 'hidden sm:flex sm:w-72' : 'flex w-full sm:w-72'}`}>
@@ -249,9 +248,7 @@ export default function ReferrerMessages() {
             <div className={`flex-1 flex flex-col ${selectedConv ? 'flex' : 'hidden sm:flex'}`}>
               {!selectedConv ? (
                 <div className="flex flex-col items-center justify-center h-full gap-2 opacity-50">
-                  <svg className="h-10 w-10 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
-                  </svg>
+                  <ChatBubbleBottomCenterTextIcon className="h-10 w-10 text-muted-foreground" />
                   <p className="text-[13px] text-muted-foreground">Select a conversation</p>
                 </div>
               ) : (
@@ -262,7 +259,7 @@ export default function ReferrerMessages() {
                       onClick={() => setSelectedConv(null)}
                       className="sm:hidden flex items-center justify-center h-7 w-7 rounded-lg hover:bg-secondary transition-colors"
                     >
-                      <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                      <ArrowLeftIcon className="h-4 w-4 text-muted-foreground" strokeWidth={2} />
                     </button>
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15">
                       <span className="text-[12px] font-semibold text-primary">
@@ -328,7 +325,7 @@ export default function ReferrerMessages() {
                           disabled={!newChatMsg.trim()}
                           onClick={handleSendChat}
                         >
-                          <svg className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                          <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
                           Send
                         </Button>
                       </div>
@@ -338,7 +335,7 @@ export default function ReferrerMessages() {
               )}
             </div>
           </div>
-        </GlassCard>
+        </Card>
       )}
     </div>
   );

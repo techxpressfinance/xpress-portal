@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { Badge, Button } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import {
@@ -32,6 +33,7 @@ import FileDropzone from '../FileDropzone';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import ArrearsRecordPrint from './ArrearsRecordPrint';
 import { loadArrearsPrintImages, type ArrearsPrintImages } from './printImages';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 /** "Now" as a datetime-local value (local wall clock, no timezone shift). */
 const localNow = () => {
@@ -331,6 +333,7 @@ function AttemptRow({
   attachBusy: boolean;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [method, setMethod] = useState<ArrearsAttemptMethod>(attempt.method);
@@ -384,7 +387,14 @@ function AttemptRow({
               </button>
               <button
                 type="button"
-                onClick={() => { if (window.confirm('Remove this attempt and everything attached to it?')) onDeleted(); }}
+                onClick={async () => {
+                  if (await confirm({
+                    title: 'Remove this attempt?',
+                    message: 'Everything attached to it is removed as well.',
+                    confirmText: 'Remove',
+                    variant: 'danger',
+                  })) onDeleted();
+                }}
                 className="text-[12px] font-medium text-muted-foreground hover:text-destructive"
               >
                 Remove
@@ -830,9 +840,7 @@ export default function ArrearsDetailPanel({
                     Download PDF
                   </Button>
                   <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
+                    <XMarkIcon className="h-5 w-5" strokeWidth={1.75} />
                   </button>
                 </div>
               </div>
@@ -963,9 +971,7 @@ export default function ArrearsDetailPanel({
                         className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/10 px-3 py-2"
                       >
                         <span className="shrink-0 text-success" aria-hidden>
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.25} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
+                          <CheckIcon className="h-4 w-4" strokeWidth={2.25} />
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { formatDate, formatDateTime, getErrorMessage, toDateTimeLocalInput, dateTimeLocalToUTC } from '../../lib/utils';
 import { TASK_PRIORITY_BADGE } from '../../lib/constants';
 import { Button, Select, Input, Breadcrumbs, DatePicker } from '../../components/ui';
 import FileDropzone from '../../components/FileDropzone';
 import type { Task, ChecklistItem, TaskAttachment, User } from '../../types';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 function priorityDotClass(priority: string): string {
   switch (priority) {
@@ -28,9 +30,7 @@ function CheckCircle({ completed, onClick }: { completed: boolean; onClick: () =
       }`}
     >
       {completed && (
-        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
+        <CheckIcon className="h-3 w-3" strokeWidth={3} />
       )}
     </button>
   );
@@ -40,6 +40,7 @@ export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,7 +152,13 @@ export default function TaskDetail() {
   };
 
   const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this task?')) return;
+    if (!id) return;
+    if (!(await confirm({
+      title: 'Delete this task?',
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     setDeleting(true);
     try {
       await api.delete(`/tasks/${id}`);
@@ -304,9 +311,7 @@ export default function TaskDetail() {
               onClick={() => handleDeleteItem(item.id)}
               className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded"
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
+              <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           </div>
         ))}
@@ -355,9 +360,7 @@ export default function TaskDetail() {
                 onClick={() => deleteAttachment(a.id)}
                 className="opacity-0 group-hover:opacity-100 text-[var(--led-muted)] hover:text-red-500 transition-all p-1 rounded shrink-0"
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+                <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
             </div>
           ))}

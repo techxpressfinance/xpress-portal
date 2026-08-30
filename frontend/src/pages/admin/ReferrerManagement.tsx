@@ -4,11 +4,12 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, Select, InviteLinkBox } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, Select, InviteLinkBox } from '../../components/ui';
 import BusinessDetailsForm from '../../components/referrer/BusinessDetailsForm';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
+import { CheckCircleIcon, LinkIcon } from '@heroicons/react/24/outline';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
@@ -296,16 +297,16 @@ export default function ReferrerManagement() {
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">
         <StatCard label="Total Referrers" value={referrers.length} loading={loading} gradient="from-chart-4 to-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>}
+          icon={<LinkIcon className="h-5 w-5" />}
         />
         <StatCard label="Active" value={activeReferrers.length} loading={loading} gradient="from-success to-success" valueColor="text-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Create referrer form */}
       {showForm && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">New Referrer</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -345,11 +346,11 @@ export default function ReferrerManagement() {
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Referrer table */}
-      <GlassCard padding="none">
+      <Card padding="none">
         {loading ? (
           <div className="p-6 space-y-4">{[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}</div>
         ) : referrers.length === 0 ? (
@@ -416,10 +417,10 @@ export default function ReferrerManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Invitation History */}
-      <GlassCard padding="none" className="mt-8">
+      <Card padding="none" className="mt-8">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited referrer{historyTotal !== 1 ? 's' : ''}</p>
@@ -482,7 +483,7 @@ export default function ReferrerManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {billingReferrer && (
         <BusinessDetailsModal referrer={billingReferrer} onClose={() => setBillingReferrer(null)} />

@@ -14,6 +14,7 @@ import {
   isTourCompleted,
   markTourCompleted,
 } from '../lib/tourSteps';
+import { ArrowRightStartOnRectangleIcon, Bars3Icon, BuildingLibraryIcon, BuildingOfficeIcon, CalculatorIcon, ChartBarIcon, CheckCircleIcon, ClipboardDocumentListIcon, ClockIcon, CreditCardIcon, DocumentTextIcon, EnvelopeIcon, ExclamationTriangleIcon, LinkIcon, MagnifyingGlassIcon, MoonIcon, QuestionMarkCircleIcon, SunIcon, TrashIcon, UserCircleIcon, UserGroupIcon, UsersIcon } from '@heroicons/react/24/outline';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
   `relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-md ${collapsed ? 'px-2' : 'px-3'} py-[7px] text-[13px] font-medium transition-colors duration-150 ${isActive
@@ -109,7 +110,7 @@ export default function Layout() {
     navLinkClass(props.isActive, collapsed);
 
   return (
-    <div className="ledger-theme flex h-screen overflow-hidden text-foreground" style={{ background: 'var(--led-bg)', color: 'var(--led-ink)' }}>
+    <div className="ledger-theme flex h-[100dvh] overflow-hidden text-foreground" style={{ background: 'var(--led-bg)', color: 'var(--led-ink)' }}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -152,7 +153,7 @@ export default function Layout() {
           ) : isReferrer ? (
             <>
               <NavLink to="/referrer/applications" data-tour="nav-applications" className={linkClass} title="Applications">
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                <DocumentTextIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Applications'}
               </NavLink>
               <NavLink to="/referrer/clients" data-tour="nav-clients" className={linkClass} title="Clients">
@@ -161,7 +162,7 @@ export default function Layout() {
               </NavLink>
               <NavLink to="/referrer/messages" data-tour="nav-messages" className={linkClass} title="Messages">
                 <div className="relative shrink-0">
-                  <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                  <EnvelopeIcon className="h-[18px] w-[18px]" />
                   {collapsed && unreadCount > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
                       {unreadCount > 99 ? '99+' : unreadCount}
@@ -176,11 +177,11 @@ export default function Layout() {
                 )}
               </NavLink>
               <NavLink to="/referrer/service-requests" data-tour="nav-service-requests" className={linkClass} title="Service Requests">
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                <ClipboardDocumentListIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Service Requests'}
               </NavLink>
               <NavLink to="/referrer/business-details" className={linkClass} title="Business Details">
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" /></svg>
+                <CreditCardIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Business Details'}
               </NavLink>
             </>
@@ -191,12 +192,12 @@ export default function Layout() {
                 {!collapsed && 'Dashboard'}
               </NavLink>
               <NavLink to="/applications" data-tour="nav-applications" className={linkClass} title="Applications">
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                <DocumentTextIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Applications'}
               </NavLink>
               <NavLink to="/messages" data-tour="nav-messages" className={linkClass} title="Messages">
                 <div className="relative shrink-0">
-                  <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                  <EnvelopeIcon className="h-[18px] w-[18px]" />
                   {collapsed && unreadCount > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
                       {unreadCount > 99 ? '99+' : unreadCount}
@@ -211,7 +212,7 @@ export default function Layout() {
                 )}
               </NavLink>
               <NavLink to="/service-requests" data-tour="nav-service-requests" className={linkClass} title="Service Requests">
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                <ClipboardDocumentListIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Service Requests'}
               </NavLink>
             </>
@@ -222,7 +223,7 @@ export default function Layout() {
                 className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2.5 text-[13px] font-medium transition-all duration-200 border w-full bg-[var(--led-accent-tint)] border-[var(--led-accent-tint-2)] text-[var(--led-accent-ink)] hover:bg-[var(--led-accent-tint-2)]`}
                 title="Search (⌘K)"
               >
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                <MagnifyingGlassIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left">Command Search</span>
@@ -242,7 +243,7 @@ export default function Layout() {
               <div className="led-nav-group">
                 {!collapsed && <p className="led-nav-title">Pipeline</p>}
                 <NavLink to="/admin/applications" className={linkClass} title="Applications">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                  <DocumentTextIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Applications'}
                 </NavLink>
                 <NavLink to="/admin/board" className={linkClass} title="Board">
@@ -250,11 +251,11 @@ export default function Layout() {
                   {!collapsed && 'Board'}
                 </NavLink>
                 <NavLink to="/admin/tasks" className={linkClass} title="Tasks">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                  <CheckCircleIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Tasks'}
                 </NavLink>
                 <NavLink to="/admin/quotes" className={linkClass} title="Quotes">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                  <ClipboardDocumentListIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Quotes'}
                 </NavLink>
               </div>
@@ -266,12 +267,12 @@ export default function Layout() {
                   {!collapsed && 'Contacts'}
                 </NavLink>
                 <NavLink to="/admin/companies" className={linkClass} title="Entities">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" /></svg>
+                  <BuildingOfficeIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Entities'}
                 </NavLink>
                 {(user?.role === 'admin' || user?.role === 'broker') && (
                   <NavLink to="/admin/users" className={linkClass} title="Clients">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+                    <UsersIcon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && 'Clients'}
                   </NavLink>
                 )}
@@ -283,13 +284,13 @@ export default function Layout() {
                 )}
                 {(user?.role === 'admin' || user?.role === 'broker') && (
                   <NavLink to="/admin/referrers" className={linkClass} title="Referrers">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+                    <LinkIcon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && 'Referrers'}
                   </NavLink>
                 )}
                 {user?.role === 'admin' && (
                   <NavLink to="/admin/broker-groups" className={linkClass} title="Broker Groups">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                    <UserGroupIcon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && 'Broker Groups'}
                   </NavLink>
                 )}
@@ -299,7 +300,7 @@ export default function Layout() {
                 {!collapsed && <p className="led-nav-title">Operations</p>}
                 <NavLink to="/admin/messages" className={linkClass} title="Messages">
                   <div className="relative shrink-0">
-                    <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                    <EnvelopeIcon className="h-[18px] w-[18px]" />
                     {collapsed && unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
                         {unreadCount > 99 ? '99+' : unreadCount}
@@ -314,23 +315,23 @@ export default function Layout() {
                   )}
                 </NavLink>
                 <NavLink to="/admin/service-requests" className={linkClass} title="Service Requests">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+                  <ClipboardDocumentListIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Service Requests'}
                 </NavLink>
                 <NavLink to="/admin/calculators" className={linkClass} title="Calculators">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V18Zm2.498-6.75h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007V13.5Zm0 2.25h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007V18Zm2.504-6.75h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V18Zm2.498-6.75h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5ZM8.25 6h7.5v2.25h-7.5V6ZM12 2.25c-1.892 0-3.758.11-5.593.322C5.307 2.7 4.5 3.65 4.5 4.757V19.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V4.757c0-1.108-.806-2.057-1.907-2.185A48.507 48.507 0 0 0 12 2.25Z" /></svg>
+                  <CalculatorIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Calculators'}
                 </NavLink>
                 <NavLink to="/admin/lenders" className={linkClass} title="Lenders">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>
+                  <BuildingLibraryIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Lenders'}
                 </NavLink>
                 <NavLink to="/admin/arrears" className={linkClass} title="Arrears Book">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                  <ExclamationTriangleIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Arrears Book'}
                 </NavLink>
                 <NavLink to="/admin/analytics" className={linkClass} title="Analytics">
-                  <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
+                  <ChartBarIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Analytics'}
                 </NavLink>
               </div>
@@ -339,11 +340,11 @@ export default function Layout() {
                 <div className="led-nav-group">
                   {!collapsed && <p className="led-nav-title">Control</p>}
                   <NavLink to="/admin/activity" className={linkClass} title="Activity">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    <ClockIcon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && 'Activity'}
                   </NavLink>
                   <NavLink to="/admin/deleted-applications" className={linkClass} title="Deleted">
-                    <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                    <TrashIcon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && 'Deleted'}
                   </NavLink>
                 </div>
@@ -353,7 +354,7 @@ export default function Layout() {
 
           <div className="!mt-5 !pt-4 border-t border-border">
             <NavLink to="/profile" data-tour="nav-profile" className={linkClass} title="Profile">
-              <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+              <UserCircleIcon className="h-[18px] w-[18px] shrink-0" />
               {!collapsed && 'Profile'}
             </NavLink>
             {tourSteps && (
@@ -363,9 +364,7 @@ export default function Layout() {
                 className={`mt-0.5 flex w-full items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-lg ${collapsed ? 'px-2' : 'px-3'} py-2 text-[13px] font-medium transition-all duration-200 border border-transparent text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)]`}
                 title="Take the tour"
               >
-                <svg className="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
-                </svg>
+                <QuestionMarkCircleIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && 'Take the tour'}
               </button>
             )}
@@ -406,9 +405,9 @@ export default function Layout() {
                   title={theme === 'light' ? 'Dark mode' : 'Light mode'}
                 >
                   {theme === 'light' ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                    <MoonIcon className="h-4 w-4" />
                   ) : (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" /></svg>
+                    <SunIcon className="h-4 w-4" />
                   )}
                 </button>
                 <button
@@ -416,7 +415,7 @@ export default function Layout() {
                   className="rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-danger-tint)] hover:text-[var(--led-danger)] transition-all duration-200"
                   title="Sign out"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+                  <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
                 </button>
               </div>
             ) : (
@@ -435,9 +434,9 @@ export default function Layout() {
                     title={theme === 'light' ? 'Dark mode' : 'Light mode'}
                   >
                     {theme === 'light' ? (
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                      <MoonIcon className="h-4 w-4" />
                     ) : (
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" /></svg>
+                      <SunIcon className="h-4 w-4" />
                     )}
                   </button>
                   <button
@@ -445,7 +444,7 @@ export default function Layout() {
                     className="rounded-lg p-1.5 text-[var(--led-muted)] hover:text-[var(--led-danger)] hover:bg-[var(--led-danger-tint)] transition-colors"
                     title="Sign out"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+                    <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -462,7 +461,7 @@ export default function Layout() {
             onClick={() => setSidebarOpen(true)}
             className="rounded-xl p-2 text-muted-foreground hover:bg-secondary transition-colors"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+            <Bars3Icon className="h-5 w-5" />
           </button>
           <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-9 w-auto object-contain" />
         </header>
@@ -497,9 +496,7 @@ export default function Layout() {
             style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
           >
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-chart-4/10">
-              <svg className="h-6 w-6 text-chart-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
-              </svg>
+              <ArrowRightStartOnRectangleIcon className="h-6 w-6 text-chart-4" />
             </div>
             <h3 className="text-center text-[17px] font-semibold text-foreground mb-1">
               Sign out?

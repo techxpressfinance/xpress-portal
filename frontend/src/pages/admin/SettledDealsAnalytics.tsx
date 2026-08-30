@@ -5,11 +5,12 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, StatCard, DatePicker, Select, EmptyState } from '../../components/ui';
+import { Card, StatCard, DatePicker, Select, EmptyState, ChartSkeleton } from '../../components/ui';
 import { LOAN_CATEGORIES } from '../../lib/constants';
 import { LOAN_TYPE_LABELS } from '../../lib/constants';
 import { fmtMoneyK, relativeTime } from '../../lib/utils';
 import type { LoanCategory, SettledDealsOverview, SettledDealSnapshotOut } from '../../types';
+import { ArrowTrendingUpIcon, CheckCircleIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 
 const CATEGORY_COLORS: Record<string, string> = {
   asset_finance: 'oklch(0.55 0.22 268)',
@@ -170,26 +171,26 @@ export default function SettledDealsAnalyticsPage() {
           value={data?.totals.total_settlements ?? 0}
           loading={loading}
           gradient="from-primary to-primary"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Total Volume"
           value={fmtMoneyK(data?.totals.total_volume ?? 0)}
           loading={loading}
           gradient="from-chart-4 to-chart-4"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CurrencyDollarIcon className="h-5 w-5" />}
         />
         <StatCard
           label="Avg Loan Size"
           value={fmtMoneyK(data?.totals.avg_loan_size ?? 0)}
           loading={loading}
           gradient="from-chart-2 to-chart-2"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>}
+          icon={<ArrowTrendingUpIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Monthly settlements by category — click a segment to drill down */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground">Settlements per Month by Category</h3>
           <p className="text-[12px] text-muted-foreground">Click a bar segment to see the deals behind it</p>
@@ -215,15 +216,17 @@ export default function SettledDealsAnalyticsPage() {
               ))}
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={320} />
         ) : (
           <div className="flex items-center justify-center h-[320px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No settled deals in this period'}
+            No settled deals in this period
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Monthly volume */}
-      <GlassCard>
+      <Card>
         <h3 className="text-[15px] font-semibold text-foreground mb-4">Monthly Volume</h3>
         {!loading && monthlyRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={280}>
@@ -242,16 +245,18 @@ export default function SettledDealsAnalyticsPage() {
               />
             </BarChart>
           </ResponsiveContainer>
+        ) : loading ? (
+          <ChartSkeleton height={280} />
         ) : (
           <div className="flex items-center justify-center h-[280px] text-muted-foreground text-[14px]">
-            {loading ? 'Loading...' : 'No settled deals in this period'}
+            No settled deals in this period
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* By lender / by referrer */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">By Lender</h3>
           </div>
@@ -279,9 +284,9 @@ export default function SettledDealsAnalyticsPage() {
           ) : (
             <div className="py-8"><EmptyState title="No lender data" description="No settled deals in this period." /></div>
           )}
-        </GlassCard>
+        </Card>
 
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="px-5 py-3 border-b border-border/60">
             <h3 className="text-[15px] font-semibold text-foreground">By Referrer</h3>
           </div>
@@ -309,11 +314,11 @@ export default function SettledDealsAnalyticsPage() {
           ) : (
             <div className="py-8"><EmptyState title="No referrer data" description="No settled deals in this period." /></div>
           )}
-        </GlassCard>
+        </Card>
       </div>
 
       {/* Drill-down: settled deals list */}
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border/60">
           <h3 className="text-[15px] font-semibold text-foreground">{dealsTitle}</h3>
           {(selectedMonth || selectedCategory) && (
@@ -363,7 +368,7 @@ export default function SettledDealsAnalyticsPage() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

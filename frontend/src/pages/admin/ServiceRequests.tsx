@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, ConfirmDialog, GlassCard, PageHeader } from '../../components/ui';
+import { Button, ConfirmDialog, Card, PageHeader } from '../../components/ui';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { formatDate, formatDateTime, dateTimeLocalToUTC } from '../../lib/utils';
 import { BrokerPicker, ClientPicker } from '../../components/ServiceRequestPickers';
 import type { ServiceRequest, ServiceRequestStatus, User } from '../../types';
+import { CheckCircleIcon, CheckIcon, ChevronDownIcon, ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const ACTIVE_STATUSES: ServiceRequestStatus[] = ['pending', 'in_progress'];
 const DONE_STATUSES: ServiceRequestStatus[] = ['resolved', 'closed'];
@@ -280,9 +281,7 @@ export default function AdminServiceRequests() {
           }`}
         >
           {isDone && (
-            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
+            <CheckIcon className="h-3 w-3" strokeWidth={3} />
           )}
         </button>
 
@@ -315,9 +314,7 @@ export default function AdminServiceRequests() {
                     : 'border-border bg-secondary text-muted-foreground'
                 }`}
               >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                </svg>
+                <ClockIcon className="h-3 w-3" strokeWidth={2} />
                 Due {formatDateTime(req.due_at)}
               </span>
             )}
@@ -398,17 +395,15 @@ export default function AdminServiceRequests() {
       </div>
 
       {loading ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="p-4 space-y-3">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 rounded-xl shimmer" />)}
           </div>
-        </GlassCard>
+        </Card>
       ) : displayed.length === 0 ? (
-        <GlassCard className="px-6 py-12 text-center">
+        <Card className="px-6 py-12 text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <svg className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
+            <CheckCircleIcon className="h-8 w-8 text-primary" />
           </div>
           <p className="text-[14px] font-medium text-foreground">
             {tab === 'active' ? 'No active requests' : 'No completed requests'}
@@ -416,30 +411,28 @@ export default function AdminServiceRequests() {
           <p className="text-[13px] text-muted-foreground mt-1">
             {tab === 'active' ? 'All caught up!' : 'Resolved requests will appear here'}
           </p>
-        </GlassCard>
+        </Card>
       ) : tab === 'active' ? (
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="divide-y divide-border">
             {displayed.map((r) => renderRow(r, true))}
           </div>
-        </GlassCard>
+        </Card>
       ) : (
-        <GlassCard padding="none">
+        <Card padding="none">
           <button
             onClick={() => setCompletedCollapsed((v) => !v)}
             className="flex w-full items-center justify-between px-4 py-3 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             <span>Completed ({completed.length})</span>
-            <svg className={`h-4 w-4 transition-transform ${completedCollapsed ? '-rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-            </svg>
+            <ChevronDownIcon className={`h-4 w-4 transition-transform ${completedCollapsed ? '-rotate-90' : ''}`} strokeWidth={2} />
           </button>
           {!completedCollapsed && (
             <div className="divide-y divide-border border-t border-border">
               {displayed.map((r) => renderRow(r))}
             </div>
           )}
-        </GlassCard>
+        </Card>
       )}
 
       {showCreate && createPortal(
@@ -449,9 +442,7 @@ export default function AdminServiceRequests() {
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[16px] font-semibold text-foreground">New Service Request</h2>
               <button onClick={() => setShowCreate(false)} className="rounded-lg p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+                <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 

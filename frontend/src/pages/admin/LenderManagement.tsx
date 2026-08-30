@@ -4,8 +4,9 @@ import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Badge } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Badge } from '../../components/ui';
 import type { Lender, LenderContact } from '../../types';
+import { BuildingLibraryIcon, CheckCircleIcon, NoSymbolIcon } from '@heroicons/react/24/outline';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
 const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: '' };
@@ -213,13 +214,13 @@ export default function LenderManagement() {
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total Lenders" value={lenders.length} gradient="from-primary to-primary" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>} />
-        <StatCard label="Active" value={activeLenders.length} gradient="from-success to-success" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>} />
-        <StatCard label="Inactive" value={inactiveLenders.length} gradient="from-muted-foreground to-muted-foreground" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636" /></svg>} />
+        <StatCard label="Total Lenders" value={lenders.length} gradient="from-primary to-primary" icon={<BuildingLibraryIcon className="h-5 w-5" />} />
+        <StatCard label="Active" value={activeLenders.length} gradient="from-success to-success" icon={<CheckCircleIcon className="h-5 w-5" />} />
+        <StatCard label="Inactive" value={inactiveLenders.length} gradient="from-muted-foreground to-muted-foreground" icon={<NoSymbolIcon className="h-5 w-5" />} />
       </div>
 
       {showForm && (
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-4">
             {editingId ? 'Edit Lender' : 'Add New Lender'}
           </h3>
@@ -365,10 +366,10 @@ export default function LenderManagement() {
               </form>
             )}
           </div>
-        </GlassCard>
+        </Card>
       )}
 
-      <GlassCard padding="none">
+      <Card padding="none">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -409,7 +410,7 @@ export default function LenderManagement() {
             </tbody>
           </table>
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

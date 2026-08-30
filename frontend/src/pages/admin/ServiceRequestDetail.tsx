@@ -8,6 +8,7 @@ import { Button, Breadcrumbs } from '../../components/ui';
 import { BrokerPicker, ClientPicker } from '../../components/ServiceRequestPickers';
 import FileDropzone from '../../components/FileDropzone';
 import type { ServiceRequest, ServiceRequestAttachment, ServiceRequestChecklistItem, ServiceRequestStatus, User } from '../../types';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const STATUS_LABEL: Record<ServiceRequestStatus, string> = {
   pending: 'Pending',
@@ -506,9 +507,7 @@ export default function ServiceRequestDetail() {
                     className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors ${item.is_completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border hover:border-emerald-400'}`}
                   >
                     {item.is_completed && (
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                      </svg>
+                      <CheckIcon className="h-3 w-3" strokeWidth={3} />
                     )}
                   </button>
                   <span className={`flex-1 text-[14px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{item.title}</span>
@@ -517,9 +516,7 @@ export default function ServiceRequestDetail() {
                     onClick={() => deleteChecklistItem(item.id)}
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all p-1 rounded"
                   >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
+                    <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
                   </button>
                 </div>
               ))}
@@ -566,9 +563,7 @@ export default function ServiceRequestDetail() {
                       onClick={() => deleteAttachment(a.id)}
                       className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all p-1 rounded shrink-0"
                     >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                      </svg>
+                      <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
                     </button>
                   </div>
                 ))}

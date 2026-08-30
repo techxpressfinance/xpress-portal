@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Badge, Input, Select, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import { useConfirm } from '../../hooks/useConfirm';
+import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
@@ -278,6 +279,7 @@ function LinkContactModal({ companyId, excludeIds, onClose, onLinked }: {
 export default function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [company, setCompany] = useState<OrganizationDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -296,7 +298,10 @@ export default function CompanyDetail() {
 
   const handleUnlink = async (contactId: string) => {
     if (!company) return;
-    if (!confirm('Unlink this contact from the entity?')) return;
+    if (!(await confirm({
+      title: 'Unlink this contact from the entity?',
+      confirmText: 'Unlink',
+    }))) return;
     setUnlinkingId(contactId);
     try {
       await api.delete(`/organizations/${company.id}/contacts/${contactId}`);
@@ -315,7 +320,12 @@ export default function CompanyDetail() {
 
   const handleDelete = async () => {
     if (!company) return;
-    if (!confirm(`Delete ${company.name}? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete ${company.name}?`,
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     setDeleting(true);
     try {
       await api.delete(`/organizations/${company.id}`);
@@ -360,7 +370,7 @@ export default function CompanyDetail() {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <GlassCard>
+        <Card>
           <h3 className="text-lg font-semibold mb-4">{isTrust ? 'Trust' : 'Entity'} Information</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between"><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{company.name}</dd></div>
@@ -398,9 +408,9 @@ export default function CompanyDetail() {
               <p className="text-sm mt-1 whitespace-pre-wrap">{company.notes}</p>
             </div>
           )}
-        </GlassCard>
+        </Card>
 
-        <GlassCard>
+        <Card>
           <h3 className="text-lg font-semibold mb-4">Activity</h3>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between"><dt className="text-muted-foreground">Contacts</dt><dd>{company.contact_count}</dd></div>
@@ -408,7 +418,7 @@ export default function CompanyDetail() {
             <div className="flex justify-between"><dt className="text-muted-foreground">Created</dt><dd>{formatDate(company.created_at)}</dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Last updated</dt><dd>{formatDate(company.updated_at)}</dd></div>
           </dl>
-        </GlassCard>
+        </Card>
       </div>
 
       {isTrust && (
@@ -420,7 +430,7 @@ export default function CompanyDetail() {
       )}
 
       {/* Linked contacts */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
             Linked Contacts
@@ -460,10 +470,10 @@ export default function CompanyDetail() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Linked applications */}
-      <GlassCard>
+      <Card>
         <h3 className="text-lg font-semibold mb-4">
           Applications
           <span className="ml-2 text-sm font-normal text-muted-foreground">({company.applications.length})</span>
@@ -515,7 +525,7 @@ export default function CompanyDetail() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       <ArrearsSection organization={{ id: company.id, name: company.name }} />
 

@@ -4,11 +4,12 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { LOAN_CATEGORIES } from '../../lib/constants';
 import type { BrokerGroup, Invitation, LoanCategory, PaginatedResponse, User } from '../../types';
+import { CheckCircleIcon, ChevronDownIcon, PencilSquareIcon, TrashIcon, UserGroupIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(LOAN_CATEGORIES.map((c) => [c.value, c.label]));
 
@@ -376,16 +377,16 @@ export default function BrokerManagement() {
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>}
         />
         <StatCard label="Active" value={activeBrokers.length} loading={loadingBrokers} gradient="from-success to-success" valueColor="text-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
         <StatCard label="Groups" value={groups.length} gradient="from-chart-2 to-chart-2"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>}
+          icon={<UserGroupIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Create broker form */}
       {showForm && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">New Broker</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -406,11 +407,11 @@ export default function BrokerManagement() {
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Broker table */}
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         {loadingBrokers ? (
           <div className="p-6 space-y-4">{[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}</div>
         ) : brokers.length === 0 ? (
@@ -476,12 +477,12 @@ export default function BrokerManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Broker Groups */}
       <h3 className="text-[15px] font-semibold text-foreground mb-4">Broker Groups</h3>
       <div className="grid gap-6 lg:grid-cols-2">
-        <GlassCard>
+        <Card>
           <form onSubmit={handleCreateGroup} className="space-y-4">
             <h4 className="text-[14px] font-semibold text-foreground">New Group</h4>
             <p className="text-[13px] text-muted-foreground">Groups let you assign multiple brokers to applications at once.</p>
@@ -506,7 +507,7 @@ export default function BrokerManagement() {
                       <span key={bid} className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[12px] font-medium text-primary">
                         {b.full_name}
                         <button type="button" onClick={() => setGroupMemberIds(p => p.filter(id => id !== bid))} className="hover:text-destructive transition-colors">
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                          <XMarkIcon className="h-3 w-3" strokeWidth={2.5} />
                         </button>
                       </span>
                     );
@@ -525,10 +526,10 @@ export default function BrokerManagement() {
             </div>
             <Button type="submit" loading={creatingGroup}>Create Group</Button>
           </form>
-        </GlassCard>
+        </Card>
 
         {groups.length > 0 && (
-          <GlassCard>
+          <Card>
             <h4 className="text-[14px] font-semibold text-foreground mb-4">Existing Groups</h4>
             <div className="space-y-2">
               {groups.map(group => (
@@ -538,7 +539,7 @@ export default function BrokerManagement() {
                     onClick={() => setSelectedGroupId(selectedGroupId === group.id ? null : group.id)}
                   >
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-chart-2/15">
-                      <svg className="h-4 w-4 text-chart-2" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                      <UserGroupIcon className="h-4 w-4 text-chart-2" />
                     </div>
                     <div className="flex-1 min-w-0">
                       {editingGroup === group.id ? (
@@ -559,14 +560,14 @@ export default function BrokerManagement() {
                       {editingGroup !== group.id && (
                         <button onClick={() => { setEditingGroup(group.id); setEditGroupName(group.name); setEditGroupDesc(group.description || ''); }}
                           className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                          <PencilSquareIcon className="h-3.5 w-3.5" strokeWidth={2} />
                         </button>
                       )}
                       <button onClick={() => handleDeleteGroup(group.id)} className="p-1 text-muted-foreground hover:text-destructive transition-colors">
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                        <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
                       </button>
                     </div>
-                    <svg className={`h-4 w-4 text-muted-foreground transition-transform ${selectedGroupId === group.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                    <ChevronDownIcon className={`h-4 w-4 text-muted-foreground transition-transform ${selectedGroupId === group.id ? 'rotate-180' : ''}`} strokeWidth={2} />
                   </div>
 
                   {selectedGroupId === group.id && (
@@ -583,7 +584,7 @@ export default function BrokerManagement() {
                                 <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
                               </div>
                               <button onClick={() => handleRemoveMember(group.id, m.id)} className="p-1 text-muted-foreground hover:text-destructive transition-colors">
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                                <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
                               </button>
                             </div>
                           ))}
@@ -603,12 +604,12 @@ export default function BrokerManagement() {
                 </div>
               ))}
             </div>
-          </GlassCard>
+          </Card>
         )}
       </div>
 
       {/* Invitation History */}
-      <GlassCard padding="none" className="mt-8">
+      <Card padding="none" className="mt-8">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited broker{historyTotal !== 1 ? 's' : ''}</p>
@@ -669,7 +670,7 @@ export default function BrokerManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {editingBroker && (
         <EditBrokerModal

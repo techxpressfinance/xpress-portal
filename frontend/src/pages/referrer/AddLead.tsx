@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
+import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
+import { CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
@@ -783,12 +784,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   if (done) {
     return (
       <div className="mx-auto max-w-md">
-        <GlassCard>
+        <Card>
           <div className="text-center space-y-5 py-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
-              <svg className="h-7 w-7 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
+              <CheckIcon className="h-7 w-7 text-success" strokeWidth={2} />
             </div>
             <div>
               <p className="text-[18px] font-semibold text-foreground">
@@ -815,7 +814,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               )}
             </div>
           </div>
-        </GlassCard>
+        </Card>
       </div>
     );
   }
@@ -830,9 +829,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   if (cloneLoading) {
     return (
       <div className="mx-auto max-w-xl">
-        <GlassCard>
+        <Card>
           <p className="text-[14px] text-muted-foreground text-center py-8">Loading the application to clone...</p>
-        </GlassCard>
+        </Card>
       </div>
     );
   }
@@ -847,7 +846,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       />
 
       {cloneFromId && cloneSource && (
-        <GlassCard className="space-y-1">
+        <Card className="space-y-1">
           <p className="text-[14px] font-semibold text-foreground">
             Cloning {appRef(cloneSource.id)}{cloneSource.name ? ` · ${cloneSource.name}` : ''}
           </p>
@@ -856,11 +855,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             signatures and the loan details start fresh — check the copied details below
             are still current before submitting.
           </p>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Client */}
-      <GlassCard className="space-y-4">
+      <Card className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">Client</p>
         {!cloneFromId && (
           <div className="flex gap-2">
@@ -932,10 +931,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <Input type="tel" placeholder="04XX XXX XXX" value={mobile} onChange={e => setMobile(e.target.value)} />
           </div>
         </div>
-      </GlassCard>
+      </Card>
 
       {/* Engagement */}
-      {!skipEngagement && <GlassCard className="space-y-3">
+      {!skipEngagement && <Card className="space-y-3">
         <p className="text-[15px] font-semibold text-foreground">Who will engage with the client?</p>
         <label className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
           <input type="radio" name="engagement" value="direct_engagement" checked={engagementModel === 'direct_engagement'} onChange={() => { setEngagementModel('direct_engagement'); setEngagementError(''); }} className="mt-0.5 accent-primary shrink-0" />
@@ -952,11 +951,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           </div>
         </label>
         {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
-      </GlassCard>}
+      </Card>}
 
       {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
       {skipEngagement && !cloneFromId && (
-        <GlassCard className="space-y-3">
+        <Card className="space-y-3">
           <div>
             <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
             <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -975,11 +974,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               No referrer accounts found — add referrers under Referrer Management to credit them here.
             </p>
           )}
-        </GlassCard>
+        </Card>
       )}
 
       {/* Tab switcher + Loan type section */}
-      <GlassCard className="space-y-4">
+      <Card className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">What does the client need?</p>
         <div className="flex rounded-xl bg-secondary p-1 gap-1">
           {LOAN_CATEGORIES.map(c => (
@@ -1458,10 +1457,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Amount + Notes */}
-      <GlassCard className="space-y-4">
+      <Card className="space-y-4">
         <div>
           <label className={LABEL_CLS}>Approximate Amount *</label>
           <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
@@ -1486,13 +1485,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             className="w-full rounded-xl bg-secondary px-4 py-2.5 text-[14px] text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background placeholder:text-muted-foreground border border-transparent resize-none"
           />
         </div>
-      </GlassCard>
+      </Card>
 
       {/* ── Self-managed: full client detail sections ─────────────────────── */}
       {isSelfManaged && (
         <>
           {/* Applicant Identity */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Applicant Identity</p>
             <div className="grid gap-3 sm:grid-cols-4">
               <div>
@@ -1539,10 +1538,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 </select>
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Identification */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Identification</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -1584,10 +1583,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 />
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Address */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Address</p>
             <div>
               <label className={LBL}>Street Address</label>
@@ -1641,10 +1640,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 </label>
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Employment & Income */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Employment & Income</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -1719,7 +1718,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {additionalIncomes.map((inc, i) => (
               <div key={i} className="grid gap-3 sm:grid-cols-3 rounded-xl border border-border p-3 relative">
                 <button type="button" onClick={() => setAdditionalIncomes(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div>
                   <label className={LBL}>Income Type</label>
@@ -1742,10 +1741,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <button type="button" onClick={() => setAdditionalIncomes(prev => [...prev, { income_type: 'Rental Income', amount: '', frequency: 'Monthly' }])} className="text-[13px] text-primary hover:underline">
               + Add additional income
             </button>
-          </GlassCard>
+          </Card>
 
           {/* Expenses */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Monthly Expenses</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -1777,17 +1776,17 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 </div>
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Assets */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Assets</p>
 
             {/* Real estate */}
             {realEstateAssets.map((asset, i) => (
               <div key={i} className="rounded-xl border border-border p-4 space-y-3 relative">
                 <button type="button" onClick={() => setRealEstateAssets(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <p className="text-[13px] font-medium text-foreground">Real Estate {i + 1}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1843,7 +1842,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             {otherAssets.map((asset, i) => (
               <div key={i} className="grid gap-3 sm:grid-cols-2 rounded-xl border border-border p-3 relative">
                 <button type="button" onClick={() => setOtherAssets(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div>
                   <label className={LBL}>Asset Type</label>
@@ -1860,15 +1859,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <button type="button" onClick={() => setOtherAssets(prev => [...prev, { asset_type: 'Vehicles', value: '' }])} className="text-[13px] text-primary hover:underline">
               + Add other asset
             </button>
-          </GlassCard>
+          </Card>
 
           {/* Liabilities */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Liabilities</p>
             {liabilities.map((liab, i) => (
               <div key={i} className="rounded-xl border border-border p-4 space-y-3 relative">
                 <button type="button" onClick={() => setLiabilities(prev => prev.filter((_, j) => j !== i))} className="absolute top-2 right-2 text-muted-foreground hover:text-destructive">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -1895,11 +1894,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <button type="button" onClick={() => setLiabilities(prev => [...prev, { liability_type: 'Home Loans', lender: '', balance: '', limit: '', monthly_repayment: '' }])} className="text-[13px] text-primary hover:underline">
               + Add liability
             </button>
-          </GlassCard>
+          </Card>
 
           {/* Business Details */}
           {(businessSubType || isBusinessLoan || extra.business_name || extra.business_abn) && (
-            <GlassCard className="space-y-4">
+            <Card className="space-y-4">
               <p className="text-[15px] font-semibold text-foreground">Business Details</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -1940,11 +1939,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   </label>
                 </div>
               </div>
-            </GlassCard>
+            </Card>
           )}
 
           {/* Emergency Contact */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Emergency Contact</p>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
@@ -1960,10 +1959,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 <input type="tel" className="led-input" placeholder="04XX XXX XXX" value={extra.emergency_contact_phone} onChange={e => setExtra('emergency_contact_phone', e.target.value)} />
               </div>
             </div>
-          </GlassCard>
+          </Card>
 
           {/* Declarations */}
-          <GlassCard className="space-y-4">
+          <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Declarations</p>
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.previously_declined} onChange={e => setExtra('previously_declined', e.target.checked)} />
@@ -1982,13 +1981,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               <label className={LBL}>Signature Name</label>
               <input type="text" className="led-input" placeholder="Full legal name" value={extra.signature_name} onChange={e => setExtra('signature_name', e.target.value)} />
             </div>
-          </GlassCard>
+          </Card>
 
         </>
       )}
 
       {/* Attachments */}
-      <GlassCard>
+      <Card>
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-[15px] font-semibold text-foreground">Attachments <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
@@ -2007,10 +2006,10 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           <div className="space-y-2">
             {files.map((f, i) => (
               <div key={i} className="flex items-center gap-3 rounded-lg bg-secondary px-3 py-2.5">
-                <svg className="h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                <DocumentTextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-[13px] text-foreground flex-1 truncate">{f.name}</span>
                 <button type="button" onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive transition-colors">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -2019,7 +2018,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             </button>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       <div className="flex gap-3 pb-6">
         <Button size="lg" onClick={handleSubmit} disabled={submitting}>

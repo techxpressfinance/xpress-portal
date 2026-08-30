@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Button, GlassCard, Input, PageHeader, Select } from '../../components/ui';
+import { Button, Card, Input, PageHeader, Select } from '../../components/ui';
 import { ListSkeleton } from '../../components/ui/Skeletons';
 import ArrearsTable, { ArrearsPrintTable } from '../../components/arrears/ArrearsTable';
 import ArrearsDetailPanel from '../../components/arrears/ArrearsDetailPanel';
@@ -131,7 +131,7 @@ export default function ArrearsBook() {
 
       {/* Triage strip: the whole book's shape in one line, and the fastest way
           to answer "who is worst?" — click an age band to filter to it. */}
-      <GlassCard className="p-4">
+      <Card className="p-4">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <p className="text-[22px] font-semibold tabular-nums text-foreground">
             {formatMoney(summary?.total_arrears ?? 0)}
@@ -175,9 +175,9 @@ export default function ArrearsBook() {
             </button>
           ))}
         </div>
-      </GlassCard>
+      </Card>
 
-      <GlassCard className="space-y-4 p-4">
+      <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">
             <Input
@@ -246,7 +246,7 @@ export default function ArrearsBook() {
             )}
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Off-screen print source for the PDF export. */}
       {printRows.length > 0 && (

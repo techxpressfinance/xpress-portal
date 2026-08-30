@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, Badge, Button, LoanTypeIcon } from '../../components/ui';
+import { Card, Badge, Button, LoanTypeIcon } from '../../components/ui';
 import { formatDate } from '../../lib/utils';
 import type { ApplicationStatus, LoanApplication } from '../../types';
+import { ChevronRightIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 const STATUS_ACCENT: Record<ApplicationStatus, string> = {
   draft: 'bg-[var(--led-muted)]',
@@ -94,10 +95,10 @@ export default function Applications() {
           ))}
         </div>
       ) : applications.length === 0 ? (
-        <GlassCard padding="none" className="text-center">
+        <Card padding="none" className="text-center">
           <div className="px-6 py-16">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--led-surface-2)]">
-              <svg className="h-10 w-10 text-[var(--led-muted)]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+              <DocumentTextIcon className="h-10 w-10 text-[var(--led-muted)]" />
             </div>
             <h3 className="text-[15px] font-semibold text-[var(--led-ink)] mb-1">No applications yet</h3>
             <p className="text-[14px] text-[var(--led-muted)] mb-5">Get started by creating your first loan application</p>
@@ -105,7 +106,7 @@ export default function Applications() {
               <Button>Create Application</Button>
             </Link>
           </div>
-        </GlassCard>
+        </Card>
       ) : (
         <div className="space-y-3">
           {ordered.map((app) => (
@@ -144,7 +145,7 @@ export default function Applications() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge value={app.status} />
-                    <svg className="h-4 w-4 text-[var(--led-muted)] transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                    <ChevronRightIcon className="h-4 w-4 text-[var(--led-muted)] transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
                   </div>
                 </div>
                 <PipelineBar status={app.status} />

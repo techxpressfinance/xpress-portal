@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { GlassCard, PageHeader, Select, Button } from '../../components/ui';
+import { Card, PageHeader, Select, Button } from '../../components/ui';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { activityEntityLink, describeActivity } from '../../lib/activityLog';
 import ActivityChanges from '../../components/ActivityChanges';
 import { formatDateTime } from '../../lib/utils';
 import type { ActivityLog, User } from '../../types';
+import { ClockIcon } from '@heroicons/react/24/outline';
 
 
 export default function ActivityLogs() {
@@ -63,7 +64,7 @@ export default function ActivityLogs() {
       <PageHeader title="Activity Log" subtitle="Track all actions across the platform" />
 
       {/* Filters */}
-      <GlassCard className="mb-6">
+      <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-4">
           <Select
             label="Action Type"
@@ -138,10 +139,10 @@ export default function ActivityLogs() {
             </span>
           </div>
         </div>
-      </GlassCard>
+      </Card>
 
       {/* Log Entries */}
-      <GlassCard padding="none">
+      <Card padding="none">
         {loading ? (
           <div className="p-6">
             <div className="space-y-4">
@@ -159,7 +160,7 @@ export default function ActivityLogs() {
         ) : logs.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+              <ClockIcon className="h-8 w-8 text-muted-foreground" />
             </div>
             <p className="text-[14px] text-muted-foreground font-medium">No activity logs found</p>
           </div>
@@ -175,7 +176,7 @@ export default function ActivityLogs() {
                   <div key={log.id} className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-secondary/50" style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}>
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${actionConfig?.bg || 'bg-secondary text-muted-foreground'}`}>
                       {actionConfig?.icon || (
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                        <ClockIcon className="h-4 w-4" strokeWidth={2} />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -233,7 +234,7 @@ export default function ActivityLogs() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

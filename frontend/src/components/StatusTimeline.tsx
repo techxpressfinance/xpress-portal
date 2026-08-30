@@ -1,4 +1,5 @@
 import type { ApplicationStatus } from '../types';
+import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   currentStatus: ApplicationStatus;
@@ -54,7 +55,7 @@ export default function StatusTimeline({ currentStatus, clientView = false }: Pr
       <div className="rounded-2xl bg-destructive/8 p-5" style={{ animation: 'scaleIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
         <div className="flex items-center gap-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive text-white">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            <XMarkIcon className="h-5 w-5" strokeWidth={2} />
           </div>
           <div>
             <p className="text-[15px] font-semibold text-destructive">Application Rejected</p>
@@ -84,7 +85,7 @@ export default function StatusTimeline({ currentStatus, clientView = false }: Pr
                 }`}
               >
                 {isCompleted ? (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  <CheckIcon className="h-4 w-4" strokeWidth={2.5} />
                 ) : (
                   i + 1
                 )}

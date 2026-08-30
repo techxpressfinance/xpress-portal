@@ -1,6 +1,6 @@
 import { forwardRef, type ReactNode } from 'react';
 
-interface GlassCardProps {
+interface CardProps {
   children: ReactNode;
   className?: string;
   interactive?: boolean;
@@ -14,7 +14,7 @@ const paddingMap = {
   lg: 'p-8',
 };
 
-const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(function GlassCard({ children, className = '', interactive = false, padding = 'md' }, ref) {
+const Card = forwardRef<HTMLDivElement, CardProps>(function Card({ children, className = '', interactive = false, padding = 'md' }, ref) {
   return (
     <div
       ref={ref}
@@ -25,4 +25,4 @@ const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(function GlassCard(
   );
 });
 
-export default GlassCard;
+export default Card;

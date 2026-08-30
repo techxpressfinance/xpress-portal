@@ -4,7 +4,8 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTenant } from '../contexts/TenantContext';
 import { useTheme } from '../hooks/useTheme';
-import { Button, Input, GlassCard } from '../components/ui';
+import { Button, Input } from '../components/ui';
+import { CheckCircleIcon, EnvelopeIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface LoginForm {
   email: string;
@@ -33,7 +34,7 @@ export default function Login() {
   const registered = searchParams.get('registered') === 'true';
   const verified = searchParams.get('verified') === 'true';
 
-  if (user) {
+  if (user && !window.location.search.includes('preview')) {
     const target =
       user.role === 'super_admin' ? '/platform' :
       user.role === 'client' ? '/dashboard' :
@@ -65,49 +66,33 @@ export default function Login() {
 
   return (
     <div
-      className="ledger-theme min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-background"
-      style={{ fontFamily: "'Outfit', sans-serif" }}
+      className="ledger-theme min-h-[100dvh] lg:grid lg:grid-cols-2"
+      style={{ background: 'var(--led-bg)' }}
     >
-      {/* Ambient background */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full bg-primary/20 blur-[120px] opacity-50 animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-info/20 blur-[100px] opacity-40 animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-        <div className="absolute top-[20%] right-[10%] w-[40%] h-[40%] rounded-full bg-accent/10 blur-[100px] opacity-30 animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
-      </div>
+      {/* Form column. Below lg this is the whole page. */}
+      <div className="flex min-h-[100dvh] lg:min-h-0 flex-col justify-center px-5 py-10 sm:px-8 lg:px-12 xl:px-20">
+        <div className="w-full max-w-[400px] mx-auto led-fade-up">
+          <img
+            src={tenant?.logo_url || defaultLogo}
+            alt={brandName}
+            className="h-24 sm:h-28 lg:h-32 w-auto max-w-[300px] object-contain object-left mb-10"
+            onError={(e) => { (e.target as HTMLImageElement).src = defaultLogo; }}
+          />
 
-      <div
-        className="relative z-10 w-full max-w-[420px]"
-        style={{ animation: `fadeInUp 0.8s ${easing} both` }}
-      >
-        <GlassCard padding="none" className="p-6 sm:p-10 flex flex-col shadow-2xl border-white/20 bg-card/60 backdrop-blur-3xl">
-
-          {/* Logo + heading */}
-          <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center mb-6">
-              <img
-                src={tenant?.logo_url || defaultLogo}
-                alt={brandName}
-                className="h-16 sm:h-24 w-auto max-w-[300px] object-contain drop-shadow-sm"
-                onError={(e) => { (e.target as HTMLImageElement).src = defaultLogo; }}
-              />
-            </div>
-            <h1 className="text-[28px] font-semibold text-foreground tracking-tight text-center">
-              Welcome back
-            </h1>
-            <p className="text-[15px] text-muted-foreground mt-2 text-center max-w-[280px]">
-              Enter your credentials to access your account.
-            </p>
-          </div>
+          <h1 className="text-[26px] sm:text-[28px] font-semibold text-foreground tracking-tight">
+            Welcome back
+          </h1>
+          <p className="text-[15px] text-muted-foreground mt-2">
+            Enter your credentials to access your account.
+          </p>
 
           {/* Post-registration alert */}
           {registered && (
             <div
-              className="mb-6 flex items-center gap-3 rounded-xl bg-[#0071e3]/8 px-4 py-3 w-full text-left"
+              className="mt-6 flex items-center gap-3 rounded-[10px] bg-[#0071e3]/8 px-4 py-3 w-full text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#0071e3] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-              </svg>
+              <EnvelopeIcon className="h-4 w-4 text-[#0071e3] shrink-0" />
               <span className="text-[13px] text-[#0071e3]">Check your email to verify your account before signing in.</span>
             </div>
           )}
@@ -115,12 +100,10 @@ export default function Login() {
           {/* Email verified alert */}
           {verified && (
             <div
-              className="mb-6 flex items-center gap-3 rounded-xl bg-[#34c759]/8 px-4 py-3 w-full text-left"
+              className="mt-6 flex items-center gap-3 rounded-[10px] bg-[#34c759]/8 px-4 py-3 w-full text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
             >
-              <svg className="h-4 w-4 text-[#34c759] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
+              <CheckCircleIcon className="h-4 w-4 text-[#34c759] shrink-0" />
               <span className="text-[13px] text-[#34c759]">Email verified! You can now sign in.</span>
             </div>
           )}
@@ -128,12 +111,11 @@ export default function Login() {
           {/* Error */}
           {error && (
             <div
-              className="mb-6 flex items-start gap-3 rounded-xl bg-destructive/10 px-4 py-3 w-full border border-destructive/20 text-left"
+              className="mt-6 flex items-start gap-3 rounded-[10px] bg-destructive/10 px-4 py-3 w-full border border-destructive/20 text-left"
               style={{ animation: `fadeInUp 0.3s ${easing} both` }}
+              role="alert"
             >
-              <svg className="h-4 w-4 text-destructive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
+              <ExclamationCircleIcon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1">
                 <span className="text-[13px] text-destructive leading-tight block">{error}</span>
                 {showResend && (
@@ -149,14 +131,13 @@ export default function Login() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 w-full">
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-4 w-full">
             <Input
               label="Email Address"
               id="email"
               type="email"
               placeholder="name@example.com"
               autoComplete="email"
-              className="bg-background/50 border-border/60 focus:bg-background transition-colors"
               error={errors.email?.message}
               {...register('email', { required: 'Email address is required' })}
             />
@@ -175,7 +156,6 @@ export default function Login() {
                 type="password"
                 placeholder="Enter your password"
                 autoComplete="current-password"
-                className="bg-background/50 border-border/60 focus:bg-background transition-colors"
                 error={errors.password?.message}
                 {...register('password', { required: 'Password is required' })}
               />
@@ -185,21 +165,14 @@ export default function Login() {
                 type="submit"
                 loading={isSubmitting}
                 size="lg"
-                className="w-full h-12 text-[15px] rounded-2xl shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full h-12 text-[15px]"
               >
                 {isSubmitting ? 'Signing in...' : 'Sign In'}
               </Button>
             </div>
           </form>
 
-        </GlassCard>
-
-        {/* Footer */}
-        <div
-          className="mt-8 text-center space-y-3"
-          style={{ animation: `fadeInUp 0.8s ${easing} 0.2s both` }}
-        >
-          <p className="text-[13px] text-muted-foreground font-medium">
+          <p className="mt-8 text-[13px] text-muted-foreground font-medium">
             Don't have an account?{' '}
             <Link
               to="/register"
@@ -210,6 +183,14 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      {/* Image column. Decorative, so it carries no text and no alt.
+          Painted as a background rather than an <img> so browsers skip the
+          download entirely at the widths where the column is not rendered. */}
+      <div
+        className="hidden lg:block bg-cover bg-center"
+        style={{ backgroundImage: "url('/login-panel.png')", backgroundColor: '#1b9aaa' }}
+      />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
-import { GlassCard, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker, SpecialtyPicker } from '../../components/ui';
+import { Card, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker, SpecialtyPicker } from '../../components/ui';
 import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
 import type { LoanCategory } from '../../types';
 
@@ -154,7 +154,7 @@ export default function Profile() {
       </div>
 
       <div className="max-w-2xl space-y-6">
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="border-b border-[var(--led-line)] px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Account</p>
             <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Profile Overview</h2>
@@ -186,9 +186,9 @@ export default function Profile() {
               </div>
             </dl>
           </div>
-        </GlassCard>
+        </Card>
 
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="border-b border-[var(--led-line)] px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Settings</p>
             <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Edit Profile</h2>
@@ -216,10 +216,10 @@ export default function Profile() {
               </Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
 
         {isStaff && (
-          <GlassCard padding="none">
+          <Card padding="none">
             <div className="border-b border-[var(--led-line)] px-6 py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Focus</p>
               <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Loan Specialties</h2>
@@ -231,10 +231,10 @@ export default function Profile() {
                 {savingSpecialties ? 'Saving...' : 'Save Specialties'}
               </Button>
             </div>
-          </GlassCard>
+          </Card>
         )}
 
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="border-b border-[var(--led-line)] px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Autofill</p>
             <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Application Details</h2>
@@ -348,9 +348,9 @@ export default function Profile() {
               </Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
 
-        <GlassCard padding="none">
+        <Card padding="none">
           <div className="border-b border-[var(--led-line)] px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">Security</p>
             <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Change Password</h2>
@@ -397,7 +397,7 @@ export default function Profile() {
               </Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       </div>
     </div>
   );

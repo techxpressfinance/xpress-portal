@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../Toast';
 import FileDropzone from '../FileDropzone';
-import { Button, GlassCard, Input, Select } from '../ui';
+import { Button, Card, Input, Select } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import type { ReferrerBusinessProfile } from '../../types';
 
@@ -196,11 +196,11 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
 
   if (loading) {
     return (
-      <GlassCard>
+      <Card>
         <div className="space-y-4">
           {[1, 2, 3, 4].map(i => <div key={i} className="h-10 rounded-lg shimmer" />)}
         </div>
-      </GlassCard>
+      </Card>
     );
   }
 
@@ -215,7 +215,7 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-1">Business details</h3>
           <p className="text-[13px] text-muted-foreground mb-4">These appear on the tax invoice we raise for you each month.</p>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -257,9 +257,9 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
             <Input label="Phone" value={profile?.phone ?? 'Not provided'} readOnly disabled />
           </div>
           {contactNote && <p className="mt-3 text-[12px] text-muted-foreground">{contactNote}</p>}
-        </GlassCard>
+        </Card>
 
-        <GlassCard>
+        <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-1">Bank account for payment</h3>
           <p className="text-[13px] text-muted-foreground mb-4">Stored encrypted. Only you and portal administrators can see it.</p>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -286,14 +286,14 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
               error={errors.bank_account_number}
             />
           </div>
-        </GlassCard>
+        </Card>
 
         <div className="flex justify-end">
           <Button type="submit" loading={saving}>Save details</Button>
         </div>
       </form>
 
-      <GlassCard>
+      <Card>
         <h3 className="text-[15px] font-semibold text-foreground mb-1">Branding (optional)</h3>
         <p className="text-[13px] text-muted-foreground mb-4">If you have them, we'll use your logo and letterhead on your invoice.</p>
         <div className="grid gap-6 sm:grid-cols-2">
@@ -322,7 +322,7 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
             );
           })}
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

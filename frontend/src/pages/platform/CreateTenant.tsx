@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { getErrorMessage } from '../../lib/utils';
 import { PageHeader, Button, Input } from '../../components/ui';
+import { ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 interface TenantForm {
   tenant_name: string;
@@ -47,9 +48,7 @@ export default function CreateTenant() {
 
       {error && (
         <div className="mb-6 flex items-center gap-3 rounded-xl bg-[#ff3b30]/8 px-4 py-3">
-          <svg className="h-4 w-4 text-[#ff3b30] shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-          </svg>
+          <ExclamationCircleIcon className="h-4 w-4 text-[#ff3b30] shrink-0" />
           <span className="text-[13px] text-[#ff3b30]">{error}</span>
         </div>
       )}

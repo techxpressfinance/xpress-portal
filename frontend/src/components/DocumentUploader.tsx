@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { DOC_TYPE_LABELS } from '../lib/constants';
 import type { DocType } from '../types';
+import { ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 
 const MAX_SIZE = 10 * 1024 * 1024;
 
@@ -124,9 +125,7 @@ export default function DocumentUploader({
         ) : (
           <>
             <div className={`flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full transition-colors ${isDragOver ? 'bg-primary/15' : 'bg-secondary'}`}>
-              <svg className={`h-5 w-5 sm:h-4 sm:w-4 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-              </svg>
+              <ArrowUpTrayIcon className={`h-5 w-5 sm:h-4 sm:w-4 transition-colors ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={1.75} />
             </div>
             <div>
               <p className="text-[14px] sm:text-[13px] font-medium text-foreground">

@@ -4,10 +4,11 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
-import { GlassCard, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
+import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
+import { CheckCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 
 const LABEL = 'block text-[13px] font-medium text-foreground mb-1';
 
@@ -232,16 +233,16 @@ export default function AdminManagement() {
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 mb-8">
         <StatCard label="Total Admins" value={admins.length} loading={loadingAdmins} gradient="from-primary to-primary"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>}
+          icon={<ShieldCheckIcon className="h-5 w-5" />}
         />
         <StatCard label="Active" value={activeAdmins.length} loading={loadingAdmins} gradient="from-success to-success" valueColor="text-success"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>}
+          icon={<CheckCircleIcon className="h-5 w-5" />}
         />
       </div>
 
       {/* Create admin form */}
       {showForm && (
-        <GlassCard className="mb-6">
+        <Card className="mb-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">New Admin</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -255,11 +256,11 @@ export default function AdminManagement() {
               <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm(INITIAL_FORM); setErrors({}); }}>Cancel</Button>
             </div>
           </form>
-        </GlassCard>
+        </Card>
       )}
 
       {/* Admin table */}
-      <GlassCard padding="none" className="mb-8">
+      <Card padding="none" className="mb-8">
         {loadingAdmins ? (
           <div className="p-6 space-y-4">{[1, 2, 3].map(i => <div key={i} className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl shimmer" /><div className="flex-1 space-y-2"><div className="h-4 w-32 rounded-lg shimmer" /><div className="h-3 w-48 rounded-lg shimmer" /></div></div>)}</div>
         ) : admins.length === 0 ? (
@@ -324,10 +325,10 @@ export default function AdminManagement() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
 
       {/* Invitation History */}
-      <GlassCard padding="none" className="mt-8">
+      <Card padding="none" className="mt-8">
         <div className="px-4 sm:px-6 py-4 border-b border-border">
           <h4 className="text-[15px] font-semibold text-foreground">Invitation History</h4>
           <p className="text-[13px] text-muted-foreground">{historyTotal} invited admin{historyTotal !== 1 ? 's' : ''}</p>
@@ -388,7 +389,7 @@ export default function AdminManagement() {
             )}
           </>
         )}
-      </GlassCard>
+      </Card>
 
       {editingAdmin && (
         <EditAdminModal

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
-import { GlassCard, PageHeader, Button, Input, Select } from '../../components/ui';
+import { Card, PageHeader, Button, Input, Select } from '../../components/ui';
 import { ENTITY_TYPES, TRUST_TYPES } from '../../lib/constants';
 import { getErrorMessage } from '../../lib/utils';
 import type { EntityType, Organization, TrustType } from '../../types';
@@ -107,7 +107,7 @@ export default function CreateCommercialEntity() {
         subtitle="Create the borrowing entity, then invite directors and guarantors to complete their own details."
       />
 
-      <GlassCard padding="lg" className="mt-4">
+      <Card padding="lg" className="mt-4">
         <div className="space-y-5">
           <Input
             label="Entity name"
@@ -214,7 +214,7 @@ export default function CreateCommercialEntity() {
             </Button>
           </div>
         </div>
-      </GlassCard>
+      </Card>
 
       <TrustNoAbnDialog
         open={confirmingNoAbn}
