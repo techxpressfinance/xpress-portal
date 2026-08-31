@@ -225,8 +225,22 @@ class ApprovalConditionOut(BaseModel):
     text: str
     is_completed: bool
     sort_order: int
+    completed_at: Optional[datetime] = None
+    completed_by_id: Optional[str] = None
+    completed_by_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class ApprovalConditionCreate(BaseModel):
+    """One or more conditions to add to an application's approval checklist.
+    Conditions it already carries are skipped rather than duplicated."""
+
+    conditions: list[str]
+
+
+class ApprovalConditionUpdate(BaseModel):
+    text: str
 
 
 class ApprovalDetailsRequest(BaseModel):

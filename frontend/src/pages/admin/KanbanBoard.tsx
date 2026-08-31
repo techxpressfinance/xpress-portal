@@ -4,14 +4,14 @@ import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
-import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince } from '../../lib/utils';
-import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
+import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince, getErrorMessage } from '../../lib/utils';
+import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
 
 // Category scope value meaning "the signed-in broker's specialties".
 const MY_FOCUS = 'mine';
 import { ConfirmDialog, EmptyState } from '../../components/ui';
-import type { ApplicationStatus, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, User } from '../../types';
+import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
 
 // ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
 
@@ -39,6 +39,7 @@ function Icon({ name, size = 14, className = '' }: { name: string; size?: number
     close: <path d="M6 6l12 12M18 6 6 18" />,
     chevronDown: <path d="m6 9 6 6 6-6" />,
     chevronRight: <path d="m9 6 6 6-6 6" />,
+    chevronLeft: <path d="m15 6-6 6 6 6" />,
     board: <><rect x="3" y="4" width="6" height="16" rx="1.2" /><rect x="11" y="4" width="6" height="10" rx="1.2" /><rect x="19" y="4" width="2.5" height="7" rx="1" /></>,
     list: <><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
@@ -49,8 +50,6 @@ function Icon({ name, size = 14, className = '' }: { name: string; size?: number
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>,
     users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.5c3 0 5.5 2 5.5 5" /></>,
     filter: <path d="M4 5h16l-6 8v6l-4-2v-4L4 5Z" />,
-    arrowLeft: <path d="M19 12H5M12 5l-7 7 7 7" />,
-    arrowRight: <path d="M5 12h14M12 19l7-7-7-7" />,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -167,16 +166,33 @@ function FilterPill({
 
 function KanbanCard({
   app,
+  columnId,
+  moveTargets,
+  onMoveTo,
   onDragStart,
   isDragging,
   flash,
 }: {
   app: LoanApplication;
+  columnId: string;
+  /** Every other stage in this view — the menu alternative to a long drag. */
+  moveTargets: KanbanColumn[];
+  onMoveTo: (app: LoanApplication, fromColumnId: string, toColumnId: string) => void;
   onDragStart: (e: DragEvent, app: LoanApplication) => void;
   isDragging?: boolean;
   flash?: boolean;
 }) {
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    if (menuOpen) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [menuOpen]);
   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
   const { icon: ltIcon, label: ltLabel } = loanTypeChip(app);
   const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
@@ -189,7 +205,9 @@ function KanbanCard({
   const businessSubtitle = app.business_name && app.business_name !== clientName ? app.business_name : null;
   const subtitle = businessSubtitle || (!isDirectLead ? app.user_email : null) || '';
   const brokers = app.assigned_brokers || [];
-  const days = daysSince(app.updated_at);
+  // Time in THIS stage, matching the column header's average. updated_at moves
+  // on any edit, so it would show a stale badge on a card that arrived today.
+  const days = daysSince(app.stage_entered_at || app.updated_at);
   const isStale = days >= 7;
 
   return (
@@ -207,6 +225,41 @@ function KanbanCard({
         <span className="led-kanban-card-lt">
           <Icon name={ltIcon} size={11} /> {ltLabel}
         </span>
+        <div ref={menuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button
+            type="button"
+            className="led-btn led-btn-ghost led-btn-sm led-btn-icon led-card-menu"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            title="Move to a stage"
+            aria-label="Move to a stage"
+          >
+            <Icon name="dotsV" size={12} />
+          </button>
+          {menuOpen && (
+            <div
+              className="led-popover"
+              style={{ top: 'calc(100% + 4px)', right: 0, minWidth: 210, maxHeight: 320, overflowY: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="led-popover-label">Move to</div>
+              {moveTargets.map((target) => (
+                <button
+                  key={target.id}
+                  type="button"
+                  className="led-popover-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onMoveTo(app, columnId, target.id);
+                  }}
+                >
+                  <span className="led-sdot" style={{ background: colorDot(target.color) }} />
+                  {target.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="led-kanban-card-title">{clientName}</div>
@@ -274,15 +327,17 @@ function BoardColumn({
   dropValidity,
   draggedAppId,
   isAdmin,
-  isFirst,
-  isLast,
+  collapsed,
+  onToggleCollapse,
+  moveTargets,
+  onMoveTo,
   flashIds,
   onDragStart,
   onDragOver,
   onDrop,
   onDragLeave,
   onEditColumn,
-  onMoveColumn,
+  onDeleteColumn,
 }: {
   col: KanbanColumn;
   apps: LoanApplication[];
@@ -290,15 +345,17 @@ function BoardColumn({
   dropValidity: DropValidity;
   draggedAppId: string | null;
   isAdmin: boolean;
-  isFirst: boolean;
-  isLast: boolean;
+  collapsed: boolean;
+  onToggleCollapse: (columnId: string) => void;
+  moveTargets: KanbanColumn[];
+  onMoveTo: (app: LoanApplication, fromColumnId: string, toColumnId: string) => void;
   flashIds: Set<string>;
   onDragStart: (e: DragEvent, app: LoanApplication) => void;
   onDragOver: (e: DragEvent, columnId: string) => void;
   onDrop: (e: DragEvent, columnId: string) => void;
   onDragLeave: (e: DragEvent, columnId: string) => void;
   onEditColumn: (col: KanbanColumn) => void;
-  onMoveColumn: (col: KanbanColumn, direction: 'left' | 'right') => void;
+  onDeleteColumn: (col: KanbanColumn) => void;
 }) {
   const isOver = dragOverColumn === col.id;
   const dragCounterRef = useRef(0);
@@ -314,8 +371,10 @@ function BoardColumn({
   }, [menuOpen]);
 
   const totalAmount = apps.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  // Time in *this stage* where we know it; cards that have never been moved here
+  // fall back to updated_at, which is the best we can say about them.
   const avgDays = apps.length
-    ? Math.round(apps.reduce((sum, a) => sum + daysSince(a.updated_at), 0) / apps.length)
+    ? Math.round(apps.reduce((sum, a) => sum + daysSince(a.stage_entered_at || a.updated_at), 0) / apps.length)
     : 0;
 
   const handleDragEnter = (e: DragEvent) => {
@@ -342,6 +401,25 @@ function BoardColumn({
         : isOver && dropValidity === 'same' ? 'led-drop-same'
           : '';
 
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className={`led-kanban-col led-kanban-col-collapsed ${dropClass}`}
+        onClick={() => onToggleCollapse(col.id)}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragLeave={handleDragLeave}
+        title={`${col.title} — click to expand`}
+      >
+        <span className="led-sdot" style={{ background: colorDot(col.color) }} />
+        <span className="led-chip led-mono led-tnum" style={{ height: 20, fontSize: 11 }}>{apps.length}</span>
+        <span className="led-kanban-col-collapsed-title">{col.title}</span>
+      </button>
+    );
+  }
+
   return (
     <div
       className={`led-kanban-col ${dropClass}`}
@@ -352,34 +430,26 @@ function BoardColumn({
     >
       <div className="led-kanban-col-header">
         <span className="led-sdot" style={{ background: colorDot(col.color) }} />
-        <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.005em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {col.title}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.005em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {col.title}
+          </div>
+          {col.team && (
+            <div style={{ fontSize: 10, color: 'var(--led-muted)', letterSpacing: '0.02em', textTransform: 'uppercase', marginTop: 1 }}>
+              {col.team}
+            </div>
+          )}
         </div>
         <span className="led-chip led-mono led-tnum" style={{ height: 20, fontSize: 11 }}>{apps.length}</span>
-        {isAdmin && (
-          <>
-            <button
-              type="button"
-              className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
-              onClick={() => onMoveColumn(col, 'left')}
-              disabled={isFirst}
-              title="Move left"
-              style={{ opacity: isFirst ? 0.25 : 1 }}
-            >
-              <Icon name="arrowLeft" size={11} />
-            </button>
-            <button
-              type="button"
-              className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
-              onClick={() => onMoveColumn(col, 'right')}
-              disabled={isLast}
-              title="Move right"
-              style={{ opacity: isLast ? 0.25 : 1 }}
-            >
-              <Icon name="arrowRight" size={11} />
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+          onClick={() => onToggleCollapse(col.id)}
+          title="Collapse stage"
+          aria-label={`Collapse ${col.title}`}
+        >
+          <Icon name="chevronLeft" size={12} />
+        </button>
         {isAdmin && (
           <div ref={menuRef} style={{ position: 'relative' }}>
             <button
@@ -397,7 +467,15 @@ function BoardColumn({
                   className="led-popover-item"
                   onClick={() => { setMenuOpen(false); onEditColumn(col); }}
                 >
-                  <Icon name="edit" size={13} />Edit column
+                  <Icon name="edit" size={13} />Edit stage
+                </button>
+                <button
+                  type="button"
+                  className="led-popover-item"
+                  onClick={() => { setMenuOpen(false); onDeleteColumn(col); }}
+                  style={{ color: 'var(--led-danger)' }}
+                >
+                  <Icon name="trash" size={13} />Delete stage
                 </button>
               </div>
             )}
@@ -418,6 +496,9 @@ function BoardColumn({
           <KanbanCard
             key={app.id}
             app={app}
+            columnId={col.id}
+            moveTargets={moveTargets}
+            onMoveTo={onMoveTo}
             onDragStart={onDragStart}
             isDragging={app.id === draggedAppId}
             flash={flashIds.has(app.id)}
@@ -511,7 +592,16 @@ export default function KanbanBoardPage() {
   const dragSourceColumn = useRef<string | null>(null);
   const dragOverlayRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
+  // The category the current column set was fetched for, so filters that don't
+  // change the stage set don't re-request it.
+  const loadedStageCategory = useRef<string | null>(null);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
+
+  // Which stages are collapsed. A 14-stage view is wider than any screen, so
+  // this is remembered per board + category view rather than reset each visit.
+  // Nothing collapses on its own — a column vanishing unasked is worse than
+  // scrolling for it; "Collapse empty" is one click away instead.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Modal state
   const [showCreateBoard, setShowCreateBoard] = useState(false);
@@ -523,16 +613,35 @@ export default function KanbanBoardPage() {
     targetColumnId: string;
     targetColumnTitle: string;
     targetColumnStatus: ApplicationStatus | null;
+    gates: StageGate[];
+    notifications: StageNotificationRule[];
   } | null>(null);
   const [movingApp, setMovingApp] = useState(false);
-  const [approvalLenderName, setApprovalLenderName] = useState('');
-  const [approvalConditions, setApprovalConditions] = useState<string[]>(['', '']);
+  // Answers to the target stage's gates, keyed by gate id.
+  const [gateAnswers, setGateAnswers] = useState<Record<string, GateAnswer>>({});
+  // Whether to send each of the target stage's messages, keyed by rule id.
+  const [notifyChoices, setNotifyChoices] = useState<Record<string, boolean>>({});
 
   // Form state
+  // Shared by the create-board and board-settings forms. Both MUST fill them on
+  // open — settings seeds from the active board, create clears them — or one
+  // modal shows (and can save) the other's values.
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDesc, setNewBoardDesc] = useState('');
   const [newBoardCategory, setNewBoardCategory] = useState('');
   const [colColor, setColColor] = useState('muted-foreground');
+  const [colTitle, setColTitle] = useState('');
+  const [colTeam, setColTeam] = useState('');
+  const [colStatus, setColStatus] = useState<string>('draft');
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [deletingColumn, setDeletingColumn] = useState<KanbanColumn | null>(null);
+  const [newGateLabel, setNewGateLabel] = useState('');
+  const [savingGate, setSavingGate] = useState(false);
+  const [newRuleAudience, setNewRuleAudience] = useState<NotificationAudience>('client');
+  const [newRuleChannel, setNewRuleChannel] = useState<NotificationChannel>('email');
+  const [newRuleSubject, setNewRuleSubject] = useState('');
+  const [newRuleBody, setNewRuleBody] = useState('');
+  const [savingRule, setSavingRule] = useState(false);
 
   // ── Data fetching ──
 
@@ -542,8 +651,43 @@ export default function KanbanBoardPage() {
     return data as KanbanBoardListItem[];
   }, []);
 
-  const fetchBoard = useCallback(async (boardId: string) => {
-    const { data } = await api.get(`/kanban/boards/${boardId}`);
+  // The category in view decides which stages come back — and creates them on
+  // first look. Board and cards are always fetched with the same category so
+  // the columns and the cards in them can never disagree.
+  const collapseKey = activeBoard ? `kanban:collapsed:${activeBoard.id}:${activeBoard.stage_category ?? 'status'}` : null;
+
+  useEffect(() => {
+    if (!collapseKey) return;
+    try {
+      const stored = localStorage.getItem(collapseKey);
+      setCollapsed(new Set(stored ? (JSON.parse(stored) as string[]) : []));
+    } catch {
+      setCollapsed(new Set());
+    }
+  }, [collapseKey]);
+
+  const persistCollapsed = useCallback((next: Set<string>) => {
+    setCollapsed(next);
+    if (!collapseKey) return;
+    try {
+      localStorage.setItem(collapseKey, JSON.stringify([...next]));
+    } catch { /* a browser refusing storage is not worth failing the board over */ }
+  }, [collapseKey]);
+
+  const toggleCollapse = useCallback((columnId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(columnId)) next.delete(columnId); else next.add(columnId);
+      if (collapseKey) {
+        try { localStorage.setItem(collapseKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  }, [collapseKey]);
+
+  const fetchBoard = useCallback(async (boardId: string, category?: string) => {
+    const params = category ? `?category=${encodeURIComponent(category)}` : '';
+    const { data } = await api.get(`/kanban/boards/${boardId}${params}`);
     setActiveBoard(data);
     return data as KanbanBoardType;
   }, []);
@@ -568,7 +712,8 @@ export default function KanbanBoardPage() {
   const loadBoard = useCallback(async (boardId: string) => {
     setLoading(true);
     try {
-      await fetchBoard(boardId);
+      await fetchBoard(boardId, categoryParam);
+      loadedStageCategory.current = categoryParam;
       await fetchApplications(boardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
     } catch {
       toast('Failed to load board', 'error');
@@ -614,13 +759,31 @@ export default function KanbanBoardPage() {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Filters changed. The category decides the stage set, so the board is
+  // refetched too — switching the filter to Asset Finance is what puts its
+  // stages on screen (and creates them the first time). Board before cards, in
+  // sequence, so the columns exist before anything is grouped into them, and
+  // keyed on the board *id* so refreshing the board object can't re-trigger it.
+  const activeBoardId = activeBoard?.id;
   useEffect(() => {
-    if (!activeBoard || !initialLoadDone.current) return;
+    if (!activeBoardId || !initialLoadDone.current) return;
     const timeout = setTimeout(() => {
-      fetchApplications(activeBoard.id, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }).catch(() => toast('Failed to refresh applications', 'error'));
+      (async () => {
+        try {
+          // Only the category decides the stage set. Refetching 14 columns on
+          // every search keystroke is wasted work — and makes the board flicker.
+          if (loadedStageCategory.current !== categoryParam) {
+            await fetchBoard(activeBoardId, categoryParam);
+            loadedStageCategory.current = categoryParam;
+          }
+          await fetchApplications(activeBoardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
+        } catch {
+          toast('Failed to refresh the board', 'error');
+        }
+      })();
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoard, fetchApplications]);
+  }, [search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoardId, fetchBoard, fetchApplications]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Category scope: the board's own category (category boards) or the primary
   // category segment (unscoped boards). The Type filter lists that category's
@@ -642,8 +805,13 @@ export default function KanbanBoardPage() {
     if (!draggedApp) return null;
     if (dragSourceColumn.current === targetColumnId) return 'same';
     const targetCol = activeBoard?.columns.find((c) => c.id === targetColumnId);
+    if (!targetCol?.mapped_status) return 'invalid';
+    // Stage boards carry several stages per status, so the status transition
+    // table has nothing useful to say about a move between them — the backend
+    // relaxes it for these boards too.
+    if (activeBoard && !activeBoard.enforce_transitions) return 'valid';
     const allowed = VALID_TRANSITIONS[draggedApp.status] || [];
-    if (!targetCol?.mapped_status || !allowed.includes(targetCol.mapped_status)) return 'invalid';
+    if (!allowed.includes(targetCol.mapped_status)) return 'invalid';
     return 'valid';
   }, [draggedApp, activeBoard]);
 
@@ -726,12 +894,6 @@ export default function KanbanBoardPage() {
       return;
     }
 
-    const targetCol = activeBoard.columns.find((c) => c.id === targetColumnId);
-    if (!targetCol) {
-      setDraggedApp(null);
-      return;
-    }
-
     const sourceColId = dragSourceColumn.current;
     if (!sourceColId) {
       setDraggedApp(null);
@@ -742,11 +904,35 @@ export default function KanbanBoardPage() {
     setDraggedApp(null);
     dragSourceColumn.current = null;
 
-    if (targetCol.mapped_status === 'approval') {
-      setApprovalLenderName(movedApp.approval_lender_name || '');
-      const existing = movedApp.approval_conditions?.map((c) => c.text) || [];
-      setApprovalConditions(existing.length ? existing : ['', '']);
+    beginMove(movedApp, sourceColId, targetColumnId);
+  };
+
+  /** Open the move confirmation for a card. Shared by drag-and-drop and the
+   *  card's "Move to" menu, so both raise exactly the same gates and messages. */
+  const beginMove = (movedApp: LoanApplication, sourceColId: string, targetColumnId: string) => {
+    if (!activeBoard || sourceColId === targetColumnId) return;
+    const targetCol = activeBoard.columns.find((c) => c.id === targetColumnId);
+    if (!targetCol) return;
+
+    // Seed each gate's answer. An approval-conditions gate starts from whatever
+    // the application already carries, so a re-entry doesn't retype the list.
+    const gates = targetCol.gates || [];
+    const seeded: Record<string, GateAnswer> = {};
+    for (const gate of gates) {
+      const existing = gate.target === 'approval_conditions'
+        ? (movedApp.approval_conditions?.map((c) => c.text) || [])
+        : [];
+      seeded[gate.id] = {
+        gate_id: gate.id,
+        confirmed: false,
+        value: gate.target === 'approval_conditions' ? (movedApp.approval_lender_name || '') : '',
+        items: existing.length ? existing : [''],
+      };
     }
+    setGateAnswers(seeded);
+
+    const notifications = targetCol.notifications || [];
+    setNotifyChoices(Object.fromEntries(notifications.map((r) => [r.id, r.default_enabled])));
 
     setPendingMove({
       app: movedApp,
@@ -754,16 +940,41 @@ export default function KanbanBoardPage() {
       targetColumnId,
       targetColumnTitle: targetCol.title,
       targetColumnStatus: targetCol.mapped_status,
+      gates,
+      notifications,
     });
   };
 
-  const isApprovalMove = pendingMove?.targetColumnStatus === 'approval';
-  const cleanApprovalConditions = approvalConditions.map((c) => c.trim()).filter(Boolean);
-  const approvalDetailsValid = approvalLenderName.trim().length > 0 && cleanApprovalConditions.length > 0;
+  const sortedColumns = [...(activeBoard?.columns ?? [])].sort((a, b) => a.position - b.position);
+
+  const pendingGates = pendingMove?.gates ?? [];
+  const pendingNotifications = pendingMove?.notifications ?? [];
+  // The modal is shown for anything the mover has to answer or confirm.
+  const hasGates = pendingGates.length > 0 || pendingNotifications.length > 0;
+
+  const answerFor = (gate: StageGate): GateAnswer =>
+    gateAnswers[gate.id] ?? { gate_id: gate.id, confirmed: false, value: '', items: [''] };
+
+  const updateAnswer = (gateId: string, patch: Partial<GateAnswer>) =>
+    setGateAnswers((prev) => ({
+      ...prev,
+      [gateId]: { ...(prev[gateId] ?? { gate_id: gateId, confirmed: false, value: '', items: [''] }), ...patch },
+    }));
+
+  // Mirrors the backend's gate rules, so the Move button is only live once the
+  // move would actually be accepted.
+  const gatesSatisfied = pendingGates.every((gate) => {
+    if (!gate.is_required) return true;
+    const answer = answerFor(gate);
+    if (gate.kind === 'confirm') return answer.confirmed;
+    const items = answer.items.map((i) => i.trim()).filter(Boolean);
+    if (!items.length) return false;
+    return gate.target !== 'approval_conditions' || answer.value.trim().length > 0;
+  });
 
   const confirmMoveApplication = async () => {
     if (!activeBoard || !pendingMove) return;
-    if (isApprovalMove && !approvalDetailsValid) return;
+    if (!gatesSatisfied) return;
 
     setMovingApp(true);
     const prevApps = { ...appsByColumn };
@@ -781,14 +992,28 @@ export default function KanbanBoardPage() {
     try {
       await api.post(
         `/kanban/boards/${activeBoard.id}/columns/${pendingMove.targetColumnId}/move/${pendingMove.app.id}`,
-        isApprovalMove ? { lender_name: approvalLenderName.trim(), conditions: cleanApprovalConditions } : undefined,
+        {
+          gate_responses: pendingGates.map((gate) => {
+            const answer = answerFor(gate);
+            return {
+              gate_id: gate.id,
+              confirmed: answer.confirmed,
+              value: answer.value.trim(),
+              items: answer.items.map((i) => i.trim()).filter(Boolean),
+            };
+          }),
+          notifications: pendingNotifications.map((rule) => ({
+            rule_id: rule.id,
+            send: notifyChoices[rule.id] ?? rule.default_enabled,
+          })),
+        },
       );
       setFlashIds(new Set([pendingMove.app.id]));
       setTimeout(() => setFlashIds(new Set()), 900);
       toast(`Moved to "${pendingMove.targetColumnTitle}"`, 'success');
       setPendingMove(null);
-      setApprovalLenderName('');
-      setApprovalConditions(['', '']);
+      setGateAnswers({});
+      setNotifyChoices({});
     } catch (err: any) {
       setAppsByColumn(prevApps);
       const msg = err?.response?.data?.detail || 'Failed to move application';
@@ -836,7 +1061,7 @@ export default function KanbanBoardPage() {
       await api.patch(`/kanban/boards/${activeBoard.id}`, { name: newBoardName, description: newBoardDesc, loan_category: newBoardCategory || null });
       setShowBoardSettings(false);
       await fetchBoards();
-      await fetchBoard(activeBoard.id);
+      await fetchBoard(activeBoard.id, categoryParam);
       toast('Board updated', 'success');
     } catch {
       toast('Failed to update board', 'error');
@@ -845,48 +1070,141 @@ export default function KanbanBoardPage() {
 
   // ── Column management ──
 
+  const resetColumnForm = () => {
+    setColColor('muted-foreground');
+    setColTitle('');
+    setColTeam('');
+    setColStatus('draft');
+  };
+
+  const closeColumnModal = () => {
+    setEditingColumn(null);
+    setAddingColumn(false);
+    setNewGateLabel('');
+    setNewRuleSubject('');
+    setNewRuleBody('');
+    resetColumnForm();
+  };
+
   const handleEditColumn = async () => {
-    if (!activeBoard || !editingColumn) return;
+    if (!activeBoard || !colTitle.trim()) return;
+    const payload = {
+      title: colTitle.trim(),
+      team: colTeam.trim(),
+      mapped_status: colStatus,
+      color: colColor,
+      // Join the view being looked at, not the board's plain status columns.
+      loan_category: activeBoard.stage_category,
+    };
     try {
-      await api.patch(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}`, {
-        color: colColor,
-      });
-      setEditingColumn(null);
-      setColColor('muted-foreground');
+      if (editingColumn) {
+        await api.patch(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}`, payload);
+      } else {
+        await api.post(`/kanban/boards/${activeBoard.id}/columns`, payload);
+      }
+      closeColumnModal();
       await loadBoard(activeBoard.id);
-      toast('Column updated', 'success');
-    } catch (err: any) {
-      toast(err?.response?.data?.detail || 'Failed to update column', 'error');
+      toast(editingColumn ? 'Stage updated' : 'Stage added', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save stage'), 'error');
     }
   };
 
-  const handleMoveColumn = async (col: KanbanColumn, direction: 'left' | 'right') => {
-    if (!activeBoard) return;
-    const sorted = [...activeBoard.columns].sort((a, b) => a.position - b.position);
-    const idx = sorted.findIndex((c) => c.id === col.id);
-    const swapIdx = direction === 'left' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const newOrder = sorted.map((c) => c.id);
-    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
-
-    // Optimistic update — reorder in place without touching scroll position
-    const snapshot = activeBoard;
-    setActiveBoard({
-      ...activeBoard,
-      columns: activeBoard.columns.map((c) => ({ ...c, position: newOrder.indexOf(c.id) })),
-    });
-
+  // Gates are managed against a saved stage, so these call straight through and
+  // reload the board rather than batching into the stage form's Save.
+  const handleAddGate = async () => {
+    if (!activeBoard || !editingColumn || !newGateLabel.trim()) return;
+    setSavingGate(true);
     try {
-      await api.put(`/kanban/boards/${activeBoard.id}/columns/reorder`, { column_ids: newOrder });
-    } catch (err: any) {
-      setActiveBoard(snapshot);
-      toast(err?.response?.data?.detail || 'Failed to reorder columns', 'error');
+      await api.post(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}/gates`, {
+        kind: 'confirm',
+        label: newGateLabel.trim(),
+      });
+      setNewGateLabel('');
+      const board = await fetchBoard(activeBoard.id, categoryParam);
+      setEditingColumn(board.columns.find((c) => c.id === editingColumn.id) ?? null);
+      toast('Confirmation added', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to add the confirmation'), 'error');
+    } finally {
+      setSavingGate(false);
+    }
+  };
+
+  const handleDeleteGate = async (gate: StageGate) => {
+    if (!activeBoard || !editingColumn) return;
+    try {
+      await api.delete(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}/gates/${gate.id}`);
+      const board = await fetchBoard(activeBoard.id, categoryParam);
+      setEditingColumn(board.columns.find((c) => c.id === editingColumn.id) ?? null);
+      toast('Confirmation removed', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove the confirmation'), 'error');
+    }
+  };
+
+  const handleAddNotificationRule = async () => {
+    if (!activeBoard || !editingColumn || !newRuleBody.trim()) return;
+    setSavingRule(true);
+    try {
+      await api.post(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}/notifications`, {
+        audience: newRuleAudience,
+        channel: newRuleChannel,
+        subject: newRuleChannel === 'email' ? newRuleSubject.trim() : null,
+        body: newRuleBody.trim(),
+      });
+      setNewRuleSubject('');
+      setNewRuleBody('');
+      const board = await fetchBoard(activeBoard.id, categoryParam);
+      setEditingColumn(board.columns.find((c) => c.id === editingColumn.id) ?? null);
+      toast('Message added', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to add the message'), 'error');
+    } finally {
+      setSavingRule(false);
+    }
+  };
+
+  const handleDeleteNotificationRule = async (rule: StageNotificationRule) => {
+    if (!activeBoard || !editingColumn) return;
+    try {
+      await api.delete(`/kanban/boards/${activeBoard.id}/columns/${editingColumn.id}/notifications/${rule.id}`);
+      const board = await fetchBoard(activeBoard.id, categoryParam);
+      setEditingColumn(board.columns.find((c) => c.id === editingColumn.id) ?? null);
+      toast('Message removed', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to remove the message'), 'error');
+    }
+  };
+
+  const handleDeleteColumn = (col: KanbanColumn) => setDeletingColumn(col);
+
+  const confirmDeleteColumn = async () => {
+    if (!activeBoard || !deletingColumn) return;
+    try {
+      await api.delete(`/kanban/boards/${activeBoard.id}/columns/${deletingColumn.id}`);
+      setDeletingColumn(null);
+      await loadBoard(activeBoard.id);
+      toast('Stage deleted', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to delete stage'), 'error');
+      setDeletingColumn(null);
     }
   };
 
   const openEditColumn = (col: KanbanColumn) => {
     setColColor(col.color || 'muted-foreground');
+    setColTitle(col.title);
+    setColTeam(col.team || '');
+    setColStatus(col.mapped_status || 'draft');
+    setAddingColumn(false);
     setEditingColumn(col);
+  };
+
+  const openAddColumn = () => {
+    resetColumnForm();
+    setEditingColumn(null);
+    setAddingColumn(true);
   };
 
   const handleSwitchBoard = async (boardId: string) => {
@@ -948,7 +1266,7 @@ export default function KanbanBoardPage() {
             {isAdmin && (
               <>
                 {canCreateBoard && (
-                  <button type="button" className="led-btn led-btn-outline led-btn-sm" onClick={() => setShowCreateBoard(true)}>
+                  <button type="button" className="led-btn led-btn-outline led-btn-sm" onClick={() => { setNewBoardName(''); setNewBoardDesc(''); setNewBoardCategory(''); setShowCreateBoard(true); }}>
                     <Icon name="plus" size={12} /> Board
                   </button>
                 )}
@@ -1193,6 +1511,31 @@ export default function KanbanBoardPage() {
           )}
         </FilterPill>
 
+        {/* A stage view is wider than any screen, so collapsing is a first-class
+            control rather than something hidden per column. */}
+        {sortedColumns.length > 8 && (
+          collapsed.size > 0 ? (
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              style={{ color: 'var(--led-muted)' }}
+              onClick={() => persistCollapsed(new Set())}
+            >
+              Expand all ({collapsed.size})
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              style={{ color: 'var(--led-muted)' }}
+              onClick={() => persistCollapsed(new Set(sortedColumns.filter((c) => !getColumnApps(c.id).length).map((c) => c.id)))}
+              disabled={sortedColumns.every((c) => getColumnApps(c.id).length)}
+            >
+              Collapse empty
+            </button>
+          )
+        )}
+
         {activeFilterCount > 0 && (
           <button
             type="button"
@@ -1225,7 +1568,7 @@ export default function KanbanBoardPage() {
       ) : activeBoard ? (
         <div style={{ padding: '14px 24px 20px', flex: 1, minHeight: 0 }}>
           <div className="led-kanban-scroller">
-            {[...activeBoard.columns].sort((a, b) => a.position - b.position).map((col, idx, sorted) => (
+            {sortedColumns.map((col) => (
               <BoardColumn
                 key={col.id}
                 col={col}
@@ -1234,17 +1577,29 @@ export default function KanbanBoardPage() {
                 dropValidity={dragOverColumn === col.id ? dragOverValidity : null}
                 draggedAppId={draggedApp?.id || null}
                 isAdmin={isAdmin}
-                isFirst={idx === 0}
-                isLast={idx === sorted.length - 1}
+                collapsed={collapsed.has(col.id)}
+                onToggleCollapse={toggleCollapse}
+                moveTargets={sortedColumns.filter((c) => c.id !== col.id)}
+                onMoveTo={beginMove}
                 flashIds={flashIds}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 onDragLeave={handleDragLeave}
                 onEditColumn={openEditColumn}
-                onMoveColumn={handleMoveColumn}
+                onDeleteColumn={handleDeleteColumn}
               />
             ))}
+            {isAdmin && (
+              <button
+                type="button"
+                className="led-kanban-add-col"
+                onClick={openAddColumn}
+                title="Add a stage to this board"
+              >
+                <Icon name="plus" size={13} /> Add stage
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -1253,7 +1608,7 @@ export default function KanbanBoardPage() {
           description="Boards group applications into pipeline stages."
           action={
             canCreateBoard ? (
-              <button type="button" className="led-btn led-btn-accent" onClick={() => setShowCreateBoard(true)}>
+              <button type="button" className="led-btn led-btn-accent" onClick={() => { setNewBoardName(''); setNewBoardDesc(''); setNewBoardCategory(''); setShowCreateBoard(true); }}>
                 <Icon name="plus" size={13} /> Create your first board
               </button>
             ) : undefined
@@ -1308,14 +1663,181 @@ export default function KanbanBoardPage() {
         </div>
       </Modal>
 
-      {/* ── Edit Column Modal ── */}
-      <Modal open={!!editingColumn} onClose={() => { setEditingColumn(null); setColColor('muted-foreground'); }} title="Edit stage">
-        <ColumnForm color={colColor} setColor={setColColor} />
+      {/* ── Add / Edit Stage Modal ── */}
+      <Modal
+        open={!!editingColumn || addingColumn}
+        onClose={closeColumnModal}
+        title={editingColumn ? 'Edit stage' : 'Add stage'}
+      >
+        <ColumnForm
+          title={colTitle}
+          setTitle={setColTitle}
+          team={colTeam}
+          setTeam={setColTeam}
+          mappedStatus={colStatus}
+          setMappedStatus={setColStatus}
+          color={colColor}
+          setColor={setColColor}
+        />
+
+        {/* Gates are saved against the stage as you add them, not on Save — so
+            they only appear once the stage itself exists. */}
+        {editingColumn && (
+          <div style={{ borderTop: '1px solid var(--led-line)', marginTop: 14, paddingTop: 12 }}>
+            <div className="led-label" style={{ marginBottom: 6 }}>Confirmations before a card enters</div>
+            <div style={{ fontSize: 11, color: 'var(--led-muted)', lineHeight: 1.45, marginBottom: 8 }}>
+              Each one must be ticked to move a card here, and who ticked it is recorded
+              against the move.
+            </div>
+            {editingColumn.gates.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                {editingColumn.gates.map((gate) => (
+                  <div
+                    key={gate.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+                      borderRadius: 8, background: 'var(--led-bg-2)',
+                    }}
+                  >
+                    <span className="led-chip" style={{ height: 18, fontSize: 10 }}>
+                      {gate.kind === 'checklist' ? 'Checklist' : 'Confirm'}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--led-ink)' }}>{gate.label}</span>
+                    <button
+                      type="button"
+                      className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                      onClick={() => handleDeleteGate(gate)}
+                      title="Remove"
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="led-input"
+                placeholder="e.g. The client has signed the privacy consent"
+                value={newGateLabel}
+                onChange={(e) => setNewGateLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddGate(); } }}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="led-btn led-btn-ghost led-btn-sm"
+                onClick={handleAddGate}
+                disabled={!newGateLabel.trim() || savingGate}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Who gets told when a card lands here. The mover confirms each one on
+            the way through; sending itself is switched off for now. */}
+        {editingColumn && (
+          <div style={{ borderTop: '1px solid var(--led-line)', marginTop: 14, paddingTop: 12 }}>
+            <div className="led-label" style={{ marginBottom: 6 }}>Messages on entering this stage</div>
+            <div style={{ fontSize: 11, color: 'var(--led-muted)', lineHeight: 1.45, marginBottom: 8 }}>
+              Offered to whoever moves the card, pre-ticked. Nothing sends yet — every
+              decision is recorded so you can review the traffic before switching it on.
+              You can use {'{client_name}'}, {'{recipient_name}'}, {'{stage}'}, {'{lender}'}, {'{amount}'} and {'{reference}'}.
+            </div>
+            {editingColumn.notifications.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                {editingColumn.notifications.map((rule) => (
+                  <div
+                    key={rule.id}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 8px', borderRadius: 8, background: 'var(--led-bg-2)' }}
+                  >
+                    <span className="led-chip" style={{ height: 18, fontSize: 10, textTransform: 'capitalize' }}>
+                      {rule.audience} · {rule.channel}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--led-ink)', whiteSpace: 'pre-wrap' }}>
+                      {rule.subject && <strong style={{ display: 'block' }}>{rule.subject}</strong>}
+                      {rule.body}
+                    </span>
+                    <button
+                      type="button"
+                      className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                      onClick={() => handleDeleteNotificationRule(rule)}
+                      title="Remove"
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <select
+                className="led-input"
+                value={newRuleAudience}
+                onChange={(e) => setNewRuleAudience(e.target.value as NotificationAudience)}
+                style={{ flex: 1, cursor: 'pointer' }}
+              >
+                <option value="client">Client</option>
+                <option value="referrer">Referrer</option>
+                <option value="broker">Broker</option>
+              </select>
+              <select
+                className="led-input"
+                value={newRuleChannel}
+                onChange={(e) => setNewRuleChannel(e.target.value as NotificationChannel)}
+                style={{ flex: 1, cursor: 'pointer' }}
+              >
+                <option value="email">Email</option>
+                <option value="sms">SMS</option>
+              </select>
+            </div>
+            {newRuleChannel === 'email' && (
+              <input
+                className="led-input"
+                placeholder="Subject"
+                value={newRuleSubject}
+                onChange={(e) => setNewRuleSubject(e.target.value)}
+                style={{ marginBottom: 6 }}
+              />
+            )}
+            <textarea
+              className="led-input"
+              placeholder="Message — e.g. Hi {client_name}, your application has been submitted to a lender."
+              value={newRuleBody}
+              onChange={(e) => setNewRuleBody(e.target.value)}
+              rows={3}
+              style={{ resize: 'vertical', marginBottom: 6 }}
+            />
+            <button
+              type="button"
+              className="led-btn led-btn-ghost led-btn-sm"
+              onClick={handleAddNotificationRule}
+              disabled={!newRuleBody.trim() || savingRule}
+            >
+              Add message
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button type="button" className="led-btn led-btn-ghost" onClick={() => { setEditingColumn(null); setColColor('muted-foreground'); }}>Cancel</button>
-          <button type="button" className="led-btn led-btn-accent" onClick={handleEditColumn}>Save</button>
+          <button type="button" className="led-btn led-btn-ghost" onClick={closeColumnModal}>Cancel</button>
+          <button type="button" className="led-btn led-btn-accent" onClick={handleEditColumn} disabled={!colTitle.trim()}>
+            {editingColumn ? 'Save' : 'Add stage'}
+          </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deletingColumn}
+        title="Delete stage"
+        message={`Delete "${deletingColumn?.title}" from this board? Applications keep their status — only the stage is removed.`}
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDeleteColumn}
+        onCancel={() => setDeletingColumn(null)}
+      />
 
       {/* ── Drag Overlay ── */}
       {draggedApp && createPortal(
@@ -1357,7 +1879,7 @@ export default function KanbanBoardPage() {
       )}
 
       <ConfirmDialog
-        open={!!pendingMove && !isApprovalMove}
+        open={!!pendingMove && !hasGates}
         title="Move card"
         message={pendingMove ? (
           <>
@@ -1372,73 +1894,165 @@ export default function KanbanBoardPage() {
         loading={movingApp}
         onConfirm={confirmMoveApplication}
         onCancel={() => {
-          if (!movingApp) setPendingMove(null);
+          if (!movingApp) { setPendingMove(null); setGateAnswers({}); setNotifyChoices({}); }
         }}
       />
 
-      {/* ── Approval Details Modal (lender + conditions checklist) ── */}
+      {/* ── Stage Gates Modal ── */}
+      {/* Everything a stage asks before it will take the card. Rendered from the
+          stage's own gate list, so a new compliance stop needs no code here. */}
       <Modal
-        open={!!pendingMove && isApprovalMove}
-        onClose={() => { if (!movingApp) setPendingMove(null); }}
-        title="Move to Approval"
+        open={!!pendingMove && hasGates}
+        onClose={() => { if (!movingApp) { setPendingMove(null); setGateAnswers({}); setNotifyChoices({}); } }}
+        title={`Move to ${pendingMove?.targetColumnTitle ?? ''}`}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p className="led-caption" style={{ margin: 0 }}>
             Move <strong style={{ color: 'var(--led-ink)' }}>
               {pendingMove ? applicantDisplayName(pendingMove.app, 'this application') : ''}
-            </strong> to Approval. Record the lender and the approval conditions — you'll be able to check them off as they're met.
+            </strong> to <strong style={{ color: 'var(--led-ink)' }}>{pendingMove?.targetColumnTitle}</strong>.
           </p>
-          <div>
-            <div className="led-label" style={{ marginBottom: 6 }}>Lender name</div>
-            <input
-              className="led-input"
-              placeholder="e.g. ANZ, Pepper Money..."
-              value={approvalLenderName}
-              onChange={(e) => setApprovalLenderName(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div>
-            <div className="led-label" style={{ marginBottom: 6 }}>Approval conditions</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {approvalConditions.map((cond, i) => (
-                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+
+          {pendingGates.map((gate) => {
+            const answer = answerFor(gate);
+            if (gate.kind === 'confirm') {
+              return (
+                <label
+                  key={gate.id}
+                  style={{
+                    display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer',
+                    padding: 10, borderRadius: 10, border: '1px solid var(--led-line)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={answer.confirmed}
+                    onChange={(e) => updateAnswer(gate.id, { confirmed: e.target.checked })}
+                    style={{ marginTop: 2, cursor: 'pointer' }}
+                  />
+                  <span>
+                    <span style={{ fontSize: 13, color: 'var(--led-ink)' }}>
+                      {gate.label}
+                      {gate.is_required && <span style={{ color: 'var(--led-danger)' }}> *</span>}
+                    </span>
+                    {gate.help_text && (
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--led-muted)', marginTop: 3, lineHeight: 1.45 }}>
+                        {gate.help_text}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            }
+            return (
+              <div key={gate.id}>
+                <div className="led-label" style={{ marginBottom: 6 }}>
+                  {gate.label}
+                  {gate.is_required && <span style={{ color: 'var(--led-danger)' }}> *</span>}
+                </div>
+                {gate.help_text && (
+                  <div style={{ fontSize: 11, color: 'var(--led-muted)', marginBottom: 8, lineHeight: 1.45 }}>
+                    {gate.help_text}
+                  </div>
+                )}
+                {gate.target === 'approval_conditions' && (
                   <input
                     className="led-input"
-                    placeholder={`Condition ${i + 1}`}
-                    value={cond}
-                    onChange={(e) => setApprovalConditions((prev) => prev.map((c, idx) => (idx === i ? e.target.value : c)))}
-                    style={{ flex: 1 }}
+                    placeholder="Lender name — e.g. ANZ, Pepper Money..."
+                    value={answer.value}
+                    onChange={(e) => updateAnswer(gate.id, { value: e.target.value })}
+                    style={{ marginBottom: 8 }}
                   />
-                  <button
-                    type="button"
-                    className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
-                    onClick={() => setApprovalConditions((prev) => prev.filter((_, idx) => idx !== i))}
-                    disabled={approvalConditions.length <= 1}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {answer.items.map((item, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        className="led-input"
+                        placeholder={`Item ${i + 1}`}
+                        value={item}
+                        onChange={(e) => updateAnswer(gate.id, {
+                          items: answer.items.map((x, idx) => (idx === i ? e.target.value : x)),
+                        })}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        className="led-btn led-btn-ghost led-btn-sm led-btn-icon"
+                        onClick={() => updateAnswer(gate.id, { items: answer.items.filter((_, idx) => idx !== i) })}
+                        disabled={answer.items.length <= 1}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                <button
+                  type="button"
+                  className="led-btn led-btn-ghost led-btn-sm"
+                  style={{ marginTop: 8 }}
+                  onClick={() => updateAnswer(gate.id, { items: [...answer.items, ''] })}
+                >
+                  + Add item
+                </button>
+              </div>
+            );
+          })}
+
+          {pendingNotifications.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--led-line)', paddingTop: 12 }}>
+              <div className="led-label" style={{ marginBottom: 6 }}>Let them know</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pendingNotifications.map((rule) => {
+                  const on = notifyChoices[rule.id] ?? rule.default_enabled;
+                  return (
+                    <label
+                      key={rule.id}
+                      style={{
+                        display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer',
+                        padding: 10, borderRadius: 10, border: '1px solid var(--led-line)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={(e) => setNotifyChoices((prev) => ({ ...prev, [rule.id]: e.target.checked }))}
+                        style={{ marginTop: 2, cursor: 'pointer' }}
+                      />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: 13, color: 'var(--led-ink)', textTransform: 'capitalize' }}>
+                          {rule.audience} · {rule.channel}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--led-muted)', marginTop: 3, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                          {rule.subject ? `${rule.subject} — ` : ''}{rule.body}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--led-muted)', marginTop: 8, lineHeight: 1.45 }}>
+                Sending is switched off for now — your choice is recorded against the move
+                either way, and nothing leaves the building.
+              </div>
             </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 2 }}>
             <button
               type="button"
-              className="led-btn led-btn-ghost led-btn-sm"
-              style={{ marginTop: 8 }}
-              onClick={() => setApprovalConditions((prev) => [...prev, ''])}
+              className="led-btn led-btn-ghost"
+              onClick={() => { if (!movingApp) { setPendingMove(null); setGateAnswers({}); setNotifyChoices({}); } }}
             >
-              + Add condition
+              Cancel
             </button>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-            <button type="button" className="led-btn led-btn-ghost" onClick={() => { if (!movingApp) setPendingMove(null); }}>Cancel</button>
             <button
               type="button"
               className="led-btn led-btn-accent"
               onClick={confirmMoveApplication}
-              disabled={!approvalDetailsValid || movingApp}
+              disabled={!gatesSatisfied || movingApp}
             >
-              {movingApp ? 'Moving...' : 'Move to Approval'}
+              {movingApp ? 'Moving...' : 'Confirm & move'}
             </button>
           </div>
         </div>
@@ -1447,15 +2061,50 @@ export default function KanbanBoardPage() {
   );
 }
 
-// ── Column form (color only — titles/statuses are fixed) ──
+// ── Stage form ──
+// A stage has its own name and owning team; `mapped_status` is the coarse status
+// it rolls up to, which is what the client sees and what drives status emails.
 
 function ColumnForm({
-  color, setColor,
+  title, setTitle, team, setTeam, mappedStatus, setMappedStatus, color, setColor,
 }: {
+  title: string; setTitle: (s: string) => void;
+  team: string; setTeam: (s: string) => void;
+  mappedStatus: string; setMappedStatus: (s: string) => void;
   color: string; setColor: (s: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div>
+        <div className="led-label" style={{ marginBottom: 6 }}>Stage name</div>
+        <input
+          className="led-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Waiting for Tax Invoice"
+        />
+      </div>
+      <div>
+        <div className="led-label" style={{ marginBottom: 6 }}>Team</div>
+        <input
+          className="led-input"
+          value={team}
+          onChange={(e) => setTeam(e.target.value)}
+          placeholder="Who owns this stage (optional)"
+        />
+      </div>
+      <div>
+        <div className="led-label" style={{ marginBottom: 6 }}>Reports as status</div>
+        <select className="led-input" value={mappedStatus} onChange={(e) => setMappedStatus(e.target.value)} style={{ cursor: 'pointer' }}>
+          {(Object.keys(STATUS_LABEL) as ApplicationStatus[]).map((st) => (
+            <option key={st} value={st}>{STATUS_LABEL[st]}</option>
+          ))}
+        </select>
+        <div style={{ fontSize: 11, color: 'var(--led-muted)', marginTop: 5, lineHeight: 1.45 }}>
+          What the client sees, and what status notifications use. Several stages
+          can report the same status.
+        </div>
+      </div>
       <div>
         <div className="led-label" style={{ marginBottom: 6 }}>Color</div>
         <div style={{ display: 'flex', gap: 8 }}>

@@ -41,7 +41,12 @@ SECTION_KEYS = (
 )
 ALLOWED_SECTIONS = set(SECTION_KEYS)
 from app.services.application_status import change_application_status
-from app.services.approval_conditions import sync_condition_completion
+from app.services.approval_conditions import (
+    add_conditions,
+    delete_condition,
+    sync_condition_completion,
+    update_condition_text,
+)
 from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
@@ -61,7 +66,9 @@ from app.services.contacts import ensure_contact
 from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
+    ApprovalConditionCreate,
     ApprovalConditionOut,
+    ApprovalConditionUpdate,
     ApprovalDetailsRequest,
     CorporateGuarantorCreate,
     CorporateGuarantorOut,
@@ -941,14 +948,7 @@ def change_status(
     return _app_with_user(application, db)
 
 
-@router.patch("/{app_id}/approval-conditions/{item_id}/toggle", response_model=ApprovalConditionOut)
-def toggle_approval_condition(
-    app_id: str,
-    item_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
-    tenant_id: str = Depends(get_tenant_id),
-):
+def _get_approval_condition(app_id: str, item_id: str, tenant_id: str, db: Session) -> ApprovalCondition:
     item = (
         db.query(ApprovalCondition)
         .join(LoanApplication, ApprovalCondition.application_id == LoanApplication.id)
@@ -961,16 +961,114 @@ def toggle_approval_condition(
     )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval condition not found")
+    return item
 
-    new_value = not item.is_completed
-    sync_condition_completion(db, item.id, new_value)
+
+def _condition_out(item: ApprovalCondition) -> dict:
+    return {
+        "id": item.id,
+        "text": item.text,
+        "is_completed": item.is_completed,
+        "sort_order": item.sort_order,
+        "completed_at": item.completed_at,
+        "completed_by_id": item.completed_by_id,
+        "completed_by_name": item.completed_by.full_name if item.completed_by else None,
+    }
+
+
+@router.post("/{app_id}/approval-conditions", response_model=list[ApprovalConditionOut], status_code=status.HTTP_201_CREATED)
+def create_approval_conditions(
+    app_id: str,
+    data: ApprovalConditionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Add conditions as the lender raises them. Conditions the application
+    already carries are skipped, so re-pasting a lender's list is harmless."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    texts = [t for t in (data.conditions or []) if t and t.strip()]
+    if not texts:
+        raise HTTPException(status_code=400, detail="Add at least one condition")
+
+    created = add_conditions(db, application, texts, current_user.id, tenant_id)
+    if created:
+        log_activity(
+            db, current_user.id, "approval_conditions_added", "application", app_id,
+            {"conditions": [c.text for c in created]}, tenant_id=tenant_id,
+        )
+    db.commit()
+    for c in created:
+        db.refresh(c)
+    return [_condition_out(c) for c in created]
+
+
+@router.patch("/{app_id}/approval-conditions/{item_id}", response_model=ApprovalConditionOut)
+def edit_approval_condition(
+    app_id: str,
+    item_id: str,
+    data: ApprovalConditionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    item = _get_approval_condition(app_id, item_id, tenant_id, db)
+    text = " ".join((data.text or "").split())
+    if not text:
+        raise HTTPException(status_code=400, detail="Condition cannot be empty")
+    before = item.text
+    update_condition_text(db, item, text)
     log_activity(
-        db, current_user.id, "approval_condition_toggled", "application", app_id,
-        {"condition_id": item_id, "is_completed": new_value}, tenant_id=tenant_id,
+        db, current_user.id, "approval_condition_updated", "application", app_id,
+        {"from": before, "to": text}, tenant_id=tenant_id,
     )
     db.commit()
     db.refresh(item)
-    return item
+    return _condition_out(item)
+
+
+@router.delete("/{app_id}/approval-conditions/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_approval_condition(
+    app_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    item = _get_approval_condition(app_id, item_id, tenant_id, db)
+    log_activity(
+        db, current_user.id, "approval_condition_deleted", "application", app_id,
+        {"condition": item.text}, tenant_id=tenant_id,
+    )
+    delete_condition(db, item)
+    db.commit()
+
+
+@router.patch("/{app_id}/approval-conditions/{item_id}/toggle", response_model=ApprovalConditionOut)
+def toggle_approval_condition(
+    app_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    item = _get_approval_condition(app_id, item_id, tenant_id, db)
+
+    new_value = not item.is_completed
+    sync_condition_completion(db, item.id, new_value, actor_id=current_user.id)
+    log_activity(
+        db, current_user.id, "approval_condition_toggled", "application", app_id,
+        {"condition": item.text, "is_completed": new_value}, tenant_id=tenant_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return _condition_out(item)
 
 
 @router.patch("/{app_id}/lock", response_model=LoanApplicationOut)

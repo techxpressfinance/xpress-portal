@@ -24,13 +24,24 @@ from app.middleware.tenant import TenantMiddleware
 from app.models.tenant import Tenant  # noqa: F401 — ensure table is created
 from app.models.application_broker import ApplicationBroker  # noqa: F401 — ensure table is created
 from app.models.token_blacklist import TokenBlacklist  # noqa: F401 — ensure table is created
-from app.models.kanban import KanbanBoard, KanbanColumn  # noqa: F401 — ensure tables are created
+from app.models.kanban import (  # noqa: F401 — ensure tables are created
+    ApplicationStagePlacement,
+    KanbanBoard,
+    KanbanColumn,
+    KanbanColumnGate,
+    StageTransition,
+)
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
 from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
 from app.models.lender_submission import LenderSubmission  # noqa: F401 — ensure table is created
 from app.models.task import Task, ChecklistItem  # noqa: F401 — ensure tables are created
 from app.models.approval_condition import ApprovalCondition  # noqa: F401 — ensure table is created
+from app.models.tax_invoice import TaxInvoice  # noqa: F401 — ensure table is created
+from app.models.notification_outbox import (  # noqa: F401 — ensure tables are created
+    NotificationOutbox,
+    StageNotificationRule,
+)
 from app.models.task_attachment import TaskAttachment  # noqa: F401 — ensure table is created
 from app.models.quote_sheet import QuoteSheet, QuoteOption  # noqa: F401 — ensure tables are created
 from app.models.document_request import DocumentRequest  # noqa: F401 — ensure table is created
@@ -53,7 +64,7 @@ from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsSnapshot,
 )
 from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +78,13 @@ Base.metadata.create_all(bind=engine)
 # Idempotent migrations for columns added after initial create_all
 _MIGRATIONS = [
     ("arrears_records", "vin", "VARCHAR(50)"),
+    ("kanban_columns", "stage_key", "VARCHAR(60)"),
+    ("kanban_columns", "loan_category", "VARCHAR(20)"),
+    ("quote_sheets", "sheet_type", "VARCHAR(14) DEFAULT 'client_quote' NOT NULL"),
+    ("approval_conditions", "completed_at", "TIMESTAMP"),
+    ("approval_conditions", "completed_by_id", "VARCHAR(36) REFERENCES users(id)"),
+    ("kanban_columns", "team", "VARCHAR(60)"),
+    ("kanban_boards", "enforce_transitions", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("arrears_attachments", "contact_attempt_id", "VARCHAR(36) REFERENCES arrears_contact_attempts(id)"),
     ("loan_applications", "analysis_status", "VARCHAR(10)"),
     ("loan_applications", "analysis_result", "TEXT"),
@@ -303,6 +321,18 @@ with engine.begin() as conn:
 # it creates; databases that predate the index=True model flags need the indexes
 # added here. Index names match SQLAlchemy's default ix_<table>_<column> so fresh
 # installs (which create them via create_all) are unaffected.
+# Unique indexes that can't be expressed as a plain ALTER. Databases predating
+# the model's __table_args__ need them created here.
+_UNIQUE_INDEXES = [
+    ("uq_column_board_category_stage", "kanban_columns", "board_id, loan_category, stage_key"),
+]
+with engine.begin() as conn:
+    for _name, _tbl, _cols in _UNIQUE_INDEXES:
+        try:
+            conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {_name} ON {_tbl} ({_cols})"))
+        except Exception as _e:
+            _logger.debug("Index %s skipped: %s", _name, _e)
+
 _INDEX_COLUMNS = [
     ("loan_applications", "user_id"),
     ("loan_applications", "status"),
@@ -481,12 +511,19 @@ with engine.begin() as conn:
             _logger.info("Made quote_sheets.application_id nullable")
 
 # Data migration: remap legacy ApplicationStatus values to the new vocabulary.
-# Old: submitted, reviewing, approved  →  New: application_received, application_assessed, approval
+# Old: reviewing, approved  →  New: application_assessed, approval
 # Postgres: enum is created fresh with correct values so legacy values can't exist; SQLite only.
+#
+# "submitted" was ALSO remapped here (→ application_received) until it was found
+# to run on every boot against a value that is still live: the same commit that
+# added this remap kept `submitted` in ApplicationStatus, repurposed to mean
+# "submitted to a lender". So every restart silently dragged genuinely-submitted
+# applications back to Application Received and rewrote the board column with
+# them. Legacy rows were converted by the first boot long ago, and a legacy value
+# is now indistinguishable from a current one — so the pair is gone.
 if _dialect == "sqlite":
     with engine.begin() as conn:
         _status_remap = [
-            ("submitted", "application_received"),
             ("reviewing", "application_assessed"),
             ("approved", "approval"),
         ]
@@ -796,12 +833,34 @@ try:
 except Exception:
     _logger.debug("Kanban board seeding skipped (table may not exist yet)")
 
-# Reconcile kanban columns to the canonical application-status columns.
-# Columns are locked to the 8 application statuses (see constants.py), but
-# boards created before that lock may be missing "not_proceeding", or carry
-# unmapped/duplicate columns from when custom stages were allowed. Bring every
-# board to exactly one column per status and clear any kanban_column_id that
-# pointed at a removed column. Idempotent.
+# One-time repair: remove the stray "Submitted" columns left by the status-remap
+# bug above. Each boot rewrote the Submitted column's mapped_status to
+# application_received and the reconciliation then re-added a fresh Submitted
+# column, so boards accumulated one dead duplicate per restart. The signature is
+# exact — a template-less column titled "Submitted" but mapped to
+# application_received, holding no cards — and cannot match a real stage.
+try:
+    with engine.begin() as conn:
+        _orphans = conn.execute(text(
+            "SELECT id FROM kanban_columns WHERE stage_key IS NULL "
+            "AND title = 'Submitted' AND mapped_status = 'application_received' "
+            "AND id NOT IN (SELECT column_id FROM application_stage_placements) "
+            "AND id NOT IN (SELECT kanban_column_id FROM loan_applications WHERE kanban_column_id IS NOT NULL)"
+        )).fetchall()
+        for (_cid,) in _orphans:
+            conn.execute(text("DELETE FROM kanban_columns WHERE id = :cid"), {"cid": _cid})
+        if _orphans:
+            _logger.info("Removed %d stray Submitted kanban columns", len(_orphans))
+except Exception as _e:
+    _logger.debug("Stray kanban column cleanup skipped: %s", _e)
+
+# Ensure every board can render every application.
+# Stages are no longer one-per-status (a board may carry several stages that roll
+# up to the same status — see BOARD_STAGE_TEMPLATES), so this no longer prunes or
+# renames anything: it only adds a stage for any status that has none, because an
+# application whose status has no stage would have nowhere to fall back to and
+# would vanish from the board. Custom titles, teams and duplicates are left
+# alone. Unmapped columns are dropped — they can hold no cards. Idempotent.
 try:
     import uuid as _uuid
     from datetime import datetime as _dt, timezone as _tz
@@ -814,13 +873,13 @@ try:
                 text("SELECT id, mapped_status, position FROM kanban_columns WHERE board_id = :bid ORDER BY position, created_at"),
                 {"bid": _bid},
             ).fetchall()
-            _kept: dict = {}
+            _kept: set = set()
             _remove_ids = []
             _max_pos = -1
             for _cid, _mapped, _pos in _cols:
                 _max_pos = max(_max_pos, _pos or 0)
-                if _mapped in _status_set and _mapped not in _kept:
-                    _kept[_mapped] = _cid
+                if _mapped in _status_set:
+                    _kept.add(_mapped)
                 else:
                     _remove_ids.append(_cid)
             for _cid in _remove_ids:
@@ -829,10 +888,6 @@ try:
             for _col_def in DEFAULT_KANBAN_COLUMNS:
                 _status = _col_def["mapped_status"]
                 if _status in _kept:
-                    conn.execute(
-                        text("UPDATE kanban_columns SET title = :title WHERE id = :cid"),
-                        {"title": _col_def["title"], "cid": _kept[_status]},
-                    )
                     continue
                 _max_pos += 1
                 conn.execute(text(
@@ -904,6 +959,7 @@ app.include_router(lender_submissions.router)
 app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
+app.include_router(tax_invoices.router)
 app.include_router(contacts.router)
 app.include_router(organizations.router)
 app.include_router(service_requests.router)

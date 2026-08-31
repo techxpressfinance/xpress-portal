@@ -12,7 +12,7 @@ from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.contact import Contact, ContactOrganization, Organization
-from app.models.kanban import KanbanBoard, KanbanColumn
+from app.models.kanban import ApplicationStagePlacement, KanbanBoard, KanbanColumn
 from app.models.lending_history_entry import LendingHistoryEntry, RepaymentFrequency
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
@@ -291,6 +291,15 @@ def add_contact_to_pipeline(
         application.assigned_broker_id = current_user.id
     db.add(application)
     db.flush()
+    # Record the chosen stage on that board, so a card dropped straight into a
+    # named stage stays there instead of falling back to its status's first one.
+    if column:
+        db.add(ApplicationStagePlacement(
+            application_id=application.id,
+            board_id=column.board_id,
+            column_id=column.id,
+            tenant_id=tenant_id,
+        ))
     # Mirror the assignment into application_brokers — that table, not the legacy
     # column, is what the broker-visibility filters read.
     if application.assigned_broker_id:

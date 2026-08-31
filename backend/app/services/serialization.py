@@ -171,8 +171,16 @@ def app_with_user(
     data["corporate_guarantors"] = guarantors
 
     data["approval_conditions"] = [
-        {"id": c.id, "text": c.text, "is_completed": c.is_completed, "sort_order": c.sort_order}
-        for c in app.approval_conditions
+        {
+            "id": c.id,
+            "text": c.text,
+            "is_completed": c.is_completed,
+            "sort_order": c.sort_order,
+            "completed_at": c.completed_at.isoformat() if c.completed_at else None,
+            "completed_by_id": c.completed_by_id,
+            "completed_by_name": c.completed_by.full_name if c.completed_by else None,
+        }
+        for c in sorted(app.approval_conditions, key=lambda c: (c.sort_order, c.created_at))
     ]
 
     # Entity-first commercial readiness: every direct party signed, and every

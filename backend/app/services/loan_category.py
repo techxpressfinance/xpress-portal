@@ -78,6 +78,21 @@ def application_sub_type(app: LoanApplication) -> Optional[str]:
     return None
 
 
+def application_vehicle_details(app: LoanApplication) -> dict:
+    """The asset block a vehicle/equipment application recorded, or {}.
+
+    Lives under lend_extra_data.loan_type_details.vehicle_details — keys:
+    type, make, model, year, vin, condition, price, deposit, loan_term."""
+    if not app.lend_extra_data:
+        return {}
+    try:
+        details = json.loads(app.lend_extra_data).get("loan_type_details") or {}
+    except (ValueError, AttributeError):
+        return {}
+    entry = details.get("vehicle_details")
+    return entry if isinstance(entry, dict) else {}
+
+
 def application_loan_category(app: LoanApplication) -> Optional[str]:
     sub_type = application_sub_type(app)
     if sub_type:

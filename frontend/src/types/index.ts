@@ -107,6 +107,10 @@ export interface LoanApplication {
   completed_by_name: string | null;
   completed_at: string | null;
   kanban_column_id: string | null;
+  // When the card entered its current stage on the board being viewed. Only set
+  // by the kanban board endpoint, and only once the card has actually been moved
+  // there — cards still sitting on their status fallback have no entry time.
+  stage_entered_at?: string | null;
   // Client-filled — Personal
   applicant_title: string | null;
   applicant_first_name: string | null;
@@ -209,6 +213,9 @@ export interface ApprovalCondition {
   text: string;
   is_completed: boolean;
   sort_order: number;
+  completed_at: string | null;
+  completed_by_id: string | null;
+  completed_by_name: string | null;
 }
 
 // A company guaranteeing a commercial loan; its directors each sign as signatories.
@@ -737,13 +744,164 @@ export interface SettledDealSnapshotOut {
   archived_at: string;
 }
 
+export const STAGE_GATE_KINDS = ['confirm', 'checklist'] as const;
+export type StageGateKind = (typeof STAGE_GATE_KINDS)[number];
+
+/** A question a stage asks before it will accept a card. */
+export interface StageGate {
+  id: string;
+  column_id: string;
+  kind: StageGateKind;
+  label: string;
+  help_text: string | null;
+  is_required: boolean;
+  sort_order: number;
+  /** "approval_conditions" routes a checklist gate's answer into the application's
+   *  lender name and approval-condition checklist. */
+  target: string | null;
+}
+
+export const NOTIFICATION_AUDIENCES = ['client', 'referrer', 'broker'] as const;
+export type NotificationAudience = (typeof NOTIFICATION_AUDIENCES)[number];
+
+export const NOTIFICATION_CHANNELS = ['email', 'sms'] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+/** Who gets told when a card enters a stage. The mover confirms each one. */
+export interface StageNotificationRule {
+  id: string;
+  column_id: string;
+  audience: NotificationAudience;
+  channel: NotificationChannel;
+  subject: string | null;
+  body: string;
+  /** Whether the confirmation arrives pre-ticked. */
+  default_enabled: boolean;
+  sort_order: number;
+}
+
+/** A composed message. `suppressed` means stage comms are switched off — it was
+ *  recorded but deliberately not sent; `skipped` means nobody chose to, or there
+ *  was no address. */
+export interface NotificationOutboxEntry {
+  id: string;
+  application_id: string;
+  stage_transition_id: string | null;
+  stage_title: string | null;
+  audience: NotificationAudience;
+  channel: NotificationChannel;
+  recipient_name: string | null;
+  recipient_address: string | null;
+  subject: string | null;
+  body: string | null;
+  status: 'suppressed' | 'queued' | 'sent' | 'failed' | 'skipped';
+  status_reason: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
+/** One gate's answer, sent with the move that triggered it. */
+export interface GateAnswer {
+  gate_id: string;
+  confirmed: boolean;
+  value: string;
+  items: string[];
+}
+
+export interface StageTransition {
+  id: string;
+  application_id: string;
+  board_id: string | null;
+  from_stage_title: string | null;
+  to_stage_title: string | null;
+  from_status: ApplicationStatus | null;
+  to_status: ApplicationStatus | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  gate_responses: {
+    gate_id: string;
+    kind: StageGateKind;
+    label: string;
+    confirmed?: boolean;
+    value?: string | null;
+    items?: string[];
+  }[];
+  created_at: string;
+}
+
+export const SUPPLIER_TYPES = ['dealer', 'private', 'auction'] as const;
+export type SupplierType = (typeof SUPPLIER_TYPES)[number];
+
+export interface TaxInvoiceTotals {
+  subtotal: number;
+  gst: number;
+  total: number;
+  deposit_paid: number;
+  balance_due: number;
+  /** False when the supplier is not registered for GST — the document must not
+   *  then call itself a tax invoice. */
+  is_tax_invoice: boolean;
+  /** True at $1,000 or more, where the buyer's identity or ABN is required. */
+  buyer_identity_required: boolean;
+}
+
+export interface TaxInvoice {
+  id: string;
+  application_id: string;
+  supplier_type: SupplierType;
+  status: 'draft' | 'issued';
+  invoice_number: string | null;
+  invoice_date: string | null;
+  supplier_name: string | null;
+  supplier_abn: string | null;
+  supplier_address: string | null;
+  supplier_email: string | null;
+  supplier_phone: string | null;
+  supplier_gst_registered: boolean;
+  abn_withholding_declared: boolean;
+  buyer_name: string | null;
+  buyer_abn: string | null;
+  buyer_address: string | null;
+  asset_description: string | null;
+  asset_make: string | null;
+  asset_model: string | null;
+  asset_year: string | null;
+  asset_vin: string | null;
+  asset_registration: string | null;
+  asset_odometer: number | null;
+  sale_price: number | null;
+  buyers_premium: number | null;
+  other_charges: number | null;
+  other_charges_label: string | null;
+  deposit_paid: number | null;
+  payout_account_name: string | null;
+  payout_bsb: string | null;
+  payout_account_number: string | null;
+  notes: string | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
+  issued_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  totals: TaxInvoiceTotals;
+  /** What still has to be filled in before it can be issued. */
+  missing: string[];
+}
+
 export interface KanbanColumn {
   id: string;
   board_id: string;
   title: string;
+  // The status this stage rolls up to. Several stages on a board may share one —
+  // the status is what the client sees, the stage is how the desk works.
   mapped_status: ApplicationStatus | null;
   position: number;
   color: string | null;
+  // Set when the stage came from a board template (see BOARD_STAGE_TEMPLATES).
+  stage_key: string | null;
+  team: string | null;
+  gates: StageGate[];
+  notifications: StageNotificationRule[];
   application_count: number;
 }
 
@@ -753,6 +911,11 @@ export interface KanbanBoard {
   description: string | null;
   loan_category: 'asset_finance' | 'home_loan' | 'commercial' | null;
   is_default: boolean;
+  // False on stage-template boards, where several stages share a status and a
+  // move between adjacent ones can jump what VALID_TRANSITIONS allows.
+  enforce_transitions: boolean;
+  /** The category whose stages are on screen, or null for the status columns. */
+  stage_category: LoanCategory | null;
   created_by_id: string;
   created_by_name: string | null;
   columns: KanbanColumn[];
@@ -903,12 +1066,18 @@ export interface QuoteInputParameters {
   preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
 }
 
+export const QUOTE_SHEET_TYPES = ['client_quote', 'lender_pricing'] as const;
+export type QuoteSheetType = (typeof QUOTE_SHEET_TYPES)[number];
+
 export interface QuoteSheet {
   id: string;
   application_id: string | null;
   version: number;
   title: string | null;
   status: QuoteSheetStatus;
+  /** client_quote — the comparison the client sees. lender_pricing — the same
+   *  structure priced from the lender's side, locked in once the invoice lands. */
+  sheet_type: QuoteSheetType;
   created_by_id: string;
   created_by_name: string | null;
   broker_notes: string | null;
@@ -1257,6 +1426,7 @@ export interface KanbanBoardListItem {
   description: string | null;
   loan_category: 'asset_finance' | 'home_loan' | 'commercial' | null;
   is_default: boolean;
+  enforce_transitions: boolean;
   column_count: number;
   created_at: string;
   updated_at: string;
