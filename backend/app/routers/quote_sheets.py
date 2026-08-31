@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.loan_application import LoanApplication
-from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus
+from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus, QuoteSheetType
 from app.models.user import User
 from app.services.access_control import check_application_access
 from app.services.quote_serializers import serialize_quote_option as _serialize_option, serialize_quote_sheet as _serialize
@@ -105,6 +105,7 @@ def create_quote_sheet(
         application_id=app_id,
         version=_next_version(db, app_id),
         title=data.title,
+        sheet_type=QuoteSheetType(data.sheet_type),
         broker_notes=data.broker_notes,
         input_parameters=data.input_parameters,
         created_by_id=current_user.id,
@@ -223,6 +224,7 @@ def duplicate_quote_sheet(
         application_id=app_id,
         version=_next_version(db, app_id),
         title=source.title,
+        sheet_type=source.sheet_type,
         broker_notes=source.broker_notes,
         input_parameters=source.input_parameters,
         created_by_id=current_user.id,
@@ -245,6 +247,7 @@ def duplicate_quote_sheet(
             balloon_residual=opt.balloon_residual,
             interest_rate=opt.interest_rate,
             comparison_rate=opt.comparison_rate,
+            client_interest_rate=opt.client_interest_rate,
             establishment_fee=opt.establishment_fee,
             monthly_account_fee=opt.monthly_account_fee,
             application_fee=opt.application_fee,

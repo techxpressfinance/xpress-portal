@@ -16,12 +16,13 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
+import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName } from '../../lib/applicantName';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, QuoteSheetType, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import ActivityChanges from '../../components/ActivityChanges';
@@ -49,6 +50,9 @@ export default function ReviewApplication() {
   const [confirmUnlinkReferrer, setConfirmUnlinkReferrer] = useState(false);
   const [unlinkingReferrer, setUnlinkingReferrer] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Sections that failed to load, by name. Rendered as a banner so an empty tab
+  // is never mistaken for "there is nothing here".
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
   const [msgTab, setMsgTab] = useState<'referrer_messages' | 'client_messages' | 'deal_notes' | 'alerts'>('referrer_messages');
   const [newNoteContent, setNewNoteContent] = useState('');
@@ -77,7 +81,7 @@ export default function ReviewApplication() {
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
   const [removeBrokerTarget, setRemoveBrokerTarget] = useState<{ id: string; full_name: string } | null>(null);
   const [removingBroker, setRemovingBroker] = useState(false);
-  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'messages', 'activity'] as const);
+  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
 
@@ -94,6 +98,7 @@ export default function ReviewApplication() {
   // Quote sheets state
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [newSheetType, setNewSheetType] = useState<QuoteSheetType>('client_quote');
   const [editingQuoteSheet, setEditingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [viewingQuoteSheet, setViewingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<{ sheet: QuoteSheet; clientFacing: boolean } | null>(null);
@@ -141,6 +146,10 @@ export default function ReviewApplication() {
   const [approvalConditions, setApprovalConditions] = useState<string[]>(['', '']);
   const [savingApproval, setSavingApproval] = useState(false);
   const [togglingConditionId, setTogglingConditionId] = useState<string | null>(null);
+  const [newConditionText, setNewConditionText] = useState('');
+  const [addingCondition, setAddingCondition] = useState(false);
+  const [editingConditionId, setEditingConditionId] = useState<string | null>(null);
+  const [editingConditionText, setEditingConditionText] = useState('');
   const [confirmBrokerSubmit, setConfirmBrokerSubmit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingApp, setDeletingApp] = useState(false);
@@ -176,6 +185,15 @@ export default function ReviewApplication() {
   };
   const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
+  // Only the Submissions tab needs the lender list; it was being fetched on
+  // every application view regardless.
+  useEffect(() => {
+    if (activeTab !== 'submissions' || availableLenders.length) return;
+    api.get('/lenders')
+      .then(({ data }) => setAvailableLenders(data))
+      .catch(() => setLoadErrors((prev) => (prev.includes('Lenders') ? prev : [...prev, 'Lenders'])));
+  }, [activeTab, availableLenders.length]);
+
   useEffect(() => {
     if (!id || activeTab !== 'activity') return;
     setActivityLoading(true);
@@ -185,23 +203,38 @@ export default function ReviewApplication() {
       .finally(() => setActivityLoading(false));
   }, [id, activeTab]);
 
+  // Sections that load alongside the application. Each is named so a failure can
+  // say what is missing instead of rendering an empty tab that looks like "none".
+  const loadSections = useCallback(() => {
+    if (!id) return;
+    const sections: { label: string; run: () => Promise<unknown> }[] = [
+      { label: 'Broker groups', run: () => api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)) },
+      // Submissions and quotes carry counts on their tab labels, so they load
+      // up front; the rest of each tab's data waits until the tab is opened.
+      { label: 'Submissions', run: () => api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)) },
+      { label: 'Quotes', run: () => api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)) },
+      { label: 'Document requests', run: () => api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)) },
+    ];
+    setLoadErrors([]);
+    sections.forEach(({ label, run }) => {
+      run().catch(() => setLoadErrors((prev) => (prev.includes(label) ? prev : [...prev, label])));
+    });
+  }, [id]);
+
+  useEffect(() => { loadSections(); }, [loadSections]);
+
   useEffect(() => {
     if (!id) return;
-    // Fetch broker groups
-    api.get('/broker-groups').then(({ data }) => setBrokerGroups(data)).catch(() => { });
-    // Fetch lender submissions and available lenders
-    api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)).catch(() => { });
-    api.get('/lenders').then(({ data }) => setAvailableLenders(data)).catch(() => { });
-    api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)).catch(() => { });
-    api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)).catch(() => { });
-
     Promise.all([
       api.get(`/applications/${id}`),
       api.get(`/documents/application/${id}`),
-      api.get('/users'),
+      // Only the two roles this page offers in pickers — not every user in the
+      // tenant, which pulled every client's email and phone into the browser.
+      api.get('/users', { params: { role: 'broker' } }),
+      api.get('/users', { params: { role: 'referrer' } }),
       api.get(`/applications/${id}/notes`),
     ])
-      .then(([appRes, docRes, usersRes, notesRes]) => {
+      .then(([appRes, docRes, brokersRes, referrersRes, notesRes]) => {
         setApplication(appRes.data);
         setDocuments(docRes.data);
         setAppNotes(notesRes.data);
@@ -250,22 +283,38 @@ export default function ReviewApplication() {
           emergency_contact_phone: d.emergency_contact_phone || '',
         });
 
-        const clientUser = usersRes.data.find((u: User) => u.id === appRes.data.user_id);
-        setBrokers(usersRes.data.filter((u: User) => u.role === 'broker'));
-        setReferrers(usersRes.data.filter((u: User) => u.role === 'referrer'));
+        setBrokers(brokersRes.data);
+        setReferrers(referrersRes.data);
 
-        if (clientUser?.role === 'referrer') {
-          // Direct referrer lead — user_id IS the referrer, client has no account
+        // The application's owner is fetched by id rather than found in a list of
+        // everyone — it may be the client, or the referrer on a direct lead, or
+        // the staff member who created the card.
+        const ownerId = appRes.data.user_id;
+        if (!ownerId) {
           setClient(null);
-          setReferrer({ id: clientUser.id, full_name: clientUser.full_name, email: clientUser.email, phone: clientUser.phone, organization_name: appRes.data.referrer?.organization_name ?? null });
-        } else {
-          setClient(clientUser || null);
-          if (appRes.data.user_id) {
-            api.get(`/users/${appRes.data.user_id}/referrer`)
-              .then(({ data }) => setReferrer(data.referrer || null))
-              .catch(() => { });
-          }
+          return;
         }
+        api.get(`/users/${ownerId}`)
+          .then(({ data: owner }) => {
+            // GET /users/{id} still returns soft-deleted accounts, unlike the
+            // list endpoint this replaced. A deleted owner is not a client to
+            // show or message.
+            if (!owner || owner.email?.endsWith('@deleted.invalid')) {
+              setClient(null);
+              return;
+            }
+            if (owner.role === 'referrer') {
+              // Direct referrer lead — user_id IS the referrer, client has no account
+              setClient(null);
+              setReferrer({ id: owner.id, full_name: owner.full_name, email: owner.email, phone: owner.phone, organization_name: appRes.data.referrer?.organization_name ?? null });
+              return;
+            }
+            setClient(owner);
+            api.get(`/users/${ownerId}/referrer`)
+              .then(({ data }) => setReferrer(data.referrer || null))
+              .catch(() => setLoadErrors((prev) => (prev.includes('Referrer') ? prev : [...prev, 'Referrer'])));
+          })
+          .catch(() => setClient(null));
       })
       .catch(() => toast('Failed to load application', 'error'))
       .finally(() => setLoading(false));
@@ -383,6 +432,49 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to change status'), 'error');
     } finally {
       setSavingApproval(false);
+    }
+  };
+
+  // The lender keeps raising conditions after the deal is approved, so the list
+  // is editable in place rather than only captured on entry to Approval.
+  const handleAddApprovalCondition = async () => {
+    if (!id || !newConditionText.trim()) return;
+    setAddingCondition(true);
+    try {
+      const { data } = await api.post(`/applications/${id}/approval-conditions`, {
+        conditions: [newConditionText.trim()],
+      });
+      setNewConditionText('');
+      await refetchApplication();
+      if (!data.length) toast('That condition is already on the list', 'info');
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to add condition'), 'error');
+    } finally {
+      setAddingCondition(false);
+    }
+  };
+
+  const handleSaveConditionEdit = async () => {
+    if (!id || !editingConditionId || !editingConditionText.trim()) return;
+    try {
+      await api.patch(`/applications/${id}/approval-conditions/${editingConditionId}`, {
+        text: editingConditionText.trim(),
+      });
+      setEditingConditionId(null);
+      setEditingConditionText('');
+      await refetchApplication();
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to update condition'), 'error');
+    }
+  };
+
+  const handleDeleteApprovalCondition = async (conditionId: string) => {
+    if (!id) return;
+    try {
+      await api.delete(`/applications/${id}/approval-conditions/${conditionId}`);
+      await refetchApplication();
+    } catch (err: unknown) {
+      toast(getErrorMessage(err, 'Failed to remove condition'), 'error');
     }
   };
 
@@ -879,6 +971,20 @@ export default function ReviewApplication() {
         <StatusTimeline currentStatus={application.status} />
       </Card>
 
+      {/* Anything that didn't load. Without this a failed fetch renders as an
+          empty tab, which reads as "no quotes" rather than "we couldn't ask". */}
+      {loadErrors.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--led-line)] bg-secondary/50 px-4 py-3">
+          <ExclamationCircleIcon className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+          <p className="text-[13px] text-foreground">
+            Couldn&rsquo;t load: <span className="font-medium">{loadErrors.join(', ')}</span>. What you see may be incomplete.
+          </p>
+          <Button type="button" variant="secondary" onClick={loadSections} className="ml-auto">
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* High alerts — broker/admin only, surfaced prominently at the top */}
       {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && alerts.some((a) => a.is_high_priority) && (
         <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/8 px-5 py-4">
@@ -945,7 +1051,7 @@ export default function ReviewApplication() {
         <div className="lg:col-span-2 space-y-6">
           {/* Main Content Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'submissions', 'quotes', 'messages', 'activity'] as const).map((tab) => (
+            {(['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -954,7 +1060,7 @@ export default function ReviewApplication() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
                   }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'messages' ? 'Messages' : 'Activity'}
+                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'invoices' ? 'Tax Invoices' : tab === 'messages' ? 'Messages' : 'Activity'}
                 {activeTab === tab && (
                   <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
                 )}
@@ -3275,6 +3381,7 @@ export default function ReviewApplication() {
                   <QuoteSheetEditor
                     applicationId={id!}
                     quoteSheet={editingQuoteSheet || undefined}
+                    sheetType={newSheetType}
                     onSave={(sheet) => {
                       setQuoteSheets(prev => {
                         const idx = prev.findIndex(s => s.id === sheet.id);
@@ -3330,12 +3437,21 @@ export default function ReviewApplication() {
                   <Card>
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
-                      <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
-                        <span className="flex items-center gap-1.5">
-                          <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                          Create Quote Sheet
-                        </span>
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => { setNewSheetType('client_quote'); setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
+                          <span className="flex items-center gap-1.5">
+                            <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                            Create Quote Sheet
+                          </span>
+                        </Button>
+                        {/* Same structure priced from the lender's side, locked in on invoice. */}
+                        <Button size="sm" variant="secondary" onClick={() => { setNewSheetType('lender_pricing'); setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
+                          <span className="flex items-center gap-1.5">
+                            <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                            Lender Pricing
+                          </span>
+                        </Button>
+                      </div>
                     </div>
 
                     {quoteSheets.length === 0 ? (
@@ -3544,6 +3660,13 @@ export default function ReviewApplication() {
               </>
             )}
 
+            {/* Tax invoices for the asset — dealer, private seller or auction house.
+                Full width: the document has ~25 fields and a printable preview,
+                which a sidebar cannot carry. Opening the tab is what loads it. */}
+            {activeTab === 'invoices' && id && (
+              <TaxInvoicePanel applicationId={id} />
+            )}
+
             {activeTab === 'activity' && (
               <Card padding="none">
                 <div className="px-6 py-4 border-b border-border">
@@ -3642,26 +3765,32 @@ export default function ReviewApplication() {
           </Card>
 
           {/* Approval Conditions */}
-          {!!application.approval_conditions?.length && (
+          {/* Shown from the moment the deal is approved, even with nothing on the
+              list yet, so the first condition can be added here. */}
+          {(!!application.approval_conditions?.length || application.status === 'approval') && (
             <Card>
               <div className="flex items-center justify-between gap-3 mb-1">
                 <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
-                <span className="text-[12px] text-muted-foreground tabular-nums">
-                  {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
-                </span>
+                {!!application.approval_conditions?.length && (
+                  <span className="text-[12px] text-muted-foreground tabular-nums">
+                    {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
+                  </span>
+                )}
               </div>
               {application.approval_lender_name && (
                 <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
               )}
-              <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
-                <div
-                  className="h-full rounded-full bg-success transition-all"
-                  style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
-                />
-              </div>
+              {!!application.approval_conditions?.length && (
+                <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
+                  <div
+                    className="h-full rounded-full bg-success transition-all"
+                    style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
+                  />
+                </div>
+              )}
               <div className="space-y-0.5">
-                {application.approval_conditions.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
+                {application.approval_conditions?.map((item) => (
+                  <div key={item.id} className="group flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
                     <button
                       type="button"
                       onClick={() => handleToggleApprovalCondition(item.id)}
@@ -3676,11 +3805,63 @@ export default function ReviewApplication() {
                         <CheckIcon className="h-3 w-3" strokeWidth={3} />
                       )}
                     </button>
-                    <span className={`flex-1 text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                      {item.text}
-                    </span>
+                    {editingConditionId === item.id ? (
+                      <input
+                        className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2 py-1 text-[13.5px] text-foreground"
+                        value={editingConditionText}
+                        onChange={(e) => setEditingConditionText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleSaveConditionEdit(); }
+                          if (e.key === 'Escape') { setEditingConditionId(null); setEditingConditionText(''); }
+                        }}
+                        onBlur={handleSaveConditionEdit}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setEditingConditionId(item.id); setEditingConditionText(item.text); }}
+                        className="flex-1 min-w-0 text-left"
+                        title="Click to edit"
+                      >
+                        <span className={`block text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                          {item.text}
+                        </span>
+                        {item.is_completed && item.completed_by_name && (
+                          <span className="block text-[11px] text-muted-foreground mt-0.5">
+                            Ticked by {item.completed_by_name}
+                            {item.completed_at ? ` · ${formatDate(item.completed_at)}` : ''}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteApprovalCondition(item.id)}
+                      className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                      title="Remove condition"
+                    >
+                      <XMarkIcon className="h-4 w-4" strokeWidth={2} />
+                    </button>
                   </div>
                 ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
+                  placeholder="Add a condition..."
+                  value={newConditionText}
+                  onChange={(e) => setNewConditionText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddApprovalCondition(); } }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleAddApprovalCondition}
+                  disabled={!newConditionText.trim() || addingCondition}
+                >
+                  Add
+                </Button>
               </div>
             </Card>
           )}

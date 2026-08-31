@@ -7,11 +7,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.constants import VALID_TRANSITIONS
-from app.models.approval_condition import ApprovalCondition
+from app.models.kanban import ApplicationStagePlacement, KanbanColumn
 from app.models.loan_application import ApplicationStatus, LoanApplication
-from app.models.task import ChecklistItem, Task, TaskPriority, TaskStatus
 from app.models.user import User, UserRole
 from app.services.activity_log import log_activity
+from app.services.approval_conditions import add_conditions, ensure_condition_tasks
 from app.services.email import send_status_notification
 from app.services.notification_service import create_notification
 
@@ -25,6 +25,7 @@ def change_application_status(
     *,
     lender_name: Optional[str] = None,
     conditions: Optional[list[str]] = None,
+    enforce_transitions: bool = True,
 ) -> None:
     """Transition an application to a new status, with the same validation and
     side-effects as the /applications/{id}/status endpoint (transition rules,
@@ -33,16 +34,21 @@ def change_application_status(
     Shared by the status endpoint and the kanban board so a card move and a
     status change are always the same operation.
 
-    Entering Approval requires a lender name and at least one condition; the
-    conditions checklist is replaced wholesale each time (any previous
-    checked-off state is reset), including on re-entry. A matching task is
-    (re-)created for every broker on the application, with a checklist item
-    per condition kept in sync with the application's approval panel — see
+    `enforce_transitions=False` skips the transition table: a board whose stages
+    roll up to statuses in a different order (see BOARD_STAGE_TEMPLATES) can move
+    a card between adjacent stages that VALID_TRANSITIONS would reject. The
+    approval requirements below still apply either way.
+
+    Entering Approval requires a lender name and at least one condition. The
+    conditions are MERGED into whatever the application already carries — never
+    replaced — so ticked-off state and conditions the team added themselves
+    survive a re-entry. Each broker on the application gets (or keeps) an
+    approval-conditions task whose checklist mirrors the panel — see
     services/approval_conditions.py.
     """
     current = application.status.value
     allowed = VALID_TRANSITIONS.get(current, [])
-    if new_status.value not in allowed:
+    if enforce_transitions and new_status.value not in allowed:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot transition from '{current}' to '{new_status.value}'. Allowed: {allowed}",
@@ -56,46 +62,33 @@ def change_application_status(
                 detail="Lender name and at least one approval condition are required to move to Approval.",
             )
         application.approval_lender_name = lender_name.strip()
-
-        for old_task in (
-            db.query(Task)
-            .filter(Task.application_id == application.id, Task.is_approval_conditions_task.is_(True))
-            .all()
-        ):
-            db.delete(old_task)
-        db.query(ApprovalCondition).filter(ApprovalCondition.application_id == application.id).delete()
-
-        new_conditions = []
-        for i, text in enumerate(clean_conditions):
-            condition = ApprovalCondition(application_id=application.id, tenant_id=tenant_id, text=text, sort_order=i)
-            db.add(condition)
-            new_conditions.append(condition)
-        db.flush()
-
-        broker_ids = [b.id for b in application.brokers] or ([application.assigned_broker_id] if application.assigned_broker_id else [])
-        for broker_id in broker_ids:
-            task = Task(
-                title=f"Approval conditions – {application.approval_lender_name}",
-                status=TaskStatus.todo,
-                priority=TaskPriority.high,
-                assigned_to_id=broker_id,
-                application_id=application.id,
-                created_by_id=actor_id,
-                tenant_id=tenant_id,
-                is_approval_conditions_task=True,
-            )
-            db.add(task)
-            db.flush()
-            for i, condition in enumerate(new_conditions):
-                db.add(ChecklistItem(
-                    task_id=task.id,
-                    title=condition.text,
-                    sort_order=i,
-                    tenant_id=tenant_id,
-                    approval_condition_id=condition.id,
-                ))
+        # Merge, never replace. An application can enter Approval more than once
+        # (a board may carry several stages that roll up to it), and wiping the
+        # list would throw away every condition the team had already ticked off
+        # or added since. add_conditions skips duplicates and keeps the tasks.
+        add_conditions(db, application, clean_conditions, actor_id, tenant_id)
+        ensure_condition_tasks(db, application, actor_id, tenant_id)
 
     application.status = new_status
+    # A status set from outside the board (the application detail page, an
+    # import) must not leave the card parked at a stage belonging to the old
+    # status. Drop those placements so the card falls back to the first stage
+    # for its new status; placements already consistent with it are kept, which
+    # is what makes a kanban move — placement first, then this — a no-op here.
+    # The session runs with autoflush off, so a placement the caller has just
+    # written is still pending here — flush first or this reads the pre-move
+    # stage and deletes the row the caller is mid-update on.
+    db.flush()
+    for placement in (
+        db.query(ApplicationStagePlacement)
+        .join(KanbanColumn, KanbanColumn.id == ApplicationStagePlacement.column_id)
+        .filter(
+            ApplicationStagePlacement.application_id == application.id,
+            KanbanColumn.mapped_status != new_status.value,
+        )
+        .all()
+    ):
+        db.delete(placement)
     if new_status == ApplicationStatus.settled and application.settled_at is None:
         application.settled_at = datetime.now(timezone.utc).replace(tzinfo=None)
     log_activity(

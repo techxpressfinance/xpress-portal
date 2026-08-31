@@ -17,6 +17,20 @@ class QuoteSheetStatus(str, enum.Enum):
     sent = "sent"
 
 
+class QuoteSheetType(str, enum.Enum):
+    """What the sheet is for.
+
+    client_quote   — the comparison the client sees.
+    lender_pricing — the same structure priced from the lender's side, locked in
+                     once the invoice is received. Same options and maths; the
+                     editor shows the lender-facing figures instead of the
+                     client-facing ones.
+    """
+
+    client_quote = "client_quote"
+    lender_pricing = "lender_pricing"
+
+
 class QuoteSheet(Base):
     __tablename__ = "quote_sheets"
 
@@ -31,6 +45,9 @@ class QuoteSheet(Base):
     title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     status: Mapped[QuoteSheetStatus] = mapped_column(
         Enum(QuoteSheetStatus), default=QuoteSheetStatus.draft, nullable=False
+    )
+    sheet_type: Mapped[QuoteSheetType] = mapped_column(
+        Enum(QuoteSheetType), default=QuoteSheetType.client_quote, nullable=False
     )
     created_by_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False

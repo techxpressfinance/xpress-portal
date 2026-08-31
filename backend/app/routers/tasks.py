@@ -435,7 +435,7 @@ def update_checklist_item(
 
     if data.is_completed is not None:
         if item.approval_condition_id:
-            sync_condition_completion(db, item.approval_condition_id, data.is_completed)
+            sync_condition_completion(db, item.approval_condition_id, data.is_completed, actor_id=current_user.id)
         else:
             item.is_completed = data.is_completed
 
@@ -465,7 +465,7 @@ def toggle_checklist_item(
 
     new_value = not item.is_completed
     if item.approval_condition_id:
-        sync_condition_completion(db, item.approval_condition_id, new_value)
+        sync_condition_completion(db, item.approval_condition_id, new_value, actor_id=current_user.id)
     else:
         item.is_completed = new_value
     log_activity(

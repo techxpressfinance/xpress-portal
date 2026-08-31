@@ -83,6 +83,13 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 SMS_ENABLED = bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
 
+# Per-stage board notifications (see models/notification.py).
+# OFF by default and deliberately so: the rules, the mover's confirmations and
+# the fully-rendered messages are all recorded from day one, but nothing leaves
+# the building until this is switched on. That gives a body of real recorded
+# intent to audit before the first message is actually sent.
+STAGE_COMMS_ENABLED = os.getenv("STAGE_COMMS_ENABLED", "").lower() in ("1", "true", "yes")
+
 # Australian Business Register lookup — free, requires a registered GUID
 # https://abr.business.gov.au/Tools/WebServices
 ABR_GUID = os.getenv("ABR_GUID", "")

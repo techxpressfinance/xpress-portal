@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -94,6 +94,9 @@ class QuoteOptionOut(BaseModel):
 
 class QuoteSheetCreate(BaseModel):
     title: Optional[str] = None
+    # client_quote (the comparison the client sees) or lender_pricing (the same
+    # structure priced from the lender's side, locked in on invoice).
+    sheet_type: Literal["client_quote", "lender_pricing"] = "client_quote"
     broker_notes: Optional[str] = None
     input_parameters: Optional[str] = None  # JSON string of shared inputs
     options: list[QuoteOptionCreate] = []
@@ -123,6 +126,7 @@ class QuoteSheetOut(BaseModel):
     version: int
     title: Optional[str]
     status: str
+    sheet_type: str = "client_quote"
     created_by_id: str
     created_by_name: Optional[str] = None
     broker_notes: Optional[str]

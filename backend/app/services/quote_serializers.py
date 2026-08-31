@@ -18,6 +18,9 @@ def serialize_quote_option(opt: QuoteOption) -> dict:
         "balloon_residual": float(opt.balloon_residual) if opt.balloon_residual is not None else None,
         "interest_rate": float(opt.interest_rate) if opt.interest_rate is not None else None,
         "comparison_rate": float(opt.comparison_rate) if opt.comparison_rate is not None else None,
+        # The all-up rate quoted to the client, as distinct from the lender's own
+        # rate above. The editor writes it and the comparison view reads it.
+        "client_interest_rate": float(opt.client_interest_rate) if opt.client_interest_rate is not None else None,
         "establishment_fee": float(opt.establishment_fee) if opt.establishment_fee is not None else None,
         "monthly_account_fee": float(opt.monthly_account_fee) if opt.monthly_account_fee is not None else None,
         "application_fee": float(opt.application_fee) if opt.application_fee is not None else None,
@@ -41,6 +44,7 @@ def serialize_quote_sheet(sheet: QuoteSheet) -> dict:
         "version": sheet.version,
         "title": sheet.title,
         "status": sheet.status.value,
+        "sheet_type": sheet.sheet_type.value,
         "created_by_id": sheet.created_by_id,
         "created_by_name": sheet.created_by.full_name if sheet.created_by else None,
         "broker_notes": sheet.broker_notes,

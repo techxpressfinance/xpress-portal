@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Button, Card } from './ui';
-import type { QuoteSheet, QuoteInputParameters } from '../types';
+import type { QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
@@ -418,6 +418,9 @@ function SectionHeader({ children }: { children: ReactNode }) {
 interface QuoteSheetEditorProps {
   applicationId?: string;
   quoteSheet?: QuoteSheet;
+  /** What the sheet is for. Lender Pricing reuses this editor's structure and
+   *  maths — the field deltas the desk asked for are still to be specified. */
+  sheetType?: QuoteSheetType;
   onSave: (sheet: QuoteSheet) => void;
   onCancel: () => void;
 }
@@ -433,7 +436,10 @@ function parseInputParams(quoteSheet?: QuoteSheet): QuoteInputParameters {
   return { ...DEFAULT_INPUTS, balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES } };
 }
 
-export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, onCancel }: QuoteSheetEditorProps) {
+export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType, onSave, onCancel }: QuoteSheetEditorProps) {
+  // An existing sheet keeps whatever it was created as.
+  const effectiveSheetType: QuoteSheetType = quoteSheet?.sheet_type ?? sheetType ?? 'client_quote';
+  const isLenderPricing = effectiveSheetType === 'lender_pricing';
   const { toast } = useToast();
   const [title, setTitle] = useState(quoteSheet?.title || '');
   const [brokerNotes, setBrokerNotes] = useState(quoteSheet?.broker_notes || '');
@@ -579,17 +585,18 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, onSave, on
 
         const { data } = await api.get(`${baseUrl}/${quoteSheet.id}`);
         onSave(data);
-        toast('Quote sheet updated', 'success');
+        toast(isLenderPricing ? 'Lender pricing updated' : 'Quote sheet updated', 'success');
       } else {
         const payload = {
           title: title.trim() || null,
+          sheet_type: effectiveSheetType,
           broker_notes: brokerNotes.trim() || null,
           input_parameters: inputParamsJson,
           options,
         };
         const { data } = await api.post(baseUrl, payload);
         onSave(data);
-        toast('Quote sheet created', 'success');
+        toast(isLenderPricing ? 'Lender pricing created' : 'Quote sheet created', 'success');
       }
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to save quote sheet'), 'error');

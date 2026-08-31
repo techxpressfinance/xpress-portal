@@ -979,6 +979,87 @@ table {
   max-height: 100%;
 }
 
+/* A collapsed stage: a narrow rail that still accepts a drop, so a card can be
+   moved into a stage that is folded away. The title reads bottom-to-top, which
+   is the convention that keeps a vertical label legible without a head tilt. */
+.led-kanban-col-collapsed {
+  width: 44px;
+  min-width: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-align: center;
+  overflow: hidden;
+}
+
+.led-kanban-col-collapsed:hover {
+  border-color: var(--led-line);
+}
+
+.led-kanban-col-collapsed-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--led-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 100%;
+}
+
+/* The card's move menu stays out of the way until the card is hovered — it is a
+   shortcut, not the primary affordance. */
+.led-card-menu {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.led-kanban-card:hover .led-card-menu,
+.led-card-menu:focus-visible {
+  opacity: 1;
+}
+
+.led-popover-label {
+  padding: 6px 10px 4px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--led-muted);
+}
+
+/* Trailing "add stage" affordance in the board scroller. Narrower than a real
+   stage so it reads as an action, not an empty column. */
+.led-kanban-add-col {
+  min-width: 132px;
+  width: 132px;
+  flex-shrink: 0;
+  align-self: stretch;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--led-line);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--led-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.led-kanban-add-col:hover {
+  background: var(--led-bg-2);
+  border-color: var(--led-muted);
+  color: var(--led-ink);
+}
+
 .led-kanban-col.led-drop-valid {
   background: var(--led-success-tint);
 }
