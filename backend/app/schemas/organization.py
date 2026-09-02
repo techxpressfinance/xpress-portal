@@ -40,6 +40,7 @@ class OrganizationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     entity_type: Optional[str] = Field(default=None, max_length=30)
     abn: Optional[str] = Field(default=None, max_length=20)
+    acn: Optional[str] = Field(default=None, max_length=20)
     industry: Optional[str] = Field(default=None, max_length=200)
     address: Optional[str] = Field(default=None, max_length=500)
     notes: Optional[str] = None
@@ -56,6 +57,7 @@ class OrganizationUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     entity_type: Optional[str] = Field(default=None, max_length=30)
     abn: Optional[str] = Field(default=None, max_length=20)
+    acn: Optional[str] = Field(default=None, max_length=20)
     industry: Optional[str] = Field(default=None, max_length=200)
     address: Optional[str] = Field(default=None, max_length=500)
     notes: Optional[str] = None
@@ -71,6 +73,7 @@ class OrganizationOut(BaseModel):
     name: str
     entity_type: Optional[str] = None
     abn: Optional[str]
+    acn: Optional[str] = None
     industry: Optional[str]
     address: Optional[str]
     notes: Optional[str]
@@ -141,6 +144,9 @@ class TrustPartyOut(BaseModel):
     display_name: str
     name: Optional[str] = None
     abn: Optional[str] = None
+    # Derived, never stored: a corporate trustee's ACN, off its linked entity or
+    # read from its ABN. Null for individual, partnership and class parties.
+    acn: Optional[str] = None
     ownership_percentage: Optional[Decimal] = None
     notes: Optional[str] = None
     created_at: datetime

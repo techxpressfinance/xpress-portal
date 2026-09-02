@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Button, Card } from './ui';
-import type { QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
+import QuoteSheetComparison from './QuoteSheetComparison';
+import type { QuoteOption, QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
 import api from '../api/client';
 import { useToast } from './Toast';
+import { downloadQuoteSheetPdf } from '../lib/pdfExport';
 import { getErrorMessage } from '../lib/utils';
 import {
   MAX_TERM_MONTHS,
@@ -14,6 +16,10 @@ import {
   termLabel,
   termLabelShort,
 } from '../lib/quoteTerms';
+
+// The off-screen node html2pdf captures. Distinct from the `quote-sheet-pdf-<id>`
+// ids the list views use, so an editor preview can never collide with one of those.
+const PDF_PREVIEW_ID = 'quote-sheet-pdf-editor-preview';
 
 const DEFAULT_BALLOON_PERCENTAGES: Record<string, number> = Object.fromEntries(
   STANDARD_TERM_MONTHS.map(m => [String(m), 0]),
@@ -553,6 +559,62 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
 
   const isStandalone = !applicationId;
   const baseUrl = isStandalone ? '/quote-sheets' : `/applications/${applicationId}/quote-sheets`;
+
+  // The sheet as it stands in the editor, saved or not, so the PDF reflects what
+  // is on screen rather than the last saved version. Options are generated the
+  // same way `handleSave` generates them, just never sent anywhere.
+  const previewSheet = useMemo<QuoteSheet | null>(() => {
+    if (scenarios.length === 0) return null;
+    const now = new Date().toISOString();
+    const id = quoteSheet?.id ?? 'preview';
+    return {
+      id,
+      application_id: applicationId ?? null,
+      version: quoteSheet?.version ?? 1,
+      title: title.trim() || null,
+      status: quoteSheet?.status ?? 'draft',
+      sheet_type: effectiveSheetType,
+      created_by_id: quoteSheet?.created_by_id ?? '',
+      created_by_name: quoteSheet?.created_by_name ?? null,
+      broker_notes: brokerNotes.trim() || null,
+      input_parameters: JSON.stringify(inputs),
+      recipient_name: quoteSheet?.recipient_name ?? null,
+      recipient_email: quoteSheet?.recipient_email ?? null,
+      sent_at: quoteSheet?.sent_at ?? null,
+      options: scenariosToOptions(inputs, scenarios).map((opt, i) => ({
+        ...opt,
+        id: `preview-${i}`,
+        quote_sheet_id: id,
+      })) as QuoteOption[],
+      created_at: quoteSheet?.created_at ?? now,
+      updated_at: now,
+    };
+  }, [applicationId, brokerNotes, effectiveSheetType, inputs, quoteSheet, scenarios, title]);
+
+  const [pdfClientFacing, setPdfClientFacing] = useState<boolean | null>(null);
+
+  const handleDownloadPdf = async (clientFacing: boolean) => {
+    if (!previewSheet) {
+      toast('Enter an asset price first — there is nothing to quote yet', 'error');
+      return;
+    }
+    setPdfClientFacing(clientFacing);
+    // Let React mount the off-screen render before html2pdf reads it — the same
+    // wait the standalone Quotes list uses for the same component.
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      const suffix = clientFacing ? 'client' : 'internal';
+      const label = quoteSheet ? `v${quoteSheet.version}` : 'draft';
+      // Top margin 0 so the dark hero bleeds to the page's top edge; 22mm bottom
+      // reserves room for the navy footer band painted on every page.
+      await downloadQuoteSheetPdf(PDF_PREVIEW_ID, `quote-${label}-${suffix}.pdf`, [0, 0, 22, 0], true);
+    } catch (err) {
+      console.error('Failed to generate PDF', err);
+      toast('Failed to generate PDF', 'error');
+    } finally {
+      setPdfClientFacing(null);
+    }
+  };
 
   const handleSave = async () => {
     if (inputs.asset_price <= 0) {
@@ -1155,15 +1217,51 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-3 pt-1">
+        <div className="flex items-center gap-3 pt-1 flex-wrap">
           <Button onClick={handleSave} loading={saving}>
             {quoteSheet ? 'Update Quote Sheet' : 'Create Quote Sheet'}
           </Button>
           <Button variant="secondary" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
+          {/* Exports what's on screen, including unsaved edits — so a quote can be
+              checked as a PDF before it's saved or sent. */}
+          <div className="flex items-center gap-2 ml-auto">
+            <Button
+              variant="secondary"
+              onClick={() => handleDownloadPdf(false)}
+              disabled={!previewSheet || saving}
+              loading={pdfClientFacing === false}
+              title="Internal PDF (includes interest rate)"
+            >
+              PDF
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => handleDownloadPdf(true)}
+              disabled={!previewSheet || saving}
+              loading={pdfClientFacing === true}
+              title="Client PDF (no interest rate)"
+            >
+              Client PDF
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Off-screen PDF render */}
+      {previewSheet && pdfClientFacing !== null && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '24px' }}>
+          <div id={PDF_PREVIEW_ID}>
+            <QuoteSheetComparison
+              quoteSheet={previewSheet}
+              isPdfExport={true}
+              isClientView={pdfClientFacing}
+              clientName={previewSheet.recipient_name || undefined}
+            />
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

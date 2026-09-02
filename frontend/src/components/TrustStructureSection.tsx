@@ -5,7 +5,9 @@ import { AlertTriangle } from 'lucide-react';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { useConfirm } from '../hooks/useConfirm';
-import { Card, Button, Badge, Input, Select } from './ui';
+import { Card, Button, Badge, Input, Select, AbrResultCard } from './ui';
+import { useAbrLookup } from '../hooks/useAbrLookup';
+import { abnValidationError, acnFromAbn, formatAbn, formatAcn } from '../lib/acn';
 import { getErrorMessage } from '../lib/utils';
 import {
   TRUST_PARTY_KINDS,
@@ -16,6 +18,16 @@ import {
 import type { TrustParty, TrustPartyKind, TrustPartyRole } from '../types';
 
 const LABEL = 'block text-[12px] font-medium text-muted-foreground mb-1';
+
+/** The line under a party's name: its ABN, a corporate trustee's ACN, then notes. */
+function partyMeta(p: TrustParty): string {
+  const parts: string[] = [];
+  if (p.abn) parts.push(`ABN ${formatAbn(p.abn)}`);
+  else if (isEntityPartyKind(p.party_kind)) parts.push('No ABN on file');
+  if (p.acn) parts.push(`ACN ${formatAcn(p.acn)}`);
+  if (p.notes) parts.push(p.notes);
+  return parts.join(' · ');
+}
 
 type ContactHit = { id: string; first_name: string; last_name: string; email: string | null };
 type OrgHit = { id: string; name: string; abn: string | null };
@@ -46,6 +58,14 @@ function AddPartyModal({ organizationId, initialRole, onClose, onAdded }: {
   const linksToEntity = isEntityPartyKind(kind);
   const searchable = kind !== 'other';
   const picked = pickedContact || pickedOrg;
+
+  // A corporate trustee is the party a lender actually contracts with, so its
+  // ABN is worth checking as it's typed. ASIC has no per-record API to confirm
+  // the company against, so what we can do offline is the check digit plus the
+  // ACN its ABN encodes; the ABR lookup supplies the registered name.
+  const abnError = !picked && linksToEntity ? abnValidationError(abn) : null;
+  const trusteeAcn = kind === 'company' ? acnFromAbn(abn) : null;
+  const abr = useAbrLookup(!picked && linksToEntity ? abn : '');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -82,6 +102,8 @@ function AddPartyModal({ organizationId, initialRole, onClose, onAdded }: {
       toast('Pick an existing record or enter a name', 'error');
       return;
     }
+    // The backend rejects this too; stopping here keeps the message on the field.
+    if (abnError) return;
     setSaving(true);
     try {
       const { data } = await api.post<TrustParty>(`/organizations/${organizationId}/trust-parties`, {
@@ -193,10 +215,28 @@ function AddPartyModal({ organizationId, initialRole, onClose, onAdded }: {
                 {linksToEntity && (
                   <div>
                     <label className={LABEL}>ABN</label>
-                    <Input placeholder="11 222 333 444" value={abn} onChange={e => setAbn(e.target.value)} />
+                    <Input
+                      placeholder="11 222 333 444"
+                      value={abn}
+                      onChange={e => setAbn(e.target.value)}
+                      error={abnError || undefined}
+                    />
+                    {trusteeAcn && (
+                      <p className="mt-1.5 text-[12px] text-muted-foreground">
+                        ACN <span className="tabular-nums">{formatAcn(trusteeAcn)}</span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
+
+              {linksToEntity && abr.enabled && (
+                <AbrResultCard
+                  record={abr.record}
+                  loading={abr.loading}
+                  onApply={(r) => setName(r.name)}
+                />
+              )}
             </>
           )}
 
@@ -220,7 +260,7 @@ function AddPartyModal({ organizationId, initialRole, onClose, onAdded }: {
 
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button variant="primary" size="md" loading={saving} onClick={submit}>Add party</Button>
+            <Button variant="primary" size="md" loading={saving} onClick={submit} disabled={!!abnError}>Add party</Button>
           </div>
         </div>
       </div>
@@ -318,10 +358,7 @@ export default function TrustStructureSection({ organizationId, parties, onChang
                             <Badge type="custom" value={`${Number(p.ownership_percentage)}%`} className="bg-chart-2/10 text-chart-2" />
                           )}
                         </div>
-                        <div className="text-[12px] text-muted-foreground">
-                          {p.abn ? `ABN ${p.abn}` : (isEntityPartyKind(p.party_kind) ? 'No ABN on file' : '')}
-                          {p.notes ? `${p.abn || isEntityPartyKind(p.party_kind) ? ' · ' : ''}${p.notes}` : ''}
-                        </div>
+                        <div className="text-[12px] text-muted-foreground">{partyMeta(p)}</div>
                       </div>
                       <Button variant="ghost" size="sm" loading={removingId === p.id} onClick={() => remove(p)}>Remove</Button>
                     </li>

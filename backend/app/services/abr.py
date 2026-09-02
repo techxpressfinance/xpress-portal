@@ -16,11 +16,18 @@ from app.config import ABR_ENABLED, ABR_GUID
 logger = logging.getLogger(__name__)
 
 ABR_ENDPOINT = "https://abr.business.gov.au/json/AbnDetails.aspx"
+ABR_NAME_ENDPOINT = "https://abr.business.gov.au/json/MatchingNames.aspx"
 TIMEOUT_SECONDS = 5.0
+NAME_SEARCH_TIMEOUT_SECONDS = 8.0
+MAX_NAME_RESULTS = 20
+
+# MatchingNames returns the ABN status as an opaque code rather than a label.
+ABN_STATUS_CODES = {"0000000001": "Active", "0000000002": "Cancelled"}
 
 
 class AbrRecord(TypedDict, total=False):
     abn: str
+    acn: Optional[str]
     name: str
     trading_names: list[str]
     status: Optional[str]
@@ -28,6 +35,16 @@ class AbrRecord(TypedDict, total=False):
     gst_registered: Optional[bool]
     state: Optional[str]
     postcode: Optional[str]
+
+
+class AbrNameMatch(TypedDict, total=False):
+    abn: str
+    name: str
+    name_type: Optional[str]
+    status: Optional[str]
+    state: Optional[str]
+    postcode: Optional[str]
+    score: Optional[int]
 
 
 def _strip_jsonp(text: str) -> Optional[dict]:
@@ -79,16 +96,16 @@ def lookup_abn(abn: str) -> Optional[AbrRecord]:
     else:
         trading_names = []
 
-    gst_raw = (payload.get("Gst") or "").strip()
-    gst_registered: Optional[bool]
-    if not gst_raw:
-        gst_registered = None
-    else:
-        # ABR returns a registration date string if registered, or "" if not
-        gst_registered = True
+    # ABR returns the GST registration start date while the registration is live and
+    # clears the field once it is cancelled, so an empty value on a record we did find
+    # means "not registered" rather than "unknown".
+    gst_registered: Optional[bool] = bool((payload.get("Gst") or "").strip())
 
+    # ABR returns Acn only for entity types that have one (a company); it's blank
+    # for sole traders, trusts and government entities.
     return AbrRecord(
         abn=returned_abn,
+        acn=(payload.get("Acn") or "").strip() or None,
         name=(payload.get("EntityName") or "").strip(),
         trading_names=trading_names,
         status=(payload.get("AbnStatus") or "").strip() or None,
@@ -97,3 +114,73 @@ def lookup_abn(abn: str) -> Optional[AbrRecord]:
         state=(payload.get("AddressState") or "").strip() or None,
         postcode=(payload.get("AddressPostcode") or "").strip() or None,
     )
+
+def search_names(query: str, limit: int = 10) -> list[AbrNameMatch]:
+    """Search the ABR by entity, business or trading name.
+
+    Returns the best match per ABN (an entity can match on several of its names),
+    active ABNs first. Returns [] on a miss or if ABR isn't configured.
+    """
+    if not ABR_ENABLED:
+        return []
+    term = (query or "").strip()
+    if len(term) < 3:
+        return []
+    limit = max(1, min(limit, MAX_NAME_RESULTS))
+
+    try:
+        resp = httpx.get(
+            ABR_NAME_ENDPOINT,
+            params={
+                "name": term,
+                "guid": ABR_GUID,
+                "callback": "callback",
+                # Ask for extra rows so de-duping by ABN can still fill `limit`.
+                "maxResults": min(limit * 3, MAX_NAME_RESULTS * 3),
+            },
+            timeout=NAME_SEARCH_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("ABR name search failed for %r: %s", term, exc)
+        return []
+
+    payload = _strip_jsonp(resp.text)
+    if not payload:
+        return []
+
+    rows = payload.get("Names")
+    if not isinstance(rows, list):
+        return []
+
+    # An ABN appears once per matching name; keep only its highest-scoring row.
+    best: dict[str, AbrNameMatch] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        abn = (row.get("Abn") or "").strip()
+        name = (row.get("Name") or "").strip()
+        if not abn or not name:
+            continue
+        try:
+            score = int(row.get("Score"))
+        except (TypeError, ValueError):
+            score = 0
+        existing = best.get(abn)
+        if existing and (existing.get("score") or 0) >= score:
+            continue
+        best[abn] = AbrNameMatch(
+            abn=abn,
+            name=name,
+            name_type=(row.get("NameType") or "").strip() or None,
+            status=ABN_STATUS_CODES.get((row.get("AbnStatus") or "").strip()),
+            state=(row.get("State") or "").strip() or None,
+            postcode=(row.get("Postcode") or "").strip() or None,
+            score=score,
+        )
+
+    matches = sorted(
+        best.values(),
+        key=lambda m: (m.get("status") != "Active", -(m.get("score") or 0), m.get("name") or ""),
+    )
+    return matches[:limit]

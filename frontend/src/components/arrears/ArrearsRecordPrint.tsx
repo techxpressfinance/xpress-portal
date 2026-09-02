@@ -12,7 +12,7 @@ import {
 } from '../../lib/arrears';
 import type { ArrearsRecordDetail } from '../../types';
 import type { ArrearsPrintImages } from './printImages';
-import ArrearsPrintHeader from './ArrearsPrintHeader';
+import XpressPrintHeader from '../print/XpressPrintHeader';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 
 /** Print-safe detail view of one or more arrears records — contract facts plus
@@ -224,7 +224,7 @@ export default function ArrearsRecordPrint({
         fontFamily: 'Helvetica, Arial, sans-serif',
       }}
     >
-      <ArrearsPrintHeader title={title} subtitle={subtitle} />
+      <XpressPrintHeader eyebrow="Collections · Arrears File" title={title} subtitle={subtitle} />
       {/* The inset sits here, below the full-bleed masthead. */}
       <div style={{ padding: `0 ${PRINT_INSET}px` }}>
         {records.map((record, i) => (

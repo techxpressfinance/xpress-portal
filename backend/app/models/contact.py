@@ -36,6 +36,10 @@ class Organization(Base):
     # typing existed, and on organizations auto-created from application data.
     entity_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Companies only. A company's ABN is two check digits followed by its ACN, but
+    # the ABR is the authority on whether an entity has one at all, so it is stored
+    # rather than always derived.
+    acn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

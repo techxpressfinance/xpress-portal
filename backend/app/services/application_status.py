@@ -14,6 +14,7 @@ from app.services.activity_log import log_activity
 from app.services.approval_conditions import add_conditions, ensure_condition_tasks
 from app.services.email import send_status_notification
 from app.services.notification_service import create_notification
+from app.services.tax_invoice import ensure_request_for_approval
 
 
 def change_application_status(
@@ -38,6 +39,10 @@ def change_application_status(
     roll up to statuses in a different order (see BOARD_STAGE_TEMPLATES) can move
     a card between adjacent stages that VALID_TRANSITIONS would reject. The
     approval requirements below still apply either way.
+
+    Entering Approval on an asset-finance application also raises the dealer
+    tax invoice request as a draft, so the broker has the document to send
+    rather than a blank form.
 
     Entering Approval requires a lender name and at least one condition. The
     conditions are MERGED into whatever the application already carries — never
@@ -68,6 +73,10 @@ def change_application_status(
         # or added since. add_conditions skips duplicates and keeps the tasks.
         add_conditions(db, application, clean_conditions, actor_id, tenant_id)
         ensure_condition_tasks(db, application, actor_id, tenant_id)
+        # An approved asset-finance deal needs a tax invoice request to go back
+        # to the dealer, pre-filled from the application — see
+        # services/tax_invoice.ensure_request_for_approval.
+        ensure_request_for_approval(db, application, actor_id, tenant_id)
 
     application.status = new_status
     # A status set from outside the board (the application detail page, an

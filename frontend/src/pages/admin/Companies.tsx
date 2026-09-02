@@ -8,10 +8,11 @@ import DuplicateReviewModal from '../../components/DuplicateReviewModal';
 import { DuplicateWarning } from '../../components/DuplicateWarning';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import { useOrganizationDuplicateCheck } from '../../hooks/useDuplicateCheck';
-import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, EmptyState, TableSkeleton } from '../../components/ui';
+import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameSearchResults, EmptyState, TableSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
-import { useAbrLookup } from '../../hooks/useAbrLookup';
+import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, hasAcn } from '../../lib/constants';
+import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
+import { abnValidationError, acnFromAbn, acnValidationError, formatAcn } from '../../lib/acn';
 import type { EntityType, Organization, PaginatedResponse, TrustType } from '../../types';
 
 interface NewCompanyForm {
@@ -19,12 +20,13 @@ interface NewCompanyForm {
   entity_type: EntityType | '';
   trust_type: TrustType | '';
   abn: string;
+  acn: string;
   industry: string;
   address: string;
   notes: string;
 }
 
-const EMPTY: NewCompanyForm = { name: '', entity_type: '', trust_type: '', abn: '', industry: '', address: '', notes: '' };
+const EMPTY: NewCompanyForm = { name: '', entity_type: '', trust_type: '', abn: '', acn: '', industry: '', address: '', notes: '' };
 
 function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (company: Organization) => void }) {
   const { toast } = useToast();
@@ -33,9 +35,25 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
+  // Name search is the way in when there's no ABN yet; once one is entered the
+  // ABN lookup below is authoritative, so stop searching by name.
+  const [abrDismissedFor, setAbrDismissedFor] = useState('');
+  const abrNames = useAbrNameSearch(form.abn.trim() ? '' : form.name);
+  const showAbrNames = abrNames.enabled && abrDismissedFor !== form.name.trim();
   const possibleDuplicates = useOrganizationDuplicateCheck(form);
 
   const isTrust = form.entity_type === 'trust';
+  // An ACN only exists for companies; keep it visible if one was already captured.
+  // On a trust the field is still offered, because the ACN a broker has to hand is
+  // the corporate trustee's — the trust itself never has one.
+  const showAcn = hasAcn(form.entity_type) || isTrust || !!form.acn.trim();
+
+  // ASIC has no per-record API to confirm these against, so the check digits and
+  // the ABN/ACN relationship are the whole of what we can verify.
+  const abnError = abnValidationError(form.abn);
+  const acnError = acnValidationError(form.acn, form.abn, form.entity_type || null);
+  // A company's ABN ends in its ACN, so a blank ACN can be filled from the ABN.
+  const derivedAcn = hasAcn(form.entity_type) && !form.acn.trim() ? acnFromAbn(form.abn) : null;
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -52,6 +70,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
         entity_type: form.entity_type || null,
         trust_type: isTrust ? form.trust_type || null : null,
         abn: form.abn.trim() || null,
+        acn: showAcn ? form.acn.trim() || null : null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
         notes: form.notes.trim() || null,
@@ -70,6 +89,9 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    // The backend rejects these too; stopping here keeps the inline message on
+    // the offending field rather than replacing it with a toast.
+    if (abnError || acnError) return;
     // A trust may genuinely have no ABN — confirm rather than block.
     if (isTrust && !form.abn.trim()) {
       setConfirmingNoAbn(true);
@@ -117,9 +139,21 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
             <Input ref={nameRef} placeholder={isTrust ? 'Smith Family Trust' : 'Acme Pty Ltd'} required {...field('name')} />
+            {showAbrNames && (
+              <AbrNameSearchResults
+                matches={abrNames.matches}
+                loading={abrNames.loading}
+                searched={abrNames.searched}
+                onSelect={(r) => {
+                  setForm(f => ({ ...f, name: r.name, abn: r.abn, acn: r.acn || f.acn }));
+                  setAbrDismissedFor(r.name.trim());
+                }}
+                onDismiss={() => setAbrDismissedFor(form.name.trim())}
+              />
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -148,8 +182,28 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">ABN{isTrust ? ' (optional for a trust)' : ''}</label>
-              <Input placeholder="12 345 678 901" {...field('abn')} />
+              <Input placeholder="12 345 678 901" error={abnError || undefined} {...field('abn')} />
             </div>
+            {showAcn && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">{isTrust ? 'Trustee ACN' : 'ACN'}</label>
+                <Input placeholder="123 456 789" error={acnError || undefined} {...field('acn')} />
+                {isTrust && !acnError && (
+                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                    A trust has no ACN of its own — record its corporate trustee's here.
+                  </p>
+                )}
+                {derivedAcn && (
+                  <button
+                    type="button"
+                    className="mt-1.5 text-[12px] font-medium text-primary hover:underline"
+                    onClick={() => setForm(f => ({ ...f, acn: derivedAcn }))}
+                  >
+                    Use {formatAcn(derivedAcn)} from the ABN
+                  </button>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Industry</label>
               <Input placeholder="Construction" {...field('industry')} />
@@ -164,6 +218,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 ...f,
                 name: f.name.trim() ? f.name : r.name,
                 abn: r.abn,
+                acn: r.acn || f.acn,
               }))}
             />
           )}
@@ -182,7 +237,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" variant="primary" size="md" loading={saving}>Create {isTrust ? 'Trust' : 'Entity'}</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving} disabled={!!abnError || !!acnError}>Create {isTrust ? 'Trust' : 'Entity'}</Button>
           </div>
         </form>
       </div>

@@ -12,9 +12,15 @@ different document, which is what the three `SupplierType` values are for:
              and normally invoices in its own name.
 
 Field set follows the ATO's tax-invoice requirements (supplier identity + ABN,
-date, description, GST, and the buyer's identity for sales of $1,000 or more).
-Anything specific to this desk's paperwork is still to come — the detailed
-sheet had not arrived when this was built.
+date, description, GST, and the buyer's identity for sales of $1,000 or more),
+plus the desk's own "Tax Invoice Request" sheet — the document sent TO a dealer
+on approval asking them to invoice us: who it is addressed to, the Sold To /
+Delivery To parties, the full identity of the goods (build and compliance
+dates, engine number, colour, rego expiry) and the cost build-up that nets a
+trade-in and an existing payout against the cash price.
+
+A `dealer` invoice therefore prints as that request; `private` and `auction`
+print as the invoice/receipt this desk raises itself.
 """
 from __future__ import annotations
 
@@ -60,6 +66,15 @@ class TaxInvoice(Base):
     invoice_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
+    # Who the request is addressed to at the dealership, and where their reply
+    # goes. Fax is still on the sheet because some dealer back-offices still
+    # want one; blank on everything else.
+    attention: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    fax_number: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    # The address the dealer emails their tax invoice back to — the broker on
+    # the file, not a shared inbox, so the reply lands with whoever is chasing.
+    reply_to_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     # Supplier — who is selling. A private seller is an individual, so their
     # contact details are encrypted like any other individual's.
     supplier_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
@@ -73,10 +88,22 @@ class TaxInvoice(Base):
     # rather than withholding.
     abn_withholding_declared: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # Buyer — required on the document once the total reaches $1,000.
+    # Buyer — the "Sold To" party. Required on the document once the total
+    # reaches $1,000. A company also shows its ACN, which a dealer checks the
+    # goods out against.
     buyer_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     buyer_abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    buyer_acn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     buyer_address: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+
+    # "Delivery To" — usually the buyer, occasionally not (a company buying for
+    # a site, a director taking delivery at home). The flag is what the document
+    # prints from, so clearing it doesn't silently strip the address below.
+    delivery_same_as_buyer: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    delivery_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    delivery_abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    delivery_acn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    delivery_address: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     # The asset. Free-text description plus the identifiers a financier needs.
     asset_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -86,6 +113,16 @@ class TaxInvoice(Base):
     asset_vin: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     asset_registration: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     asset_odometer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # "new" or "used" — a used asset is priced and inspected differently, and
+    # the dealer's invoice has to agree with what the lender approved.
+    asset_condition: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    asset_engine_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    # Free text: these arrive as "01/11/2021" or "11/2021" depending on what
+    # the compliance plate shows, so they are not stored as dates.
+    asset_build_date: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    asset_compliance_date: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    asset_colour: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    asset_registration_expiry: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
     # Money. Stored as entered; totals are derived, never trusted from input.
     sale_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
@@ -94,6 +131,11 @@ class TaxInvoice(Base):
     other_charges: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     other_charges_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     deposit_paid: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    # Netted off the cash price when the buyer trades an asset in.
+    trade_in_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    # Added back on: what is still owing on the trade-in, which the dealer pays
+    # out of the settlement rather than the buyer clearing it first.
+    payout_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Where the money goes. Bank details are PII and encrypted, as on the
     # referrer billing profile.

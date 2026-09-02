@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -15,15 +14,17 @@ from app.models.user import User
 from app.schemas.tax_invoice import TaxInvoiceCreate, TaxInvoiceUpdate
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
-from app.services.loan_category import application_vehicle_details
-from app.services.tax_invoice import completeness, serialize
+from app.services.tax_invoice import completeness, prefill_from_application, serialize
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/applications/{app_id}/tax-invoices", tags=["tax-invoices"])
 
 # Amounts arrive as floats from JSON; store them as Decimal so the totals never
 # inherit binary-float error.
-_MONEY_FIELDS = {"sale_price", "buyers_premium", "other_charges", "deposit_paid"}
+_MONEY_FIELDS = {
+    "sale_price", "buyers_premium", "other_charges", "deposit_paid",
+    "trade_in_value", "payout_amount",
+}
 
 
 def _get_application(db: Session, app_id: str, tenant_id: str, current_user: User) -> LoanApplication:
@@ -82,43 +83,18 @@ def create_tax_invoice(
     application = _get_application(db, app_id, tenant_id, current_user)
     supplier_type = SupplierType(data.supplier_type)
 
-    buyer_name = " ".join(
-        p for p in [application.applicant_first_name, application.applicant_last_name] if p
-    ).strip() or None
-
-    # The asset the application recorded, so the invoice does not start blank.
-    # It lives in the encrypted lend_extra_data JSON, not in columns.
-    vehicle = application_vehicle_details(application)
-
-    def _text(value) -> Optional[str]:
-        """Blank strings are recorded by the form when a field was skipped —
-        they are absence, not an answer."""
-        text = str(value).strip() if value is not None else ""
-        return text or None
-
-    def _decimal(value) -> Optional[Decimal]:
-        if value in (None, ""):
-            return None
-        try:
-            return Decimal(str(value))
-        except (ArithmeticError, ValueError):
-            return None
+    prefill = prefill_from_application(db, application, supplier_type, actor_id=current_user.id)
+    # An explicit date on the request wins over today's.
+    if data.invoice_date:
+        prefill["invoice_date"] = data.invoice_date
 
     invoice = TaxInvoice(
         application_id=app_id,
         tenant_id=tenant_id,
         supplier_type=supplier_type,
         invoice_number=data.invoice_number,
-        invoice_date=data.invoice_date,
-        supplier_gst_registered=supplier_type != SupplierType.private,
-        buyer_name=buyer_name,
-        buyer_address=application.applicant_address,
-        asset_make=_text(vehicle.get("make")),
-        asset_model=_text(vehicle.get("model")),
-        asset_year=(_text(vehicle.get("year")) or "")[:4] or None,
-        asset_vin=_text(vehicle.get("vin")),
-        sale_price=_decimal(vehicle.get("price")),
         created_by_id=current_user.id,
+        **prefill,
     )
     db.add(invoice)
     db.flush()

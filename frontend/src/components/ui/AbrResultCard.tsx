@@ -1,3 +1,4 @@
+import { formatAcn } from '../../lib/acn';
 import type { AbrRecord } from '../../types';
 
 export default function AbrResultCard({
@@ -29,6 +30,11 @@ export default function AbrResultCard({
             {record.state ? ` · ${record.state}` : ''}
             {record.gst_registered ? ' · GST registered' : ''}
           </p>
+          {record.acn && (
+            <p className="mt-0.5 text-[11px] text-info/80">
+              ACN <span className="tabular-nums">{formatAcn(record.acn)}</span>
+            </p>
+          )}
           {record.trading_names.length > 0 && (
             <p className="mt-0.5 text-[11px] text-info/80 truncate">
               Trading as: {record.trading_names.slice(0, 3).join(', ')}
