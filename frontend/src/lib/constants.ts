@@ -1,4 +1,5 @@
 import React from 'react';
+import { ACN_BEARING_ENTITY_TYPES } from './acn';
 import type { AnalysisStatus, ApplicationStatus, DocType, EntityType, LenderSubmissionStatus, LoanCategory, LoanType, OcrStatus, QuoteSheetStatus, TaskPriority, TaskStatus, TrustPartyKind, TrustPartyRole, TrustType, UserRole } from '../types';
 
 export const STATUS_BADGE: Record<ApplicationStatus, string> = {
@@ -327,6 +328,16 @@ export const ENTITY_TYPES: { value: EntityType; label: string; description: stri
   { value: 'partnership', label: 'Partnership', description: 'Two or more partners' },
   { value: 'sole_trader', label: 'Sole Trader', description: 'Individual trading under an ABN' },
 ];
+
+// Entity types whose ABN is issued against an ACN, so an ACN applies. A trust,
+// partnership or sole trader has none — though a trust may still record its
+// corporate trustee's ACN. Defined once in lib/acn.ts; backend copy at
+// backend/app/services/acn.py (ACN_BEARING_ENTITY_TYPES) — keep in sync.
+export const ACN_ENTITY_TYPES = ACN_BEARING_ENTITY_TYPES as readonly EntityType[];
+
+export function hasAcn(entityType: EntityType | '' | null): boolean {
+  return !!entityType && ACN_ENTITY_TYPES.includes(entityType);
+}
 
 // Trust structure. Backend copies at backend/app/constants.py (TRUST_TYPES,
 // TRUST_PARTY_ROLES, TRUST_PARTY_KINDS) — keep in sync.

@@ -29,7 +29,9 @@ from app.schemas.organization import (
 )
 from app.config import ABR_ENABLED
 from app.constants import ENTITY_TYPES, TRUST_PARTY_ROLES
+from app.services import acn as acn_service
 from app.services.abr import lookup_abn as abr_lookup_abn
+from app.services.abr import search_names as abr_search_names
 from app.services.dedupe import (
     find_org_duplicates,
     match_candidate_orgs,
@@ -47,6 +49,27 @@ def _normalize_abn(value: Optional[str]) -> Optional[str]:
         return None
     digits = "".join(ch for ch in value if ch.isdigit())
     return digits or None
+
+
+def _normalize_acn(
+    value: Optional[str],
+    abn: Optional[str] = None,
+    entity_type: Optional[str] = None,
+) -> Optional[str]:
+    """Strip an ACN to digits, rejecting one that can't be real.
+
+    An ACN carries a check digit, and a company's ABN ends in its ACN, so a
+    mistyped one is catchable offline — worth doing, since ASIC has no per-record
+    API to confirm the company against. A trust is exempt from the ABN
+    cross-check: the ACN it records is its corporate trustee's.
+    """
+    normalized = acn_service.normalize_acn(value)
+    if not normalized:
+        return None
+    problem = acn_service.validation_error(normalized, abn, entity_type)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem)
+    return normalized
 
 
 def _org_with_counts(org: Organization, db: Session) -> dict:
@@ -68,6 +91,7 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
         "name": org.name,
         "entity_type": org.entity_type,
         "abn": org.abn,
+        "acn": org.acn,
         "industry": org.industry,
         "address": org.address,
         "notes": org.notes,
@@ -115,6 +139,18 @@ def _ordered_parties(parties: list[TrustParty]) -> list[TrustParty]:
     return sorted(parties, key=lambda p: (order.get(p.role, len(order)), p.created_at))
 
 
+def _party_acn(party: TrustParty) -> Optional[str]:
+    """A corporate trustee's ACN: the one recorded against its linked entity, or
+    else read off its ABN (a company's ABN ends in its ACN). Only companies have
+    one — a partnership or individual trustee does not."""
+    if party.party_kind != "company":
+        return None
+    if party.linked_organization and party.linked_organization.acn:
+        return party.linked_organization.acn
+    abn = party.abn or (party.linked_organization.abn if party.linked_organization else None)
+    return acn_service.acn_from_abn(abn)
+
+
 def _trust_party_dict(party: TrustParty) -> dict:
     return {
         "id": party.id,
@@ -126,6 +162,7 @@ def _trust_party_dict(party: TrustParty) -> dict:
         "display_name": _party_display_name(party),
         "name": party.name,
         "abn": party.abn or (party.linked_organization.abn if party.linked_organization else None),
+        "acn": _party_acn(party),
         "ownership_percentage": party.ownership_percentage,
         "notes": party.notes,
         "created_at": party.created_at,
@@ -190,6 +227,22 @@ def abr_lookup(
     return {"enabled": True, "record": record}
 
 
+@router.get("/abr-search")
+def abr_search(
+    name: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=20),
+    _current_user: User = Depends(require_role("admin", "broker", "referrer", "client")),
+):
+    """Search the Australian Business Register by entity/business/trading name.
+
+    Returns {"enabled": false} if ABR_GUID is not configured, and an empty list
+    when the term is under 3 characters or nothing matches.
+    """
+    if not ABR_ENABLED:
+        return {"enabled": False, "matches": []}
+    return {"enabled": True, "matches": abr_search_names(name, limit)}
+
+
 @router.get("/lookup")
 def lookup_by_abn(
     abn: str = Query(..., min_length=1),
@@ -238,6 +291,7 @@ def create_organization(
         name=data.name.strip(),
         entity_type=data.entity_type,
         abn=abn,
+        acn=_normalize_acn(data.acn, abn, data.entity_type),
         industry=data.industry.strip() if data.industry else None,
         address=data.address.strip() if data.address else None,
         notes=data.notes,
@@ -479,6 +533,8 @@ def update_organization(
                 )
         org.abn = new_abn
         payload.pop("abn")
+    if "acn" in payload:
+        payload["acn"] = _normalize_acn(payload["acn"], resulting_abn, entity_type)
     for key in ("name", "industry", "address"):
         if key in payload and payload[key] is not None:
             payload[key] = payload[key].strip() or None
@@ -634,6 +690,13 @@ def _resolve_party_links(
         _get_org_in_tenant(linked_org_id, tenant_id, db)
     if "abn" in payload:
         payload["abn"] = _normalize_abn(payload["abn"])
+        # A corporate trustee is the party a lender actually contracts with, so a
+        # transposed digit here is worth catching at entry rather than at signing.
+        if payload["abn"] and not acn_service.is_valid_abn(payload["abn"]):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="That ABN's check digit doesn't match — it looks like a typo",
+            )
     if "name" in payload and payload["name"]:
         payload["name"] = payload["name"].strip() or None
 

@@ -5,7 +5,7 @@ import { useToast } from '../Toast';
 import { Button, Select } from '../ui';
 import DatePicker from '../ui/DatePicker';
 import { downloadElementPdf } from '../../lib/pdfExport';
-import ArrearsPrintHeader from './ArrearsPrintHeader';
+import XpressPrintHeader from '../print/XpressPrintHeader';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { getErrorMessage } from '../../lib/utils';
 import {
@@ -243,7 +243,7 @@ export default function ArrearsReportModal({ onClose }: { onClose: () => void })
       {printRows.length > 0 && (
         <div style={{ position: 'fixed', left: -10000, top: 0, width: 1100 }} aria-hidden>
           <div id="arrears-custom-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-            <ArrearsPrintHeader
+            <XpressPrintHeader
               eyebrow="Collections · Custom Report"
               title="Arrears Book — Custom Report"
               subtitle={`${describe()} · As at ${new Date().toLocaleDateString('en-AU')} · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}

@@ -8,7 +8,7 @@ import ArrearsDetailPanel from '../../components/arrears/ArrearsDetailPanel';
 import ArrearsRecordModal from '../../components/arrears/ArrearsRecordModal';
 import ArrearsReportModal from '../../components/arrears/ArrearsReportModal';
 import { downloadElementPdf } from '../../lib/pdfExport';
-import ArrearsPrintHeader from '../../components/arrears/ArrearsPrintHeader';
+import XpressPrintHeader from '../../components/print/XpressPrintHeader';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { getErrorMessage } from '../../lib/utils';
 import { ARREARS_BUCKETS, ARREARS_FILE_TYPES, formatMoney } from '../../lib/arrears';
@@ -252,7 +252,7 @@ export default function ArrearsBook() {
       {printRows.length > 0 && (
         <div style={{ position: 'fixed', left: -10000, top: 0, width: 1100 }} aria-hidden>
           <div id="arrears-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-            <ArrearsPrintHeader
+            <XpressPrintHeader
               eyebrow="Collections · Arrears Book"
               title="Arrears Book"
               subtitle={`As at ${new Date().toLocaleDateString('en-AU')} · ${printRows.length} contract${printRows.length === 1 ? '' : 's'}`}

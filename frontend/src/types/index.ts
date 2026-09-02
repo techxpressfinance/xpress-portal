@@ -836,7 +836,11 @@ export interface TaxInvoiceTotals {
   subtotal: number;
   gst: number;
   total: number;
+  trade_in: number;
+  payout: number;
   deposit_paid: number;
+  /** Cash price, less the trade-in, plus the payout still owing on it, less
+   *  the cash deposit — what the financier is asked to pay on settlement. */
   balance_due: number;
   /** False when the supplier is not registered for GST — the document must not
    *  then call itself a tax invoice. */
@@ -852,6 +856,11 @@ export interface TaxInvoice {
   status: 'draft' | 'issued';
   invoice_number: string | null;
   invoice_date: string | null;
+  /** Who at the dealership the request is addressed to. */
+  attention: string | null;
+  fax_number: string | null;
+  /** Where the dealer emails their tax invoice back to. */
+  reply_to_email: string | null;
   supplier_name: string | null;
   supplier_abn: string | null;
   supplier_address: string | null;
@@ -861,7 +870,13 @@ export interface TaxInvoice {
   abn_withholding_declared: boolean;
   buyer_name: string | null;
   buyer_abn: string | null;
+  buyer_acn: string | null;
   buyer_address: string | null;
+  delivery_same_as_buyer: boolean;
+  delivery_name: string | null;
+  delivery_abn: string | null;
+  delivery_acn: string | null;
+  delivery_address: string | null;
   asset_description: string | null;
   asset_make: string | null;
   asset_model: string | null;
@@ -869,11 +884,19 @@ export interface TaxInvoice {
   asset_vin: string | null;
   asset_registration: string | null;
   asset_odometer: number | null;
+  asset_condition: string | null;
+  asset_engine_number: string | null;
+  asset_build_date: string | null;
+  asset_compliance_date: string | null;
+  asset_colour: string | null;
+  asset_registration_expiry: string | null;
   sale_price: number | null;
   buyers_premium: number | null;
   other_charges: number | null;
   other_charges_label: string | null;
   deposit_paid: number | null;
+  trade_in_value: number | null;
+  payout_amount: number | null;
   payout_account_name: string | null;
   payout_bsb: string | null;
   payout_account_number: string | null;
@@ -1306,6 +1329,7 @@ export interface ArrearsSummary {
 
 export interface AbrRecord {
   abn: string;
+  acn: string | null;
   name: string;
   trading_names: string[];
   status: string | null;
@@ -1315,6 +1339,16 @@ export interface AbrRecord {
   postcode: string | null;
 }
 
+export interface AbrNameMatch {
+  abn: string;
+  name: string;
+  name_type: string | null;
+  status: string | null;
+  state: string | null;
+  postcode: string | null;
+  score: number | null;
+}
+
 export type EntityType = 'trust' | 'trustee' | 'company' | 'partnership' | 'sole_trader';
 
 export interface Organization {
@@ -1322,6 +1356,8 @@ export interface Organization {
   name: string;
   entity_type: EntityType | null;
   abn: string | null;
+  /** Companies only — blank for trusts, partnerships and sole traders. */
+  acn: string | null;
   industry: string | null;
   address: string | null;
   notes: string | null;
@@ -1354,6 +1390,9 @@ export interface TrustParty {
   display_name: string;
   name: string | null;
   abn: string | null;
+  /** Derived, never stored: a corporate trustee's ACN, off its linked entity or
+   *  read from its ABN. Null for individual, partnership and class parties. */
+  acn: string | null;
   ownership_percentage: number | null;
   notes: string | null;
   created_at: string;

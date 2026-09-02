@@ -78,19 +78,29 @@ def application_sub_type(app: LoanApplication) -> Optional[str]:
     return None
 
 
-def application_vehicle_details(app: LoanApplication) -> dict:
-    """The asset block a vehicle/equipment application recorded, or {}.
+def application_asset_details(app: LoanApplication) -> dict:
+    """The asset block an asset-finance application recorded, or {}.
 
-    Lives under lend_extra_data.loan_type_details.vehicle_details — keys:
-    type, make, model, year, vin, condition, price, deposit, loan_term."""
+    A vehicle sub-type writes lend_extra_data.loan_type_details.vehicle_details
+    (type, make, model, year, vin, condition, price, deposit, loan_term); an
+    equipment one writes asset_details (equipment_type, description, condition,
+    price, deposit, vendor_type). They are merged into one block — an
+    application only ever fills one of them, and the callers want "the asset"
+    rather than "the asset, if it happens to be a car". Blank values are
+    dropped so a skipped field in one block can't mask an answer in the other.
+    """
     if not app.lend_extra_data:
         return {}
     try:
         details = json.loads(app.lend_extra_data).get("loan_type_details") or {}
     except (ValueError, AttributeError):
         return {}
-    entry = details.get("vehicle_details")
-    return entry if isinstance(entry, dict) else {}
+    merged: dict = {}
+    for key in ("asset_details", "vehicle_details"):
+        entry = details.get(key)
+        if isinstance(entry, dict):
+            merged.update({k: v for k, v in entry.items() if v not in (None, "")})
+    return merged
 
 
 def application_loan_category(app: LoanApplication) -> Optional[str]:

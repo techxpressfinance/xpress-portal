@@ -4,14 +4,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../hooks/useConfirm';
-import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameSearchResults, Breadcrumbs, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES } from '../../lib/constants';
+import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
-import { useAbrLookup } from '../../hooks/useAbrLookup';
+import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
+import { abnValidationError, acnFromAbn, acnValidationError, formatAcn } from '../../lib/acn';
 import type { EntityType, OrganizationDetail, OrganizationContactLite, TrustType } from '../../types';
 
 interface EditForm {
@@ -19,6 +20,7 @@ interface EditForm {
   entity_type: EntityType | '';
   trust_type: TrustType | '';
   abn: string;
+  acn: string;
   industry: string;
   address: string;
   notes: string;
@@ -37,14 +39,33 @@ function EditCompanyModal({ company, onClose, onSaved }: {
     entity_type: company.entity_type ?? '',
     trust_type: company.trust_type ?? '',
     abn: company.abn ?? '',
+    acn: company.acn ?? '',
     industry: company.industry ?? '',
     address: company.address ?? '',
     notes: company.notes ?? '',
   });
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
+  // Only search once the name is actually being edited and no ABN is set — otherwise
+  // opening the modal on a saved company would immediately pop a list of matches.
+  const [abrDismissedFor, setAbrDismissedFor] = useState('');
+  const nameEdited = form.name.trim() !== (company.name || '').trim();
+  const abrNames = useAbrNameSearch(!nameEdited || form.abn.trim() ? '' : form.name);
+  const showAbrNames = abrNames.enabled && abrDismissedFor !== form.name.trim();
 
   const isTrust = form.entity_type === 'trust';
+  // An ACN only exists for companies; keep it visible if one was already captured.
+  // On a trust the field is still offered, because the ACN a broker has to hand is
+  // the corporate trustee's — the trust itself never has one.
+  const showAcn = hasAcn(form.entity_type) || isTrust || !!form.acn.trim();
+
+  // ASIC has no per-record API to confirm these against, so the check digits and
+  // the ABN/ACN relationship are the whole of what we can verify. Catching a
+  // transposition here beats discovering it on a lender's contract.
+  const abnError = abnValidationError(form.abn);
+  const acnError = acnValidationError(form.acn, form.abn, form.entity_type || null);
+  // A company's ABN ends in its ACN, so a blank ACN can be filled from the ABN.
+  const derivedAcn = hasAcn(form.entity_type) && !form.acn.trim() ? acnFromAbn(form.abn) : null;
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -61,6 +82,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
         entity_type: form.entity_type || null,
         trust_type: isTrust ? form.trust_type || null : null,
         abn: form.abn.trim() || null,
+        acn: showAcn ? form.acn.trim() || null : null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
         notes: form.notes.trim() || null,
@@ -79,6 +101,9 @@ function EditCompanyModal({ company, onClose, onSaved }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    // The backend rejects these too; stopping here keeps the inline message on
+    // the offending field rather than replacing it with a toast.
+    if (abnError || acnError) return;
     // Re-confirm whenever this save would leave a trust without an ABN.
     if (isTrust && !form.abn.trim() && !company.no_abn_confirmed) {
       setConfirmingNoAbn(true);
@@ -99,9 +124,21 @@ function EditCompanyModal({ company, onClose, onSaved }: {
       <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
         <h3 className="text-[17px] font-semibold text-foreground mb-4">Edit {isTrust ? 'Trust' : 'Entity'}</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
             <Input ref={nameRef} required {...field('name')} />
+            {showAbrNames && (
+              <AbrNameSearchResults
+                matches={abrNames.matches}
+                loading={abrNames.loading}
+                searched={abrNames.searched}
+                onSelect={(r) => {
+                  setForm(f => ({ ...f, name: r.name, abn: r.abn, acn: r.acn || f.acn }));
+                  setAbrDismissedFor(r.name.trim());
+                }}
+                onDismiss={() => setAbrDismissedFor(form.name.trim())}
+              />
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -127,8 +164,28 @@ function EditCompanyModal({ company, onClose, onSaved }: {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">ABN{isTrust ? ' (optional for a trust)' : ''}</label>
-              <Input placeholder="12 345 678 901" {...field('abn')} />
+              <Input placeholder="12 345 678 901" error={abnError || undefined} {...field('abn')} />
             </div>
+            {showAcn && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">{isTrust ? 'Trustee ACN' : 'ACN'}</label>
+                <Input placeholder="123 456 789" error={acnError || undefined} {...field('acn')} />
+                {isTrust && !acnError && (
+                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                    A trust has no ACN of its own — record its corporate trustee's here.
+                  </p>
+                )}
+                {derivedAcn && (
+                  <button
+                    type="button"
+                    className="mt-1.5 text-[12px] font-medium text-primary hover:underline"
+                    onClick={() => setForm(f => ({ ...f, acn: derivedAcn }))}
+                  >
+                    Use {formatAcn(derivedAcn)} from the ABN
+                  </button>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Industry</label>
               <Input {...field('industry')} />
@@ -138,7 +195,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
             <AbrResultCard
               record={abr.record}
               loading={abr.loading}
-              onApply={(r) => setForm(f => ({ ...f, name: r.name, abn: r.abn }))}
+              onApply={(r) => setForm(f => ({ ...f, name: r.name, abn: r.abn, acn: r.acn || f.acn }))}
             />
           )}
           <div>
@@ -151,7 +208,7 @@ function EditCompanyModal({ company, onClose, onSaved }: {
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" variant="primary" size="md" loading={saving}>Save Changes</Button>
+            <Button type="submit" variant="primary" size="md" loading={saving} disabled={!!abnError || !!acnError}>Save Changes</Button>
           </div>
         </form>
       </div>
@@ -399,6 +456,12 @@ export default function CompanyDetail() {
                 )}
               </dd>
             </div>
+            {(company.acn || hasAcn(company.entity_type)) && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{isTrust ? 'Trustee ACN' : 'ACN'}</dt>
+                <dd className="text-right tabular-nums">{company.acn ? formatAcn(company.acn) : '—'}</dd>
+              </div>
+            )}
             <div className="flex justify-between"><dt className="text-muted-foreground">Industry</dt><dd>{company.industry || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Address</dt><dd className="text-right">{company.address || '—'}</dd></div>
           </dl>

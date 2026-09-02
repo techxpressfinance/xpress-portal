@@ -77,6 +77,7 @@ Base.metadata.create_all(bind=engine)
 
 # Idempotent migrations for columns added after initial create_all
 _MIGRATIONS = [
+    ("organizations", "acn", "VARCHAR(20)"),
     ("arrears_records", "vin", "VARCHAR(50)"),
     ("kanban_columns", "stage_key", "VARCHAR(60)"),
     ("kanban_columns", "loan_category", "VARCHAR(20)"),
@@ -303,6 +304,26 @@ _MIGRATIONS = [
     # Links a checklist item back to the ApprovalCondition it mirrors, for
     # two-way sync between a broker's task and the application's approval panel
     ("checklist_items", "approval_condition_id", "VARCHAR(36) REFERENCES approval_conditions(id)"),
+    # The desk's "Tax Invoice Request" sheet: who it is addressed to at the
+    # dealership, the Sold To / Delivery To parties, the full identity of the
+    # goods, and the trade-in/payout legs of the cost build-up
+    ("tax_invoices", "attention", "VARCHAR(200)"),
+    ("tax_invoices", "fax_number", "VARCHAR(40)"),
+    ("tax_invoices", "reply_to_email", "VARCHAR(200)"),
+    ("tax_invoices", "buyer_acn", "VARCHAR(20)"),
+    ("tax_invoices", "delivery_same_as_buyer", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    ("tax_invoices", "delivery_name", "VARCHAR(255)"),
+    ("tax_invoices", "delivery_abn", "VARCHAR(20)"),
+    ("tax_invoices", "delivery_acn", "VARCHAR(20)"),
+    ("tax_invoices", "delivery_address", "VARCHAR(500)"),
+    ("tax_invoices", "asset_condition", "VARCHAR(10)"),
+    ("tax_invoices", "asset_engine_number", "VARCHAR(60)"),
+    ("tax_invoices", "asset_build_date", "VARCHAR(30)"),
+    ("tax_invoices", "asset_compliance_date", "VARCHAR(30)"),
+    ("tax_invoices", "asset_colour", "VARCHAR(40)"),
+    ("tax_invoices", "asset_registration_expiry", "VARCHAR(30)"),
+    ("tax_invoices", "trade_in_value", "NUMERIC(12, 2)"),
+    ("tax_invoices", "payout_amount", "NUMERIC(12, 2)"),
 ]
 
 _logger = logging.getLogger(__name__)

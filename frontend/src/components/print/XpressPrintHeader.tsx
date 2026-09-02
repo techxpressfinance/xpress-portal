@@ -11,21 +11,22 @@ const SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-
 
 /**
  * Xpress masthead, matching the quote sheet: navy brand strip over a white
- * title block. Prints once at the top of the document — the per-page navy band
- * at the foot is painted onto the PDF afterwards by paintXpressFooter.
+ * title block. Prints once at the top of any exported document — the arrears
+ * file, a tax invoice request — and the per-page navy band at the foot is
+ * painted onto the PDF afterwards by paintXpressFooter.
  *
  * The dot grid is a repeated inline-SVG data URI rather than a CSS gradient,
  * which is what html2canvas renders reliably.
  */
-export default function ArrearsPrintHeader({
+export default function XpressPrintHeader({
   title,
   subtitle,
-  eyebrow = 'Collections · Arrears File',
+  eyebrow,
 }: {
   title: string;
   subtitle?: string;
   /** The small gold label above the title — names what kind of export it is. */
-  eyebrow?: string;
+  eyebrow: string;
 }) {
   const exported = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
   return (
