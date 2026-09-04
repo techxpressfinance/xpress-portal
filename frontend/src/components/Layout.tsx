@@ -129,12 +129,12 @@ export default function Layout() {
         {/* Logo. Height-capped with w-auto rather than w-full: a tenant logo can
             be any aspect ratio, and letting width drive would stretch a tall
             mark past the row. max-w-full is what shrinks it in the 72px rail. */}
-        <div className="flex h-24 shrink-0 items-center justify-center border-b border-[var(--led-line)] px-4">
+        <div className="flex h-28 shrink-0 items-center justify-center border-b border-[var(--led-line)] px-2">
           <Link to="/" className="flex h-full w-full items-center justify-center" onClick={() => setSidebarOpen(false)}>
             <img
               src={tenant?.logo_url || defaultLogo}
               alt={brandName}
-              className={`${collapsed ? 'max-h-11' : 'max-h-[68px]'} w-auto max-w-full object-contain object-center`}
+              className={`${collapsed ? 'max-h-14' : 'max-h-[88px]'} w-full h-auto max-w-[220px] object-contain object-center scale-[1.15]`}
             />
           </Link>
         </div>
@@ -458,14 +458,14 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden relative z-[1]">
         {/* Mobile header */}
-        <header className="flex h-16 shrink-0 items-center justify-center border-b border-[var(--led-line)] bg-[var(--led-bg-2)] px-4 lg:hidden relative">
+        <header className="flex h-[72px] shrink-0 items-center justify-center border-b border-[var(--led-line)] bg-[var(--led-bg-2)] px-4 lg:hidden relative">
           <button
             onClick={() => setSidebarOpen(true)}
             className="absolute left-4 rounded-xl p-2 text-muted-foreground hover:bg-secondary transition-colors"
           >
             <Bars3Icon className="h-5 w-5" />
           </button>
-          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="h-12 w-auto max-w-[180px] object-contain object-center" />
+          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="h-14 w-auto max-w-[200px] object-contain object-center scale-[1.1]" />
         </header>
 
         {/* Page content */}
