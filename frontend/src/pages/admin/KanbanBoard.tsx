@@ -13,18 +13,20 @@ const MY_FOCUS = 'mine';
 import { ConfirmDialog, EmptyState } from '../../components/ui';
 import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanColumn, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
 
-// ── Design tokens (map column color value → OKLCH for the Ledger dot) ──
+// ── Design tokens (map column color value → the theme token for the dot) ──
+// These were fixed OKLCH literals, so a stage dot kept its light-mode colour
+// on a dark board. Pointing them at the tokens lets them flip with the theme.
 
-const COLOR_TO_OKLCH: Record<string, string> = {
-  'muted-foreground': 'oklch(0.62 0.02 0)',
-  'primary': 'oklch(0.55 0.22 268)',
-  'chart-4': 'oklch(0.72 0.15 65)',
-  'success': 'oklch(0.62 0.15 155)',
-  'destructive': 'oklch(0.58 0.20 20)',
-  'chart-2': 'oklch(0.62 0.14 210)',
-  'chart-5': 'oklch(0.55 0.19 300)',
+const COLOR_TO_TOKEN: Record<string, string> = {
+  'muted-foreground': 'var(--color-muted-foreground)',
+  'primary': 'var(--color-primary)',
+  'chart-4': 'var(--color-chart-4)',
+  'success': 'var(--color-success)',
+  'destructive': 'var(--color-destructive)',
+  'chart-2': 'var(--color-chart-2)',
+  'chart-5': 'var(--color-chart-5)',
 };
-const colorDot = (key: string | null | undefined) => COLOR_TO_OKLCH[key || 'muted-foreground'] || COLOR_TO_OKLCH['muted-foreground'];
+const colorDot = (key: string | null | undefined) => COLOR_TO_TOKEN[key || 'muted-foreground'] || COLOR_TO_TOKEN['muted-foreground'];
 
 // ── Icons (minimal set) ──
 
@@ -291,7 +293,7 @@ function KanbanCard({
               {brokers.length > 3 && (
                 <span
                   className="led-avatar led-avatar-sm"
-                  style={{ background: 'var(--led-bg-2)', color: 'var(--led-muted)' }}
+                  style={{ background: 'var(--led-surface-2)', color: 'var(--led-muted)' }}
                 >
                   +{brokers.length - 3}
                 </span>
@@ -1696,7 +1698,7 @@ export default function KanbanBoardPage() {
                     key={gate.id}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
-                      borderRadius: 8, background: 'var(--led-bg-2)',
+                      borderRadius: 8, background: 'var(--led-surface-2)',
                     }}
                   >
                     <span className="led-chip" style={{ height: 18, fontSize: 10 }}>
@@ -1751,7 +1753,7 @@ export default function KanbanBoardPage() {
                 {editingColumn.notifications.map((rule) => (
                   <div
                     key={rule.id}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 8px', borderRadius: 8, background: 'var(--led-bg-2)' }}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 8px', borderRadius: 8, background: 'var(--led-surface-2)' }}
                   >
                     <span className="led-chip" style={{ height: 18, fontSize: 10, textTransform: 'capitalize' }}>
                       {rule.audience} · {rule.channel}

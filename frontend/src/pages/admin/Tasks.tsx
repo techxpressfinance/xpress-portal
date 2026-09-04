@@ -43,7 +43,7 @@ function CheckCircle({ priority, completed, toggling, onClick }: {
     ? 'border-orange-400 hover:bg-orange-400/10'
     : priority === 'medium'
     ? 'border-sky-400 hover:bg-sky-400/10'
-    : 'border-[var(--led-line-strong)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5';
+    : 'border-[var(--led-line-2)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5';
 
   return (
     <button
@@ -347,7 +347,7 @@ export default function Tasks() {
           {showAddForm ? (
             <form
               onSubmit={handleQuickAdd}
-              className="border border-[var(--led-line-strong)] rounded-xl p-4 space-y-3 bg-[var(--led-surface)]"
+              className="border border-[var(--led-line-2)] rounded-xl p-4 space-y-3 bg-[var(--led-surface)]"
             >
               <input
                 ref={addInputRef}
@@ -374,12 +374,12 @@ export default function Tasks() {
                   onChange={(e) => setNewDueTime(e.target.value)}
                   disabled={!newDueDate}
                   aria-label="Due time"
-                  className="text-[12px] h-8 rounded-lg border border-[var(--led-line-strong)] bg-transparent px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)] disabled:opacity-40"
+                  className="text-[12px] h-8 rounded-lg border border-[var(--led-line-2)] bg-transparent px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)] disabled:opacity-40"
                 />
                 <select
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
-                  className="text-[12px] rounded-lg border border-[var(--led-line-strong)] bg-transparent px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)]"
+                  className="text-[12px] rounded-lg border border-[var(--led-line-2)] bg-transparent px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--led-accent)]"
                 >
                   <option value="">Assignee</option>
                   {staff.map((u) => (
@@ -392,7 +392,7 @@ export default function Tasks() {
                   className={`text-[12px] font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
                     newUrgent
                       ? 'text-red-500 bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-900'
-                      : 'text-[var(--led-muted)] border-[var(--led-line-strong)] hover:text-foreground'
+                      : 'text-[var(--led-muted)] border-[var(--led-line-2)] hover:text-foreground'
                   }`}
                 >
                   {newUrgent ? '● Urgent' : 'Priority'}

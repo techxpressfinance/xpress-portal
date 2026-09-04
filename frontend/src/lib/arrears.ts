@@ -19,7 +19,7 @@ export const ARREARS_BUCKETS: {
 }[] = [
   { value: '0_29', label: '0–29 days', short: '0–29', className: 'led-chip-success', color: 'var(--led-success)' },
   { value: '30_59', label: '30–59 days', short: '30–59', className: 'led-chip-info', color: 'var(--led-info)' },
-  { value: '60_89', label: '60–89 days', short: '60–89', className: 'led-chip-accent', color: 'var(--led-accent-ink)' },
+  { value: '60_89', label: '60–89 days', short: '60–89', className: 'led-chip-accent', color: 'var(--led-accent)' },
   { value: '90_119', label: '90–119 days', short: '90–119', className: 'led-chip-warning', color: 'var(--led-warning)' },
   { value: '120_180', label: '120–180 days', short: '120–180', className: 'led-chip-violet', color: 'var(--led-violet)' },
   { value: 'over_180', label: '180+ days', short: '180+', className: 'led-chip-danger', color: 'var(--led-danger)' },

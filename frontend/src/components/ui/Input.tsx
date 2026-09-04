@@ -18,7 +18,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div>
         {label && (
-          <label htmlFor={inputId} className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+          <label htmlFor={inputId} className="mb-1.5 block text-[13px] font-medium text-[var(--led-ink-2)]">{label}</label>
         )}
         {hasEndAdornment ? (
           <div className="relative">
@@ -36,7 +36,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               <button
                 type="button"
                 onClick={() => setPasswordVisible((visible) => !visible)}
-                className="absolute inset-y-1 right-1 z-10 flex w-10 items-center justify-center rounded-md border border-[var(--led-line)] bg-[var(--led-surface)] text-[12px] font-semibold text-[var(--led-accent-ink)] shadow-sm transition-colors hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--led-accent)]"
+                className="absolute inset-y-1 right-1 z-10 flex w-10 items-center justify-center rounded-md border border-[var(--led-line)] bg-[var(--led-surface)] text-[12px] font-semibold text-[var(--led-accent)] shadow-sm transition-colors hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--led-accent)]"
                 aria-label={passwordVisible ? 'Hide password' : 'Show password'}
                 aria-pressed={passwordVisible}
               >
@@ -55,7 +55,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             {...props}
           />
         )}
-        {error && <p id={errorId} role="alert" className="mt-1.5 text-[12px] text-destructive font-medium">{error}</p>}
+        {error && <p id={errorId} role="alert" className="mt-1.5 text-[12px] font-medium text-[var(--led-danger)]">{error}</p>}
       </div>
     );
   }

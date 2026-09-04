@@ -109,7 +109,7 @@ export default function DeletedApplications() {
             <p className="text-sm text-[var(--led-muted)]">Soft-deleted applications and clients.</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-[var(--led-bg-2)] p-1 rounded-lg">
+        <div className="flex gap-1 bg-[var(--led-surface-2)] p-1 rounded-lg">
           {tabButton('applications', 'Applications')}
           {tabButton('clients', 'Clients')}
         </div>
@@ -120,7 +120,7 @@ export default function DeletedApplications() {
           <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={6} widths={[150, 90, 70, 110, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line-2)]" />
+                <TableSkeleton rows={6} widths={[150, 90, 70, 110, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line)]" />
               </tbody>
             </table>
           </div>
@@ -142,7 +142,7 @@ export default function DeletedApplications() {
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--led-line-2)]">
+              <tbody className="divide-y divide-[var(--led-line)]">
                 {apps.map(app => (
                   <tr key={app.id} className="hover:bg-[var(--led-surface-2)] transition-colors">
                     <td className="px-4 py-3">
@@ -195,7 +195,7 @@ export default function DeletedApplications() {
           <div className="bg-[var(--led-surface)] border border-[var(--led-line)] rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={6} widths={[160, 180, 60, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line-2)]" />
+                <TableSkeleton rows={6} widths={[160, 180, 60, 80, 70]} cellClassName="px-4 py-3" rowClassName="border-b border-[var(--led-line)]" />
               </tbody>
             </table>
           </div>
@@ -216,12 +216,12 @@ export default function DeletedApplications() {
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--led-line-2)]">
+              <tbody className="divide-y divide-[var(--led-line)]">
                 {clients.map(client => (
                   <tr key={client.id} className="hover:bg-[var(--led-surface-2)] transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-[var(--led-bg-2)] flex items-center justify-center text-[var(--led-muted)]">
+                        <div className="h-8 w-8 rounded-full bg-[var(--led-neutral-tint)] flex items-center justify-center text-[var(--led-muted)]">
                           <Icon name="user" size={14} />
                         </div>
                         <div className="font-medium text-[var(--led-ink)]">

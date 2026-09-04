@@ -288,7 +288,7 @@ export default function ReferrerDashboard() {
                           <div className="min-w-0">
                             <Badge value={status} className="truncate" />
                           </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-neutral-tint)]">
                             <div className="h-full rounded-full bg-[var(--led-accent)]" style={{ width: `${pct}%` }} />
                           </div>
                           <p className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{count}</p>
@@ -337,7 +337,7 @@ export default function ReferrerDashboard() {
                               </div>
                             </div>
                           </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                          <div className="h-2 overflow-hidden rounded-full bg-[var(--led-neutral-tint)]">
                             <div
                               className="h-full rounded-full bg-[var(--led-accent)]"
                               style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
@@ -602,7 +602,7 @@ export default function ReferrerDashboard() {
                 <Link
                   key={link.to}
                   to={link.to}
-                  className="flex items-center gap-3 rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3.5 text-[14px] font-medium text-[var(--led-ink)] transition-colors hover:bg-[var(--led-bg-2)]"
+                  className="flex items-center gap-3 rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3.5 text-[14px] font-medium text-[var(--led-ink)] transition-colors hover:bg-[var(--led-neutral-tint)]"
                 >
                   <span className="text-[var(--led-muted)]">{link.icon}</span>
                   {link.label}
@@ -618,7 +618,7 @@ export default function ReferrerDashboard() {
       {selectedAppId && selectedApp && (
         <>
           <div className="fixed inset-0 z-40 bg-black/28 transition-opacity" onClick={() => setSelectedAppId(null)} />
-          <div className="fixed inset-y-6 right-6 z-50 flex w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-[var(--led-line-strong)] bg-[var(--led-surface)] shadow-[var(--led-shadow-lg)]">
+          <div className="fixed inset-y-6 right-6 z-50 flex w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-[var(--led-line-2)] bg-[var(--led-surface)] shadow-[var(--led-shadow-lg)]">
             <div className="flex items-center justify-between border-b border-[var(--led-line)] p-6">
               <div className="flex items-center gap-3">
                 <Badge value={selectedApp.status} className="py-1 px-3" />

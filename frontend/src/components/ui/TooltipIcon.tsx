@@ -38,7 +38,7 @@ export function TooltipIcon({ text, side = 'right', delay = 200 }: TooltipIconPr
     <div className="relative inline-flex" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <button
         type="button"
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[10px] font-bold text-[var(--led-accent-ink)] hover:bg-[var(--led-accent)] hover:text-white transition-colors"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[10px] font-bold text-[var(--led-accent)] hover:bg-[var(--led-accent)] hover:text-[var(--led-accent-ink)] transition-colors"
         title={text}
       >
         ?

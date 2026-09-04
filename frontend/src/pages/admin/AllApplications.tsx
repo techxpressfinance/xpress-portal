@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
 import { useAuth } from '../../hooks/useAuth';
-import { LOAN_CATEGORIES, STATUS_LABEL } from '../../lib/constants';
+import { LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
 import type { LoanApplication, ApplicationStatus, User } from '../../types';
 import { Skeleton, EmptyState } from '../../components/ui';
@@ -48,18 +48,23 @@ function Icon({ name, size = 14, strokeWidth = 1.75, className = '' }: { name: s
   );
 }
 
-const LOAN_TYPE_ICON: Record<string, string> = { business: 'briefcase', vehicle: 'car', home: 'home', personal: 'user' };
+const LOAN_TYPE_ICON: Record<string, string> = {
+  business: 'briefcase', business_loan: 'briefcase', commercial_property: 'briefcase', equipment_finance: 'briefcase',
+  vehicle: 'car', home: 'home', home_loan: 'home', personal: 'user',
+};
+// Filter chips offer the four legacy groupings; row labels must cover every
+// LoanType the API can return, so they read from the shared map.
 const LOAN_TYPE_LABEL: Record<string, string> = { business: 'Business', vehicle: 'Vehicle', home: 'Home', personal: 'Personal' };
 
 const STATUS_CHIP: Record<ApplicationStatus, { cls: string; dot: string }> = {
-  draft: { cls: '', dot: 'oklch(0.62 0.02 0)' },
-  application_received: { cls: 'led-chip-info', dot: 'oklch(0.62 0.12 230)' },
-  application_assessed: { cls: 'led-chip-violet', dot: 'oklch(0.55 0.19 300)' },
-  submitted: { cls: 'led-chip-accent', dot: 'oklch(0.55 0.22 268)' },
-  approval: { cls: 'led-chip-warning', dot: 'oklch(0.72 0.15 65)' },
-  settled: { cls: 'led-chip-success', dot: 'oklch(0.62 0.15 155)' },
-  rejected: { cls: 'led-chip-danger', dot: 'oklch(0.58 0.20 20)' },
-  not_proceeding: { cls: '', dot: 'oklch(0.50 0.08 40)' },
+  draft: { cls: '', dot: 'var(--led-muted)' },
+  application_received: { cls: 'led-chip-info', dot: 'var(--led-info)' },
+  application_assessed: { cls: 'led-chip-violet', dot: 'var(--led-violet)' },
+  submitted: { cls: 'led-chip-accent', dot: 'var(--led-accent)' },
+  approval: { cls: 'led-chip-warning', dot: 'var(--led-warning)' },
+  settled: { cls: 'led-chip-success', dot: 'var(--led-success)' },
+  rejected: { cls: 'led-chip-danger', dot: 'var(--led-danger)' },
+  not_proceeding: { cls: '', dot: 'var(--led-muted)' },
 };
 
 // ── Avatar ──
@@ -250,7 +255,7 @@ export default function AllApplications() {
   return (
     <div className="ledger-theme led-fade-up" style={{ minHeight: '100%', background: 'var(--led-bg)', margin: -24, padding: 0 }}>
       {/* Header */}
-      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20 }}>
+      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20, borderBottom: '1px solid var(--led-line)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, paddingBottom: 14 }}>
           <div style={{ minWidth: 0 }}>
             <h1 className="led-h-page" style={{ margin: 0 }}>Applications</h1>
@@ -302,10 +307,9 @@ export default function AllApplications() {
             </button>
           </div>
         </div>
-      </header>
 
       {/* Filter bar */}
-      <div style={{ padding: '40px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div className="led-search">
           <Icon name="search" size={13} />
           <input
@@ -401,10 +405,11 @@ export default function AllApplications() {
             <Icon name="close" size={12} /> Clear
           </button>
         )}
-      </div>
+        </div>
+      </header>
 
       {/* Table */}
-      <div style={{ padding: '0 24px 32px' }}>
+      <div style={{ padding: '16px 24px 32px' }}>
         <div className="led-card">
           <div className="led-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             <table className="led-table">
@@ -451,7 +456,7 @@ export default function AllApplications() {
                 ) : sorted.map((app) => {
                   const shortId = app.id.replace(/-/g, '').slice(-6).toUpperCase();
                   const ltIcon = LOAN_TYPE_ICON[app.loan_type] || 'user';
-                  const ltLabel = LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
+                  const ltLabel = LOAN_TYPE_LABELS[app.loan_type] || LOAN_TYPE_LABEL[app.loan_type] || app.loan_type;
                   const chip = STATUS_CHIP[app.status] || STATUS_CHIP.draft;
                   const firstBroker = app.assigned_brokers?.[0];
                   const isDirectLead = app.user_role === 'referrer' || app.user_role === 'broker' || app.user_role === 'admin';
@@ -507,8 +512,8 @@ export default function AllApplications() {
                         </span>
                       </td>
                       <td>
-                        <span className={`led-chip ${chip.cls}`} style={{ height: 22 }}>
-                          <span className="led-chip-dot" style={{ background: chip.dot }} />
+                        <span className={`led-chip ${chip.cls}`}>
+                          <span className="led-chip-dot" />
                           {STATUS_LABEL[app.status] || app.status}
                         </span>
                       </td>
@@ -531,7 +536,7 @@ export default function AllApplications() {
                       </td>
                       <td>
                         {referrerName ? (
-                          <span style={{ fontSize: 12.5, color: 'var(--led-ink-2)' }}>{referrerName}</span>
+                          <span title={referrerName} style={{ display: 'block', maxWidth: 140, fontSize: 12.5, color: 'var(--led-ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referrerName}</span>
                         ) : (
                           <span style={{ fontSize: 12, color: 'var(--led-muted)' }}>None</span>
                         )}
@@ -619,8 +624,8 @@ export default function AllApplications() {
             onClick={() => setRowMenu(null)}
           />
           <div
-            className="led-card"
-            style={{ position: 'fixed', top: rowMenu.top, right: rowMenu.right, zIndex: 61, padding: 4, minWidth: 168 }}
+            className="led-popover"
+            style={{ position: 'fixed', top: rowMenu.top, right: rowMenu.right, zIndex: 61, minWidth: 168 }}
           >
             <button
               type="button"

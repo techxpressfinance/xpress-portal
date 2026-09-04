@@ -61,7 +61,7 @@ export default function ClientDashboard() {
           {myBroker && (
             <Link
               to="/messages"
-              className="group inline-flex items-center gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3 transition-colors hover:bg-[var(--led-bg-2)]"
+              className="group inline-flex items-center gap-3 rounded-[16px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3 transition-colors hover:bg-[var(--led-neutral-tint)]"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--led-accent)] text-[14px] font-semibold text-[var(--led-accent-ink)]">
                 {brokerInitials}
@@ -186,7 +186,7 @@ export default function ClientDashboard() {
                 <Link
                   key={link.to}
                   to={link.to}
-                  className="flex items-center gap-3 rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3.5 text-[14px] font-medium text-[var(--led-ink)] transition-colors hover:bg-[var(--led-bg-2)]"
+                  className="flex items-center gap-3 rounded-[14px] border border-[var(--led-line)] bg-[var(--led-surface-2)] px-4 py-3.5 text-[14px] font-medium text-[var(--led-ink)] transition-colors hover:bg-[var(--led-neutral-tint)]"
                 >
                   <span className="text-[var(--led-muted)]">{link.icon}</span>
                   {link.label}
