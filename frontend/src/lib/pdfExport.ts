@@ -25,27 +25,130 @@ function pdfWorker(): PdfWorker {
   return (factory as () => PdfWorker)();
 }
 
-/**
- * html2canvas (used by html2pdf) crashes on modern CSS colors like oklab/oklch,
- * which Tailwind 4 emits throughout. Neutralise them on the clone before the
- * PDF engine parses it.
- */
-function stripModernColors(root: HTMLElement): void {
+const MODERN_COLOR_RE = /(oklch|oklab|lab\(|lch\(|color-mix|color\()/i;
+
+const PDF_VAR_FALLBACKS: Record<string, string> = {
+  '--led-bg': '#ffffff',
+  '--led-bg-2': '#f1f5f9',
+  '--led-surface': '#ffffff',
+  '--led-surface-2': '#f8fafc',
+  '--led-ink': '#0f172a',
+  '--led-ink-2': '#334155',
+  '--led-muted': '#64748b',
+  '--led-muted-2': '#64748b',
+  '--led-line': '#e2e8f0',
+  '--led-line-2': '#cbd5e1',
+  '--led-line-strong': '#94a3b8',
+  '--led-accent': '#1e3a5f',
+  '--led-accent-hover': '#162a47',
+  '--led-accent-tint': '#eff6ff',
+  '--led-accent-tint-2': '#dbeafe',
+  '--led-accent-ink': '#ffffff',
+  '--led-success': '#15803d',
+  '--led-success-tint': '#dcfce7',
+  '--led-warning': '#a16207',
+  '--led-warning-tint': '#fef9c3',
+  '--led-danger': '#dc2626',
+  '--led-danger-tint': '#fee2e2',
+  '--led-info': '#2563eb',
+  '--led-info-tint': '#dbeafe',
+  '--led-violet': '#7c3aed',
+  '--led-violet-tint': '#ede9fe',
+  '--led-neutral-tint': '#f1f5f9',
+  '--led-shadow-sm': '0 1px 2px rgba(0,0,0,0.06)',
+  '--led-shadow-md': '0 2px 4px rgba(0,0,0,0.05), 0 8px 20px rgba(0,0,0,0.06)',
+  '--led-shadow-lg': '0 4px 8px rgba(0,0,0,0.06), 0 18px 40px rgba(0,0,0,0.12)',
+  '--background': '#ffffff',
+  '--foreground': '#0f172a',
+  '--card': '#ffffff',
+  '--card-foreground': '#0f172a',
+  '--muted': '#f1f5f9',
+  '--muted-foreground': '#64748b',
+  '--border': '#e2e8f0',
+  '--input': '#e2e8f0',
+  '--ring': '#1e3a5f',
+  '--primary': '#1e3a5f',
+  '--primary-foreground': '#ffffff',
+  '--secondary': '#f1f5f9',
+  '--secondary-foreground': '#0f172a',
+  '--destructive': '#dc2626',
+  '--destructive-foreground': '#ffffff',
+  '--success': '#15803d',
+  '--success-foreground': '#ffffff',
+  '--chart-1': '#2563eb',
+  '--chart-2': '#0891b2',
+  '--chart-3': '#c026d3',
+  '--chart-4': '#ca8a04',
+  '--chart-5': '#7c3aed',
+};
+
+function installGlobalFallback(): HTMLStyleElement {
+  const style = document.createElement('style');
+  style.setAttribute('data-pdf-global-fallback', '');
+  const vars = Object.entries(PDF_VAR_FALLBACKS).map(([k, v]) => `${k}: ${v} !important;`).join('');
+  style.textContent = `:root, .ledger-theme, .pdf-sanitize, .pdf-sanitize * { ${vars} scrollbar-color: auto !important; }`;
+  document.head.appendChild(style);
+  return style;
+}
+
+function sanitizeTree(root: HTMLElement, win: Window): void {
   const elements = [root, ...Array.from(root.querySelectorAll('*'))] as HTMLElement[];
   elements.forEach((element) => {
-    const computed = window.getComputedStyle(element);
+    const computed = win.getComputedStyle(element);
     const propsToOverride: { name: string; isShadow: boolean }[] = [];
     for (let i = 0; i < computed.length; i++) {
       const propName = computed[i];
       const val = computed.getPropertyValue(propName);
-      if (val && (val.includes('oklab') || val.includes('oklch'))) {
+      if (val && MODERN_COLOR_RE.test(val)) {
         propsToOverride.push({ name: propName, isShadow: propName.includes('shadow') });
       }
+    }
+    const boxShadow = computed.getPropertyValue('box-shadow');
+    if (boxShadow && MODERN_COLOR_RE.test(boxShadow) && !propsToOverride.some((p) => p.name === 'box-shadow')) {
+      propsToOverride.push({ name: 'box-shadow', isShadow: true });
     }
     propsToOverride.forEach(({ name, isShadow }) => {
       element.style.setProperty(name, isShadow ? 'none' : 'rgba(0, 0, 0, 0)', 'important');
     });
+    for (const [vk, vv] of Object.entries(PDF_VAR_FALLBACKS)) {
+      const cv = computed.getPropertyValue(vk);
+      if (cv && MODERN_COLOR_RE.test(cv)) element.style.setProperty(vk, vv, 'important');
+    }
   });
+}
+
+function stripModernColors(root: HTMLElement): void {
+  const fallbackStyle = document.createElement('style');
+  fallbackStyle.setAttribute('data-pdf-sanitize', '');
+  fallbackStyle.textContent = `.pdf-sanitize, .pdf-sanitize * { scrollbar-color: auto !important; }`;
+  root.classList.add('pdf-sanitize');
+  root.appendChild(fallbackStyle);
+  Object.entries(PDF_VAR_FALLBACKS).forEach(([k, v]) => root.style.setProperty(k, v, 'important'));
+  sanitizeTree(root, window);
+}
+
+function html2canvasOpts(win: Window) {
+  return {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    onclone: (clonedDoc: Document) => {
+      const cw = clonedDoc.defaultView ?? win;
+      const root = clonedDoc.body as unknown as HTMLElement;
+      if (root) {
+        const global = clonedDoc.createElement('style');
+        const vars = Object.entries(PDF_VAR_FALLBACKS).map(([k, v]) => `${k}: ${v} !important;`).join('');
+        global.textContent = `:root, .ledger-theme { ${vars} }`;
+        clonedDoc.head.appendChild(global);
+        sanitizeTree(root, cw);
+        clonedDoc.querySelectorAll('*').forEach((el) => {
+          const hEl = el as HTMLElement;
+          const cs = cw.getComputedStyle(hEl);
+          if (cs && MODERN_COLOR_RE.test(cs.getPropertyValue('box-shadow'))) hEl.style.setProperty('box-shadow', 'none', 'important');
+        });
+      }
+    },
+  };
 }
 
 /**
@@ -139,27 +242,19 @@ export async function downloadElementPdf(
     return;
   }
 
-  // Decode before cloning: the clone's images share the same (data) source, so
-  // they're ready by the time html2canvas reads them.
   await waitForImages(el);
-
+  const globalFallback = installGlobalFallback();
   const clone = el.cloneNode(true) as HTMLElement;
   (el.parentElement ?? document.body).appendChild(clone);
   try {
     stripModernColors(clone);
     await pdfWorker()
       .set({
-        // No side or top margins: the source is sized to A4_PRINT_WIDTH_PX (see
-        // lib/printPage), so the masthead can bleed to the paper edge as on the
-        // quote sheet and the print block owns its own inset. The bottom margin
-        // reserves room for the painted footer band.
         margin: [0, 0, 22, 0],
         filename,
-        // Only blocks explicitly marked .break-inside-avoid are protected — see
-        // the note in downloadQuoteSheetPdf on why 'avoid-all' leaves blank gaps.
         pagebreak: { mode: ['css', 'legacy'], avoid: '.break-inside-avoid' },
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: html2canvasOpts(window),
         jsPDF: { unit: 'mm', format: 'a4', orientation },
       })
       .from(clone)
@@ -167,8 +262,12 @@ export async function downloadElementPdf(
       .get('pdf')
       .then((pdf) => paintXpressFooter(pdf as PdfDoc))
       .save();
+  } catch (err) {
+    console.error('PDF export failed:', err);
+    throw err;
   } finally {
-    (el.parentElement ?? document.body).removeChild(clone);
+    globalFallback.remove();
+    if (clone.parentElement) clone.parentElement.removeChild(clone);
   }
 }
 
@@ -197,53 +296,26 @@ export async function downloadQuoteSheetPdf(
     ? [margin[0], margin[1], Math.max(margin[2], 22), margin[3]]
     : margin;
 
+  const globalFallback = installGlobalFallback();
   try {
     const clone = el.cloneNode(true) as HTMLElement;
-    // Append the clone directly next to the original element inside its invisible wrapper!
-    // This perfectly preserves all inherited CSS, bounds (794px), and viewport logic.
     if (el.parentElement) {
       el.parentElement.appendChild(clone);
     } else {
       document.body.appendChild(clone);
     }
 
-    // html2canvas (used by html2pdf) crashes on modern CSS colors like oklab/oklch.
-    // We sanitize the cloned DOM to replace any of these colors with a safe fallback
-    // before the PDF engine parses it.
-    const elements = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
-    elements.forEach((element) => {
-      const computed = window.getComputedStyle(element);
-      const propsToOverride: { name: string; isShadow: boolean }[] = [];
-      
-      for (let i = 0; i < computed.length; i++) {
-        const propName = computed[i];
-        const val = computed.getPropertyValue(propName);
-        if (val && (val.includes('oklab') || val.includes('oklch'))) {
-          propsToOverride.push({ name: propName, isShadow: propName.includes('shadow') });
-        }
-      }
-      
-      propsToOverride.forEach(({ name, isShadow }) => {
-        element.style.setProperty(name, isShadow ? 'none' : 'rgba(0, 0, 0, 0)', 'important');
-      });
-    });
+    await waitForImages(el);
+    stripModernColors(clone);
 
     try {
       await pdfWorker()
         .set({
           margin: effectiveMargin,
           filename,
-          // 'css' reads break-* properties; 'legacy' actively measures elements and
-          // inserts a break before any that would straddle a page boundary, honouring
-          // the `avoid` selector below. We intentionally DON'T use 'avoid-all': it
-          // forces every element to stay whole, so any block that doesn't fit in the
-          // space left on a page is pushed wholesale to the next one — leaving large
-          // blank gaps. Instead we only protect the blocks explicitly marked with
-          // `.break-inside-avoid` (term-card rows, callouts, footer), letting the rest
-          // of the content flow naturally to fill each page.
           pagebreak: { mode: ['css', 'legacy'], avoid: '.break-inside-avoid' },
           image: { type: 'jpeg', quality: 1.0 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
+          html2canvas: html2canvasOpts(window),
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         })
         .from(clone)
@@ -255,14 +327,12 @@ export async function downloadQuoteSheetPdf(
         })
         .save();
     } finally {
-      if (el.parentElement) {
-        el.parentElement.removeChild(clone);
-      } else {
-        document.body.removeChild(clone);
-      }
+      if (clone.parentElement) clone.parentElement.removeChild(clone);
     }
   } catch (err) {
     console.error('PDF export failed:', err);
     throw err;
+  } finally {
+    globalFallback.remove();
   }
 }
