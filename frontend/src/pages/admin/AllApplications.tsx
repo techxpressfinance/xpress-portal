@@ -253,17 +253,17 @@ export default function AllApplications() {
   );
 
   return (
-    <div className="ledger-theme led-fade-up" style={{ minHeight: '100%', background: 'var(--led-bg)', margin: -24, padding: 0 }}>
+    <div className="ledger-theme led-fade-up -m-4 sm:-m-6 lg:-m-10" style={{ minHeight: '100%', background: 'var(--led-bg)', padding: 0 }}>
       {/* Header */}
-      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)', position: 'sticky', top: 0, zIndex: 20, borderBottom: '1px solid var(--led-line)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, paddingBottom: 14 }}>
+      <header style={{ padding: '20px 24px 0', background: 'var(--led-bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingBottom: 14, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
             <h1 className="led-h-page" style={{ margin: 0 }}>Applications</h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--led-muted)' }}>
               <span className="led-mono led-tnum">{sorted.length}</span> of <span className="led-mono led-tnum">{total}</span> shown
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <div className="led-segment">
               <button
                 type="button"
@@ -409,10 +409,10 @@ export default function AllApplications() {
       </header>
 
       {/* Table */}
-      <div style={{ padding: '16px 24px 32px' }}>
-        <div className="led-card">
-          <div className="led-table-wrap" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            <table className="led-table">
+      <div style={{ padding: '16px 24px 32px', maxWidth: '100%', minWidth: 0 }}>
+        <div className="led-card" style={{ maxWidth: '100%', minWidth: 0, overflow: 'visible' }}>
+          <div className="led-table-wrap" style={{ overflowX: 'auto' }}>
+            <table className="led-table" style={{ minWidth: 1120 }}>
               <thead>
                 <tr>
                   <SortHead k="user_name">Applicant</SortHead>
