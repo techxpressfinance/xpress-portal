@@ -470,7 +470,7 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto w-full max-w-[1600px] min-w-0">
             <PageTransition>
               <Outlet />
             </PageTransition>
