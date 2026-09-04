@@ -150,7 +150,7 @@ export default function ClientServiceRequests() {
             {label}
             {count > 0 && (
               <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-semibold ${
-                tab === value ? 'bg-[var(--led-accent-tint)] text-[var(--led-accent-ink)]' : 'bg-[var(--led-line)] text-[var(--led-muted)]'
+                tab === value ? 'bg-[var(--led-accent-tint)] text-[var(--led-accent)]' : 'bg-[var(--led-line)] text-[var(--led-muted)]'
               }`}>
                 {count}
               </span>

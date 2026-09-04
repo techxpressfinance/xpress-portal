@@ -17,9 +17,9 @@ import {
 import { ArrowRightStartOnRectangleIcon, Bars3Icon, BuildingLibraryIcon, BuildingOfficeIcon, CalculatorIcon, ChartBarIcon, CheckCircleIcon, ClipboardDocumentListIcon, ClockIcon, CreditCardIcon, DocumentTextIcon, EnvelopeIcon, ExclamationTriangleIcon, LinkIcon, MagnifyingGlassIcon, MoonIcon, QuestionMarkCircleIcon, SunIcon, TrashIcon, UserCircleIcon, UserGroupIcon, UsersIcon } from '@heroicons/react/24/outline';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
-  `relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-md ${collapsed ? 'px-2' : 'px-3'} py-[7px] text-[13px] font-medium transition-colors duration-150 ${isActive
-    ? "text-[var(--led-accent-ink)] bg-[var(--led-accent-tint)] before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-[18px] before:w-[3px] before:rounded-r-full before:bg-[var(--led-accent)]"
-    : 'text-[var(--led-muted)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)]'
+  `relative flex h-8 items-center ${collapsed ? 'justify-center' : 'gap-2.5'} rounded-[7px] px-2 text-[13px] transition-colors duration-150 ${isActive
+    ? 'font-semibold text-[var(--led-accent)] bg-[var(--led-accent-tint)] shadow-[inset_2px_0_0_var(--led-accent)]'
+    : 'font-medium text-[var(--led-ink-2)] hover:text-[var(--led-ink)] hover:bg-[var(--led-surface-2)]'
   }`;
 
 export default function Layout() {
@@ -124,21 +124,23 @@ export default function Layout() {
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] lg:static lg:translate-x-0 ${collapsed ? 'w-[72px]' : 'w-64'
           } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={sidebarOpen ? { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)', animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : { background: 'var(--led-surface)', borderRight: '1px solid var(--led-line)' }}
+        style={sidebarOpen ? { background: 'var(--led-bg-2)', borderRight: '1px solid var(--led-line)', animation: 'slideInLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' } : { background: 'var(--led-bg-2)', borderRight: '1px solid var(--led-line)' }}
       >
-        {/* Logo */}
-        <div className="flex h-24 items-center px-2">
+        {/* Logo. Height-capped with w-auto rather than w-full: a tenant logo can
+            be any aspect ratio, and letting width drive would stretch a tall
+            mark past the row. max-w-full is what shrinks it in the 72px rail. */}
+        <div className="flex h-20 shrink-0 items-center border-b border-[var(--led-line)] px-3">
           <Link to="/" className="flex h-full w-full items-center" onClick={() => setSidebarOpen(false)}>
             <img
               src={tenant?.logo_url || defaultLogo}
               alt={brandName}
-              className="h-full w-full object-contain"
+              className="max-h-14 w-auto max-w-full object-contain object-left"
             />
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className={`flex-1 overflow-y-auto ${collapsed ? 'px-2' : 'px-3'} py-2 space-y-0.5`} onClick={() => setSidebarOpen(false)}>
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5" onClick={() => setSidebarOpen(false)}>
           {isSuperAdmin ? (
             <>
               <NavLink to="/platform" end className={linkClass} title="Dashboard">
@@ -164,7 +166,7 @@ export default function Layout() {
                 <div className="relative shrink-0">
                   <EnvelopeIcon className="h-[18px] w-[18px]" />
                   {collapsed && unreadCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
+                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-[var(--led-accent-ink)]">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
@@ -199,7 +201,7 @@ export default function Layout() {
                 <div className="relative shrink-0">
                   <EnvelopeIcon className="h-[18px] w-[18px]" />
                   {collapsed && unreadCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
+                    <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-[var(--led-accent-ink)]">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
@@ -220,14 +222,14 @@ export default function Layout() {
             <>
               <button
                 onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'px-2' : 'px-3'} py-2.5 text-[13px] font-medium transition-all duration-200 border w-full bg-[var(--led-accent-tint)] border-[var(--led-accent-tint-2)] text-[var(--led-accent-ink)] hover:bg-[var(--led-accent-tint-2)]`}
+                className={`flex h-8 items-center ${collapsed ? 'justify-center' : 'gap-2.5'} rounded-[7px] px-2 text-[13px] font-medium transition-colors duration-150 border w-full bg-[var(--led-accent-tint)] border-[var(--led-accent-tint-2)] text-[var(--led-accent)] hover:bg-[var(--led-accent-tint-2)]`}
                 title="Search (⌘K)"
               >
                 <MagnifyingGlassIcon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left">Command Search</span>
-                    <kbd className="rounded-md border border-[var(--led-accent-tint-2)] bg-[var(--led-surface)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--led-accent-ink)] shadow-sm">⌘K</kbd>
+                    <kbd className="rounded-md border border-[var(--led-accent-tint-2)] bg-[var(--led-surface)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--led-accent)] shadow-sm">⌘K</kbd>
                   </>
                 )}
               </button>
@@ -302,7 +304,7 @@ export default function Layout() {
                   <div className="relative shrink-0">
                     <EnvelopeIcon className="h-[18px] w-[18px]" />
                     {collapsed && unreadCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-white">
+                      <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--led-accent)] px-1 text-[10px] font-semibold text-[var(--led-accent-ink)]">
                         {unreadCount > 99 ? '99+' : unreadCount}
                       </span>
                     )}
@@ -379,7 +381,7 @@ export default function Layout() {
         )}
 
         {/* Collapse toggle (desktop only) */}
-        <div className="hidden lg:flex items-center justify-center px-3">
+        <div className="hidden lg:flex items-center justify-center border-t border-[var(--led-line)] px-3 pt-2">
           <button
             onClick={toggleCollapsed}
             className="w-full flex items-center justify-center rounded-lg p-2 text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)] transition-all duration-200"
@@ -419,12 +421,12 @@ export default function Layout() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-3 rounded-xl bg-[var(--led-surface-2)] border border-[var(--led-line)] p-3 shadow-sm">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--led-ink)] text-[12px] font-semibold text-[var(--led-surface)]">
+              <div className="flex items-center gap-2.5 rounded-[9px] border border-[var(--led-line)] bg-[var(--led-surface)] p-2 shadow-[var(--led-shadow-sm)]">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--led-accent-tint-2)] text-[11px] font-semibold text-[var(--led-accent)]">
                   {user.full_name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[13px] font-medium text-[var(--led-ink)]">{user.full_name}</p>
+                  <p className="truncate text-[12.5px] font-medium text-[var(--led-ink)]">{user.full_name}</p>
                   <p className="text-[11px] text-[var(--led-muted)] capitalize">{user.role}</p>
                 </div>
                 <div className="flex items-center gap-0.5">
@@ -456,14 +458,14 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden relative z-[1]">
         {/* Mobile header */}
-        <header className="flex h-12 items-center bg-background px-4 lg:hidden">
+        <header className="flex h-14 shrink-0 items-center border-b border-[var(--led-line)] bg-[var(--led-bg-2)] px-4 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
             className="rounded-xl p-2 text-muted-foreground hover:bg-secondary transition-colors"
           >
             <Bars3Icon className="h-5 w-5" />
           </button>
-          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-9 w-auto object-contain" />
+          <img src={tenant?.logo_url || defaultLogo} alt={brandName} className="ml-2.5 h-10 w-auto max-w-[160px] object-contain" />
         </header>
 
         {/* Page content */}
@@ -492,28 +494,28 @@ export default function Layout() {
             onClick={() => setShowLogoutConfirm(false)}
           />
           <div
-            className="relative w-full max-w-[360px] rounded-t-2xl sm:rounded-2xl bg-background border border-border p-6 pb-8 sm:pb-6 shadow-xl"
+            className="relative w-full max-w-[360px] rounded-t-2xl border border-[var(--led-line)] bg-[var(--led-surface)] p-6 pb-8 shadow-[var(--led-shadow-lg)] sm:rounded-2xl sm:pb-6"
             style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
           >
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-chart-4/10">
-              <ArrowRightStartOnRectangleIcon className="h-6 w-6 text-chart-4" />
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--led-warning-tint)]">
+              <ArrowRightStartOnRectangleIcon className="h-6 w-6 text-[var(--led-warning)]" />
             </div>
-            <h3 className="text-center text-[17px] font-semibold text-foreground mb-1">
+            <h3 className="mb-1 text-center text-[17px] font-semibold text-[var(--led-ink)]">
               Sign out?
             </h3>
-            <p className="text-center text-[14px] text-muted-foreground mb-6">
+            <p className="mb-6 text-center text-[14px] text-[var(--led-muted)]">
               You'll need to sign in again to access your account.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 rounded-xl bg-secondary px-4 py-2.5 text-[14px] font-medium text-foreground transition-all duration-200 hover:bg-secondary/80"
+                className="flex-1 rounded-[9px] border border-[var(--led-line-2)] bg-[var(--led-surface)] px-4 py-2.5 text-[14px] font-medium text-[var(--led-ink-2)] shadow-[var(--led-shadow-sm)] transition-colors duration-200 hover:border-[var(--led-line-strong)] hover:text-[var(--led-ink)]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleLogout}
-                className="flex-1 rounded-xl bg-destructive px-4 py-2.5 text-[14px] font-medium text-white transition-all duration-200 hover:opacity-85"
+                className="flex-1 rounded-[9px] bg-[var(--led-danger)] px-4 py-2.5 text-[14px] font-medium text-[var(--color-destructive-foreground)] shadow-[var(--led-shadow-sm)] transition-opacity duration-200 hover:opacity-85"
               >
                 Sign out
               </button>

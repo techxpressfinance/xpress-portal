@@ -8,10 +8,10 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, action }: PageHeaderProps) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-8">
-      <div>
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
         <h1 className="led-h-page">{title}</h1>
-        {subtitle && <p className="text-[14px] text-[var(--led-muted)] mt-1">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-[13px] text-[var(--led-muted)]">{subtitle}</p>}
       </div>
       {action}
     </div>

@@ -1463,8 +1463,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       <Card className="space-y-4">
         <div>
           <label className={LABEL_CLS}>Approximate Amount *</label>
-          <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-            <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3.5 text-[13px] font-medium text-muted-foreground">AUD $</span>
+          <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+            <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3.5 text-[13px] font-medium text-muted-foreground">AUD $</span>
             <input
               type="text"
               inputMode="numeric"
@@ -1706,8 +1706,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               </div>
               <div>
                 <label className={LBL}>Amount (AUD)</label>
-                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
                   <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
                     value={extra.primary_income_amount || extra.gross_income} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setExtra('primary_income_amount', v); setExtra('gross_income', v); }} />
                 </div>
@@ -1749,29 +1749,29 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className={LBL}>Living Expenses (AUD/mo)</label>
-                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
                   <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground" value={extra.monthly_living_expenses} onChange={e => setExtra('monthly_living_expenses', e.target.value.replace(/[^0-9.]/g, ''))} />
                 </div>
               </div>
               <div>
                 <label className={LBL}>Rent / Mortgage (AUD/mo)</label>
-                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
                   <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground" value={extra.rent_mortgage_payments} onChange={e => setExtra('rent_mortgage_payments', e.target.value.replace(/[^0-9.]/g, ''))} />
                 </div>
               </div>
               <div>
                 <label className={LBL}>Child Support (AUD/mo)</label>
-                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
                   <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground" value={extra.child_support} onChange={e => setExtra('child_support', e.target.value.replace(/[^0-9.]/g, ''))} />
                 </div>
               </div>
               <div>
                 <label className={LBL}>Other Commitments (AUD/mo)</label>
-                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-strong)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
-                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-strong)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
+                <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+                  <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3 text-[13px] font-medium text-muted-foreground">$</span>
                   <input type="text" inputMode="numeric" placeholder="0" className="flex-1 bg-transparent px-3 text-[14px] text-foreground outline-none placeholder:text-muted-foreground" value={extra.other_commitments} onChange={e => setExtra('other_commitments', e.target.value.replace(/[^0-9.]/g, ''))} />
                 </div>
               </div>

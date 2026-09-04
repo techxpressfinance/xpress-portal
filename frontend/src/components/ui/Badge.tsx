@@ -10,7 +10,9 @@ interface BadgeProps {
 }
 
 export default function Badge({ type = 'status', value, label, className = '' }: BadgeProps) {
-  let colorClass = 'bg-muted text-muted-foreground';
+  // '' means "no modifier" — .led-chip's own neutral fill carries it, which
+  // is how draft and not_proceeding are drawn.
+  let colorClass = '';
 
   if (type === 'status') {
     colorClass = STATUS_BADGE[value as keyof typeof STATUS_BADGE] || colorClass;

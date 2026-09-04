@@ -15,7 +15,7 @@ const toneStyles = {
     rule: 'bg-[var(--led-line)]',
   },
   accent: {
-    icon: 'border-transparent bg-[var(--led-accent-tint)] text-[var(--led-accent-ink)]',
+    icon: 'border-transparent bg-[var(--led-accent-tint)] text-[var(--led-accent)]',
     rule: 'bg-[var(--led-accent)]',
   },
   success: {
@@ -70,26 +70,24 @@ export default function StatCard({ label, value, icon, gradient, loading = false
     : toneStyles.neutral;
 
   return (
-    <div className="led-card relative overflow-hidden p-5">
+    <div className="led-card relative overflow-hidden p-[14px_15px]">
       <div className={`absolute inset-x-0 top-0 h-px ${tone.rule}`} />
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--led-muted)]">{label}</p>
-        </div>
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border ${tone.icon}`}>
+      <div className="flex items-start justify-between gap-4">
+        <p className="led-label min-w-0 pt-0.5">{label}</p>
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border ${tone.icon}`}>
           {icon}
         </div>
       </div>
       {loading ? (
-        <div className="h-9 w-24 rounded-md shimmer" />
+        <div className="mt-2 h-7 w-24 rounded-md shimmer" />
       ) : (
-        <p className={`text-[30px] font-semibold tracking-[-0.04em] led-tnum ${valueColor}`}>
+        <p className={`led-mono mt-2 text-[24px] font-medium tracking-[-0.02em] led-tnum ${valueColor}`}>
           {isNumeric ? animated : value}
         </p>
       )}
-      <div className="mt-5 flex items-center justify-between border-t border-[var(--led-line)] pt-3">
-        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--led-muted-2)]">Current position</span>
-        <span className="text-[12px] text-[var(--led-muted)]">Live snapshot</span>
+      <div className="mt-2.5 flex items-center justify-between gap-3">
+        <span className="text-[12px] text-[var(--led-muted)]">Current position</span>
+        <span className="text-[12px] text-[var(--led-muted-2)]">Live snapshot</span>
       </div>
     </div>
   );

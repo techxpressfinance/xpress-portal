@@ -10,7 +10,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div>
         {label && (
-          <label className="block text-[13px] font-medium text-foreground mb-1.5">{label}</label>
+          <label className="mb-1.5 block text-[13px] font-medium text-[var(--led-ink-2)]">{label}</label>
         )}
         <select
           ref={ref}
@@ -19,7 +19,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
         >
           {children}
         </select>
-        {error && <p className="mt-1.5 text-[12px] text-destructive font-medium">{error}</p>}
+        {error && <p className="mt-1.5 text-[12px] font-medium text-[var(--led-danger)]">{error}</p>}
       </div>
     );
   }

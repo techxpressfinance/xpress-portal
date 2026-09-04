@@ -31,7 +31,7 @@ function Ic({ d, className = 'h-4 w-4' }: { d: string; className?: string }) {
 
 function Avatar({ name, className = 'h-9 w-9 text-[13px]' }: { name: string; className?: string }) {
   return (
-    <span className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--led-accent-tint)] font-semibold text-[var(--led-accent-ink)] ${className}`}>
+    <span className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--led-accent-tint)] font-semibold text-[var(--led-accent)] ${className}`}>
       {getInitials(name)}
     </span>
   );
@@ -234,12 +234,12 @@ export default function AdminMessages() {
                   key={f.value}
                   type="button"
                   onClick={() => setFolder(f.value)}
-                  className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors ${active ? 'bg-[var(--led-accent-tint)] text-[var(--led-accent-ink)]' : 'text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)]'}`}
+                  className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors ${active ? 'bg-[var(--led-accent-tint)] text-[var(--led-accent)]' : 'text-[var(--led-muted)] hover:bg-[var(--led-surface-2)] hover:text-[var(--led-ink)]'}`}
                 >
                   <Ic d={f.icon} className="h-[18px] w-[18px] shrink-0" />
                   <span>{f.label}</span>
                   {count > 0 && (
-                    <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold ${active ? 'bg-[var(--led-accent-tint-2)] text-[var(--led-accent-ink)]' : 'bg-[var(--led-bg-2)] text-[var(--led-muted)]'}`}>{count}</span>
+                    <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold ${active ? 'bg-[var(--led-accent-tint-2)] text-[var(--led-accent)]' : 'bg-[var(--led-neutral-tint)] text-[var(--led-muted)]'}`}>{count}</span>
                   )}
                 </button>
               );
@@ -324,7 +324,7 @@ export default function AdminMessages() {
                       key={`${conv.client_id}_${conv.peer_id}`}
                       type="button"
                       onClick={() => openConversation(conv.client_id, conv.client_name ?? '')}
-                      className={`w-full border-b border-[var(--led-line-2)] px-4 py-3.5 text-left transition-colors ${active ? 'border-l-2 border-l-[var(--led-accent)] bg-[var(--led-accent-tint)]' : 'hover:bg-[var(--led-surface-2)]'}`}
+                      className={`w-full border-b border-[var(--led-line)] px-4 py-3.5 text-left transition-colors ${active ? 'border-l-2 border-l-[var(--led-accent)] bg-[var(--led-accent-tint)]' : 'hover:bg-[var(--led-surface-2)]'}`}
                     >
                       <div className="flex items-start gap-3">
                         <Avatar name={conv.client_name || '?'} />
@@ -416,7 +416,7 @@ export default function AdminMessages() {
                                   <span className="text-[12px] font-semibold text-[var(--led-ink)]">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
                                   <span className="text-[11px] text-[var(--led-muted)]">{formatTime(msg.created_at)}</span>
                                 </div>
-                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'rounded-tr-sm bg-[var(--led-accent-tint-2)] text-[var(--led-accent-ink)] ring-1 ring-[var(--led-accent)]/15' : 'rounded-tl-sm border border-[var(--led-line)] bg-[var(--led-surface)] text-[var(--led-ink)] shadow-[var(--led-shadow-sm)]'}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'rounded-tr-sm bg-[var(--led-accent-tint-2)] text-[var(--led-accent)] ring-1 ring-[var(--led-accent)]/15' : 'rounded-tl-sm border border-[var(--led-line)] bg-[var(--led-surface)] text-[var(--led-ink)] shadow-[var(--led-shadow-sm)]'}`}>
                                   <p className="whitespace-pre-wrap">{msg.content}</p>
                                 </div>
                               </div>

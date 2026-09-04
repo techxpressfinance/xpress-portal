@@ -26,7 +26,7 @@ function CheckCircle({ completed, onClick }: { completed: boolean; onClick: () =
       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
         completed
           ? 'border-[var(--led-muted)] bg-[var(--led-muted)] text-white'
-          : 'border-[var(--led-line-strong)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5'
+          : 'border-[var(--led-line-2)] hover:border-[var(--led-accent)] hover:bg-[var(--led-accent)]/5'
       }`}
     >
       {completed && (
@@ -389,7 +389,7 @@ export default function TaskDetail() {
               onChange={(e) => setEditDescription(e.target.value)}
               rows={3}
               placeholder="Add a description..."
-              className="w-full rounded-xl border border-[var(--led-line-strong)] bg-[var(--led-surface)] px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-[var(--led-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--led-accent)]/30 transition-all resize-none"
+              className="w-full rounded-xl border border-[var(--led-line-2)] bg-[var(--led-surface)] px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-[var(--led-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--led-accent)]/30 transition-all resize-none"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

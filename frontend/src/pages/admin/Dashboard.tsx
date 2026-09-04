@@ -534,7 +534,7 @@ export default function AdminDashboard() {
                               <span className="text-[12px] font-semibold text-[var(--led-muted)]">{stage.label}</span>
                             </div>
                             <div className="flex-1 flex items-center gap-3">
-                              <div className="flex-1 h-7 rounded-lg overflow-hidden bg-[var(--led-bg-2)] relative">
+                              <div className="flex-1 h-7 rounded-lg overflow-hidden bg-[var(--led-neutral-tint)] relative">
                                 <div
                                   className="h-full rounded-lg transition-all duration-500"
                                   style={{
@@ -616,14 +616,14 @@ export default function AdminDashboard() {
                       <div key={lender.name}>
                         <div className="mb-2 flex items-center justify-between gap-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[11px] font-semibold text-[var(--led-accent-ink)]">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--led-accent-tint)] text-[11px] font-semibold text-[var(--led-accent)]">
                               {index + 1}
                             </div>
                             <span className="text-[14px] font-medium text-[var(--led-ink)]">{lender.name}</span>
                           </div>
                           <span className="text-[14px] font-semibold led-tnum text-[var(--led-ink)]">{lender.approvals}</span>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-[var(--led-bg-2)]">
+                        <div className="h-2 overflow-hidden rounded-full bg-[var(--led-neutral-tint)]">
                           <div
                             className="h-full rounded-full bg-[var(--led-accent)]"
                             style={{ width: `${Math.max((lender.approvals / topLenderApprovalMax) * 100, lender.approvals > 0 ? 6 : 0)}%` }}
