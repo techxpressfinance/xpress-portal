@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -34,6 +34,15 @@ COMMERCIAL_LOAN_TYPES = frozenset({
     LoanType.commercial_property,
     LoanType.equipment_finance,
 })
+
+
+# Who is borrowing. ``company`` means the borrowing entity itself is the
+# applicant — there is no natural person in the inline ``applicant_*`` columns
+# and the parties are its directors (``loan_applicants``). ``individual`` is the
+# classic single applicant, business ABN or not.
+APPLICANT_TYPE_INDIVIDUAL = "individual"
+APPLICANT_TYPE_COMPANY = "company"
+APPLICANT_TYPES = (APPLICANT_TYPE_INDIVIDUAL, APPLICANT_TYPE_COMPANY)
 
 
 class ApplicationStatus(str, enum.Enum):
@@ -80,6 +89,13 @@ class LoanApplication(Base):
     analyzed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Whether the applicant is a natural person or the borrowing entity itself.
+    # Set at creation; a company application leaves applicant_* empty by design,
+    # so nothing downstream should read emptiness as "not filled in yet".
+    applicant_type: Mapped[str] = mapped_column(
+        String(20), default=APPLICANT_TYPE_INDIVIDUAL, nullable=False
+    )
 
     # Client-filled — Personal (PII fields use EncryptedString for at-rest encryption)
     applicant_title: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -166,6 +182,11 @@ class LoanApplication(Base):
 
     # Business / company linkage
     business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
+
+    # The broker was asked whether this application's client is part of its
+    # business and said no. Stops the prompt returning on every save; reset
+    # whenever the client or the entity changes, since that is a new question.
+    business_link_declined: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Provenance: the application this one was cloned from (personal + company
     # details copied, loan details entered fresh). Null for originals.

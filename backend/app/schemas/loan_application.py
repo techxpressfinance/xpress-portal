@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,12 @@ class LoanApplicationCreate(BaseModel):
     loan_type: LoanType
     amount: Decimal = Field(..., ge=0)
     notes: Optional[str] = None
+    # Who is borrowing. "company" leaves the applicant_* block empty by design —
+    # the borrowing entity is the applicant and its directors are the parties.
+    applicant_type: Literal["individual", "company"] = "individual"
+    # An existing CRM contact chosen as the client, rather than a new one being
+    # minted from whatever was typed. See POST /applications/{id}/client.
+    contact_id: Optional[str] = None
     # Client-filled — Personal
     applicant_title: Optional[str] = None
     applicant_first_name: Optional[str] = None
@@ -73,6 +79,7 @@ class LoanApplicationUpdate(BaseModel):
     amount: Optional[Decimal] = Field(None, ge=0)
     status: Optional[ApplicationStatus] = None
     notes: Optional[str] = None
+    applicant_type: Optional[Literal["individual", "company"]] = None
     # Client-filled — Personal
     applicant_title: Optional[str] = None
     applicant_first_name: Optional[str] = None
@@ -192,6 +199,34 @@ class LoanApplicantOut(LoanApplicantBase):
     model_config = {"from_attributes": True}
 
 
+class CompanyDirectorCandidate(BaseModel):
+    """A contact linked to a company in the contact book, offered for adding to
+    an application as a party. ``already_added`` marks the ones on it already."""
+
+    contact_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    link_role: Optional[str] = None
+    already_added: bool = False
+
+
+class AddCompanyDirectorsRequest(BaseModel):
+    """Pull selected contacts of the borrowing/guarantor company onto the
+    application as parties. Those with an email are invited straight away."""
+
+    contact_ids: list[str] = Field(..., min_length=1)
+    role: str = "director"
+    guarantor_id: Optional[str] = None
+
+
+class PartyInviteRequest(BaseModel):
+    """Set (or correct) a party's email and send them their invite."""
+
+    invite_email: str
+
+
 class CorporateGuarantorCreate(BaseModel):
     """Attach a company as a guarantor (identified by name and/or ABN)."""
 
@@ -251,6 +286,16 @@ class ApprovalDetailsRequest(BaseModel):
     conditions: list[str]
 
 
+class PendingBusinessLink(BaseModel):
+    """An unconfirmed client↔business pairing, for the broker's confirmation."""
+
+    contact_id: str
+    contact_name: Optional[str] = None
+    organization_id: str
+    organization_name: str
+    organization_abn: Optional[str] = None
+
+
 class LoanApplicationOut(BaseModel):
     id: str
     user_id: str
@@ -274,6 +319,16 @@ class LoanApplicationOut(BaseModel):
     completed_by_id: Optional[str] = None
     completed_by_name: Optional[str] = None
     completed_at: Optional[datetime] = None
+    applicant_type: str = "individual"
+    # CRM linkage. Undeclared until now, so the response model dropped them and
+    # every consumer ("View entity & trust structure", the directors picker) was
+    # silently reading undefined.
+    business_organization_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    business_link_declined: bool = False
+    # The client↔business link this application implies that nobody has confirmed
+    # yet. Present only on detail responses; None once linked or declined.
+    pending_business_link: Optional[PendingBusinessLink] = None
     # Client-filled — Personal
     applicant_title: Optional[str] = None
     applicant_first_name: Optional[str] = None

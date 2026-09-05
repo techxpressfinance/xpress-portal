@@ -468,7 +468,12 @@ export default function AllApplications() {
                   const referrerName = app.referrer?.organization_name
                     || app.referrer?.full_name
                     || (app.user_role === 'referrer' ? app.user_name || null : null);
-                  const subtitle = isDirectLead ? null : (app.user_email || '');
+                  // A company applicant has no personal email to show under the
+                  // name — say what it is instead, so the Applicant column
+                  // repeating the Entity column reads as intentional.
+                  const subtitle = app.applicant_type === 'company'
+                    ? 'Company applicant'
+                    : isDirectLead ? null : (app.user_email || '');
 
                   return (
                     <tr key={app.id} onClick={() => navigate(`/admin/applications/${app.id}`)}>

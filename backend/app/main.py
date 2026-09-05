@@ -324,6 +324,11 @@ _MIGRATIONS = [
     ("tax_invoices", "asset_registration_expiry", "VARCHAR(30)"),
     ("tax_invoices", "trade_in_value", "NUMERIC(12, 2)"),
     ("tax_invoices", "payout_amount", "NUMERIC(12, 2)"),
+    # Whether the applicant is a natural person or the borrowing entity itself.
+    # Nullable on add so the backfill below can tell untouched rows apart.
+    ("loan_applications", "applicant_type", "VARCHAR(20)"),
+    # Broker declined to link this application's client to its business
+    ("loan_applications", "business_link_declined", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -337,6 +342,33 @@ with engine.begin() as conn:
         if col not in _column_cache[table]:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
             _logger.info("Added column %s.%s", table, col)
+
+# Contact↔company links were created without a tenant for most of their life, and
+# anything that reads them tenant-scoped (seeding an application's directors from
+# the company) silently found nothing. Adopt the contact's tenant.
+with engine.begin() as conn:
+    conn.execute(text(
+        "UPDATE contact_organizations SET tenant_id = ("
+        "  SELECT c.tenant_id FROM contacts c WHERE c.id = contact_organizations.contact_id"
+        ") WHERE tenant_id IS NULL"
+    ))
+
+# Classify pre-existing applications now that applicant_type exists. An entity-first
+# commercial application is one linked to a company with no natural person in the
+# inline applicant columns — applicant_first_name is NULL rather than encrypted-empty,
+# so it is testable in SQL. Everything else was an individual. Idempotent: only NULL
+# rows are touched, and after the first run there are none.
+with engine.begin() as conn:
+    conn.execute(text(
+        "UPDATE loan_applications SET applicant_type = 'company' "
+        "WHERE applicant_type IS NULL "
+        "AND applicant_first_name IS NULL "
+        "AND business_organization_id IS NOT NULL "
+        "AND loan_type IN ('business', 'business_loan', 'commercial_property', 'equipment_finance')"
+    ))
+    conn.execute(text(
+        "UPDATE loan_applications SET applicant_type = 'individual' WHERE applicant_type IS NULL"
+    ))
 
 # Idempotent indexes for hot filter/sort columns. create_all only indexes tables
 # it creates; databases that predate the index=True model flags need the indexes

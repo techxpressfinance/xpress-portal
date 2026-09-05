@@ -363,6 +363,11 @@ export default function NewApplication() {
   const [selectedCommercialLoanType, setSelectedCommercialLoanType] = useState<string>('');
   const selectedSubType = selectedConsumerLoanType || selectedCommercialLoanType;
   const businessSubType = isBusinessSubType(selectedSubType);
+  // Asset finance is bought by businesses as often as by people — a company ute,
+  // a chattel mortgage on a truck — so its business block is offered on every
+  // asset-finance sub-type, not just the ones whose *purpose* is commercial.
+  // Only business sub-types make the ABN mandatory (it keys reconciliation).
+  const businessDetailsApply = businessSubType || tab === 'asset_finance';
 
   const selectSubType = (value: string) => {
     if (isConsumerSubType(value)) {
@@ -2178,7 +2183,7 @@ export default function NewApplication() {
             </Card>
             </>)}
 
-            {!lendEnabled && businessSubType && isSectionVisible('business') && (
+            {!lendEnabled && businessDetailsApply && isSectionVisible('business') && (
               <Card className="space-y-4">
                 <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Business Details</h3>
                 <div>

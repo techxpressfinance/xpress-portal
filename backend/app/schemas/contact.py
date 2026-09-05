@@ -48,6 +48,14 @@ class ContactOrganizationLite(BaseModel):
     role: Optional[str] = None
 
 
+class ContactClientAccount(BaseModel):
+    """A portal user already registered to a contact's email address."""
+
+    id: str
+    full_name: Optional[str] = None
+    role: str
+
+
 class ContactOut(BaseModel):
     id: str
     first_name: str
@@ -66,6 +74,10 @@ class ContactOut(BaseModel):
     # Only populated when the list is asked for it (?include_organizations=1);
     # ContactDetailOut overrides this with the full OrganizationOut rows.
     organizations: list[ContactOrganizationLite] = []
+    # The portal account already registered to this contact's email, when the
+    # list is asked for it (?include_client_account=1). None means choosing this
+    # person as the client would create a new account.
+    client_account: Optional[ContactClientAccount] = None
     created_at: datetime
     updated_at: datetime
 

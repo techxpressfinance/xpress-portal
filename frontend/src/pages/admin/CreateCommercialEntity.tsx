@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
-import { Card, PageHeader, Button, Input, Select } from '../../components/ui';
+import { Card, PageHeader, Button, Input, Select, EntitySearchResults } from '../../components/ui';
 import { ENTITY_TYPES, TRUST_TYPES } from '../../lib/constants';
 import { getErrorMessage } from '../../lib/utils';
-import type { EntityType, Organization, TrustType } from '../../types';
+import { useEntitySearch } from '../../hooks/useEntitySearch';
+import type { EntitySearchResult, EntityType, Organization, TrustType } from '../../types';
 
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
 
@@ -41,8 +42,24 @@ export default function CreateCommercialEntity() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmingNoAbn, setConfirmingNoAbn] = useState(false);
+  // The entity picked from the book, if any — the application links straight to
+  // it rather than resolving a (possibly duplicate) company from the typed name.
+  const [pickedEntityId, setPickedEntityId] = useState<string | null>(null);
+  const [entityDismissedFor, setEntityDismissedFor] = useState('');
 
   const isTrust = entityType === 'trust';
+  const entityMatches = useEntitySearch(businessName);
+  const showEntityMatches =
+    !pickedEntityId && businessName.trim() !== entityDismissedFor && businessName.trim().length >= 2;
+
+  const useExistingEntity = (e: EntitySearchResult) => {
+    setPickedEntityId(e.id);
+    setBusinessName(e.name);
+    setAbn(e.abn || '');
+    if (e.entity_type) setEntityType(e.entity_type as EntityType);
+    setTrustType((e.trust_type as TrustType) || '');
+    setEntityDismissedFor(e.name.trim());
+  };
 
   const create = async (noAbnConfirmed: boolean) => {
     setSubmitting(true);
@@ -50,7 +67,9 @@ export default function CreateCommercialEntity() {
       // Create/refresh the entity record first so the trust structure has
       // somewhere to live before the application exists.
       let org: Organization | null = null;
-      if (entityType) {
+      // An entity chosen from the book is already recorded; re-creating it would
+      // only risk a second row for the same company under a different spelling.
+      if (entityType && !pickedEntityId) {
         const { data } = await api.post<Organization>('/organizations', {
           name: businessName.trim(),
           entity_type: entityType,
@@ -64,6 +83,8 @@ export default function CreateCommercialEntity() {
       const { data: app } = await api.post('/applications', {
         loan_type: loanType,
         amount: parseFloat(amount),
+        // The entity itself is the applicant — the directors are added as parties.
+        applicant_type: 'company',
         business_name: org?.name || businessName.trim(),
         business_abn: abn.trim() || null,
         ...(termMonths.trim() && { loan_term_requested: parseInt(termMonths, 10) }),
@@ -109,12 +130,33 @@ export default function CreateCommercialEntity() {
 
       <Card padding="lg" className="mt-4">
         <div className="space-y-5">
-          <Input
-            label="Entity name"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            placeholder={isTrust ? 'e.g. Smith Family Trust' : 'e.g. Acme Pty Ltd'}
-          />
+          <div className="relative">
+            <Input
+              label="Entity name"
+              value={businessName}
+              onChange={(e) => {
+                setBusinessName(e.target.value);
+                // Typing past the picked entity's name means they're after a
+                // different one — stop claiming the link.
+                setPickedEntityId(null);
+              }}
+              placeholder={isTrust ? 'e.g. Smith Family Trust' : 'e.g. Acme Pty Ltd'}
+            />
+            {showEntityMatches && (
+              <EntitySearchResults
+                matches={entityMatches.matches}
+                loading={entityMatches.loading}
+                searched={entityMatches.searched}
+                onSelect={useExistingEntity}
+                onDismiss={() => setEntityDismissedFor(businessName.trim())}
+              />
+            )}
+            {pickedEntityId && (
+              <p className="mt-1.5 text-[12px] text-success">
+                Using your existing entity — its directors will be added to the application.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select

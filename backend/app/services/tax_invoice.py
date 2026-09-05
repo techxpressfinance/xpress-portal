@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.contact import Organization
-from app.models.loan_application import LoanApplication
+from app.models.loan_application import APPLICANT_TYPE_COMPANY, LoanApplication
 from app.models.tax_invoice import BUYER_IDENTITY_THRESHOLD, SupplierType, TaxInvoice
 from app.models.user import User
 from app.services import acn as acn_service
@@ -155,6 +155,60 @@ def _applicant_address(application: LoanApplication) -> Optional[str]:
     return "\n".join(p for p in [street, second] if p) or None
 
 
+def buyer_from_application(db: Session, application: LoanApplication) -> dict:
+    """The Sold To party: name, ABN, ACN and address.
+
+    Who that is, is the broker's call, recorded as ``applicant_type`` — a dealer
+    releases goods to the company on the contract when the business is buying,
+    but a sole trader financing in their own name buys as themselves even though
+    an ABN is on the file. Each side falls back to the other rather than leaving
+    the block empty: a company application with no entity on record still has a
+    director to name, and an individual one may only have the business.
+    """
+    organization: Optional[Organization] = None
+    if application.business_organization_id:
+        organization = (
+            db.query(Organization).filter(Organization.id == application.business_organization_id).first()
+        )
+
+    entity_name = (organization.name if organization else None) or _text(application.business_name)
+    entity_abn = _text(organization.abn if organization else None) or _text(application.business_abn)
+    entity_address = _text(organization.address if organization else None)
+    person_name = " ".join(
+        p for p in [application.applicant_first_name, application.applicant_last_name] if p
+    ).strip() or None
+    person_address = _applicant_address(application)
+
+    if application.applicant_type == APPLICANT_TYPE_COMPANY:
+        buyer_name = entity_name or person_name
+        buyer_abn = entity_abn
+        buyer_address = entity_address or person_address
+    else:
+        buyer_name = person_name or entity_name
+        # A sole trader's ABN is their own, so it belongs on an invoice made out
+        # to them. A company, trust or partnership is a separate legal person —
+        # printing its ABN beside an individual's name misidentifies the buyer.
+        entity_is_separate_person = (
+            organization is not None
+            and organization.entity_type is not None
+            and organization.entity_type != "sole_trader"
+        )
+        buyer_abn = None if (person_name and entity_is_separate_person) else entity_abn
+        buyer_address = person_address or entity_address
+
+    return {
+        "buyer_name": buyer_name,
+        "buyer_abn": buyer_abn,
+        # A recorded ACN (from the ABR) beats one inferred from the ABN, which
+        # depends on entity_type being set and is silent when it is not.
+        "buyer_acn": (
+            (organization.acn if organization and buyer_abn else None)
+            or acn_from_abn(buyer_abn, organization.entity_type if organization else None)
+        ),
+        "buyer_address": buyer_address,
+    }
+
+
 def prefill_from_application(
     db: Session,
     application: LoanApplication,
@@ -163,25 +217,8 @@ def prefill_from_application(
 ) -> dict:
     """Everything about the invoice the application already answers.
 
-    The buyer is the entity being financed where there is one — a dealer
-    releases goods to the company on the contract, not to the director. The
-    asset block lives in the encrypted lend_extra_data JSON, not in columns."""
-    organization: Optional[Organization] = None
-    if application.business_organization_id:
-        organization = (
-            db.query(Organization).filter(Organization.id == application.business_organization_id).first()
-        )
-
-    buyer_name = (
-        (organization.name if organization else None)
-        or _text(application.business_name)
-        or " ".join(
-            p for p in [application.applicant_first_name, application.applicant_last_name] if p
-        ).strip()
-        or None
-    )
-    buyer_abn = _text(organization.abn if organization else None) or _text(application.business_abn)
-    buyer_address = _text(organization.address if organization else None) or _applicant_address(application)
+    The asset block lives in the encrypted lend_extra_data JSON, not in columns."""
+    buyer = buyer_from_application(db, application)
 
     asset = application_asset_details(application)
 
@@ -202,15 +239,7 @@ def prefill_from_application(
         "invoice_date": date.today(),
         "reply_to_email": reply_to,
         "supplier_gst_registered": supplier_type != SupplierType.private,
-        "buyer_name": buyer_name,
-        "buyer_abn": buyer_abn,
-        # A recorded ACN (from the ABR) beats one inferred from the ABN, which
-        # depends on entity_type being set and is silent when it is not.
-        "buyer_acn": (
-            (organization.acn if organization else None)
-            or acn_from_abn(buyer_abn, organization.entity_type if organization else None)
-        ),
-        "buyer_address": buyer_address,
+        **buyer,
         "delivery_same_as_buyer": True,
         "asset_description": _text(asset.get("description")),
         "asset_make": _text(asset.get("make")),

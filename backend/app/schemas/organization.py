@@ -88,6 +88,23 @@ class OrganizationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EntitySearchResult(BaseModel):
+    """A compact entity row for the "pick an existing entity" typeahead on the
+    application forms. ``director_count`` is how many of the company's contacts
+    would come across as parties if it were made the applicant."""
+
+    id: str
+    name: str
+    entity_type: Optional[str] = None
+    trust_type: Optional[str] = None
+    abn: Optional[str] = None
+    acn: Optional[str] = None
+    industry: Optional[str] = None
+    address: Optional[str] = None
+    director_count: int = 0
+    application_count: int = 0
+
+
 class TrustPartyBase(BaseModel):
     role: str = Field(max_length=30)
     party_kind: str = Field(default="individual", max_length=20)

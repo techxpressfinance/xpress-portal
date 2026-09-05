@@ -286,7 +286,12 @@ export default function Contacts() {
     try {
       const { data } = await api.post('/contacts/auto-create');
       toast(
-        `Created ${data.contacts_created} contacts, linked ${data.applications_linked} applications, ${data.organizations_created} organizations`,
+        `Created ${data.contacts_created} contacts, linked ${data.applications_linked} applications, ${data.organizations_created} organizations`
+          + (data.links_pending
+            // Not linked by the sweep: asserting a person belongs to a business
+            // is the broker's call, made on each application.
+            ? `. ${data.links_pending} client–business link${data.links_pending === 1 ? '' : 's'} awaiting confirmation on their applications`
+            : ''),
         'success'
       );
       fetchContacts(1, search);

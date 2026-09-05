@@ -9,6 +9,8 @@ export { default as ConfirmDialog } from './ConfirmDialog';
 export { default as PasswordRequirements, PASSWORD_REQUIREMENTS, passwordMeetsRequirements } from './PasswordRequirements';
 export { default as AbrResultCard } from './AbrResultCard';
 export { default as AbrNameSearchResults } from './AbrNameSearchResults';
+export { default as EntitySearchResults } from './EntitySearchResults';
+export { default as ClientSearchResults } from './ClientSearchResults';
 export { default as Skeleton } from './Skeleton';
 export { TableSkeleton, ListSkeleton, DetailSkeleton, ChartSkeleton } from './Skeletons';
 export { default as EmptyState } from './EmptyState';

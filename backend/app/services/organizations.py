@@ -65,22 +65,13 @@ def find_or_create_organization_by_abn(
     return org
 
 
-def ensure_contact_organization_link(
-    db: Session,
-    tenant_id: str,
-    contact_id: Optional[str],
-    organization_id: Optional[str],
-) -> None:
-    """Link a contact to an organization when both are present and not yet linked.
-
-    An application can carry both a client (contact) and a business entity
-    (organization); when it does, the entity should surface on the client's page
-    and the client on the entity's page. Idempotent — an existing link is left
-    untouched, so a role already set by hand is never overwritten.
-    """
+def contact_organization_link(
+    db: Session, contact_id: Optional[str], organization_id: Optional[str]
+) -> Optional[ContactOrganization]:
+    """The existing link between a contact and an organization, if any."""
     if not contact_id or not organization_id:
-        return
-    existing = (
+        return None
+    return (
         db.query(ContactOrganization)
         .filter(
             ContactOrganization.contact_id == contact_id,
@@ -88,12 +79,40 @@ def ensure_contact_organization_link(
         )
         .first()
     )
+
+
+def ensure_contact_organization_link(
+    db: Session,
+    tenant_id: str,
+    contact_id: Optional[str],
+    organization_id: Optional[str],
+    role: Optional[str] = None,
+) -> Optional[ContactOrganization]:
+    """Link a contact to an organization, on the broker's say-so.
+
+    An application can carry both a client (contact) and a business entity
+    (organization), and when it does the entity should surface on the client's
+    page and the client on the entity's page. But the pairing is a *claim about a
+    person* — that this client is part of that business — and an application can
+    pair them by accident: an ABN typed wrong, a company matched on a name
+    collision, a client re-using a draft. Creating it unasked writes that claim
+    into the CRM, where it then seeds directors onto applications and puts a
+    person's name on another company's tax invoice.
+
+    So this is only called once a broker has confirmed the pairing. Idempotent —
+    an existing link is left untouched, so a role already set by hand is never
+    overwritten.
+    """
+    if not contact_id or not organization_id:
+        return None
+    existing = contact_organization_link(db, contact_id, organization_id)
     if existing:
-        return
-    db.add(
-        ContactOrganization(
-            tenant_id=tenant_id,
-            contact_id=contact_id,
-            organization_id=organization_id,
-        )
+        return existing
+    link = ContactOrganization(
+        tenant_id=tenant_id,
+        contact_id=contact_id,
+        organization_id=organization_id,
+        role=role,
     )
+    db.add(link)
+    return link

@@ -10,6 +10,7 @@
  */
 
 export interface ApplicantNameFields {
+  applicant_type?: 'individual' | 'company' | null;
   applicant_title?: string | null;
   applicant_first_name?: string | null;
   applicant_middle_name?: string | null;
@@ -22,14 +23,23 @@ export interface ApplicantNameFields {
 /** Roles that hold applications on someone else's behalf. */
 const NON_APPLICANT_ROLES = new Set(['admin', 'broker', 'referrer', 'super_admin']);
 
+/** True when the borrowing entity itself is the applicant, not a person. */
+export function isCompanyApplicant(app: ApplicantNameFields): boolean {
+  return app.applicant_type === 'company';
+}
+
 /**
  * The applicant's name as entered on the form, falling back to the account
  * holder only when a client owns the application. `''` when unknown.
+ *
+ * On a company application the entity is the applicant, so its name is returned
+ * directly — there is no natural person to fall back through.
  */
 export function applicantName(
   app: ApplicantNameFields,
   opts: { withTitle?: boolean } = {},
 ): string {
+  if (isCompanyApplicant(app)) return app.business_name || '';
   const formName = [
     opts.withTitle ? app.applicant_title : null,
     app.applicant_first_name,
@@ -59,6 +69,9 @@ export function applicantEmail(
   app: ApplicantNameFields & { applicant_email?: string | null; user_email?: string | null },
 ): string | null {
   if (app.applicant_email) return app.applicant_email;
+  // A company applicant has no personal inbox — its directors are contacted
+  // individually as parties, so never borrow the owner's address here.
+  if (isCompanyApplicant(app)) return null;
   if (app.user_email && !NON_APPLICANT_ROLES.has(app.user_role || '')) return app.user_email;
   return null;
 }

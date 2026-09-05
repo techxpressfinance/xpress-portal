@@ -111,6 +111,10 @@ export interface LoanApplication {
   // by the kanban board endpoint, and only once the card has actually been moved
   // there — cards still sitting on their status fallback have no entry time.
   stage_entered_at?: string | null;
+  // Who is borrowing. On a 'company' application the borrowing entity IS the
+  // applicant: the applicant_* block stays empty by design and the parties are
+  // its directors, so nothing should read that emptiness as "not filled in yet".
+  applicant_type?: ApplicantType;
   // Client-filled — Personal
   applicant_title: string | null;
   applicant_first_name: string | null;
@@ -196,6 +200,10 @@ export interface LoanApplication {
   corporate_guarantors?: CorporateGuarantor[];
   // True when every invited party has self-completed and signed
   parties_ready?: boolean;
+  // The client↔business link this application implies but nobody has confirmed.
+  // Null once the link exists or the broker has declined it.
+  pending_business_link?: PendingBusinessLink | null;
+  business_link_declined?: boolean;
   needs_reconciliation?: boolean;
   reconciliation_note?: string | null;
   hidden_from_client?: boolean;
@@ -216,6 +224,44 @@ export interface ApprovalCondition {
   completed_at: string | null;
   completed_by_id: string | null;
   completed_by_name: string | null;
+}
+
+// An entity from the tenant's own book, offered by the business-details typeahead.
+export interface EntitySearchResult {
+  id: string;
+  name: string;
+  entity_type: string | null;
+  trust_type: string | null;
+  abn: string | null;
+  acn: string | null;
+  industry: string | null;
+  address: string | null;
+  director_count: number;
+  application_count: number;
+}
+
+export type ApplicantType = 'individual' | 'company';
+
+// A contact linked to a company in the contact book, offered for adding to an
+// application as a party.
+export interface CompanyDirectorCandidate {
+  contact_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  link_role: string | null;
+  already_added: boolean;
+}
+
+// An unconfirmed client↔business pairing an application implies. Confirming it
+// writes a CRM fact that outlives the application, so a broker has to say so.
+export interface PendingBusinessLink {
+  contact_id: string;
+  contact_name: string | null;
+  organization_id: string;
+  organization_name: string;
+  organization_abn: string | null;
 }
 
 // A company guaranteeing a commercial loan; its directors each sign as signatories.
@@ -1165,8 +1211,20 @@ export interface Contact {
   application_count: number;
   /** Only present when the list was fetched with `include_organizations`. */
   organizations?: ContactOrganizationLite[];
+  /**
+   * The portal account already registered to this contact's email, present only
+   * when the list was fetched with `include_client_account`. Null means choosing
+   * this person as the client would create a new account for them.
+   */
+  client_account?: ContactClientAccount | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ContactClientAccount {
+  id: string;
+  full_name: string | null;
+  role: string;
 }
 
 export type RepaymentFrequency = 'weekly' | 'fortnightly' | 'monthly';
