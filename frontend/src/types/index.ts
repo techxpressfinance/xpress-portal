@@ -160,6 +160,9 @@ export interface LoanApplication {
   /** Borrowing entity this application is linked to (resolved from the ABN, or
    *  the name when the entity — e.g. a trust — has none). */
   business_organization_id: string | null;
+  /** CRM client this application belongs to. Null until one is chosen — the
+   *  applicant is otherwise only the name and email typed onto the row. */
+  contact_id: string | null;
   business_structure: string | null;
   gst_registered: boolean | null;
   num_directors: number | null;
