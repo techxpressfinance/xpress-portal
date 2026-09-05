@@ -15,14 +15,17 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
-import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
-import { applicantEmail, applicantName } from '../../lib/applicantName';
+import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
+import { useEntitySearch } from '../../hooks/useEntitySearch';
+import { useClientSearch } from '../../hooks/useClientSearch';
+import { useConfirm } from '../../hooks/useConfirm';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, DocType, Document, DocumentRequest, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, QuoteSheetType, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, QuoteSheetType, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import ActivityChanges from '../../components/ActivityChanges';
@@ -35,6 +38,7 @@ export default function ReviewApplication() {
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { assignBroker, unassignBroker } = useBrokerAssignment();
   const { downloadFile } = useFileDownload();
 
@@ -175,6 +179,7 @@ export default function ReviewApplication() {
     residential_status: '', time_at_address: '', applicant_num_dependants: '',
     has_partner: '' as '' | 'true' | 'false', partner_working: '' as '' | 'true' | 'false',
     employment_category: '', employer_name: '', employer_industry: '', job_title: '', income_frequency: '', gross_income: '',
+    applicant_type: 'individual',
     business_name: '', business_abn: '', business_registration_date: '', business_industry_id: '',
     business_monthly_sales: '', trading_name: '', business_structure: '',
     gst_registered: '' as '' | 'true' | 'false', num_directors: '', time_trading: '',
@@ -184,6 +189,28 @@ export default function ReviewApplication() {
     emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
   };
   const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
+
+  // Business details typeahead over the tenant's own entity book: picking a
+  // company here fills its ABN and structure rather than leaving the broker to
+  // retype a name we already hold (which mints a duplicate stub on save).
+  // Attaching a CRM client to an application that has none. The client is
+  // otherwise only ever an email string on the row, which is what lets one
+  // person become several.
+  const [clientTerm, setClientTerm] = useState('');
+  const clientMatches = useClientSearch(clientTerm);
+
+  const editApplicantIsCompany = watchEdit('applicant_type') === 'company';
+  const editBusinessName = watchEdit('business_name');
+  const entityMatches = useEntitySearch(editBusinessName || '');
+  const [entityDismissedFor, setEntityDismissedFor] = useState('');
+  const showEntityMatches =
+    (editBusinessName || '').trim().length >= 2 && (editBusinessName || '').trim() !== entityDismissedFor;
+
+  const useExistingEntity = (e: EntitySearchResult) => {
+    setValueEdit('business_name', e.name, { shouldDirty: true });
+    if (e.abn) setValueEdit('business_abn', e.abn, { shouldDirty: true });
+    setEntityDismissedFor(e.name.trim());
+  };
 
   // Only the Submissions tab needs the lender list; it was being fetched on
   // every application view regardless.
@@ -265,6 +292,7 @@ export default function ReviewApplication() {
           employment_category: d.employment_category || '', employer_name: d.employer_name || '',
           employer_industry: d.employer_industry || '', job_title: d.job_title || '',
           income_frequency: d.income_frequency || '', gross_income: d.gross_income ? String(d.gross_income) : '',
+          applicant_type: d.applicant_type || 'individual',
           business_name: d.business_name || '', business_abn: d.business_abn || '',
           business_registration_date: d.business_registration_date || '',
           business_industry_id: d.business_industry_id ? String(d.business_industry_id) : '',
@@ -677,6 +705,7 @@ export default function ReviewApplication() {
         job_title: fields.job_title || null,
         income_frequency: fields.income_frequency || null,
         gross_income: fields.gross_income ? parseFloat(fields.gross_income) : null,
+        applicant_type: fields.applicant_type || 'individual',
         business_name: fields.business_name || null,
         business_abn: fields.business_abn || null,
         business_registration_date: fields.business_registration_date || null,
@@ -719,12 +748,62 @@ export default function ReviewApplication() {
       setApplication(data);
       setEditing(false);
       toast('Application updated', 'success');
+      // A save that newly pairs a client with a business asks about it here,
+      // rather than the pairing being written into the CRM behind the broker.
+      await promptBusinessLink(data);
     } catch (err: unknown) {
       toast(getErrorMessage(err, 'Failed to save changes'), 'error');
     } finally {
       setSavingEditFields(false);
     }
   };
+
+  /**
+   * Answer the "is this client part of this business?" question.
+   *
+   * The link is a CRM fact that outlives this application — it seeds directors
+   * onto other applications and decides whose name a tax invoice carries — so
+   * nothing writes it without an answer here.
+   */
+  const answerBusinessLink = useCallback(async (link: boolean) => {
+    if (!id) return;
+    try {
+      const { data } = await api.post(`/applications/${id}/business-link`, { link });
+      setApplication(data);
+      if (link) toast('Client linked to the business', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to record that'), 'error');
+    }
+  }, [id, toast]);
+
+  /** Ask about a pairing the just-saved application newly implies. */
+  const promptBusinessLink = useCallback(async (app: LoanApplication) => {
+    const pending = app.pending_business_link;
+    if (!pending) return;
+    const who = pending.contact_name || 'This client';
+    const ok = await confirm({
+      title: `Link ${who} to ${pending.organization_name}?`,
+      message: `${who} isn't recorded as part of ${pending.organization_name}${pending.organization_abn ? ` (ABN ${pending.organization_abn})` : ''} yet. Linking them puts the business on their contact record and offers them as a director on that company's future applications — so only link them if they really are part of it.`,
+      confirmText: 'Link them',
+      cancelText: "Don't link",
+    });
+    await answerBusinessLink(ok);
+  }, [confirm, answerBusinessLink]);
+
+  const linkClient = useCallback(async (contact: Contact) => {
+    if (!id) return;
+    try {
+      const { data } = await api.post(`/applications/${id}/client`, { contact_id: contact.id });
+      setApplication(data);
+      setClientTerm('');
+      toast(`Client linked to ${[contact.first_name, contact.last_name].filter(Boolean).join(' ')}`, 'success');
+      // Attaching a client to an application that already names a business
+      // creates a pairing nobody has confirmed — ask now rather than never.
+      await promptBusinessLink(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to link the client'), 'error');
+    }
+  }, [id, toast, promptBusinessLink]);
 
   const handleBrokerSubmit = () => {
     if (!id) return;
@@ -1453,6 +1532,12 @@ export default function ReviewApplication() {
                       </h1>
                       <p className="mt-1 text-[14px] font-medium text-muted-foreground">
                         {displayName}
+                        {isCompanyApplicant(application) && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground ring-1 ring-border">
+                            <BuildingOfficeIcon className="h-3 w-3" strokeWidth={2} />
+                            Company applicant
+                          </span>
+                        )}
                       </p>
                       {referrer && (referrer.organization_name || referrer.full_name) && (
                         <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[12px] font-semibold text-primary ring-1 ring-primary/20">
@@ -1515,6 +1600,18 @@ export default function ReviewApplication() {
 
                       {/* Applicant */}
                       <h3 className="text-[13px] font-medium text-muted-foreground">Applicant</h3>
+                      <div>
+                        <label className="block text-[12px] text-muted-foreground mb-1">Who is the applicant?</label>
+                        <select {...regEdit('applicant_type')} className="led-input sm:max-w-xs">
+                          <option value="individual">The individual named below</option>
+                          <option value="company">The business / entity</option>
+                        </select>
+                        <p className="mt-1 text-[12px] text-muted-foreground">
+                          {editApplicantIsCompany
+                            ? 'The entity is the applicant — it is who tax invoices are made out to, and its directors are the parties who sign.'
+                            : 'The person named below is the applicant, even if a business is recorded on the file.'}
+                        </p>
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-4">
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Title</label>
@@ -1526,7 +1623,7 @@ export default function ReviewApplication() {
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">First Name</label>
                           <input type="text" className="led-input"
-                            {...regEdit('applicant_first_name', { required: 'Required' })} />
+                            {...regEdit('applicant_first_name', { required: editApplicantIsCompany ? false : 'Required' })} />
                           {editErrors.applicant_first_name && <p className="text-[12px] text-destructive mt-1">{editErrors.applicant_first_name.message}</p>}
                         </div>
                         <div>
@@ -1723,9 +1820,18 @@ export default function ReviewApplication() {
                       {/* Business */}
                       <h3 className="text-[13px] font-medium text-muted-foreground">Business</h3>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
+                        <div className="relative">
                           <label className="block text-[12px] text-muted-foreground mb-1">Business Name</label>
                           <input type="text" className="led-input" {...regEdit('business_name')} />
+                          {showEntityMatches && (
+                            <EntitySearchResults
+                              matches={entityMatches.matches}
+                              loading={entityMatches.loading}
+                              searched={entityMatches.searched}
+                              onSelect={useExistingEntity}
+                              onDismiss={() => setEntityDismissedFor((editBusinessName || '').trim())}
+                            />
+                          )}
                         </div>
                         <div>
                           <label className="block text-[12px] text-muted-foreground mb-1">Trading Name</label>
@@ -2122,6 +2228,73 @@ export default function ReviewApplication() {
                           </div>
                         </div>
                       </div>
+
+                      {/* No CRM client on this application. Attaching one gives it a
+                          person rather than an email string, which is what the
+                          contact's application history and the business-link
+                          prompt both hang off. */}
+                      {!application.contact_id && (
+                        <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3">
+                          <div className="relative">
+                            <label className="block text-[12px] font-medium text-muted-foreground mb-1">
+                              This application isn't linked to a client record
+                            </label>
+                            <input
+                              type="text"
+                              className="led-input"
+                              placeholder="Search your clients by name, email or phone…"
+                              value={clientTerm}
+                              onChange={(e) => setClientTerm(e.target.value)}
+                            />
+                            <ClientSearchResults
+                              matches={clientMatches.matches}
+                              loading={clientMatches.loading}
+                              searched={clientMatches.searched}
+                              onSelect={linkClient}
+                              onDismiss={() => setClientTerm('')}
+                            />
+                          </div>
+                          <p className="mt-1.5 text-[12px] text-muted-foreground">
+                            Linking gives this deal a place in that client's history, and fills any
+                            blank applicant details from their record.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* An unconfirmed client↔business pairing. Kept here as well
+                          as in the post-save dialog so a prompt dismissed with Esc
+                          is still answerable, rather than the link quietly never
+                          being made — or quietly being made. */}
+                      {application.pending_business_link && (
+                        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="font-semibold">
+                                Is {application.pending_business_link.contact_name || 'this client'} part of{' '}
+                                {application.pending_business_link.organization_name}?
+                              </span>
+                              <p className="mt-0.5 text-[12px]">
+                                They aren't linked yet. Linking puts the business on their contact record and
+                                offers them as a director on that company's future applications.
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <button
+                                onClick={() => answerBusinessLink(true)}
+                                className="rounded bg-amber-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-amber-700"
+                              >
+                                Link them
+                              </button>
+                              <button
+                                onClick={() => answerBusinessLink(false)}
+                                className="rounded border border-amber-300 px-2.5 py-1 text-[12px] font-medium text-amber-900 hover:bg-amber-100"
+                              >
+                                No
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <DirectorsSection
                         application={application}
@@ -2604,7 +2777,9 @@ export default function ReviewApplication() {
                     <dl className="grid gap-3 sm:grid-cols-2">
                       {applicantFormName && (
                         <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                          <dt className="text-[12px] font-medium text-muted-foreground">
+                            {isCompanyApplicant(application) ? 'Borrowing entity' : 'Name'}
+                          </dt>
                           <dd className="mt-0.5 text-[14px] font-medium text-foreground">
                             {applicantFormName}
                           </dd>

@@ -18,6 +18,7 @@ from app.models.approval_condition import ApprovalCondition
 from app.models.document import DocType, Document
 from app.models.external_referral import ExternalReferral, ExternalReferralStatus
 from app.models.loan_application import (
+    APPLICANT_TYPE_COMPANY,
     COMMERCIAL_LOAN_TYPES,
     AnalysisStatus,
     ApplicationStatus,
@@ -25,7 +26,7 @@ from app.models.loan_application import (
     LoanType,
 )
 from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
-from app.models.contact import ContactOrganization
+from app.models.contact import Contact, ContactOrganization
 from app.models.application_note import ApplicationNote
 from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
@@ -66,10 +67,12 @@ from app.services.contacts import ensure_contact
 from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
+    AddCompanyDirectorsRequest,
     ApprovalConditionCreate,
     ApprovalConditionOut,
     ApprovalConditionUpdate,
     ApprovalDetailsRequest,
+    CompanyDirectorCandidate,
     CorporateGuarantorCreate,
     CorporateGuarantorOut,
     LoanApplicantCreate,
@@ -78,6 +81,7 @@ from app.schemas.loan_application import (
     LoanApplicationOut,
     LoanApplicationUpdate,
     PaginatedApplications,
+    PartyInviteRequest,
 )
 from app.services.serialization import guarantor_dict
 from app.services.tenant_scope import get_tenant_id
@@ -99,6 +103,9 @@ def create_application(
         current_user.role in (UserRole.admin, UserRole.broker)
         and bool(data.applicant_email)
         and data.client_engagement_model != "direct_engagement"
+        # A company applicant has no natural person to hand the application to —
+        # its directors are invited individually as parties instead.
+        and data.applicant_type != APPLICANT_TYPE_COMPANY
     )
     lead_client: Optional[User] = None
     lead_is_new = False
@@ -135,6 +142,17 @@ def create_application(
             lead_is_new = True
             owner_id = lead_client.id
 
+    if data.applicant_type == APPLICANT_TYPE_COMPANY and not (data.business_name or data.business_abn):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A company applicant needs the entity's name or ABN",
+        )
+
+    if data.contact_id and not db.query(Contact).filter(
+        Contact.id == data.contact_id, Contact.tenant_id == tenant_id
+    ).first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
     app_kwargs = data.model_dump()
     # Normalize ABN before storing
     if app_kwargs.get("business_abn"):
@@ -155,6 +173,14 @@ def create_application(
 
     db.add(app)
     db.flush()
+
+    # A company applicant starts with the directors the contact book already
+    # knows about, so the broker isn't retyping people the CRM has on file. Those
+    # with an email are invited immediately; the rest wait for one.
+    seeded_parties: list[LoanApplicant] = []
+    if app.applicant_type == APPLICANT_TYPE_COMPANY and app.business_organization_id:
+        seeded_parties = _seed_parties_from_org(db, app, tenant_id, app.business_organization_id)
+
     # Every read path (list, access check, dashboard, search, kanban) scopes brokers
     # by application_brokers, so the legacy column alone would hide this app from its
     # own creator once it leaves draft.
@@ -169,6 +195,7 @@ def create_application(
     # so auto-saved drafts (which omit it) don't create shell contacts.
     if (
         current_user.role == UserRole.referrer
+        and not app.contact_id
         and app.applicant_first_name
         and app.applicant_last_name
         and app.applicant_email
@@ -233,7 +260,8 @@ def create_application(
         app.client_invite_sent_at = datetime.now(timezone.utc)
         direct_engagement_invite_url = f"{FRONTEND_URL}/apply/{token}"
 
-    ensure_contact_organization_link(db, tenant_id, app.contact_id, app.business_organization_id)
+    # The client↔business pairing is offered to the broker, not written here —
+    # see _pending_business_link in services/serialization.py.
 
     db.commit()
 
@@ -307,6 +335,11 @@ def create_application(
                     str(int(data.amount)),
                     portal_url,
                 )
+
+    # Post-commit so a mail failure can't roll back the application
+    for party in seeded_parties:
+        if party.invite_token:
+            _send_party_invite(party, app.business_name)
 
     db.refresh(app, attribute_names=["user"])
     result = _app_with_user(app, db)
@@ -494,7 +527,10 @@ def clone_application(
         {"cloned_from": source.id, "loan_type": getattr(app.loan_type, "value", app.loan_type), "amount": str(app.amount)},
         tenant_id=tenant_id,
     )
-    ensure_contact_organization_link(db, tenant_id, app.contact_id, app.business_organization_id)
+    # A clone may have had its ABN changed, so it can point at a different entity
+    # than the source. Any link the source's pairing already earned still stands
+    # (links are contact↔organization, not per-application); a new pairing is
+    # offered to the broker like any other.
     db.commit()
 
     db.refresh(app, attribute_names=["user"])
@@ -836,6 +872,9 @@ def update_application(
         field_updates = data.model_dump(exclude_unset=True)
         field_updates.pop("status", None)
         _BROKER_ALLOWED_FIELDS = {
+            # Who the applicant is stays correctable after submission — a tax
+            # invoice is raised at approval, and its Sold To party follows this.
+            "applicant_type",
             "notes", "loan_type", "lend_product_type_id", "lend_owner_type", "lend_send_type", "lend_who_to_contact", "lend_extra_data",
             "amount", "loan_term_requested", "loan_purpose_id",
             "applicant_title", "applicant_first_name", "applicant_last_name", "applicant_middle_name",
@@ -856,6 +895,22 @@ def update_application(
 
     updates = data.model_dump(exclude_unset=True)
     requested_status = updates.pop("status", None)
+
+    # Marking the business as the applicant only means something if we know which
+    # business. Check against the incoming values, since the entity is usually
+    # named in the same save.
+    if updates.get("applicant_type") == APPLICANT_TYPE_COMPANY:
+        has_entity = (
+            updates.get("business_name")
+            or updates.get("business_abn")
+            or application.business_name
+            or application.business_abn
+        )
+        if not has_entity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name the business (or give its ABN) before marking it as the applicant",
+            )
 
     # Handle draft -> application_received for any role (client submission)
     if requested_status == "application_received":
@@ -896,6 +951,7 @@ def update_application(
     # Snapshot before mutating so the activity log records what actually changed —
     # the edit form PATCHes the whole payload, so `updates` is everything submitted.
     before = snapshot(application, updates.keys())
+    before_org_id = application.business_organization_id
 
     for key, value in updates.items():
         setattr(application, key, value)
@@ -912,13 +968,36 @@ def update_application(
         else:
             application.business_organization_id = None
 
+    # A draft that has just become a company application (or just had its entity
+    # attached) picks up that company's known directors, the same as one created
+    # entity-first. Only when it has no parties yet, so this never fights a roster
+    # the broker has already curated.
+    seeded_parties: list[LoanApplicant] = []
+    if (
+        application.applicant_type == APPLICANT_TYPE_COMPANY
+        and application.business_organization_id
+        and ("applicant_type" in updates or "business_abn" in updates or "business_name" in updates)
+        and not db.query(LoanApplicant).filter(LoanApplicant.application_id == application.id).first()
+    ):
+        seeded_parties = _seed_parties_from_org(
+            db, application, tenant_id, application.business_organization_id
+        )
+
     edited = field_changes(application, before)
     if edited:
         log_activity(db, current_user.id, "updated", "application", app_id, {"changes": edited}, tenant_id=tenant_id)
 
-    ensure_contact_organization_link(db, tenant_id, application.contact_id, application.business_organization_id)
+    # A different client or a different entity is a different question, so a
+    # previous "no" doesn't carry over to the new pairing.
+    if "business_abn" in updates or "business_name" in updates:
+        if application.business_organization_id != before_org_id:
+            application.business_link_declined = False
 
     db.commit()
+
+    for party in seeded_parties:
+        if party.invite_token:
+            _send_party_invite(party, application.business_name)
 
     db.refresh(application, attribute_names=["user"])
     return _app_with_user(application, db)
@@ -1504,10 +1583,16 @@ def _load_commercial_app(app_id: str, current_user: User, db: Session, tenant_id
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    if application.loan_type not in COMMERCIAL_LOAN_TYPES:
+    # A company applicant has directors whatever it is borrowing for — a business
+    # financing a ute is on a `vehicle` loan, not a commercial one — so the
+    # applicant type opens this up alongside the commercial loan types.
+    if (
+        application.loan_type not in COMMERCIAL_LOAN_TYPES
+        and application.applicant_type != APPLICANT_TYPE_COMPANY
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Directors can only be added to commercial loan applications",
+            detail="Directors can only be added to commercial applications, or to one where the business is the applicant",
         )
     return application
 
@@ -1522,7 +1607,8 @@ def _build_invited_party(
 ) -> LoanApplicant:
     """Create a LoanApplicant row with a fresh magic-link invite token.
 
-    Caller commits. ``invite_email`` is required — every party self-completes.
+    Caller commits. ``invite_email`` is required — a party the broker types in by
+    hand is nothing but an email until they complete their own block.
     """
     invite_email = (data.invite_email or "").strip()
     if not invite_email:
@@ -1537,11 +1623,124 @@ def _build_invited_party(
         is_primary=False,
         **{k: v for k, v in data.model_dump(exclude_none=True).items() if k in _APPLICANT_FIELDS},
     )
+    _issue_invite(applicant, invite_email)
+    db.add(applicant)
+    return applicant
+
+
+def _issue_invite(applicant: LoanApplicant, invite_email: str) -> None:
+    """Stamp a party with a fresh magic-link token addressed to ``invite_email``."""
     applicant.invite_token = secrets.token_urlsafe(32)
     applicant.invite_email = invite_email
     applicant.invite_sent_at = datetime.now(timezone.utc)
-    db.add(applicant)
+
+
+def _org_party_candidates(
+    db: Session, tenant_id: str, org_id: str, existing: list[LoanApplicant]
+) -> list[tuple[ContactOrganization, bool]]:
+    """Contacts linked to a company as director/guarantor in the contact book,
+    each paired with whether they are already a party on the application.
+
+    Already-added is matched on contact_id, then on email, so a party the broker
+    typed in by hand before the contact was linked isn't offered a second time.
+    """
+    taken_ids = {a.contact_id for a in existing if a.contact_id}
+    taken_emails = {
+        (a.invite_email or a.applicant_email or "").strip().lower() for a in existing
+    } - {""}
+    links = db.query(ContactOrganization).filter(
+        ContactOrganization.organization_id == org_id,
+        ContactOrganization.tenant_id == tenant_id,
+    ).all()
+    out: list[tuple[ContactOrganization, bool]] = []
+    for link in links:
+        if (link.role or "").lower() not in ("director", "guarantor"):
+            continue
+        contact = link.contact
+        if not contact:
+            continue
+        added = contact.id in taken_ids or (contact.email or "").strip().lower() in taken_emails
+        out.append((link, added))
+    return out
+
+
+def _party_from_contact(
+    tenant_id: str,
+    application: LoanApplication,
+    contact,
+    *,
+    role: str = "director",
+    application_guarantor_id: Optional[str] = None,
+) -> LoanApplicant:
+    """Build a party row from a contact-book record.
+
+    Unlike a hand-typed party this one carries a real identity already, so it is
+    worth having on the roster even with no email to invite — the broker adds the
+    address later and sends the invite then.
+    """
+    applicant = LoanApplicant(
+        tenant_id=tenant_id,
+        application_id=application.id,
+        application_guarantor_id=application_guarantor_id,
+        contact_id=contact.id,
+        role=role,
+        is_primary=False,
+        applicant_first_name=contact.first_name,
+        applicant_last_name=contact.last_name,
+        applicant_middle_name=contact.middle_name,
+        applicant_email=contact.email,
+        applicant_mobile=contact.phone,
+        applicant_address=contact.address,
+        applicant_suburb=contact.suburb,
+        applicant_state=contact.state,
+        applicant_postcode=contact.postcode,
+    )
+    if contact.email:
+        _issue_invite(applicant, contact.email)
     return applicant
+
+
+def _seed_parties_from_org(
+    db: Session,
+    application: LoanApplication,
+    tenant_id: str,
+    org_id: str,
+    *,
+    application_guarantor_id: Optional[str] = None,
+    contact_ids: Optional[set[str]] = None,
+    role: str = "director",
+) -> list[LoanApplicant]:
+    """Add a company's known directors to the application as parties.
+
+    With ``contact_ids`` only those contacts are added (the broker's picks);
+    without it every linked director is, which is what happens when the company
+    is first attached. Caller flushes/commits and sends the invites.
+    """
+    # Dedupe within the scope being seeded: a person can legitimately be both a
+    # director of the borrower and a signatory of a corporate guarantor, and owes
+    # a separate signature in each capacity.
+    existing = db.query(LoanApplicant).filter(
+        LoanApplicant.application_id == application.id,
+        LoanApplicant.application_guarantor_id.is_(None)
+        if application_guarantor_id is None
+        else LoanApplicant.application_guarantor_id == application_guarantor_id,
+    ).all()
+    seeded: list[LoanApplicant] = []
+    for link, already_added in _org_party_candidates(db, tenant_id, org_id, existing):
+        if already_added:
+            continue
+        if contact_ids is not None and link.contact_id not in contact_ids:
+            continue
+        applicant = _party_from_contact(
+            tenant_id,
+            application,
+            link.contact,
+            role=role,
+            application_guarantor_id=application_guarantor_id,
+        )
+        db.add(applicant)
+        seeded.append(applicant)
+    return seeded
 
 
 def _send_party_invite(applicant: LoanApplicant, company_name: Optional[str]) -> None:
@@ -1609,6 +1808,281 @@ def remove_director(
     log_activity(db, current_user.id, "director_removed", "application", app_id, tenant_id=tenant_id)
     db.commit()
     return None
+
+
+def _party_scope_org_id(
+    application: LoanApplication, guarantor_id: Optional[str], db: Session
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve which company a party add is scoped to: the borrowing entity, or a
+    corporate guarantor's company. Returns (organization_id, guarantor_id)."""
+    if guarantor_id:
+        guarantor = _load_guarantor(application, guarantor_id, db)
+        return guarantor.organization_id, guarantor.id
+    return application.business_organization_id, None
+
+
+@router.get("/{app_id}/company-directors", response_model=list[CompanyDirectorCandidate])
+def list_company_directors(
+    app_id: str,
+    guarantor_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """The company's directors from the contact book, for adding as parties.
+
+    Scoped to the borrowing entity by default, or to a corporate guarantor's own
+    company with ``guarantor_id``. Returns people already on the application too,
+    flagged, so the picker can show them greyed out rather than silently short.
+    """
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    org_id, scoped_guarantor_id = _party_scope_org_id(application, guarantor_id, db)
+    if not org_id:
+        return []
+    existing = db.query(LoanApplicant).filter(
+        LoanApplicant.application_id == application.id,
+        LoanApplicant.application_guarantor_id.is_(None)
+        if scoped_guarantor_id is None
+        else LoanApplicant.application_guarantor_id == scoped_guarantor_id,
+    ).all()
+    return [
+        CompanyDirectorCandidate(
+            contact_id=link.contact.id,
+            first_name=link.contact.first_name,
+            last_name=link.contact.last_name,
+            email=link.contact.email,
+            phone=link.contact.phone,
+            link_role=link.role,
+            already_added=added,
+        )
+        for link, added in _org_party_candidates(db, tenant_id, org_id, existing)
+    ]
+
+
+@router.post("/{app_id}/directors/from-company", response_model=list[LoanApplicantOut])
+def add_directors_from_company(
+    app_id: str,
+    data: AddCompanyDirectorsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Add the selected contacts of the company as parties on the application.
+
+    Their details come across from the contact book, so unlike a hand-typed party
+    they are worth keeping even without an email — those with one are invited now,
+    the rest are added uninvited for the broker to chase.
+    """
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    org_id, scoped_guarantor_id = _party_scope_org_id(application, data.guarantor_id, db)
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This application has no company to take directors from",
+        )
+    added = _seed_parties_from_org(
+        db,
+        application,
+        tenant_id,
+        org_id,
+        application_guarantor_id=scoped_guarantor_id,
+        contact_ids=set(data.contact_ids),
+        role=data.role,
+    )
+    if not added:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Those directors are already on the application",
+        )
+    log_activity(db, current_user.id, "directors_added_from_company", "application", app_id,
+                 {"organization_id": org_id, "count": len(added),
+                  "guarantor_id": scoped_guarantor_id}, tenant_id=tenant_id)
+    db.commit()
+
+    company_name = application.business_name
+    if scoped_guarantor_id:
+        guarantor = _load_guarantor(application, scoped_guarantor_id, db)
+        company_name = guarantor.organization.name if guarantor.organization else company_name
+    for party in added:
+        db.refresh(party)
+        if party.invite_token:
+            _send_party_invite(party, company_name)
+            party.invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{party.invite_token}"
+    return added
+
+
+@router.post("/{app_id}/directors/{applicant_id}/invite", response_model=LoanApplicantOut)
+def invite_party(
+    app_id: str,
+    applicant_id: str,
+    data: PartyInviteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Send (or resend) a party's invite, setting the email it goes to.
+
+    This is how a director pulled from the contact book without an email address
+    eventually gets one. Re-issuing the token invalidates any earlier link.
+    """
+    application = _load_commercial_app(app_id, current_user, db, tenant_id)
+    applicant = db.query(LoanApplicant).filter(
+        LoanApplicant.id == applicant_id,
+        LoanApplicant.application_id == application.id,
+    ).first()
+    if not applicant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Party not found")
+    email = data.invite_email.strip()
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An email is required")
+    _issue_invite(applicant, email)
+    if not applicant.applicant_email:
+        applicant.applicant_email = email
+    log_activity(db, current_user.id, "party_invited", "application", app_id,
+                 {"applicant_id": applicant.id}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(applicant)
+
+    company_name = application.business_name
+    if applicant.application_guarantor_id:
+        guarantor = _load_guarantor(application, applicant.application_guarantor_id, db)
+        company_name = guarantor.organization.name if guarantor.organization else company_name
+    _send_party_invite(applicant, company_name)
+    applicant.invite_url = f"{FRONTEND_URL.rstrip('/')}/apply/{applicant.invite_token}"
+    return applicant
+
+
+class ApplicationClientRequest(BaseModel):
+    """The CRM contact chosen as this application's client."""
+
+    contact_id: str
+
+
+#: Application columns filled from the chosen contact, mapped from its own.
+#: Only blanks are filled — what the form already says about this person is
+#: what the broker typed for *this* deal, and the contact record may be stale.
+_CLIENT_PREFILL = (
+    ("applicant_first_name", "first_name"),
+    ("applicant_last_name", "last_name"),
+    ("applicant_middle_name", "middle_name"),
+    ("applicant_email", "email"),
+    ("applicant_mobile", "phone"),
+    ("applicant_dob", "date_of_birth"),
+    ("applicant_address", "address"),
+    ("applicant_suburb", "suburb"),
+    ("applicant_state", "state"),
+    ("applicant_postcode", "postcode"),
+)
+
+
+@router.post("/{app_id}/client", response_model=LoanApplicationOut)
+def set_application_client(
+    app_id: str,
+    data: ApplicationClientRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Name an existing CRM contact as this application's client.
+
+    Without this the client is only ever identified by a typed email address, so
+    one typo mints a second person for the same human. Choosing them here also
+    gives the application a CRM identity, which is what the client↔business link
+    prompt and the contact's own application history hang off.
+    """
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    contact = db.query(Contact).filter(
+        Contact.id == data.contact_id, Contact.tenant_id == tenant_id
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    changed = application.contact_id != contact.id
+    application.contact_id = contact.id
+    filled = []
+    for app_field, contact_field in _CLIENT_PREFILL:
+        if not getattr(application, app_field, None):
+            value = getattr(contact, contact_field, None)
+            if value:
+                setattr(application, app_field, value)
+                filled.append(app_field)
+
+    # A different client against the same business is a new question.
+    if changed:
+        application.business_link_declined = False
+
+    log_activity(db, current_user.id, "client_linked", "application", app_id,
+                 {"contact_id": contact.id, "prefilled": filled}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application, db)
+
+
+class BusinessLinkRequest(BaseModel):
+    """The broker's answer to "is this client part of this business?"."""
+
+    link: bool
+    # How the person stands in the business. Directors and guarantors are the
+    # roles that later seed onto applications, so getting this right matters.
+    role: Optional[str] = None
+
+
+@router.post("/{app_id}/business-link", response_model=LoanApplicationOut)
+def confirm_business_link(
+    app_id: str,
+    data: BusinessLinkRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Record whether this application's client really is part of its business.
+
+    An application pairing the two is not proof of it — a mistyped ABN or a
+    company matched on a name collision pairs them just as readily — and the link
+    is a CRM fact that outlives this application: it seeds directors onto other
+    applications and can put a person's name on another company's tax invoice. So
+    it is created only here, on the broker's say-so. Declining is remembered so
+    the prompt doesn't return on every save.
+    """
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    if not (application.contact_id and application.business_organization_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This application doesn't pair a client with a business",
+        )
+
+    if data.link:
+        ensure_contact_organization_link(
+            db, tenant_id, application.contact_id, application.business_organization_id, role=data.role,
+        )
+        application.business_link_declined = False
+    else:
+        application.business_link_declined = True
+
+    log_activity(db, current_user.id, "business_link_confirmed" if data.link else "business_link_declined",
+                 "application", app_id,
+                 {"contact_id": application.contact_id,
+                  "organization_id": application.business_organization_id,
+                  "role": data.role}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application, db)
 
 
 class ReconcileRequest(BaseModel):
@@ -1693,34 +2167,12 @@ def add_corporate_guarantor(
     db.add(guarantor)
     db.flush()  # need guarantor.id for the seeded signatories
 
-    # Seed signatories from the guarantor company's known directors. Only those
-    # with an email can be auto-invited; others are skipped (broker adds them).
-    seeded: list[LoanApplicant] = []
-    links = db.query(ContactOrganization).filter(
-        ContactOrganization.organization_id == org.id,
-        ContactOrganization.tenant_id == tenant_id,
-    ).all()
-    for link in links:
-        if (link.role or "").lower() not in ("director", "guarantor"):
-            continue
-        contact = link.contact
-        if not contact or not contact.email:
-            continue
-        applicant = LoanApplicant(
-            tenant_id=tenant_id,
-            application_id=application.id,
-            application_guarantor_id=guarantor.id,
-            contact_id=contact.id,
-            role="director",
-            applicant_first_name=contact.first_name,
-            applicant_last_name=contact.last_name,
-            applicant_email=contact.email,
-            invite_email=contact.email,
-            invite_token=secrets.token_urlsafe(32),
-            invite_sent_at=datetime.now(timezone.utc),
-        )
-        db.add(applicant)
-        seeded.append(applicant)
+    # Seed signatories from the guarantor company's known directors. Those with an
+    # email are invited straight away; the rest join the roster uninvited so the
+    # broker can see who is still missing an address.
+    seeded = _seed_parties_from_org(
+        db, application, tenant_id, org.id, application_guarantor_id=guarantor.id
+    )
 
     log_activity(db, current_user.id, "guarantor_added", "application", app_id,
                  {"organization_id": org.id, "seeded_signatories": len(seeded)}, tenant_id=tenant_id)
@@ -1729,6 +2181,8 @@ def add_corporate_guarantor(
     result = guarantor_dict(guarantor)
     seeded_urls = {}
     for s in seeded:
+        if not s.invite_token:
+            continue  # no email on the contact — nothing to send or link to yet
         _send_party_invite(s, org.name)
         seeded_urls[s.id] = f"{FRONTEND_URL.rstrip('/')}/apply/{s.invite_token}"
     for sig in result["signatories"]:

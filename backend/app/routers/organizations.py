@@ -15,6 +15,7 @@ from app.models.loan_application import LoanApplication
 from app.models.trust_party import TrustParty
 from app.models.user import User
 from app.schemas.organization import (
+    EntitySearchResult,
     OrganizationContactLink,
     OrganizationCreate,
     OrganizationDetailOut,
@@ -241,6 +242,86 @@ def abr_search(
     if not ABR_ENABLED:
         return {"enabled": False, "matches": []}
     return {"enabled": True, "matches": abr_search_names(name, limit)}
+
+
+@router.get("/search", response_model=list[EntitySearchResult])
+def search_entities(
+    q: str = Query(..., min_length=2, description="Entity name or ABN fragment"),
+    limit: int = Query(8, ge=1, le=25),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Typeahead over the tenant's own entity book, for the business-details fields
+    on the application forms.
+
+    Staff only: unlike ``/lookup``, which needs the ABN in hand, this enumerates
+    the book by name fragment, so it stays off the client and referrer portals.
+    Exact-name matches sort first, then names that start with the term.
+    """
+    term = q.strip()
+    safe = escape_like(term)
+    digits = _normalize_abn(term)
+    clauses = [Organization.name.ilike(f"%{safe}%", escape="\\")]
+    if digits:
+        clauses.append(Organization.abn.ilike(f"{digits}%", escape="\\"))
+    rows = (
+        db.query(Organization)
+        .filter(Organization.tenant_id == tenant_id, or_(*clauses))
+        .order_by(Organization.name)
+        .limit(limit * 4)  # room for the relevance sort below to do its work
+        .all()
+    )
+
+    lowered = term.lower()
+
+    def rank(org: Organization) -> tuple[int, str]:
+        name = (org.name or "").lower()
+        if name == lowered:
+            return (0, name)
+        if name.startswith(lowered):
+            return (1, name)
+        return (2, name)
+
+    rows.sort(key=rank)
+    rows = rows[:limit]
+    if not rows:
+        return []
+
+    ids = [o.id for o in rows]
+    director_counts = dict(
+        db.query(ContactOrganization.organization_id, func.count(ContactOrganization.id))
+        .filter(
+            ContactOrganization.organization_id.in_(ids),
+            func.lower(ContactOrganization.role).in_(("director", "guarantor")),
+        )
+        .group_by(ContactOrganization.organization_id)
+        .all()
+    )
+    app_counts = dict(
+        db.query(LoanApplication.business_organization_id, func.count(LoanApplication.id))
+        .filter(
+            LoanApplication.business_organization_id.in_(ids),
+            LoanApplication.deleted_at.is_(None),
+        )
+        .group_by(LoanApplication.business_organization_id)
+        .all()
+    )
+    return [
+        EntitySearchResult(
+            id=o.id,
+            name=o.name,
+            entity_type=o.entity_type,
+            trust_type=o.trust_type,
+            abn=o.abn,
+            acn=o.acn,
+            industry=o.industry,
+            address=o.address,
+            director_count=director_counts.get(o.id, 0),
+            application_count=app_counts.get(o.id, 0),
+        )
+        for o in rows
+    ]
 
 
 @router.get("/lookup")

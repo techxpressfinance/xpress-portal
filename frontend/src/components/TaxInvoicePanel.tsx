@@ -115,6 +115,30 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
     }
   };
 
+  /** Re-derive the Sold To party from the application. The draft is raised at
+   *  approval, so a broker who afterwards corrects who the applicant is needs a
+   *  way to pull that through without retyping the block. */
+  const refreshBuyer = async (invoice: TaxInvoice) => {
+    setSaving(true);
+    try {
+      await api.post(`/applications/${applicationId}/tax-invoices/${invoice.id}/refresh-buyer`);
+      // Drop any unsaved edits to the buyer block — they've just been replaced.
+      setDraft((prev) => {
+        const next = { ...prev };
+        for (const key of ['buyer_name', 'buyer_abn', 'buyer_acn', 'buyer_address'] as const) {
+          delete next[key];
+        }
+        return next;
+      });
+      await load();
+      toast('Sold To updated from the application', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update the Sold To party'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const remove = async (invoice: TaxInvoice) => {
     try {
       await api.delete(`/applications/${applicationId}/tax-invoices/${invoice.id}`);
@@ -234,6 +258,16 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
                     </Section>
 
                     <Section title={`${isRequest ? 'Sold to' : 'Buyer'}${invoice.totals.buyer_identity_required ? ' (required at $1,000 or more)' : ''}`}>
+                      {!locked && (
+                        <button
+                          type="button"
+                          onClick={() => refreshBuyer(invoice)}
+                          disabled={saving}
+                          className="text-[12px] font-medium text-primary hover:underline disabled:opacity-50"
+                        >
+                          Use the application's applicant
+                        </button>
+                      )}
                       <Text label="Name" value={field(invoice, 'buyer_name')} onChange={(v) => set('buyer_name', v)} disabled={locked} />
                       <Text label="ABN" value={field(invoice, 'buyer_abn')} onChange={(v) => set('buyer_abn', v)} disabled={locked} />
                       <Text label="ACN" value={field(invoice, 'buyer_acn')} onChange={(v) => set('buyer_acn', v)} disabled={locked} />

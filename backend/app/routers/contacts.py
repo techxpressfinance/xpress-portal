@@ -83,10 +83,40 @@ def _linked_orgs(db: Session, contact_ids: list[str]) -> dict[str, list[dict]]:
     return out
 
 
-def _serialize_contact(contact: Contact, app_count: int, orgs: list[dict] | None = None) -> dict:
+def _client_accounts(db: Session, contacts: list[Contact], tenant_id: str) -> dict[str, dict]:
+    """{contact_id: {id, full_name, role}} for contacts whose email already has a
+    portal account, in one query.
+
+    The client picker needs it to say whether choosing this person reuses their
+    login or mints a new one — the difference between one client and two.
+    """
+    emails = {(c.email or "").strip().lower() for c in contacts} - {""}
+    if not emails:
+        return {}
+    users = (
+        db.query(User)
+        .filter(User.tenant_id == tenant_id, func.lower(User.email).in_(emails))
+        .all()
+    )
+    by_email = {(u.email or "").lower(): u for u in users}
+    out = {}
+    for c in contacts:
+        user = by_email.get((c.email or "").strip().lower())
+        if user:
+            out[c.id] = {"id": user.id, "full_name": user.full_name, "role": user.role.value}
+    return out
+
+
+def _serialize_contact(
+    contact: Contact,
+    app_count: int,
+    orgs: list[dict] | None = None,
+    client_account: dict | None = None,
+) -> dict:
     """Serialize a contact — caller passes the precomputed application count,
-    and the linked companies when the caller asked for them."""
+    the linked companies, and the portal account when the caller asked for them."""
     return {
+        "client_account": client_account,
         "id": contact.id,
         "first_name": contact.first_name,
         "last_name": contact.last_name,
@@ -123,6 +153,9 @@ def list_contacts(
     include_organizations: bool = Query(
         False, description="Attach each contact's linked companies (id/name/abn/role)"
     ),
+    include_client_account: bool = Query(
+        False, description="Attach the portal account already registered to each contact's email"
+    ),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -138,8 +171,12 @@ def list_contacts(
         items = query.offset((page - 1) * per_page).limit(per_page).all()
         counts = _app_counts(db, [c.id for c in items])
         orgs = _linked_orgs(db, [c.id for c in items]) if include_organizations else {}
+        accounts = _client_accounts(db, items, tenant_id) if include_client_account else {}
         return PaginatedContacts(
-            items=[_serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id)) for c in items],
+            items=[
+                _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id))
+                for c in items
+            ],
             total=total,
             page=page,
             per_page=per_page,
@@ -184,8 +221,12 @@ def list_contacts(
     ordered = [by_id[cid] for cid in page_ids if cid in by_id]
     counts = _app_counts(db, page_ids)
     orgs = _linked_orgs(db, page_ids) if include_organizations else {}
+    accounts = _client_accounts(db, ordered, tenant_id) if include_client_account else {}
     return PaginatedContacts(
-        items=[_serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id)) for c in ordered],
+        items=[
+            _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id))
+            for c in ordered
+        ],
         total=total,
         page=page,
         per_page=per_page,
@@ -505,7 +546,12 @@ def link_organization(
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Contact is already linked to this organization")
 
-    link = ContactOrganization(contact_id=contact_id, organization_id=data.organization_id, role=data.role)
+    link = ContactOrganization(
+        tenant_id=tenant_id,
+        contact_id=contact_id,
+        organization_id=data.organization_id,
+        role=data.role,
+    )
     db.add(link)
     db.commit()
     return {"status": "linked"}
@@ -598,6 +644,11 @@ def auto_create_contacts(
     """Scan all loan applications without a contact_id and auto-create/link contacts.
 
     Matching priority: DL number > phone+DOB > DOB+name > name.
+
+    Contacts and companies are created and attached to their applications, but
+    the client↔company links are only *proposed* — each application then shows
+    the pairing for a broker to confirm. Asserting that a person belongs to a
+    business is not something a bulk sweep should decide.
     Also auto-creates organizations from business_name/business_abn on applications.
     """
     unlinked = db.query(LoanApplication).filter(LoanApplication.contact_id.is_(None), LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).all()
@@ -606,6 +657,7 @@ def auto_create_contacts(
     created = 0
     linked = 0
     orgs_created = 0
+    links_pending = 0
 
     for app in unlinked:
         first_name = app.applicant_first_name
@@ -657,18 +709,28 @@ def auto_create_contacts(
                 db.flush()
                 orgs_created += 1
 
+            app.business_organization_id = app.business_organization_id or org.id
+
+            # The contact↔company link is NOT made here. This sweep matches a
+            # company by exact business_name when there is no ABN, so a name
+            # collision would otherwise write "this person is part of that
+            # business" across the whole book in one click. Each pairing surfaces
+            # on its application for a broker to confirm — see
+            # _pending_business_link in services/serialization.py.
             existing_link = db.query(ContactOrganization).filter(
                 ContactOrganization.contact_id == contact.id,
                 ContactOrganization.organization_id == org.id,
             ).first()
             if not existing_link:
-                db.add(ContactOrganization(contact_id=contact.id, organization_id=org.id))
+                links_pending += 1
 
     db.commit()
     return {
         "contacts_created": created,
         "applications_linked": linked,
         "organizations_created": orgs_created,
+        # Client↔business pairings now waiting on a broker's confirmation.
+        "links_pending": links_pending,
     }
 
 

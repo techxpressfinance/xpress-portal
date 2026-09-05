@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon } from '../../components/ui';
+import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
+import { useEntitySearch } from '../../hooks/useEntitySearch';
+import { useClientSearch } from '../../hooks/useClientSearch';
+import type { Contact, EntitySearchResult } from '../../types';
 import { CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
@@ -381,11 +384,61 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
+
+  // Entity book typeahead on the business-name fields. The search endpoint is
+  // staff-only, so it stays idle on the referrer's own lead form — a referrer
+  // has no business enumerating the tenant's entities.
+  const [entityDismissedFor, setEntityDismissedFor] = useState('');
+  const comEntityMatches = useEntitySearch(showFullDetails ? comBusinessName : '');
+  const detailEntityMatches = useEntitySearch(showFullDetails ? extra.business_name : '');
+  const entityPanelVisible = (value: string) =>
+    showFullDetails && value.trim().length >= 2 && value.trim() !== entityDismissedFor;
+
+  // Choosing an existing client instead of retyping one. Without it the client
+  // is identified by a typed email alone, so a typo mints a second person — and
+  // a second portal login — for the same human. Staff-only endpoint, so the
+  // referrer's own lead form leaves it idle.
+  const [clientTerm, setClientTerm] = useState('');
+  const [pickedClient, setPickedClient] = useState<Contact | null>(null);
+  const clientMatches = useClientSearch(showFullDetails ? clientTerm : '');
+
+  const useExistingClient = (c: Contact) => {
+    setPickedClient(c);
+    setFirstName(c.first_name || '');
+    setLastName(c.last_name || '');
+    if (c.email) setEmail(c.email);
+    if (c.phone) setMobile(c.phone);
+    setClientTerm('');
+    // Reuse the confirmed-client card the referrer path already renders.
+    setSelectedPrevClient({
+      name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+      firstName: c.first_name || '',
+      lastName: c.last_name || '',
+      email: c.email || '',
+      mobile: c.phone || undefined,
+    });
+  };
   const isBusinessLoan = loanType === 'business_loan';
+  // Who the applicant is, chosen up front rather than implied by which button
+  // the broker pressed. Staff-only: a referrer's lead is always a person.
+  const [applicantType, setApplicantType] = useState<'individual' | 'company'>('individual');
+  const companyApplicant = showFullDetails && applicantType === 'company';
+
   const businessSubType = isBusinessSubType(subLoanType);
+  // A business buys asset finance as readily as an individual does, so the
+  // business block is offered across the whole asset-finance category. The ABN
+  // stays mandatory only on business sub-types.
+  const businessDetailsApply =
+    businessSubType || isBusinessLoan || category === 'asset_finance'
+    // A company applicant must always be able to name its entity, whatever it
+    // is borrowing for.
+    || (showFullDetails && applicantType === 'company');
 
   useEffect(() => {
     if (clientMode !== 'existing') return;
+    // Staff search the contact book instead (useClientSearch), which carries the
+    // CRM identity; this list is the referrer's own clients.
+    if (showFullDetails) return;
     setPrevClientsLoading(true);
     const endpoint = skipEngagement ? '/users' : '/referrer/clients';
     api.get(endpoint)
@@ -409,7 +462,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       })
       .catch(() => { })
       .finally(() => setPrevClientsLoading(false));
-  }, [clientMode, skipEngagement]);
+  }, [clientMode, skipEngagement, showFullDetails]);
 
   // Staff form only: load the tenant's referrers so the lead can be credited.
   useEffect(() => {
@@ -595,8 +648,17 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   const handleSubmit = async () => {
     if (!skipEngagement && !engagementModel) { setEngagementError('Please select who will engage with the client'); return; }
-    if (!firstName.trim() || !lastName.trim()) { toast("Please enter the client's name", 'error'); return; }
-    if (!email.trim()) { toast("Please enter the client's email", 'error'); return; }
+    // A company applicant has no natural person on it — its directors are invited
+    // afterwards and fill in their own blocks. So the entity is what's required.
+    if (companyApplicant) {
+      if (!(comBusinessName.trim() || extra.business_name.trim())) {
+        toast('Please enter the business name', 'error');
+        return;
+      }
+    } else {
+      if (!firstName.trim() || !lastName.trim()) { toast("Please enter the client's name", 'error'); return; }
+      if (!email.trim()) { toast("Please enter the client's email", 'error'); return; }
+    }
     if (!subLoanType) { toast('Please select a loan type', 'error'); return; }
     // ABN is required for full business-purpose applications (broker/admin create).
     // Quick referrer lead capture stays lenient — broker fills the ABN in later.
@@ -701,12 +763,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           loan_type: effectiveLoanType,
           amount: parseFloat(amount),
           ...(engagementModel && { client_engagement_model: engagementModel }),
-          applicant_first_name: firstName.trim(),
-          applicant_last_name: lastName.trim(),
-          applicant_email: email.trim(),
+          applicant_first_name: firstName.trim() || null,
+          applicant_last_name: lastName.trim() || null,
+          applicant_email: email.trim() || null,
           applicant_mobile: mobile.trim() || null,
           notes: notes.trim() || null,
           status: 'application_received',
+          ...(companyApplicant ? { applicant_type: 'company' } : {}),
+          // A client chosen from the book rather than minted from the typed email.
+          ...(pickedClient ? { contact_id: pickedClient.id } : {}),
           ...extraPayload,
           // Business-purpose values take priority, falling back to the detail-section
           // business fields. Placed after extraPayload so they aren't nulled out.
@@ -770,7 +835,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       setDraftAppId(null);
       deleteDraft(id);
     }
-    setClientMode('new'); setSelectedPrevClient(null); setPrevClientSearch('');
+    setClientMode('new'); setSelectedPrevClient(null); setPrevClientSearch(''); setPickedClient(null); setClientTerm('');
     setFirstName(''); setLastName(''); setEmail(''); setMobile('');
     setEngagementModel(''); setEngagementError(''); setCreditReferrerId('');
     setExtraFields(EXTRA_DEFAULTS);
@@ -860,7 +925,34 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
       {/* Client */}
       <Card className="space-y-4">
-        <p className="text-[15px] font-semibold text-foreground">Client</p>
+        <p className="text-[15px] font-semibold text-foreground">
+          {companyApplicant ? 'Client & applicant' : 'Client'}
+        </p>
+
+        {/* Who the applicant is, chosen here rather than implied by which
+            create button was pressed. A business borrows as readily under asset
+            finance as under a commercial loan, so this is not tied to loan type. */}
+        {showFullDetails && !cloneFromId && (
+          <div>
+            <label className={LABEL_CLS}>Who is the applicant?</label>
+            <div className="flex gap-2">
+              <button type="button"
+                onClick={() => setApplicantType('individual')}
+                className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'individual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+              >A person</button>
+              <button type="button"
+                onClick={() => setApplicantType('company')}
+                className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'company' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+              >A business / entity</button>
+            </div>
+            <p className="mt-1.5 text-[12px] text-muted-foreground">
+              {companyApplicant
+                ? 'The entity is the applicant: name it under Business Details below. Tax invoices are made out to it, and its directors are invited to complete and sign their own parts. The person below is optional — they are the contact for the deal.'
+                : 'The person below is the applicant, even if a business is recorded on the file.'}
+            </p>
+          </div>
+        )}
+
         {!cloneFromId && (
           <div className="flex gap-2">
             <button type="button"
@@ -884,13 +976,35 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedPrevClient(null); setPrevClientSearch(''); }}
+                  onClick={() => { setSelectedPrevClient(null); setPrevClientSearch(''); setPickedClient(null); }}
                   className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
                 >
                   Change
                 </button>
               </div>
             ) : (
+              showFullDetails ? (
+                /* Staff search the contact book, so the pick carries a CRM
+                   identity (contact_id) and not just a name and an email —
+                   that identity is what stops the same person becoming two. */
+                <div className="relative">
+                  <Input
+                    placeholder="Search by name, email or phone…"
+                    value={clientTerm}
+                    onChange={e => { setClientTerm(e.target.value); setPickedClient(null); }}
+                  />
+                  <ClientSearchResults
+                    matches={clientMatches.matches}
+                    loading={clientMatches.loading}
+                    searched={clientMatches.searched}
+                    onSelect={useExistingClient}
+                    onDismiss={() => setClientTerm('')}
+                  />
+                  <p className="mt-1.5 text-[12px] text-muted-foreground">
+                    Search your clients. Nothing to pick? Switch to New client.
+                  </p>
+                </div>
+              ) : (
               <>
                 <Input placeholder="Search by name or email..." value={prevClientSearch} onChange={e => setPrevClientSearch(e.target.value)} />
                 <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
@@ -909,6 +1023,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   ))}
                 </div>
               </>
+              )
             )}
           </div>
         )}
@@ -916,7 +1031,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className={LABEL_CLS}>First Name *</label>
-            <Input placeholder="John" value={firstName} onChange={e => setFirstName(e.target.value)} />
+            <Input placeholder="John" value={firstName} onChange={e => { setFirstName(e.target.value); setPickedClient(null); }} />
           </div>
           <div>
             <label className={LABEL_CLS}>Last Name *</label>
@@ -1006,9 +1121,25 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
         {/* Business identity for business-purpose sub-types */}
         {businessSubType && (
-          <div>
+          <div className="relative">
             <label className={LBL}>Business / Entity Name</label>
             <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
+            {entityPanelVisible(comBusinessName) && (
+              <EntitySearchResults
+                matches={comEntityMatches.matches}
+                loading={comEntityMatches.loading}
+                searched={comEntityMatches.searched}
+                onSelect={(en: EntitySearchResult) => {
+                  setComBusinessName(en.name);
+                  if (en.abn) {
+                    setComAbn(en.abn);
+                    setExtra('business_abn', en.abn);
+                  }
+                  setEntityDismissedFor(en.name.trim());
+                }}
+                onDismiss={() => setEntityDismissedFor(comBusinessName.trim())}
+              />
+            )}
           </div>
         )}
 
@@ -1897,13 +2028,26 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           </Card>
 
           {/* Business Details */}
-          {(businessSubType || isBusinessLoan || extra.business_name || extra.business_abn) && (
+          {(businessDetailsApply || extra.business_name || extra.business_abn) && (
             <Card className="space-y-4">
               <p className="text-[15px] font-semibold text-foreground">Business Details</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+                <div className="relative">
                   <label className={LBL}>Business Name</label>
                   <input type="text" className="led-input" value={extra.business_name} onChange={e => setExtra('business_name', e.target.value)} />
+                  {entityPanelVisible(extra.business_name) && (
+                    <EntitySearchResults
+                      matches={detailEntityMatches.matches}
+                      loading={detailEntityMatches.loading}
+                      searched={detailEntityMatches.searched}
+                      onSelect={(en: EntitySearchResult) => {
+                        setExtra('business_name', en.name);
+                        if (en.abn) setExtra('business_abn', en.abn);
+                        setEntityDismissedFor(en.name.trim());
+                      }}
+                      onDismiss={() => setEntityDismissedFor(extra.business_name.trim())}
+                    />
+                  )}
                 </div>
                 <div>
                   <label className={LBL}>ABN{businessSubType ? ' *' : ''}</label>

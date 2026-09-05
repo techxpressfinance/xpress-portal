@@ -5,9 +5,11 @@ from typing import Iterable, Optional
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.external_referral import ExternalReferral
+from app.models.contact import Contact, Organization
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.user import UserRole
+from app.services.organizations import contact_organization_link
 
 # Magic-link tokens grant unauthenticated form access via /api/public/apply —
 # they must never appear in API responses. Single deliberate exception: the
@@ -183,6 +185,8 @@ def app_with_user(
         for c in sorted(app.approval_conditions, key=lambda c: (c.sort_order, c.created_at))
     ]
 
+    data["pending_business_link"] = _pending_business_link(app, db)
+
     # Entity-first commercial readiness: every direct party signed, and every
     # corporate guarantor has at least one signatory and all of them signed.
     # False when there is nothing to be ready for.
@@ -192,6 +196,32 @@ def app_with_user(
         and all(g["ready"] for g in guarantors)
     )
     return data
+
+
+def _pending_business_link(app: LoanApplication, db: Session) -> Optional[dict]:
+    """The client↔business link this application implies but nobody has confirmed.
+
+    An application pairing a client with an entity is not proof the person is
+    part of that business — the ABN may be a typo, or the company may have been
+    matched on a name collision. So the pairing is offered to the broker rather
+    than written into the CRM, and this is what the prompt is built from. None
+    once the link exists, or once the broker has said no.
+    """
+    if not (app.contact_id and app.business_organization_id) or app.business_link_declined:
+        return None
+    if contact_organization_link(db, app.contact_id, app.business_organization_id):
+        return None
+    contact = db.query(Contact).filter(Contact.id == app.contact_id).first()
+    org = db.query(Organization).filter(Organization.id == app.business_organization_id).first()
+    if not contact or not org:
+        return None
+    return {
+        "contact_id": contact.id,
+        "contact_name": " ".join(p for p in [contact.first_name, contact.last_name] if p).strip() or None,
+        "organization_id": org.id,
+        "organization_name": org.name,
+        "organization_abn": org.abn,
+    }
 
 
 def _is_signed(applicant) -> bool:
