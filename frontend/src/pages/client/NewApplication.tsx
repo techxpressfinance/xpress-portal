@@ -15,6 +15,7 @@ import {
 } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import type { DocType } from '../../types';
+import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder, normalizeResidencyStatus } from '../../lib/residency';
 import { ArrowUpTrayIcon, CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const SELECT_CLS = 'led-input';
@@ -92,6 +93,8 @@ interface FormData {
   // Residency
   residency_status: string;
   residency_other: string;
+  visa_number: string;
+  visa_category: string;
   // Loan type — Equipment Finance
   eq_asset_type: string;
   eq_new_or_used: string;
@@ -413,6 +416,8 @@ export default function NewApplication() {
       id_type: 'license',
       id_issuing_state_country: 'NSW',
       residency_status: 'Australian Citizen',
+      visa_number: '',
+      visa_category: '',
       num_dependants: '0',
       has_partner: 'no',
       partner_working: 'no',
@@ -452,6 +457,7 @@ export default function NewApplication() {
 
   const idType = watch('id_type');
   const residencyStatus = watch('residency_status');
+  const isVisa = isVisaHolder(residencyStatus);
   const employmentCategory = watch('employment_category');
   const hasPartner = watch('has_partner');
 
@@ -532,7 +538,9 @@ export default function NewApplication() {
         if (data.preferred_contact_method) setValue('preferred_contact_method', data.preferred_contact_method);
 
         // Residency / ID
-        if (data.applicant_residency_status) setValue('residency_status', data.applicant_residency_status);
+        if (data.applicant_residency_status) setValue('residency_status', normalizeResidencyStatus(data.applicant_residency_status));
+        if (data.applicant_visa_number) setValue('visa_number', data.applicant_visa_number);
+        if (data.applicant_visa_category) setValue('visa_category', data.applicant_visa_category);
         if (data.id_expiry_date) setValue('id_expiry_date', data.id_expiry_date);
 
         // Address
@@ -733,6 +741,7 @@ export default function NewApplication() {
       'applicant_title', 'applicant_first_name', 'applicant_middle_name', 'applicant_last_name',
       'applicant_dob', 'applicant_gender', 'applicant_mobile', 'preferred_contact_method',
       'id_type', 'id_number', 'id_issuing_state_country', 'id_expiry_date', 'residency_status',
+      'visa_number', 'visa_category',
       'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
     ];
 
@@ -757,7 +766,9 @@ export default function NewApplication() {
         num_dependants: app.applicant_num_dependants ? String(app.applicant_num_dependants) : '',
         applicant_mobile: str(app.applicant_mobile),
         preferred_contact_method: str(app.preferred_contact_method),
-        residency_status: str(app.applicant_residency_status),
+        residency_status: normalizeResidencyStatus(str(app.applicant_residency_status)),
+        visa_number: str(app.applicant_visa_number),
+        visa_category: str(app.applicant_visa_category),
         id_type: idDoc?.type === 'Drivers Licence' ? 'license' : idDoc?.type === 'Passport' ? 'passport' : '',
         id_number: str(idDoc?.number),
         id_issuing_state_country: str(idDoc?.state ?? idDoc?.country),
@@ -796,8 +807,10 @@ export default function NewApplication() {
         });
       });
       PROFILE_FIELDS.forEach((f) => {
-        const v = profile[f];
-        if (v != null && v !== '') merged.set(f, { value: String(v), source: 'profile' });
+        const raw = profile[f];
+        if (raw == null || raw === '') return;
+        const v = f === 'residency_status' ? normalizeResidencyStatus(String(raw)) : String(raw);
+        merged.set(f, { value: v, source: 'profile' });
       });
 
       const filled = new Map<string, PrefillSource>();
@@ -1114,6 +1127,10 @@ export default function NewApplication() {
     extraData.dependants = parseInt(data.num_dependants) || 0;
     extraData.credit_history = data.previously_declined === 'yes' ? 'Previously Declined' : 'Clear';
     extraData.residency_status = data.residency_status;
+    if (isVisaHolder(data.residency_status)) {
+      extraData.visa_number = data.visa_number;
+      extraData.visa_category = data.visa_category;
+    }
     extraData.living_status = data.residential_status;
 
     extraData.assets = { real_estate: realEstateAssets, other: otherAssets };
@@ -1173,6 +1190,9 @@ export default function NewApplication() {
       payload.applicant_mobile = data.applicant_mobile;
       payload.preferred_contact_method = data.preferred_contact_method;
       payload.applicant_residency_status = data.residency_status;
+      // Visa details only belong to a visa status — clear them if it changed.
+      payload.applicant_visa_number = isVisaHolder(data.residency_status) ? (data.visa_number || null) : null;
+      payload.applicant_visa_category = isVisaHolder(data.residency_status) ? (data.visa_category || null) : null;
       payload.id_expiry_date = data.id_expiry_date || null;
       payload.applicant_address = data.applicant_address;
       payload.applicant_suburb = data.applicant_suburb;
@@ -2170,7 +2190,7 @@ export default function NewApplication() {
             <Card className="space-y-4">
               <h3 className="text-[14px] font-semibold text-[var(--led-ink)]">Residency Status{prefillTag('residency_status')}</h3>
               <div className="grid gap-2 sm:grid-cols-2">
-                {['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'].map(r => (
+                {RESIDENCY_STATUSES.map(r => (
                   <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all ${residencyStatus === r ? 'bg-[var(--led-accent)]/5 ring-1 ring-[var(--led-accent)]/30' : 'bg-[var(--led-surface-2)] hover:bg-[var(--led-surface-2)]/80'}`}>
                     <input type="radio" value={r} {...register('residency_status')} className="h-4 w-4 accent-[var(--led-accent)]" />
                     <span className="text-[13px] font-medium text-[var(--led-ink)]">{r}</span>
@@ -2179,6 +2199,21 @@ export default function NewApplication() {
               </div>
               {residencyStatus === 'Other' && (
                 <Input placeholder="Please specify..." {...register('residency_other')} />
+              )}
+              {isVisa && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={LABEL_CLS}>Visa Number *</label>
+                    <Input placeholder="e.g. 1234567890" {...register('visa_number')} />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLS}>Visa Category *</label>
+                    <select {...register('visa_category')} className={SELECT_CLS}>
+                      <option value="">Select category...</option>
+                      {VISA_CATEGORIES.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
               )}
             </Card>
             </>)}
@@ -2740,6 +2775,12 @@ export default function NewApplication() {
                 <p className="text-[12px] font-medium text-[var(--led-muted)]">Residency</p>
                 <p className="text-[14px] font-semibold text-[var(--led-ink)]">{watch('residency_status')}</p>
               </div>
+              {isVisa && (
+                <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                  <p className="text-[12px] font-medium text-[var(--led-muted)]">Visa</p>
+                  <p className="text-[14px] font-semibold text-[var(--led-ink)]">{[watch('visa_category'), watch('visa_number')].filter(Boolean).join(' · ') || '—'}</p>
+                </div>
+              )}
               {realEstateAssets.length > 0 && (
                 <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3 sm:col-span-2">
                   <p className="text-[12px] font-medium text-[var(--led-muted)]">Properties</p>

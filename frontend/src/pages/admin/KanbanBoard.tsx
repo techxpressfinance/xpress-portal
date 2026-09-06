@@ -576,6 +576,8 @@ export default function KanbanBoardPage() {
   const [clientsList, setClientsList] = useState<{ id: string; full_name: string; email: string }[]>([]);
   // 'mine' is a UI-only scope; the API takes explicit category slugs.
   const categoryParam = categoryFilter === MY_FOCUS ? mySpecialties.join(',') : categoryFilter;
+  // Identity of the current filter set — what the cards on screen must match.
+  const filterKey = JSON.stringify([categoryParam, search, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter]);
   // Boards outside the broker's specialties are collapsed behind a toggle;
   // uncategorised boards are always shown. The active board stays visible even
   // if it is off-specialty, so switching to it never makes its tab disappear.
@@ -593,7 +595,15 @@ export default function KanbanBoardPage() {
   const [dragOverValidity, setDragOverValidity] = useState<DropValidity>(null);
   const dragSourceColumn = useRef<string | null>(null);
   const dragOverlayRef = useRef<HTMLDivElement>(null);
-  const initialLoadDone = useRef(false);
+  // The filter set the cards on screen were fetched for. A filter clicked while
+  // the first load is still in flight has to be honoured, so the refresh effect
+  // keys off this rather than an "initial load finished" flag — flipping a ref
+  // re-renders nothing, so such a click used to be dropped for good, leaving the
+  // tab highlighted over unfiltered cards.
+  const loadedFilterKey = useRef<string | null>(null);
+  // Bumped by every view load. A response whose sequence is stale is discarded,
+  // so a slow earlier fetch can't land on top of a newer one.
+  const viewSeq = useRef(0);
   // The category the current column set was fetched for, so filters that don't
   // change the stage set don't re-request it.
   const loadedStageCategory = useRef<string | null>(null);
@@ -687,16 +697,17 @@ export default function KanbanBoardPage() {
     });
   }, [collapseKey]);
 
-  const fetchBoard = useCallback(async (boardId: string, category?: string) => {
+  const fetchBoard = useCallback(async (boardId: string, category?: string, isCurrent?: () => boolean) => {
     const params = category ? `?category=${encodeURIComponent(category)}` : '';
     const { data } = await api.get(`/kanban/boards/${boardId}${params}`);
-    setActiveBoard(data);
+    if (!isCurrent || isCurrent()) setActiveBoard(data);
     return data as KanbanBoardType;
   }, []);
 
   const fetchApplications = useCallback(async (
     boardId: string,
     filters: { search?: string; category?: string; sub_type?: string; broker_id?: string; client_id?: string; date_range?: string; updated_range?: string; min_days_in_stage?: string } = {},
+    isCurrent?: () => boolean,
   ) => {
     const params = new URLSearchParams();
     if (filters.search) params.set('search', filters.search);
@@ -708,21 +719,49 @@ export default function KanbanBoardPage() {
     if (filters.updated_range) params.set('updated_range', filters.updated_range);
     if (filters.min_days_in_stage) params.set('min_days_in_stage', filters.min_days_in_stage);
     const { data } = await api.get(`/kanban/boards/${boardId}/applications?${params}`);
+    if (isCurrent && !isCurrent()) return false;
     setAppsByColumn(data);
+    return true;
   }, []);
+
+  // Every route into the board — first paint, switching board, changing a
+  // filter — goes through here, so they all share one staleness rule. The key is
+  // claimed up front: a filter changed mid-flight leaves it stale, which is what
+  // tells the refresh effect there is work to do.
+  const loadView = useCallback(async (boardId: string) => {
+    const seq = ++viewSeq.current;
+    const isCurrent = () => seq === viewSeq.current;
+    const key = filterKey;
+    loadedFilterKey.current = key;
+    try {
+      // Only the category decides the stage set. Refetching 14 columns on every
+      // search keystroke is wasted work — and makes the board flicker.
+      if (loadedStageCategory.current !== categoryParam) {
+        await fetchBoard(boardId, categoryParam, isCurrent);
+        if (!isCurrent()) return;
+        loadedStageCategory.current = categoryParam;
+      }
+      await fetchApplications(boardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter }, isCurrent);
+    } catch (err) {
+      // Nothing was applied, so leave the key unclaimed and let the next filter
+      // change retry rather than skipping it as already loaded.
+      if (isCurrent()) loadedFilterKey.current = null;
+      throw err;
+    }
+  }, [fetchBoard, fetchApplications, filterKey, search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter]);
 
   const loadBoard = useCallback(async (boardId: string) => {
     setLoading(true);
+    // A different board never shares the current board's columns.
+    loadedStageCategory.current = null;
     try {
-      await fetchBoard(boardId, categoryParam);
-      loadedStageCategory.current = categoryParam;
-      await fetchApplications(boardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
+      await loadView(boardId);
     } catch {
       toast('Failed to load board', 'error');
     } finally {
       setLoading(false);
     }
-  }, [fetchBoard, fetchApplications, search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, toast]);
+  }, [loadView, toast]);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -752,40 +791,24 @@ export default function KanbanBoardPage() {
       } catch {
         if (!cancelled) toast('Failed to load boards', 'error');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-          initialLoadDone.current = true;
-        }
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filters changed. The category decides the stage set, so the board is
-  // refetched too — switching the filter to Asset Finance is what puts its
-  // stages on screen (and creates them the first time). Board before cards, in
-  // sequence, so the columns exist before anything is grouped into them, and
-  // keyed on the board *id* so refreshing the board object can't re-trigger it.
+  // The cards on screen don't match the filters. Covers a filter changed after
+  // the board settled, and one changed while the first load was still running —
+  // that load claimed the older key, so this fires as soon as the board id lands.
+  // Keyed on the board *id* so refreshing the board object can't re-trigger it.
   const activeBoardId = activeBoard?.id;
   useEffect(() => {
-    if (!activeBoardId || !initialLoadDone.current) return;
+    if (!activeBoardId || loadedFilterKey.current === filterKey) return;
     const timeout = setTimeout(() => {
-      (async () => {
-        try {
-          // Only the category decides the stage set. Refetching 14 columns on
-          // every search keystroke is wasted work — and makes the board flicker.
-          if (loadedStageCategory.current !== categoryParam) {
-            await fetchBoard(activeBoardId, categoryParam);
-            loadedStageCategory.current = categoryParam;
-          }
-          await fetchApplications(activeBoardId, { search, category: categoryParam, sub_type: subTypeFilter, broker_id: brokerFilter, client_id: clientFilter, date_range: dateRangeFilter, updated_range: updatedRangeFilter, min_days_in_stage: stageAgeFilter });
-        } catch {
-          toast('Failed to refresh the board', 'error');
-        }
-      })();
+      loadView(activeBoardId).catch(() => toast('Failed to refresh the board', 'error'));
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, categoryParam, subTypeFilter, brokerFilter, clientFilter, dateRangeFilter, updatedRangeFilter, stageAgeFilter, activeBoardId, fetchBoard, fetchApplications]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filterKey, activeBoardId, loadView, toast]);
 
   // Category scope: the board's own category (category boards) or the primary
   // category segment (unscoped boards). The Type filter lists that category's

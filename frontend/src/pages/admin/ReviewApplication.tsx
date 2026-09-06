@@ -28,6 +28,7 @@ import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quote
 import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, QuoteSheetType, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
+import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
 import ActivityChanges from '../../components/ActivityChanges';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BookmarkIcon, BuildingOfficeIcon, ChatBubbleBottomCenterTextIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserGroupIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -175,7 +176,7 @@ export default function ReviewApplication() {
     applicant_email: '', applicant_mobile: '', preferred_contact_method: '',
     applicant_address: '', applicant_suburb: '', applicant_state: '', applicant_postcode: '',
     id_type: 'license', id_number: '', id_issuing_state_country: '',
-    id_expiry_date: '', applicant_residency_status: '',
+    id_expiry_date: '', applicant_residency_status: '', applicant_visa_number: '', applicant_visa_category: '',
     residential_status: '', time_at_address: '', applicant_num_dependants: '',
     has_partner: '' as '' | 'true' | 'false', partner_working: '' as '' | 'true' | 'false',
     employment_category: '', employer_name: '', employer_industry: '', job_title: '', income_frequency: '', gross_income: '',
@@ -285,6 +286,7 @@ export default function ReviewApplication() {
           applicant_address: d.applicant_address || '', applicant_suburb: d.applicant_suburb || '',
           applicant_state: d.applicant_state || '', applicant_postcode: d.applicant_postcode || '',
           id_expiry_date: idEntry?.expiry_date || d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
+          applicant_visa_number: d.applicant_visa_number || '', applicant_visa_category: d.applicant_visa_category || '',
           residential_status: d.residential_status || '', time_at_address: d.time_at_address || '',
           applicant_num_dependants: d.applicant_num_dependants != null ? String(d.applicant_num_dependants) : '',
           has_partner: d.has_partner === null || d.has_partner === undefined ? '' : d.has_partner ? 'true' : 'false',
@@ -694,6 +696,9 @@ export default function ReviewApplication() {
         applicant_postcode: fields.applicant_postcode || null,
         id_expiry_date: fields.id_expiry_date || null,
         applicant_residency_status: fields.applicant_residency_status || null,
+        // Visa details only belong to a visa status — clear them if it changed.
+        applicant_visa_number: isVisaHolder(fields.applicant_residency_status) ? (fields.applicant_visa_number || null) : null,
+        applicant_visa_category: isVisaHolder(fields.applicant_residency_status) ? (fields.applicant_visa_category || null) : null,
         residential_status: fields.residential_status || null,
         time_at_address: fields.time_at_address || null,
         applicant_num_dependants: fields.applicant_num_dependants !== '' ? parseInt(fields.applicant_num_dependants) : null,
@@ -1741,9 +1746,22 @@ export default function ReviewApplication() {
                           <label className="block text-[12px] text-muted-foreground mb-1">Residency Status</label>
                           <select {...regEdit('applicant_residency_status')} className="led-input">
                             <option value="">Select...</option>
-                            {['Australian Citizen', 'Permanent Resident', 'Temporary Resident', 'Visa Holder'].map((s) => <option key={s} value={s}>{s}</option>)}
+                            {RESIDENCY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
+                        {isVisaHolder(watchEdit('applicant_residency_status')) && (<>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Visa Number</label>
+                            <input type="text" placeholder="e.g. 1234567890" className="led-input" {...regEdit('applicant_visa_number')} />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-muted-foreground mb-1">Visa Category</label>
+                            <select {...regEdit('applicant_visa_category')} className="led-input">
+                              <option value="">Select...</option>
+                              {VISA_CATEGORIES.map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </div>
+                        </>)}
                       </div>
 
                       {/* Living Situation */}
@@ -2100,6 +2118,18 @@ export default function ReviewApplication() {
                                 <dt className="text-[12px] text-muted-foreground">Residency Status</dt>
                                 <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</dd>
                               </div>
+                              {application.applicant_visa_number && (
+                                <div>
+                                  <dt className="text-[12px] text-muted-foreground">Visa Number</dt>
+                                  <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_visa_number}</dd>
+                                </div>
+                              )}
+                              {application.applicant_visa_category && (
+                                <div>
+                                  <dt className="text-[12px] text-muted-foreground">Visa Category</dt>
+                                  <dd className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_visa_category}</dd>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -4159,6 +4189,8 @@ export default function ReviewApplication() {
                     {applicantEmail(application) && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{applicantEmail(application)}</p></div>}
                     {application.preferred_contact_method && <div style={S.cell}><p style={S.label}>Preferred Contact</p><p style={S.value}>{application.preferred_contact_method}</p></div>}
                     {application.applicant_residency_status && <div style={S.cell}><p style={S.label}>Residency Status</p><p style={S.value}>{application.applicant_residency_status}</p></div>}
+                    {application.applicant_visa_number && <div style={S.cell}><p style={S.label}>Visa Number</p><p style={S.value}>{application.applicant_visa_number}</p></div>}
+                    {application.applicant_visa_category && <div style={S.cell}><p style={S.label}>Visa Category</p><p style={S.value}>{application.applicant_visa_category}</p></div>}
                     {idEntry?.type && <div style={S.cell}><p style={S.label}>ID Type</p><p style={S.value}>{idEntry.type}</p></div>}
                     {idEntry?.number && <div style={S.cell}><p style={S.label}>ID Number</p><p style={S.value}>{idEntry.number}</p></div>}
                     {(idEntry?.state || idEntry?.country) && <div style={S.cell}><p style={S.label}>{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p style={S.value}>{idEntry.state || idEntry.country}</p></div>}

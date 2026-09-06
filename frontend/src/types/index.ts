@@ -145,6 +145,8 @@ export interface LoanApplication {
   preferred_contact_method: string | null;
   id_expiry_date: string | null;
   applicant_residency_status: string | null;
+  applicant_visa_number: string | null;
+  applicant_visa_category: string | null;
   residential_status: string | null;
   time_at_address: string | null;
   applicant_num_dependants: number | null;
@@ -299,6 +301,8 @@ export interface LoanApplicant {
   applicant_postcode: string | null;
   id_expiry_date: string | null;
   applicant_residency_status: string | null;
+  applicant_visa_number: string | null;
+  applicant_visa_category: string | null;
   employment_category: string | null;
   employer_name: string | null;
   employer_industry: string | null;

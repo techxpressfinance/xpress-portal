@@ -329,6 +329,12 @@ _MIGRATIONS = [
     ("loan_applications", "applicant_type", "VARCHAR(20)"),
     # Broker declined to link this application's client to its business
     ("loan_applications", "business_link_declined", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Visa details, captured when the residency status is a visa. The grant
+    # number is encrypted, hence TEXT rather than a sized VARCHAR.
+    ("loan_applications", "applicant_visa_number", "TEXT"),
+    ("loan_applications", "applicant_visa_category", "VARCHAR(100)"),
+    ("loan_applicants", "applicant_visa_number", "TEXT"),
+    ("loan_applicants", "applicant_visa_category", "VARCHAR(100)"),
 ]
 
 _logger = logging.getLogger(__name__)

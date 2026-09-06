@@ -504,6 +504,18 @@ export default function ReferrerApplicationDetail() {
                   <p className="text-[12px] text-muted-foreground">Residency Status</p>
                   <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_residency_status || '—'}</p>
                 </div>
+                {application.applicant_visa_number && (
+                  <div className="rounded-xl bg-secondary/50 p-3.5">
+                    <p className="text-[12px] text-muted-foreground">Visa Number</p>
+                    <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_visa_number}</p>
+                  </div>
+                )}
+                {application.applicant_visa_category && (
+                  <div className="rounded-xl bg-secondary/50 p-3.5">
+                    <p className="text-[12px] text-muted-foreground">Visa Category</p>
+                    <p className="mt-0.5 text-[14px] font-medium text-foreground">{application.applicant_visa_category}</p>
+                  </div>
+                )}
               </div>
             </Card>
 

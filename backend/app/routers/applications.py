@@ -26,7 +26,7 @@ from app.models.loan_application import (
     LoanType,
 )
 from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
-from app.models.contact import Contact, ContactOrganization
+from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.application_note import ApplicationNote
 from app.models.referral import Referral, ReferralStatus
 from app.models.user import User, UserRole
@@ -89,6 +89,79 @@ from app.services.tenant_scope import get_tenant_id
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 
+def _application_driver_licence(application: LoanApplication) -> Optional[str]:
+    """Return the driver's licence typed into the application's ID section."""
+    try:
+        details = json.loads(application.lend_extra_data or "{}")
+    except (TypeError, ValueError):
+        return None
+    identification = details.get("identification") if isinstance(details, dict) else None
+    if not isinstance(identification, list):
+        return None
+    for document in identification:
+        if not isinstance(document, dict):
+            continue
+        doc_type = str(document.get("type") or "").lower()
+        number = str(document.get("number") or "").strip()
+        if number and ("licence" in doc_type or "license" in doc_type):
+            return number
+    return None
+
+
+def _sync_company_contact(
+    db: Session,
+    application: LoanApplication,
+    tenant_id: str,
+) -> Optional[Contact]:
+    """Keep a business application's deal contact in the CRM.
+
+    The person entered alongside a company borrower is a deal contact, not
+    automatically a director. Reuse a picked contact or create a deduplicated
+    record from the supplied details, then link it to the entity with the
+    neutral ``contact`` role. Directors already in the book remain the only
+    people automatically invited as application parties.
+    """
+    if application.applicant_type != APPLICANT_TYPE_COMPANY:
+        return None
+
+    contact: Optional[Contact] = None
+    if application.contact_id:
+        contact = db.query(Contact).filter(
+            Contact.id == application.contact_id,
+            Contact.tenant_id == tenant_id,
+        ).first()
+    elif (
+        (application.applicant_first_name or "").strip()
+        and (application.applicant_last_name or "").strip()
+    ):
+        contact = ensure_contact(
+            db,
+            tenant_id,
+            application.applicant_first_name,
+            application.applicant_last_name,
+            email=application.applicant_email,
+            phone=application.applicant_mobile,
+            middle_name=application.applicant_middle_name,
+            date_of_birth=application.applicant_dob,
+            drivers_license_number=_application_driver_licence(application),
+            address=application.applicant_address,
+            suburb=application.applicant_suburb,
+            state=application.applicant_state,
+            postcode=application.applicant_postcode,
+        )
+        application.contact_id = contact.id
+
+    if contact and application.business_organization_id:
+        ensure_contact_organization_link(
+            db,
+            tenant_id,
+            contact.id,
+            application.business_organization_id,
+            role="contact",
+        )
+    return contact
+
+
 @router.post("", response_model=LoanApplicationOut, status_code=status.HTTP_201_CREATED)
 def create_application(
     data: LoanApplicationCreate,
@@ -142,7 +215,9 @@ def create_application(
             lead_is_new = True
             owner_id = lead_client.id
 
-    if data.applicant_type == APPLICANT_TYPE_COMPANY and not (data.business_name or data.business_abn):
+    if data.applicant_type == APPLICANT_TYPE_COMPANY and not (
+        data.business_name or data.business_abn or data.business_organization_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A company applicant needs the entity's name or ABN",
@@ -153,6 +228,17 @@ def create_application(
     ).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
 
+    # An entity picked out of the book. Validated here so a foreign tenant's id
+    # can never be written onto the application.
+    picked_org: Optional[Organization] = None
+    if data.business_organization_id:
+        picked_org = db.query(Organization).filter(
+            Organization.id == data.business_organization_id,
+            Organization.tenant_id == tenant_id,
+        ).first()
+        if not picked_org:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found")
+
     app_kwargs = data.model_dump()
     # Normalize ABN before storing
     if app_kwargs.get("business_abn"):
@@ -162,8 +248,16 @@ def create_application(
     if staff_lead and current_user.role == UserRole.broker:
         app.assigned_broker_id = current_user.id
 
-    # Link to a Company by ABN, creating a stub if necessary
-    if app.business_abn or app.business_name:
+    # An explicitly chosen entity wins: it says which company this is, where the
+    # ABN match can only infer it. Otherwise link by ABN, creating a stub if
+    # necessary.
+    if picked_org is not None:
+        app.business_organization_id = picked_org.id
+        if picked_org.name and picked_org.name != "Unnamed Company":
+            app.business_name = picked_org.name
+        if picked_org.abn and not app.business_abn:
+            app.business_abn = picked_org.abn
+    elif app.business_abn or app.business_name:
         org = find_or_create_organization_by_abn(db, tenant_id, app.business_abn, app.business_name)
         if org:
             app.business_organization_id = org.id
@@ -173,6 +267,11 @@ def create_application(
 
     db.add(app)
     db.flush()
+
+    # A company can have an optional primary contact entered beside it. Preserve
+    # that person in the CRM and on the entity without mistaking them for a
+    # director just because the business is borrowing.
+    _sync_company_contact(db, app, tenant_id)
 
     # A company applicant starts with the directors the contact book already
     # knows about, so the broker isn't retyping people the CRM has on file. Those
@@ -882,7 +981,7 @@ def update_application(
             "applicant_address", "applicant_suburb", "applicant_state", "applicant_postcode",
             "business_abn", "business_name", "business_registration_date", "business_industry_id", "business_monthly_sales",
             "applicant_email", "applicant_mobile", "preferred_contact_method",
-            "id_expiry_date", "applicant_residency_status",
+            "id_expiry_date", "applicant_residency_status", "applicant_visa_number", "applicant_visa_category",
             "residential_status", "time_at_address", "applicant_num_dependants", "has_partner", "partner_working",
             "employment_category", "employer_name", "employer_industry", "job_title", "income_frequency", "gross_income",
             "trading_name", "business_structure", "gst_registered", "num_directors", "time_trading",
@@ -967,6 +1066,11 @@ def update_application(
                     application.business_name = org.name
         else:
             application.business_organization_id = None
+
+    # The application might have started as an individual draft, or its contact
+    # details may have arrived after the entity. Keep the explicit company
+    # contact idempotently mirrored into the CRM in either order.
+    _sync_company_contact(db, application, tenant_id)
 
     # A draft that has just become a company application (or just had its entity
     # attached) picks up that company's known directors, the same as one created

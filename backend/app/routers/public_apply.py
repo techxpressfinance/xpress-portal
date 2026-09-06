@@ -50,6 +50,8 @@ class PublicApplySubmit(BaseModel):
     applicant_state: Optional[str] = None
     applicant_postcode: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    applicant_visa_number: Optional[str] = None
+    applicant_visa_category: Optional[str] = None
     id_type: Optional[str] = None
     id_number: Optional[str] = None
     id_issuing_state_country: Optional[str] = None
@@ -110,6 +112,7 @@ _APPLICANT_SUBMIT_FIELDS = {
     "applicant_dob", "applicant_gender", "applicant_marital_status",
     "applicant_mobile", "applicant_address", "applicant_suburb",
     "applicant_state", "applicant_postcode", "applicant_residency_status",
+    "applicant_visa_number", "applicant_visa_category",
     "employment_category", "employer_name", "employer_industry", "job_title",
     "income_frequency", "gross_income", "previously_declined",
     "change_of_circumstances", "signature_name", "lend_extra_data",

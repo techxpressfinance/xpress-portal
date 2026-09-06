@@ -2,15 +2,45 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults } from '../../components/ui';
+import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults, AbrNameSearchResults, AbrResultCard, ReferrerSearchResults } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
-import type { Contact, EntitySearchResult } from '../../types';
+import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
+import { formatAbn } from '../../lib/acn';
+import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder, normalizeResidencyStatus } from '../../lib/residency';
+import { useReferrerSearch } from '../../hooks/useReferrerSearch';
+import type { AbrRecord, Contact, EntitySearchResult, User } from '../../types';
 import { CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
+
+// The entity book's structure vocabulary, in the words the business-details
+// section offers. `trustee` is a company in that vocabulary — what it is
+// trustee of is the trust's own record.
+const ENTITY_TYPE_TO_STRUCTURE: Record<string, string> = {
+  sole_trader: 'Sole Trader',
+  partnership: 'Partnership',
+  company: 'Company',
+  trustee: 'Company',
+  trust: 'Trust',
+};
+
+function abrEntityTypeToStructure(entityType: string | null): string {
+  const type = (entityType || '').toLowerCase();
+  if (type.includes('trust')) return 'Trust';
+  if (type.includes('partnership')) return 'Partnership';
+  if (type.includes('company')) return 'Company';
+  if (type.includes('individual') || type.includes('sole trader')) return 'Sole Trader';
+  return '';
+}
+
+/** "date of birth, licence number and address" — the fields a pick filled in. */
+function prefillSummary(fields: string[]): string {
+  if (fields.length <= 1) return fields[0] || '';
+  return `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]}`;
+}
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
@@ -33,6 +63,8 @@ const EXTRA_DEFAULTS = {
   id_issuing_state_country: '',
   id_expiry_date: '',
   applicant_residency_status: '',
+  applicant_visa_number: '',
+  applicant_visa_category: '',
   residential_status: '',
   time_at_address: '',
   applicant_num_dependants: '',
@@ -184,7 +216,9 @@ function cloneExtraFields(app: Record<string, unknown>, lend: Record<string, unk
     id_number: str(idDoc?.number),
     id_issuing_state_country: str(idDoc?.state ?? idDoc?.country),
     id_expiry_date: str(app.id_expiry_date ?? idDoc?.expiry_date),
-    applicant_residency_status: str(app.applicant_residency_status),
+    applicant_residency_status: normalizeResidencyStatus(str(app.applicant_residency_status)),
+    applicant_visa_number: str(app.applicant_visa_number),
+    applicant_visa_category: str(app.applicant_visa_category),
     // Address & living situation
     applicant_address: str(app.applicant_address),
     applicant_suburb: str(app.applicant_suburb),
@@ -351,8 +385,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   // Referrer credit (staff form only) — for leads that arrived outside the
   // portal (e.g. WhatsApp) where the referrer never submitted through the app.
-  const [referrers, setReferrers] = useState<{ id: string; name: string; organization?: string | null }[]>([]);
-  const [creditReferrerId, setCreditReferrerId] = useState('');
+  // Searched rather than listed: a dropdown of every referrer stops being
+  // pickable once a tenant has more than a screenful of them, and crediting the
+  // wrong one is what misdirects the monthly invoice.
+  const [recentReferrers, setRecentReferrers] = useState<User[]>([]);
+  const [referrersLoaded, setReferrersLoaded] = useState(false);
+  const [referrerTerm, setReferrerTerm] = useState('');
+  const [referrerFocused, setReferrerFocused] = useState(false);
+  const [creditReferrer, setCreditReferrer] = useState<User | null>(null);
+  const creditReferrerId = creditReferrer?.id || '';
 
   // Extra client detail fields (shown when self_managed)
   const [extra, setExtraFields] = useState(EXTRA_DEFAULTS);
@@ -389,10 +430,26 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // staff-only, so it stays idle on the referrer's own lead form — a referrer
   // has no business enumerating the tenant's entities.
   const [entityDismissedFor, setEntityDismissedFor] = useState('');
-  const comEntityMatches = useEntitySearch(showFullDetails ? comBusinessName : '');
+  const [pickedEntity, setPickedEntity] = useState<EntitySearchResult | null>(null);
   const detailEntityMatches = useEntitySearch(showFullDetails ? extra.business_name : '');
+  const businessNameDigits = extra.business_name.replace(/\D/g, '');
+  const businessNameIsAbn = businessNameDigits.length === 11;
+  // One business-name field supports both local CRM matches and the public ABR:
+  // an 11-digit value is an ABN lookup; ordinary text falls back to ABR name
+  // search only when the tenant's own entity book has no result.
+  const abrBusinessLookup = useAbrLookup(
+    showFullDetails && !pickedEntity && businessNameIsAbn ? extra.business_name : ''
+  );
+  const abrBusinessNames = useAbrNameSearch(
+    showFullDetails && !pickedEntity && !businessNameIsAbn ? extra.business_name : ''
+  );
   const entityPanelVisible = (value: string) =>
     showFullDetails && value.trim().length >= 2 && value.trim() !== entityDismissedFor;
+  const abrNamePanelVisible =
+    entityPanelVisible(extra.business_name)
+    && !businessNameIsAbn
+    && detailEntityMatches.searched
+    && detailEntityMatches.matches.length === 0;
 
   // Choosing an existing client instead of retyping one. Without it the client
   // is identified by a typed email alone, so a typo mints a second person — and
@@ -401,6 +458,20 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [clientTerm, setClientTerm] = useState('');
   const [pickedClient, setPickedClient] = useState<Contact | null>(null);
   const clientMatches = useClientSearch(showFullDetails ? clientTerm : '');
+  // What a pick carried into the sections below — named on the card so a field
+  // that fills itself is never a surprise.
+  const [clientPrefill, setClientPrefill] = useState<string[]>([]);
+  const [entityPrefill, setEntityPrefill] = useState<string[]>([]);
+  // Referrer credit typeahead — staff form only, same guard as the pickers above.
+  const referrerMatches = useReferrerSearch(skipEngagement ? referrerTerm : '');
+  const referrerQuery = referrerTerm.trim();
+  const referrerSearching = referrerQuery.length >= 2;
+  // Below the search threshold the recent list stands in, narrowed locally so a
+  // single typed character still filters rather than being ignored.
+  const referrerOptions = referrerSearching
+    ? referrerMatches.matches
+    : recentReferrers.filter(r => !referrerQuery || [r.full_name, r.email, r.organization_name]
+      .some(v => (v || '').toLowerCase().includes(referrerQuery.toLowerCase())));
 
   const useExistingClient = (c: Contact) => {
     setPickedClient(c);
@@ -409,6 +480,29 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (c.email) setEmail(c.email);
     if (c.phone) setMobile(c.phone);
     setClientTerm('');
+    // Everything else the contact book already holds. Asking for a date of birth
+    // we are already sure of is how one person ends up with two of them, and it
+    // is the broker who pays for the difference at verification time. Blank
+    // fields on the record leave whatever was already typed alone.
+    setExtraFields(prev => ({
+      ...prev,
+      applicant_middle_name: c.middle_name || prev.applicant_middle_name,
+      applicant_dob: c.date_of_birth || prev.applicant_dob,
+      applicant_address: c.address || prev.applicant_address,
+      applicant_suburb: c.suburb || prev.applicant_suburb,
+      applicant_state: c.state || prev.applicant_state,
+      applicant_postcode: c.postcode || prev.applicant_postcode,
+      // The book only ever holds a licence number, so the type follows from it.
+      ...(c.drivers_license_number
+        ? { id_type: 'license', id_number: c.drivers_license_number }
+        : {}),
+    }));
+    setClientPrefill([
+      c.date_of_birth ? 'date of birth' : null,
+      c.middle_name ? 'middle name' : null,
+      c.drivers_license_number ? 'licence number' : null,
+      (c.address || c.suburb || c.state || c.postcode) ? 'address' : null,
+    ].filter(Boolean) as string[]);
     // Reuse the confirmed-client card the referrer path already renders.
     setSelectedPrevClient({
       name: [c.first_name, c.last_name].filter(Boolean).join(' '),
@@ -423,8 +517,81 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // the broker pressed. Staff-only: a referrer's lead is always a person.
   const [applicantType, setApplicantType] = useState<'individual' | 'company'>('individual');
   const companyApplicant = showFullDetails && applicantType === 'company';
+  const personRequiredMark = companyApplicant
+    ? <span className="font-normal">(optional)</span>
+    : '*';
+
+  // Selecting a business always resolves it to the exact CRM entity rather than
+  // relying on an ABN/name match. It fills every field represented on this form
+  // and leaves the applicant toggle under the broker's explicit control.
+  const useExistingEntity = (en: EntitySearchResult) => {
+    setPickedEntity(en);
+    const structure = ENTITY_TYPE_TO_STRUCTURE[en.entity_type || ''];
+    setExtraFields(prev => ({
+      ...prev,
+      business_name: en.name,
+      business_abn: en.abn || '',
+      business_structure: structure || '',
+      num_directors: en.director_count ? String(en.director_count) : '',
+    }));
+    setEntityPrefill([
+      en.abn ? 'ABN' : null,
+      structure ? 'structure' : null,
+      en.director_count ? 'number of directors' : null,
+    ].filter(Boolean) as string[]);
+    // The business-name field runs its own entity typeahead; without this it
+    // reopens over the name we just filled in.
+    setEntityDismissedFor(en.name.trim());
+  };
+
+  const useAbrBusiness = (record: AbrRecord) => {
+    const structure = abrEntityTypeToStructure(record.entity_type);
+    setPickedEntity(null);
+    setExtraFields(prev => ({
+      ...prev,
+      business_name: record.name,
+      business_abn: record.abn,
+      trading_name: prev.trading_name || record.trading_names[0] || '',
+      business_structure: structure || prev.business_structure,
+      gst_registered: record.gst_registered ?? prev.gst_registered,
+    }));
+    setEntityPrefill([
+      'ABN',
+      record.acn ? 'ACN' : null,
+      record.gst_registered != null ? 'GST registration' : null,
+    ].filter(Boolean) as string[]);
+    setEntityDismissedFor(record.name.trim());
+  };
+
+  const clearPickedEntity = () => {
+    setPickedEntity(null);
+    setEntityPrefill([]);
+    setExtra('business_name', '');
+    setExtra('business_abn', '');
+    setEntityDismissedFor('');
+  };
+
+  const editBusinessName = (value: string) => {
+    if (pickedEntity && value !== pickedEntity.name) {
+      setPickedEntity(null);
+      setEntityPrefill([]);
+    }
+    setExtra('business_name', value);
+  };
+
+  const editBusinessAbn = (value: string) => {
+    if (pickedEntity && value !== (pickedEntity.abn || '')) {
+      setPickedEntity(null);
+      setEntityPrefill([]);
+    }
+    setExtra('business_abn', value);
+  };
 
   const businessSubType = isBusinessSubType(subLoanType);
+  // The business identity, wherever it was entered: the quick field on the
+  // referrer's loan card, or the Business Details block on the staff form.
+  const businessName = showFullDetails ? extra.business_name.trim() : comBusinessName.trim() || extra.business_name.trim();
+  const businessAbn = showFullDetails ? extra.business_abn.trim() : comAbn.trim() || extra.business_abn.trim();
   // A business buys asset finance as readily as an individual does, so the
   // business block is offered across the whole asset-finance category. The ABN
   // stays mandatory only on business sub-types.
@@ -464,15 +631,14 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       .finally(() => setPrevClientsLoading(false));
   }, [clientMode, skipEngagement, showFullDetails]);
 
-  // Staff form only: load the tenant's referrers so the lead can be credited.
+  // Staff form only: the most recent referrers, offered as suggestions before
+  // anything is typed. Anything beyond them is reached by searching.
   useEffect(() => {
     if (!skipEngagement) return;
-    api.get('/users', { params: { role: 'referrer' } })
-      .then(({ data }) => {
-        const raw: { id: string; full_name: string | null; email: string; organization_name?: string | null }[] = Array.isArray(data) ? data : [];
-        setReferrers(raw.map(u => ({ id: u.id, name: u.full_name || u.email, organization: u.organization_name })));
-      })
-      .catch(() => { });
+    api.get<User[]>('/users', { params: { role: 'referrer', limit: 8 } })
+      .then(({ data }) => setRecentReferrers(Array.isArray(data) ? data : []))
+      .catch(() => { })
+      .finally(() => setReferrersLoaded(true));
   }, [skipEngagement]);
 
   // Load the application being cloned and lay its client + company details over
@@ -586,8 +752,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           ...(mobile.trim() && { applicant_mobile: mobile.trim() }),
           ...(notes.trim() && { notes: notes.trim() }),
           ...(isBusinessSubType(subLoanType) && {
-            business_name: comBusinessName.trim() || null,
-            business_abn: comAbn.trim() || null,
+            business_name: businessName || null,
+            business_abn: businessAbn || null,
           }),
         });
         setDraftAppId(app.id);
@@ -626,8 +792,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         ...(effectiveLoanType && { loan_type: effectiveLoanType }),
         ...(parseFloat(amount) > 0 && { amount: parseFloat(amount) }),
         ...(isBusinessSubType(subLoanType) && {
-          business_name: comBusinessName.trim() || null,
-          business_abn: comAbn.trim() || null,
+          business_name: businessName || null,
+          business_abn: businessAbn || null,
         }),
       };
       try {
@@ -637,7 +803,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       }
     }, 1500);
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
-  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, subLoanType, comBusinessName, comAbn]);
+  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, subLoanType, businessName, businessAbn]);
 
   const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -651,7 +817,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     // A company applicant has no natural person on it — its directors are invited
     // afterwards and fill in their own blocks. So the entity is what's required.
     if (companyApplicant) {
-      if (!(comBusinessName.trim() || extra.business_name.trim())) {
+      if (!businessName) {
         toast('Please enter the business name', 'error');
         return;
       }
@@ -662,8 +828,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (!subLoanType) { toast('Please select a loan type', 'error'); return; }
     // ABN is required for full business-purpose applications (broker/admin create).
     // Quick referrer lead capture stays lenient — broker fills the ABN in later.
-    const commercialAbn = (comAbn.trim() || extra.business_abn.trim());
-    if (showFullDetails && businessSubType && !commercialAbn) {
+    if (showFullDetails && businessSubType && !businessAbn) {
       toast('ABN is required for business loan applications', 'error');
       return;
     }
@@ -682,12 +847,12 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           last_name: lastName.trim(),
           email: email.trim(),
           mobile: mobile.trim() || null,
-          company_name: businessSubType ? comBusinessName.trim() || null : null,
+          company_name: businessSubType ? businessName || null : null,
           loan_type: effectiveLoanType,
           amount: parseFloat(amount),
           notes: notes.trim() || null,
-          business_name: businessSubType ? comBusinessName.trim() || null : null,
-          business_abn: businessSubType ? comAbn.trim() || null : null,
+          business_name: businessSubType ? businessName || null : null,
+          business_abn: businessSubType ? businessAbn || null : null,
           lend_extra_data: JSON.stringify({
             loan_type_details: buildLoanTypeDetails(extra, subLoanType),
           }),
@@ -707,6 +872,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           preferred_contact_method: extra.preferred_contact_method || null,
           id_expiry_date: extra.id_expiry_date || null,
           applicant_residency_status: extra.applicant_residency_status || null,
+          // Visa details only belong to a visa status — clear them if it changed.
+          applicant_visa_number: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_number || null) : null,
+          applicant_visa_category: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_category || null) : null,
           residential_status: extra.residential_status || null,
           time_at_address: extra.time_at_address || null,
           applicant_num_dependants: extra.applicant_num_dependants ? parseInt(extra.applicant_num_dependants) : null,
@@ -772,12 +940,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           ...(companyApplicant ? { applicant_type: 'company' } : {}),
           // A client chosen from the book rather than minted from the typed email.
           ...(pickedClient ? { contact_id: pickedClient.id } : {}),
+          // Likewise the entity: the id says which company this is, where the
+          // backend's ABN match can only infer it from what was typed.
+          ...(pickedEntity ? { business_organization_id: pickedEntity.id } : {}),
           ...extraPayload,
           // Business-purpose values take priority, falling back to the detail-section
           // business fields. Placed after extraPayload so they aren't nulled out.
           ...(businessSubType ? {
-            business_name: (comBusinessName.trim() || extra.business_name.trim()) || null,
-            business_abn: (comAbn.trim() || extra.business_abn.trim()) || null,
+            business_name: businessName || null,
+            business_abn: businessAbn || null,
           } : {}),
         };
 
@@ -836,8 +1007,9 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       deleteDraft(id);
     }
     setClientMode('new'); setSelectedPrevClient(null); setPrevClientSearch(''); setPickedClient(null); setClientTerm('');
+    setPickedEntity(null); setApplicantType('individual'); setEntityDismissedFor(''); setClientPrefill([]); setEntityPrefill([]);
     setFirstName(''); setLastName(''); setEmail(''); setMobile('');
-    setEngagementModel(''); setEngagementError(''); setCreditReferrerId('');
+    setEngagementModel(''); setEngagementError(''); setCreditReferrer(null); setReferrerTerm('');
     setExtraFields(EXTRA_DEFAULTS);
     setAdditionalIncomes([]); setRealEstateAssets([]); setOtherAssets([]); setLiabilities([]);
     setLoanType(''); setAmount(''); setNotes(''); setCategory('asset_finance'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
@@ -901,6 +1073,122 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     );
   }
 
+  // Business Details leads the applicant group. Hoisted out of the JSX only to
+  // keep the guard on its own line — the block is long enough that an inline
+  // conditional buries where the group starts.
+  const businessDetailsCard = (businessDetailsApply || extra.business_name || extra.business_abn) ? (
+    <Card className="space-y-4">
+      <div>
+        <p className="text-[15px] font-semibold text-foreground">Business Details</p>
+        <p className="mt-0.5 text-[12px] text-muted-foreground">
+          {companyApplicant
+            ? 'This is the borrowing entity. Select a business from the book to fill the details we already have.'
+            : 'Record the business connected to this application. Selecting one links the existing entity and fills its known details.'}
+        </p>
+      </div>
+      {pickedEntity && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-primary bg-primary/5 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-medium text-foreground">{pickedEntity.name}</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              {[
+                pickedEntity.abn ? `ABN ${formatAbn(pickedEntity.abn)}` : 'No ABN on file',
+                pickedEntity.acn ? `ACN ${pickedEntity.acn}` : null,
+                pickedEntity.industry,
+                pickedEntity.address,
+                pickedEntity.director_count ? `${pickedEntity.director_count} director${pickedEntity.director_count === 1 ? '' : 's'} on file` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+            {entityPrefill.length > 0 && (
+              <p className="mt-1 text-[11.5px] text-muted-foreground">
+                Auto-filled: {prefillSummary(entityPrefill)}.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={clearPickedEntity}
+            className="shrink-0 text-[12px] font-medium text-primary hover:underline"
+          >
+            Change
+          </button>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="relative">
+          <label className={LBL}>Business Name or ABN</label>
+          <input
+            type="text"
+            className="led-input"
+            placeholder="Search name or enter an 11-digit ABN"
+            value={extra.business_name}
+            onChange={e => editBusinessName(e.target.value)}
+          />
+          {entityPanelVisible(extra.business_name) && (
+            <EntitySearchResults
+              matches={detailEntityMatches.matches}
+              loading={detailEntityMatches.loading}
+              searched={detailEntityMatches.searched}
+              onSelect={useExistingEntity}
+              onDismiss={() => setEntityDismissedFor(extra.business_name.trim())}
+            />
+          )}
+          {abrNamePanelVisible && abrBusinessNames.enabled && (
+            <AbrNameSearchResults
+              matches={abrBusinessNames.matches}
+              loading={abrBusinessNames.loading}
+              searched={abrBusinessNames.searched}
+              onSelect={useAbrBusiness}
+              onDismiss={() => setEntityDismissedFor(extra.business_name.trim())}
+            />
+          )}
+          {businessNameIsAbn
+            && detailEntityMatches.searched
+            && detailEntityMatches.matches.length === 0
+            && abrBusinessLookup.enabled && (
+              <AbrResultCard
+                record={abrBusinessLookup.record}
+                loading={abrBusinessLookup.loading}
+                onApply={useAbrBusiness}
+              />
+            )}
+        </div>
+        <div>
+          <label className={LBL}>ABN{businessSubType ? ' *' : ''}</label>
+          <input type="text" className="led-input" value={extra.business_abn} onChange={e => editBusinessAbn(e.target.value)} />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className={LBL}>Trading Name</label>
+          <input type="text" className="led-input" value={extra.trading_name} onChange={e => setExtra('trading_name', e.target.value)} />
+        </div>
+        <div>
+          <label className={LBL}>Business Structure</label>
+          <select value={extra.business_structure} onChange={e => setExtra('business_structure', e.target.value)} className="led-input">
+            <option value="">—</option>
+            {['Sole Trader', 'Partnership', 'Company', 'Trust'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className={LBL}>Time Trading</label>
+          <input type="text" className="led-input" placeholder="e.g. 3 years" value={extra.time_trading} onChange={e => setExtra('time_trading', e.target.value)} />
+        </div>
+        <div>
+          <label className={LBL}>No. of Directors</label>
+          <input type="number" min="1" className="led-input" value={extra.num_directors} onChange={e => setExtra('num_directors', e.target.value)} />
+        </div>
+        <div className="flex flex-col justify-end pb-[2px]">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.gst_registered} onChange={e => setExtra('gst_registered', e.target.checked)} />
+            <span className="text-[13px] font-medium text-foreground">GST Registered</span>
+          </label>
+        </div>
+      </div>
+    </Card>
+  ) : null;
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <PageHeader
@@ -923,88 +1211,106 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         </Card>
       )}
 
-      {/* Client */}
+      {/* Applicant type is decided once, before either detail group. Keeping this
+          separate makes the business and individual blocks unambiguous. */}
+      {showFullDetails && !cloneFromId && (
+        <Card className="space-y-3">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground">Applicant</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">Choose who is borrowing before entering their details.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button"
+              onClick={() => setApplicantType('individual')}
+              className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'individual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+            >A person</button>
+            <button type="button"
+              onClick={() => setApplicantType('company')}
+              className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'company' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+            >A business / entity</button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            {companyApplicant
+              ? 'The selected business is the applicant. Any person entered below is its primary deal contact; directors remain separate signatories.'
+              : 'The individual below is the applicant. You can still record their business where it is relevant to the loan.'}
+          </p>
+        </Card>
+      )}
+
+      {/* A business borrower starts with the entity. For an individual borrower,
+          personal details lead and the associated business follows below. */}
+      {isSelfManaged && companyApplicant && businessDetailsCard}
+
+      {/* Individual details */}
       <Card className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">
-          {companyApplicant ? 'Client & applicant' : 'Client'}
+          {companyApplicant ? 'Primary Contact' : 'Individual Details'}
         </p>
-
-        {/* Who the applicant is, chosen here rather than implied by which
-            create button was pressed. A business borrows as readily under asset
-            finance as under a commercial loan, so this is not tied to loan type. */}
-        {showFullDetails && !cloneFromId && (
-          <div>
-            <label className={LABEL_CLS}>Who is the applicant?</label>
-            <div className="flex gap-2">
-              <button type="button"
-                onClick={() => setApplicantType('individual')}
-                className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'individual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-              >A person</button>
-              <button type="button"
-                onClick={() => setApplicantType('company')}
-                className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${applicantType === 'company' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-              >A business / entity</button>
-            </div>
-            <p className="mt-1.5 text-[12px] text-muted-foreground">
-              {companyApplicant
-                ? 'The entity is the applicant: name it under Business Details below. Tax invoices are made out to it, and its directors are invited to complete and sign their own parts. The person below is optional — they are the contact for the deal.'
-                : 'The person below is the applicant, even if a business is recorded on the file.'}
-            </p>
-          </div>
-        )}
+        <p className="-mt-2 text-[12px] text-muted-foreground">
+          {companyApplicant
+            ? 'Add the person the team should contact. Their details are saved to the contact book and linked to this business when the application is created.'
+            : 'Search the contact book first; selecting a match fills the individual details already on record.'}
+        </p>
 
         {!cloneFromId && (
           <div className="flex gap-2">
             <button type="button"
               onClick={() => { setClientMode('new'); setSelectedPrevClient(null); }}
               className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'new' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-            >New client</button>
+            >{companyApplicant ? 'New contact' : 'New client'}</button>
             <button type="button"
               onClick={() => setClientMode('existing')}
               className={`flex-1 rounded-xl border py-2 text-[13px] font-medium transition-colors ${clientMode === 'existing' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
-            >Existing client</button>
+            >{companyApplicant ? 'Existing contact' : 'Existing client'}</button>
           </div>
         )}
 
         {!cloneFromId && clientMode === 'existing' && (
           <div className="space-y-2">
-            {selectedPrevClient ? (
+            {selectedPrevClient && (
               <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
                 <div>
                   <p className="text-[14px] font-medium text-foreground">{selectedPrevClient.name}</p>
                   <p className="text-[12px] text-muted-foreground">{selectedPrevClient.email}{selectedPrevClient.mobile ? ` · ${selectedPrevClient.mobile}` : ''}</p>
+                  {clientPrefill.length > 0 && (
+                    <p className="text-[11.5px] text-muted-foreground mt-1">
+                      Filled in from the contact book: {prefillSummary(clientPrefill)}.
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedPrevClient(null); setPrevClientSearch(''); setPickedClient(null); }}
+                  onClick={() => { setSelectedPrevClient(null); setPrevClientSearch(''); setPickedClient(null); setClientPrefill([]); }}
                   className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
                 >
                   Change
                 </button>
               </div>
-            ) : (
-              showFullDetails ? (
-                /* Staff search the contact book, so the pick carries a CRM
-                   identity (contact_id) and not just a name and an email —
-                   that identity is what stops the same person becoming two. */
-                <div className="relative">
-                  <Input
-                    placeholder="Search by name, email or phone…"
-                    value={clientTerm}
-                    onChange={e => { setClientTerm(e.target.value); setPickedClient(null); }}
-                  />
-                  <ClientSearchResults
-                    matches={clientMatches.matches}
-                    loading={clientMatches.loading}
-                    searched={clientMatches.searched}
-                    onSelect={useExistingClient}
-                    onDismiss={() => setClientTerm('')}
-                  />
-                  <p className="mt-1.5 text-[12px] text-muted-foreground">
-                    Search your clients. Nothing to pick? Switch to New client.
-                  </p>
-                </div>
-              ) : (
+            )}
+            {showFullDetails ? (
+              /* The business is selected above in the business block. This lookup
+                 intentionally stays people-only, so an entity cannot silently
+                 change who the borrower is while a contact is being chosen. */
+              <div className="relative">
+                <Input
+                  placeholder={companyApplicant ? 'Search for the primary contact…' : 'Search clients by name, email or phone…'}
+                  value={clientTerm}
+                  onChange={e => { setClientTerm(e.target.value); setPickedClient(null); }}
+                />
+                <ClientSearchResults
+                  matches={clientMatches.matches}
+                  loading={clientMatches.loading}
+                  searched={clientMatches.searched}
+                  onSelect={useExistingClient}
+                  onDismiss={() => setClientTerm('')}
+                />
+                <p className="mt-1.5 text-[12px] text-muted-foreground">
+                  {companyApplicant
+                    ? 'Choose an existing contact or enter a new one below. Directors on the business remain separate application parties.'
+                    : 'Nothing to pick? Switch to New client.'}
+                </p>
+              </div>
+            ) : selectedPrevClient ? null : (
               <>
                 <Input placeholder="Search by name or email..." value={prevClientSearch} onChange={e => setPrevClientSearch(e.target.value)} />
                 <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
@@ -1023,22 +1329,24 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   ))}
                 </div>
               </>
-              )
             )}
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
+          {/* With an entity as the applicant the person is the contact for the
+              deal, not the borrower — submit doesn't ask for them, so the labels
+              mustn't either. */}
           <div>
-            <label className={LABEL_CLS}>First Name *</label>
+            <label className={LABEL_CLS}>First Name {personRequiredMark}</label>
             <Input placeholder="John" value={firstName} onChange={e => { setFirstName(e.target.value); setPickedClient(null); }} />
           </div>
           <div>
-            <label className={LABEL_CLS}>Last Name *</label>
+            <label className={LABEL_CLS}>Last Name {personRequiredMark}</label>
             <Input placeholder="Smith" value={lastName} onChange={e => setLastName(e.target.value)} />
           </div>
           <div>
-            <label className={LABEL_CLS}>Email *</label>
+            <label className={LABEL_CLS}>Email {personRequiredMark}</label>
             <Input type="email" placeholder="john@example.com" value={email} onChange={e => setEmail(e.target.value)} />
           </div>
           <div>
@@ -1068,6 +1376,205 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         {engagementError && <p className="text-[12px] text-destructive">{engagementError}</p>}
       </Card>}
 
+      {/* Everything the applicant is, in one run: who they are, how to reach
+          them, and the entity they borrow through. Split across the form it read
+          as unrelated cards with the loan wedged between them. */}
+      {isSelfManaged && (
+        <>
+          {/* Applicant Identity */}
+          <Card className="space-y-4">
+            <p className="text-[15px] font-semibold text-foreground">
+              {companyApplicant ? 'Primary Contact Identity' : 'Identity & Identification'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div>
+                <label className={LBL}>Title</label>
+                <select value={extra.applicant_title} onChange={e => setExtra('applicant_title', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LBL}>Middle Name</label>
+                <input type="text" className="led-input" placeholder="Optional" value={extra.applicant_middle_name} onChange={e => setExtra('applicant_middle_name', e.target.value)} />
+              </div>
+              <div>
+                <DatePicker
+                  label="Date of Birth"
+                  value={extra.applicant_dob}
+                  onChange={(v) => setExtra('applicant_dob', v)}
+                  placeholder="Select date"
+                  className="led-input"
+                />
+              </div>
+              <div>
+                <label className={LBL}>Gender</label>
+                <select value={extra.applicant_gender} onChange={e => setExtra('applicant_gender', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['Male', 'Female', 'Other'].map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={LBL}>Marital Status</label>
+                <select value={extra.applicant_marital_status} onChange={e => setExtra('applicant_marital_status', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LBL}>Preferred Contact</label>
+                <select value={extra.preferred_contact_method} onChange={e => setExtra('preferred_contact_method', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['Phone', 'Email', 'SMS'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* The ID is what proves the name above it — the same person, so
+                the same card rather than one of its own. */}
+            <div className="space-y-3 border-t border-border pt-4">
+              <p className="text-[13px] font-semibold text-foreground">Identification</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={LBL}>Residency Status</label>
+                  <select value={extra.applicant_residency_status} onChange={e => setExtra('applicant_residency_status', e.target.value)} className="led-input">
+                    <option value="">—</option>
+                    {RESIDENCY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                {isVisaHolder(extra.applicant_residency_status) && (<>
+                  <div>
+                    <label className={LBL}>Visa Number</label>
+                    <input type="text" className="led-input" placeholder="e.g. 1234567890" value={extra.applicant_visa_number} onChange={e => setExtra('applicant_visa_number', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LBL}>Visa Category</label>
+                    <select value={extra.applicant_visa_category} onChange={e => setExtra('applicant_visa_category', e.target.value)} className="led-input">
+                      <option value="">—</option>
+                      {VISA_CATEGORIES.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </>)}
+                <div>
+                  <label className={LBL}>ID Type</label>
+                  <select value={extra.id_type} onChange={e => setExtra('id_type', e.target.value)} className="led-input">
+                    <option value="license">Driver's Licence</option>
+                    <option value="passport">Passport</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={LBL}>ID Number</label>
+                  <input type="text" className="led-input" placeholder="e.g. 12345678" value={extra.id_number} onChange={e => setExtra('id_number', e.target.value)} />
+                </div>
+                <div>
+                  <label className={LBL}>{extra.id_type === 'license' ? 'Issuing State' : 'Issuing Country'}</label>
+                  {extra.id_type === 'license' ? (
+                    <select value={extra.id_issuing_state_country} onChange={e => setExtra('id_issuing_state_country', e.target.value)} className="led-input">
+                      <option value="">—</option>
+                      {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  ) : (
+                    <input type="text" className="led-input" placeholder="e.g. Australia" value={extra.id_issuing_state_country} onChange={e => setExtra('id_issuing_state_country', e.target.value)} />
+                  )}
+                </div>
+                <div>
+                  <DatePicker
+                    label="ID Expiry Date"
+                    value={extra.id_expiry_date}
+                    onChange={(v) => setExtra('id_expiry_date', v)}
+                    placeholder="Select date"
+                    className="led-input"
+                  />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Address */}
+          <Card className="space-y-4">
+            <p className="text-[15px] font-semibold text-foreground">
+              {companyApplicant ? 'Primary Contact Address' : 'Address & Living Situation'}
+            </p>
+            <div>
+              <label className={LBL}>Street Address</label>
+              <input type="text" className="led-input" placeholder="123 Main St" value={extra.applicant_address} onChange={e => setExtra('applicant_address', e.target.value)} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className={LBL}>Suburb</label>
+                <input type="text" className="led-input" placeholder="Melbourne" value={extra.applicant_suburb} onChange={e => setExtra('applicant_suburb', e.target.value)} />
+              </div>
+              <div>
+                <label className={LBL}>State</label>
+                <select value={extra.applicant_state} onChange={e => setExtra('applicant_state', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LBL}>Postcode</label>
+                <input type="text" className="led-input" placeholder="3000" maxLength={4} value={extra.applicant_postcode} onChange={e => setExtra('applicant_postcode', e.target.value.replace(/\D/g, ''))} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={LBL}>Residential Status</label>
+                <select value={extra.residential_status} onChange={e => setExtra('residential_status', e.target.value)} className="led-input">
+                  <option value="">—</option>
+                  {['Owner', 'Renting', 'Living with parents', 'Other'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LBL}>Time at Address</label>
+                <input type="text" className="led-input" placeholder="e.g. 2 years" value={extra.time_at_address} onChange={e => setExtra('time_at_address', e.target.value)} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className={LBL}>No. of Dependants</label>
+                <input type="number" min="0" className="led-input" value={extra.applicant_num_dependants} onChange={e => setExtra('applicant_num_dependants', e.target.value)} />
+              </div>
+              <div className="flex flex-col justify-end pb-[2px]">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.has_partner} onChange={e => setExtra('has_partner', e.target.checked)} />
+                  <span className="text-[13px] font-medium text-foreground">Has a partner</span>
+                </label>
+              </div>
+              <div className="flex flex-col justify-end pb-[2px]">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.partner_working} onChange={e => setExtra('partner_working', e.target.checked)} />
+                  <span className="text-[13px] font-medium text-foreground">Partner is working</span>
+                </label>
+              </div>
+            </div>
+          </Card>
+
+          {/* Emergency Contact */}
+          <Card className="space-y-4">
+            <p className="text-[15px] font-semibold text-foreground">Emergency Contact</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className={LBL}>Name</label>
+                <input type="text" className="led-input" value={extra.emergency_contact_name} onChange={e => setExtra('emergency_contact_name', e.target.value)} />
+              </div>
+              <div>
+                <label className={LBL}>Relationship</label>
+                <input type="text" className="led-input" placeholder="e.g. Spouse, Parent" value={extra.emergency_contact_relationship} onChange={e => setExtra('emergency_contact_relationship', e.target.value)} />
+              </div>
+              <div>
+                <label className={LBL}>Phone</label>
+                <input type="tel" className="led-input" placeholder="04XX XXX XXX" value={extra.emergency_contact_phone} onChange={e => setExtra('emergency_contact_phone', e.target.value)} />
+              </div>
+            </div>
+          </Card>
+
+          {!companyApplicant && businessDetailsCard}
+
+        </>
+      )}
+
       {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
       {skipEngagement && !cloneFromId && (
         <Card className="space-y-3">
@@ -1077,17 +1584,52 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               If this lead came from a referrer outside the portal (e.g. via WhatsApp), select them here so they're credited.
             </p>
           </div>
-          {referrers.length > 0 ? (
-            <select value={creditReferrerId} onChange={e => setCreditReferrerId(e.target.value)} className="led-input">
-              <option value="">No referrer</option>
-              {referrers.map(r => (
-                <option key={r.id} value={r.id}>{r.name}{r.organization ? ` — ${r.organization}` : ''}</option>
-              ))}
-            </select>
-          ) : (
+          {creditReferrer ? (
+            <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[14px] font-medium text-foreground truncate">{creditReferrer.full_name || creditReferrer.email}</p>
+                <p className="text-[12px] text-muted-foreground truncate">
+                  {[creditReferrer.email, creditReferrer.organization_name].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCreditReferrer(null); setReferrerTerm(''); }}
+                className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
+              >
+                Change
+              </button>
+            </div>
+          ) : referrersLoaded && recentReferrers.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">
               No referrer accounts found — add referrers under Referrer Management to credit them here.
             </p>
+          ) : (
+            <div>
+              <Input
+                placeholder="Search referrers by name, email or organisation…"
+                value={referrerTerm}
+                onChange={e => setReferrerTerm(e.target.value)}
+                onFocus={() => setReferrerFocused(true)}
+                // Blur fires before the row's click, so let the click land first.
+                onBlur={() => setTimeout(() => setReferrerFocused(false), 150)}
+              />
+              {/* In the flow, not floating: this card is short and `.led-card`
+                  clips its overflow, so an overlay would be cut off at the
+                  card's edge instead of drawn over the section below. */}
+              {(referrerSearching || referrerFocused) && (
+                <ReferrerSearchResults
+                  inline
+                  matches={referrerOptions}
+                  loading={referrerSearching && referrerMatches.loading}
+                  searched={referrerSearching && referrerMatches.searched}
+                  heading={referrerSearching ? undefined : 'Recent referrers'}
+                  emptyLabel={`No referrer matched "${referrerQuery}"`}
+                  onSelect={r => { setCreditReferrer(r); setReferrerTerm(''); setReferrerFocused(false); }}
+                  onDismiss={() => { setCreditReferrer(null); setReferrerTerm(''); setReferrerFocused(false); }}
+                />
+              )}
+            </div>
           )}
         </Card>
       )}
@@ -1119,27 +1661,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           })}
         </div>
 
-        {/* Business identity for business-purpose sub-types */}
-        {businessSubType && (
-          <div className="relative">
+        {/* Business identity for business-purpose sub-types. The staff form has
+            the Business Details block in the applicant group above, which owns
+            the same two fields — asking for the name twice, in two places, is how
+            they end up disagreeing. The referrer's quick lead has no such block,
+            so it keeps this one. */}
+        {businessSubType && !showFullDetails && (
+          <div>
             <label className={LBL}>Business / Entity Name</label>
             <input type="text" className="led-input" placeholder="Acme Pty Ltd" value={comBusinessName} onChange={e => setComBusinessName(e.target.value)} />
-            {entityPanelVisible(comBusinessName) && (
-              <EntitySearchResults
-                matches={comEntityMatches.matches}
-                loading={comEntityMatches.loading}
-                searched={comEntityMatches.searched}
-                onSelect={(en: EntitySearchResult) => {
-                  setComBusinessName(en.name);
-                  if (en.abn) {
-                    setComAbn(en.abn);
-                    setExtra('business_abn', en.abn);
-                  }
-                  setEntityDismissedFor(en.name.trim());
-                }}
-                onDismiss={() => setEntityDismissedFor(comBusinessName.trim())}
-              />
-            )}
           </div>
         )}
 
@@ -1621,158 +2151,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       {/* ── Self-managed: full client detail sections ─────────────────────── */}
       {isSelfManaged && (
         <>
-          {/* Applicant Identity */}
-          <Card className="space-y-4">
-            <p className="text-[15px] font-semibold text-foreground">Applicant Identity</p>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div>
-                <label className={LBL}>Title</label>
-                <select value={extra.applicant_title} onChange={e => setExtra('applicant_title', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'].map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>Middle Name</label>
-                <input type="text" className="led-input" placeholder="Optional" value={extra.applicant_middle_name} onChange={e => setExtra('applicant_middle_name', e.target.value)} />
-              </div>
-              <div>
-                <DatePicker
-                  label="Date of Birth"
-                  value={extra.applicant_dob}
-                  onChange={(v) => setExtra('applicant_dob', v)}
-                  placeholder="Select date"
-                  className="led-input"
-                />
-              </div>
-              <div>
-                <label className={LBL}>Gender</label>
-                <select value={extra.applicant_gender} onChange={e => setExtra('applicant_gender', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Male', 'Female', 'Other'].map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LBL}>Marital Status</label>
-                <select value={extra.applicant_marital_status} onChange={e => setExtra('applicant_marital_status', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Single', 'Married', 'De Facto', 'Separated', 'Divorced', 'Widowed'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>Preferred Contact</label>
-                <select value={extra.preferred_contact_method} onChange={e => setExtra('preferred_contact_method', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Phone', 'Email', 'SMS'].map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-            </div>
-          </Card>
-
-          {/* Identification */}
-          <Card className="space-y-4">
-            <p className="text-[15px] font-semibold text-foreground">Identification</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LBL}>Residency Status</label>
-                <select value={extra.applicant_residency_status} onChange={e => setExtra('applicant_residency_status', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Australian Citizen', 'Permanent Resident', 'Temporary Resident', 'Non-Resident'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>ID Type</label>
-                <select value={extra.id_type} onChange={e => setExtra('id_type', e.target.value)} className="led-input">
-                  <option value="license">Driver's Licence</option>
-                  <option value="passport">Passport</option>
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>ID Number</label>
-                <input type="text" className="led-input" placeholder="e.g. 12345678" value={extra.id_number} onChange={e => setExtra('id_number', e.target.value)} />
-              </div>
-              <div>
-                <label className={LBL}>{extra.id_type === 'license' ? 'Issuing State' : 'Issuing Country'}</label>
-                {extra.id_type === 'license' ? (
-                  <select value={extra.id_issuing_state_country} onChange={e => setExtra('id_issuing_state_country', e.target.value)} className="led-input">
-                    <option value="">—</option>
-                    {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                ) : (
-                  <input type="text" className="led-input" placeholder="e.g. Australia" value={extra.id_issuing_state_country} onChange={e => setExtra('id_issuing_state_country', e.target.value)} />
-                )}
-              </div>
-              <div>
-                <DatePicker
-                  label="ID Expiry Date"
-                  value={extra.id_expiry_date}
-                  onChange={(v) => setExtra('id_expiry_date', v)}
-                  placeholder="Select date"
-                  className="led-input"
-                />
-              </div>
-            </div>
-          </Card>
-
-          {/* Address */}
-          <Card className="space-y-4">
-            <p className="text-[15px] font-semibold text-foreground">Address</p>
-            <div>
-              <label className={LBL}>Street Address</label>
-              <input type="text" className="led-input" placeholder="123 Main St" value={extra.applicant_address} onChange={e => setExtra('applicant_address', e.target.value)} />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className={LBL}>Suburb</label>
-                <input type="text" className="led-input" placeholder="Melbourne" value={extra.applicant_suburb} onChange={e => setExtra('applicant_suburb', e.target.value)} />
-              </div>
-              <div>
-                <label className={LBL}>State</label>
-                <select value={extra.applicant_state} onChange={e => setExtra('applicant_state', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>Postcode</label>
-                <input type="text" className="led-input" placeholder="3000" maxLength={4} value={extra.applicant_postcode} onChange={e => setExtra('applicant_postcode', e.target.value.replace(/\D/g, ''))} />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LBL}>Residential Status</label>
-                <select value={extra.residential_status} onChange={e => setExtra('residential_status', e.target.value)} className="led-input">
-                  <option value="">—</option>
-                  {['Owner', 'Renting', 'Living with parents', 'Other'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LBL}>Time at Address</label>
-                <input type="text" className="led-input" placeholder="e.g. 2 years" value={extra.time_at_address} onChange={e => setExtra('time_at_address', e.target.value)} />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className={LBL}>No. of Dependants</label>
-                <input type="number" min="0" className="led-input" value={extra.applicant_num_dependants} onChange={e => setExtra('applicant_num_dependants', e.target.value)} />
-              </div>
-              <div className="flex flex-col justify-end pb-[2px]">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.has_partner} onChange={e => setExtra('has_partner', e.target.checked)} />
-                  <span className="text-[13px] font-medium text-foreground">Has a partner</span>
-                </label>
-              </div>
-              <div className="flex flex-col justify-end pb-[2px]">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.partner_working} onChange={e => setExtra('partner_working', e.target.checked)} />
-                  <span className="text-[13px] font-medium text-foreground">Partner is working</span>
-                </label>
-              </div>
-            </div>
-          </Card>
-
           {/* Employment & Income */}
           <Card className="space-y-4">
             <p className="text-[15px] font-semibold text-foreground">Employment & Income</p>
@@ -2025,84 +2403,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             <button type="button" onClick={() => setLiabilities(prev => [...prev, { liability_type: 'Home Loans', lender: '', balance: '', limit: '', monthly_repayment: '' }])} className="text-[13px] text-primary hover:underline">
               + Add liability
             </button>
-          </Card>
-
-          {/* Business Details */}
-          {(businessDetailsApply || extra.business_name || extra.business_abn) && (
-            <Card className="space-y-4">
-              <p className="text-[15px] font-semibold text-foreground">Business Details</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="relative">
-                  <label className={LBL}>Business Name</label>
-                  <input type="text" className="led-input" value={extra.business_name} onChange={e => setExtra('business_name', e.target.value)} />
-                  {entityPanelVisible(extra.business_name) && (
-                    <EntitySearchResults
-                      matches={detailEntityMatches.matches}
-                      loading={detailEntityMatches.loading}
-                      searched={detailEntityMatches.searched}
-                      onSelect={(en: EntitySearchResult) => {
-                        setExtra('business_name', en.name);
-                        if (en.abn) setExtra('business_abn', en.abn);
-                        setEntityDismissedFor(en.name.trim());
-                      }}
-                      onDismiss={() => setEntityDismissedFor(extra.business_name.trim())}
-                    />
-                  )}
-                </div>
-                <div>
-                  <label className={LBL}>ABN{businessSubType ? ' *' : ''}</label>
-                  <input type="text" className="led-input" value={extra.business_abn} onChange={e => setExtra('business_abn', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className={LBL}>Trading Name</label>
-                  <input type="text" className="led-input" value={extra.trading_name} onChange={e => setExtra('trading_name', e.target.value)} />
-                </div>
-                <div>
-                  <label className={LBL}>Business Structure</label>
-                  <select value={extra.business_structure} onChange={e => setExtra('business_structure', e.target.value)} className="led-input">
-                    <option value="">—</option>
-                    {['Sole Trader', 'Partnership', 'Company', 'Trust'].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <label className={LBL}>Time Trading</label>
-                  <input type="text" className="led-input" placeholder="e.g. 3 years" value={extra.time_trading} onChange={e => setExtra('time_trading', e.target.value)} />
-                </div>
-                <div>
-                  <label className={LBL}>No. of Directors</label>
-                  <input type="number" min="1" className="led-input" value={extra.num_directors} onChange={e => setExtra('num_directors', e.target.value)} />
-                </div>
-                <div className="flex flex-col justify-end pb-[2px]">
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" className="h-4 w-4 rounded accent-primary" checked={extra.gst_registered} onChange={e => setExtra('gst_registered', e.target.checked)} />
-                    <span className="text-[13px] font-medium text-foreground">GST Registered</span>
-                  </label>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Emergency Contact */}
-          <Card className="space-y-4">
-            <p className="text-[15px] font-semibold text-foreground">Emergency Contact</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className={LBL}>Name</label>
-                <input type="text" className="led-input" value={extra.emergency_contact_name} onChange={e => setExtra('emergency_contact_name', e.target.value)} />
-              </div>
-              <div>
-                <label className={LBL}>Relationship</label>
-                <input type="text" className="led-input" placeholder="e.g. Spouse, Parent" value={extra.emergency_contact_relationship} onChange={e => setExtra('emergency_contact_relationship', e.target.value)} />
-              </div>
-              <div>
-                <label className={LBL}>Phone</label>
-                <input type="tel" className="led-input" placeholder="04XX XXX XXX" value={extra.emergency_contact_phone} onChange={e => setExtra('emergency_contact_phone', e.target.value)} />
-              </div>
-            </div>
           </Card>
 
           {/* Declarations */}

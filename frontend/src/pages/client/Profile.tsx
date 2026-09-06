@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { Card, Button, PasswordRequirements, passwordMeetsRequirements, DatePicker, SpecialtyPicker } from '../../components/ui';
 import { TITLE_OPTIONS, GENDER_OPTIONS } from '../../lib/constants';
+import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
 import type { LoanCategory } from '../../types';
 
 interface FormData {
@@ -33,12 +34,14 @@ interface ClientProfileData {
   id_issuing_state_country: string;
   id_expiry_date: string;
   residency_status: string;
+  visa_number: string;
+  visa_category: string;
   emergency_contact_name: string;
   emergency_contact_relationship: string;
   emergency_contact_phone: string;
 }
 
-const RESIDENCY_OPTIONS = ['Australian Citizen', 'Permanent Resident', 'Temporary Visa', 'Other'];
+
 const CONTACT_METHOD_OPTIONS = ['Email', 'Mobile', 'Either'];
 
 export default function Profile() {
@@ -107,8 +110,12 @@ export default function Profile() {
 
   const onSaveDetails = async (data: ClientProfileData) => {
     try {
-      await api.put('/users/me/profile', data);
-      resetDetails(data);
+      // Visa details only belong to a visa status — clear them if it changed.
+      const payload: ClientProfileData = isVisaHolder(data.residency_status)
+        ? data
+        : { ...data, visa_number: '', visa_category: '' };
+      await api.put('/users/me/profile', payload);
+      resetDetails(payload);
       toast('Saved. New applications will use these details.', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to save details'), 'error');
@@ -323,9 +330,24 @@ export default function Profile() {
                 <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Residency Status</label>
                 <select className={inputClass} {...registerDetails('residency_status')}>
                   <option value="">Select...</option>
-                  {RESIDENCY_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                  {RESIDENCY_STATUSES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
+              {isVisaHolder(watchDetails('residency_status')) && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Visa Number</label>
+                    <input placeholder="e.g. 1234567890" className={inputClass} {...registerDetails('visa_number')} />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-[var(--led-ink)] mb-1.5">Visa Category</label>
+                    <select className={inputClass} {...registerDetails('visa_category')}>
+                      <option value="">Select...</option>
+                      {VISA_CATEGORIES.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
               <div className="border-t border-[var(--led-line)] pt-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--led-muted)] mb-3">Emergency Contact</p>
                 <div className="grid gap-4 sm:grid-cols-3">

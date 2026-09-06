@@ -145,6 +145,9 @@ class ClientProfile(BaseModel):
     id_issuing_state_country: Optional[str] = None
     id_expiry_date: Optional[str] = None
     residency_status: Optional[str] = None
+    # Only meaningful when residency_status is a visa.
+    visa_number: Optional[str] = None
+    visa_category: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None

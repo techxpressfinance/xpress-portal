@@ -61,6 +61,8 @@ class LoanApplicant(Base):
     # Identification / residency
     id_expiry_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     applicant_residency_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    applicant_visa_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    applicant_visa_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Employment / income
     employment_category: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)

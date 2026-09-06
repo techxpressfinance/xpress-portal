@@ -4,7 +4,7 @@ import uuid
 
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.config import FRONTEND_URL
@@ -19,6 +19,7 @@ from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.auth import blacklist_all_user_tokens, create_access_token
 from app.services.email import send_email_changed_email, send_password_reset_email, send_setup_account_email
 from app.services.loan_category import serialize_categories
+from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -27,6 +28,8 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 @router.get("", response_model=list[UserOut])
 def list_users(
     role: str | None = Query(None),
+    search: str | None = Query(None),
+    limit: int = Query(500, ge=1, le=500),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
@@ -41,7 +44,16 @@ def list_users(
             query = query.filter(User.role == UserRole(role))
         except ValueError:
             pass
-    return query.order_by(User.created_at.desc()).limit(500).all()
+    # Name, email and organisation are plaintext columns on User (only the
+    # billing/bank fields are encrypted), so a plain LIKE is enough here.
+    if search and search.strip():
+        pattern = f"%{escape_like(search.strip())}%"
+        query = query.filter(or_(
+            User.full_name.ilike(pattern, escape="\\"),
+            User.email.ilike(pattern, escape="\\"),
+            User.organization_name.ilike(pattern, escape="\\"),
+        ))
+    return query.order_by(User.created_at.desc()).limit(limit).all()
 
 
 @router.get("/deleted", response_model=list[DeletedClientOut])

@@ -430,6 +430,18 @@ export default function ApplicationDetail() {
                 <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_residency_status || '—'}</p>
               </div>
               )}
+              {sectionVisible('living') && application.applicant_visa_number && (
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
+                <p className="text-[12px] text-[var(--led-muted)]">Visa Number</p>
+                <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_visa_number}</p>
+              </div>
+              )}
+              {sectionVisible('living') && application.applicant_visa_category && (
+              <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3.5">
+                <p className="text-[12px] text-[var(--led-muted)]">Visa Category</p>
+                <p className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_visa_category}</p>
+              </div>
+              )}
             </div>
           </div>
           </Card>
@@ -844,6 +856,18 @@ export default function ApplicationDetail() {
                       <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
                         <dt className="text-[12px] font-medium text-[var(--led-muted)]">Residency Status</dt>
                         <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_residency_status}</dd>
+                      </div>
+                    )}
+                    {application.applicant_visa_number && (
+                      <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                        <dt className="text-[12px] font-medium text-[var(--led-muted)]">Visa Number</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_visa_number}</dd>
+                      </div>
+                    )}
+                    {application.applicant_visa_category && (
+                      <div className="rounded-xl bg-[var(--led-surface-2)]/50 p-3">
+                        <dt className="text-[12px] font-medium text-[var(--led-muted)]">Visa Category</dt>
+                        <dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{application.applicant_visa_category}</dd>
                       </div>
                     )}
                     {application.id_expiry_date && (
@@ -1989,6 +2013,8 @@ export default function ApplicationDetail() {
                     {application.user_email && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{application.user_email}</p></div>}
                     {application.preferred_contact_method && <div style={S.cell}><p style={S.label}>Preferred Contact</p><p style={S.value}>{application.preferred_contact_method}</p></div>}
                     {application.applicant_residency_status && <div style={S.cell}><p style={S.label}>Residency Status</p><p style={S.value}>{application.applicant_residency_status}</p></div>}
+                    {application.applicant_visa_number && <div style={S.cell}><p style={S.label}>Visa Number</p><p style={S.value}>{application.applicant_visa_number}</p></div>}
+                    {application.applicant_visa_category && <div style={S.cell}><p style={S.label}>Visa Category</p><p style={S.value}>{application.applicant_visa_category}</p></div>}
                     {idEntry?.type && <div style={S.cell}><p style={S.label}>ID Type</p><p style={S.value}>{idEntry.type}</p></div>}
                     {idEntry?.number && <div style={S.cell}><p style={S.label}>ID Number</p><p style={S.value}>{idEntry.number}</p></div>}
                     {(idEntry?.state || idEntry?.country) && <div style={S.cell}><p style={S.label}>{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p style={S.value}>{idEntry.state || idEntry.country}</p></div>}

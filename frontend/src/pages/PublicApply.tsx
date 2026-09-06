@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { getTenantSlug } from '../api/client';
 import DatePicker from '../components/ui/DatePicker';
+import { VISA_CATEGORIES, isVisaHolder } from '../lib/residency';
 import { CheckCircleIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 const publicApi = axios.create({ baseURL: '/api' });
@@ -39,6 +40,8 @@ interface FormData {
   applicant_state: string;
   applicant_postcode: string;
   applicant_residency_status: string;
+  applicant_visa_number: string;
+  applicant_visa_category: string;
   id_type: string;
   id_number: string;
   id_issuing_state_country: string;
@@ -100,6 +103,8 @@ export default function PublicApply() {
       applicant_state: '',
       applicant_postcode: '',
       applicant_residency_status: '',
+      applicant_visa_number: '',
+      applicant_visa_category: '',
       id_type: 'license',
       id_number: '',
       id_issuing_state_country: '',
@@ -364,6 +369,20 @@ export default function PublicApply() {
                     <option value="visa_holder">Visa Holder</option>
                   </select>
                 </Field>
+
+                {isVisaHolder(watch('applicant_residency_status')) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Visa Number">
+                      <input {...register('applicant_visa_number')} className={inputClass} placeholder="e.g. 1234567890" />
+                    </Field>
+                    <Field label="Visa Category">
+                      <select {...register('applicant_visa_category')} className={selectClass}>
+                        <option value="">Select…</option>
+                        {VISA_CATEGORIES.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                )}
 
                 <Field label="ID Type">
                   <select {...register('id_type')} className={selectClass}>

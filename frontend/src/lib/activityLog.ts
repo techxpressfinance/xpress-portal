@@ -19,6 +19,8 @@ export const FIELD_LABELS: Record<string, string> = {
   applicant_dob: 'Date of birth',
   applicant_num_dependants: 'Dependants',
   applicant_residency_status: 'Residency status',
+  applicant_visa_number: 'Visa number',
+  applicant_visa_category: 'Visa category',
   applicant_mobile: 'Mobile',
   business_abn: 'ABN',
   business_industry_id: 'Industry',

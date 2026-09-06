@@ -35,6 +35,10 @@ class LoanApplicationCreate(BaseModel):
     # Client-filled — Business
     business_abn: Optional[str] = None
     business_name: Optional[str] = None
+    # An entity picked out of the book rather than matched by ABN. The ABN match
+    # is only a guess: an ABN-less entity whose name is punctuated differently
+    # would be matched into a second stub instead of the one that was chosen.
+    business_organization_id: Optional[str] = None
     business_registration_date: Optional[str] = None
     business_industry_id: Optional[int] = None
     business_monthly_sales: Optional[Decimal] = Field(None, ge=0)
@@ -49,6 +53,8 @@ class LoanApplicationCreate(BaseModel):
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    applicant_visa_number: Optional[str] = None
+    applicant_visa_category: Optional[str] = None
     residential_status: Optional[str] = None
     time_at_address: Optional[str] = None
     applicant_num_dependants: Optional[int] = None
@@ -115,6 +121,8 @@ class LoanApplicationUpdate(BaseModel):
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    applicant_visa_number: Optional[str] = None
+    applicant_visa_category: Optional[str] = None
     residential_status: Optional[str] = None
     time_at_address: Optional[str] = None
     applicant_num_dependants: Optional[int] = None
@@ -164,6 +172,8 @@ class LoanApplicantBase(BaseModel):
     applicant_postcode: Optional[str] = None
     id_expiry_date: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    applicant_visa_number: Optional[str] = None
+    applicant_visa_category: Optional[str] = None
     employment_category: Optional[str] = None
     employer_name: Optional[str] = None
     employer_industry: Optional[str] = None
@@ -365,6 +375,8 @@ class LoanApplicationOut(BaseModel):
     preferred_contact_method: Optional[str] = None
     id_expiry_date: Optional[str] = None
     applicant_residency_status: Optional[str] = None
+    applicant_visa_number: Optional[str] = None
+    applicant_visa_category: Optional[str] = None
     residential_status: Optional[str] = None
     time_at_address: Optional[str] = None
     applicant_num_dependants: Optional[int] = None
