@@ -155,3 +155,29 @@ export function rafThrottle<T extends unknown[]>(fn: (...args: T) => void) {
 
   return throttled;
 }
+
+/**
+ * Years-and-months elapsed since an ISO date, phrased the way a broker writes
+ * time trading — "3 years 4 months", "8 months", "11 years".
+ *
+ * Returns null for a missing, unparseable or future date so callers can fall
+ * back rather than print "0 months".
+ */
+export function durationSince(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const then = parseAsUTC(date);
+  if (Number.isNaN(then.getTime())) return null;
+  const now = new Date();
+  let months =
+    (now.getUTCFullYear() - then.getUTCFullYear()) * 12
+    + (now.getUTCMonth() - then.getUTCMonth());
+  if (now.getUTCDate() < then.getUTCDate()) months -= 1;
+  if (months < 0) return null;
+
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  const parts: string[] = [];
+  if (years) parts.push(`${years} year${years === 1 ? '' : 's'}`);
+  if (rem || !years) parts.push(`${rem} month${rem === 1 ? '' : 's'}`);
+  return parts.join(' ');
+}

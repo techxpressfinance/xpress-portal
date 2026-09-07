@@ -31,8 +31,10 @@ class AbrRecord(TypedDict, total=False):
     name: str
     trading_names: list[str]
     status: Optional[str]
+    status_from: Optional[str]
     entity_type: Optional[str]
     gst_registered: Optional[bool]
+    gst_from: Optional[str]
     state: Optional[str]
     postcode: Optional[str]
 
@@ -101,6 +103,15 @@ def lookup_abn(abn: str) -> Optional[AbrRecord]:
     # means "not registered" rather than "unknown".
     gst_registered: Optional[bool] = bool((payload.get("Gst") or "").strip())
 
+    # AbnStatusEffectiveFrom dates the CURRENT status, so it only reads as "ABN
+    # held since" while the ABN is active — on a cancelled ABN it is the
+    # cancellation date. Left null otherwise rather than handing callers a date
+    # that means the opposite of what they'd assume.
+    status = (payload.get("AbnStatus") or "").strip() or None
+    status_from = (payload.get("AbnStatusEffectiveFrom") or "").strip() or None
+    if status != "Active":
+        status_from = None
+
     # ABR returns Acn only for entity types that have one (a company); it's blank
     # for sole traders, trusts and government entities.
     return AbrRecord(
@@ -108,9 +119,11 @@ def lookup_abn(abn: str) -> Optional[AbrRecord]:
         acn=(payload.get("Acn") or "").strip() or None,
         name=(payload.get("EntityName") or "").strip(),
         trading_names=trading_names,
-        status=(payload.get("AbnStatus") or "").strip() or None,
+        status=status,
+        status_from=status_from,
         entity_type=(payload.get("EntityTypeName") or "").strip() or None,
         gst_registered=gst_registered,
+        gst_from=(payload.get("Gst") or "").strip() or None,
         state=(payload.get("AddressState") or "").strip() or None,
         postcode=(payload.get("AddressPostcode") or "").strip() or None,
     )

@@ -1398,8 +1398,12 @@ export interface AbrRecord {
   name: string;
   trading_names: string[];
   status: string | null;
+  /** ISO date the ABN became active. Null unless the ABN is currently active. */
+  status_from: string | null;
   entity_type: string | null;
   gst_registered: boolean | null;
+  /** ISO date GST registration started, when registered. */
+  gst_from: string | null;
   state: string | null;
   postcode: string | null;
 }

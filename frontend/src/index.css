@@ -1458,6 +1458,14 @@ table {
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+/* A card that hosts a typeahead panel has to let it escape the card box, or the
+   panel is clipped at the card edge and reads as if it vanished. Needed as a
+   class rather than Tailwind's overflow-visible because .led-card is unlayered
+   and so outranks any utility. */
+.led-card-overflow {
+  overflow: visible;
+}
+
 /* Groups are separated by space, not a rule. A divider between every group in
    a nine-item sidebar drew more lines than nav items. */
 .led-nav-group {

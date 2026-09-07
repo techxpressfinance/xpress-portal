@@ -1,4 +1,5 @@
 import { formatAcn } from '../../lib/acn';
+import { durationSince, formatDate } from '../../lib/utils';
 import type { AbrRecord } from '../../types';
 
 export default function AbrResultCard({
@@ -19,6 +20,8 @@ export default function AbrResultCard({
   }
   if (!record) return null;
   const active = (record.status || '').toLowerCase() === 'active';
+  // How long the ABN has been held — the register's stand-in for time trading.
+  const abnAge = durationSince(record.status_from);
   return (
     <div className="mt-1.5 rounded-lg border border-info/30 bg-info/10 px-3 py-2">
       <div className="flex items-start justify-between gap-3">
@@ -33,6 +36,12 @@ export default function AbrResultCard({
           {record.acn && (
             <p className="mt-0.5 text-[11px] text-info/80">
               ACN <span className="tabular-nums">{formatAcn(record.acn)}</span>
+            </p>
+          )}
+          {abnAge && (
+            <p className="mt-0.5 text-[11px] text-info/80">
+              ABN held {abnAge} <span className="tabular-nums">· since {formatDate(record.status_from)}</span>
+              {record.gst_from ? <span className="tabular-nums"> · GST since {formatDate(record.gst_from)}</span> : ''}
             </p>
           )}
           {record.trading_names.length > 0 && (

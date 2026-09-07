@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults, AbrNameSearchResults, AbrResultCard, ReferrerSearchResults } from '../../components/ui';
-import { getErrorMessage } from '../../lib/utils';
+import { durationSince, getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
@@ -546,6 +546,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   const useAbrBusiness = (record: AbrRecord) => {
     const structure = abrEntityTypeToStructure(record.entity_type);
+    // How long the ABN has been held is the closest the register gets to time
+    // trading, and it's what a lender reads it as. It's a floor, not the exact
+    // figure — the business may have traded under an earlier ABN — so it only
+    // seeds an empty field and never overwrites what the broker typed.
+    const abnAge = durationSince(record.status_from);
     setPickedEntity(null);
     setExtraFields(prev => ({
       ...prev,
@@ -554,11 +559,13 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       trading_name: prev.trading_name || record.trading_names[0] || '',
       business_structure: structure || prev.business_structure,
       gst_registered: record.gst_registered ?? prev.gst_registered,
+      time_trading: prev.time_trading || abnAge || '',
     }));
     setEntityPrefill([
       'ABN',
       record.acn ? 'ACN' : null,
       record.gst_registered != null ? 'GST registration' : null,
+      abnAge ? 'time trading (from ABN age)' : null,
     ].filter(Boolean) as string[]);
     setEntityDismissedFor(record.name.trim());
   };
@@ -572,18 +579,16 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   const editBusinessName = (value: string) => {
-    if (pickedEntity && value !== pickedEntity.name) {
-      setPickedEntity(null);
-      setEntityPrefill([]);
-    }
+    if (pickedEntity && value !== pickedEntity.name) setPickedEntity(null);
+    // Typing over the name means the fields are no longer what the book or the
+    // ABR filled, so the "auto-filled" note stops applying.
+    setEntityPrefill([]);
     setExtra('business_name', value);
   };
 
   const editBusinessAbn = (value: string) => {
-    if (pickedEntity && value !== (pickedEntity.abn || '')) {
-      setPickedEntity(null);
-      setEntityPrefill([]);
-    }
+    if (pickedEntity && value !== (pickedEntity.abn || '')) setPickedEntity(null);
+    setEntityPrefill([]);
     setExtra('business_abn', value);
   };
 
@@ -1077,7 +1082,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // keep the guard on its own line — the block is long enough that an inline
   // conditional buries where the group starts.
   const businessDetailsCard = (businessDetailsApply || extra.business_name || extra.business_abn) ? (
-    <Card className="space-y-4">
+    <Card className="led-card-overflow space-y-4">
       <div>
         <p className="text-[15px] font-semibold text-foreground">Business Details</p>
         <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -1158,6 +1163,15 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           <input type="text" className="led-input" value={extra.business_abn} onChange={e => editBusinessAbn(e.target.value)} />
         </div>
       </div>
+      {/* The entity-book path shows its prefill note inside the picked-entity
+          card above; an ABR auto-fill has no such card, so it says so here. */}
+      {!pickedEntity && entityPrefill.length > 0 && (
+        <p className="-mt-1 text-[11.5px] text-muted-foreground">
+          Auto-filled from the ABR: {prefillSummary(entityPrefill)}. Check the figures
+          before submitting — time trading is how long the ABN has been held, which can
+          understate a business that traded under an earlier ABN.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={LBL}>Trading Name</label>
@@ -1242,7 +1256,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       {isSelfManaged && companyApplicant && businessDetailsCard}
 
       {/* Individual details */}
-      <Card className="space-y-4">
+      <Card className="led-card-overflow space-y-4">
         <p className="text-[15px] font-semibold text-foreground">
           {companyApplicant ? 'Primary Contact' : 'Individual Details'}
         </p>
@@ -1577,7 +1591,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
       {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
       {skipEngagement && !cloneFromId && (
-        <Card className="space-y-3">
+        <Card className="led-card-overflow space-y-3">
           <div>
             <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
             <p className="text-[12px] text-muted-foreground mt-0.5">

@@ -128,7 +128,7 @@ export default function CreateCommercialEntity() {
         subtitle="Create the borrowing entity, then invite directors and guarantors to complete their own details."
       />
 
-      <Card padding="lg" className="mt-4">
+      <Card padding="lg" className="led-card-overflow mt-4">
         <div className="space-y-5">
           <div className="relative">
             <Input
