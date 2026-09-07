@@ -23,6 +23,7 @@ from app.schemas.external_referrer import (
     ReferrerCreate,
 )
 from app.schemas.user import InvitedUserOut, UserOut
+from app.services.contacts import ensure_contact
 from app.services.email import (
     notify_admins_new_account,
     send_referral_notification_email,
@@ -303,6 +304,24 @@ def refer_client(
         tenant_id=tenant_id,
     )
     db.add(referral)
+
+    # Mirror into the CRM. Without this a client referred through an invite link
+    # never reaches the contact book — only the New Contact button and the lead
+    # forms filed one — so the admin notification below points at
+    # /admin/contacts for a person who is not there, and no broker can search
+    # them. ensure_contact is idempotent on email, so an already-known client is
+    # enriched rather than duplicated.
+    contact_name = (data.full_name or (existing_user.full_name if existing_user else "") or "").strip()
+    if not contact_name:
+        contact_name = email.split("@")[0]
+    name_parts = contact_name.split()
+    ensure_contact(
+        db,
+        tenant_id,
+        name_parts[0],
+        " ".join(name_parts[1:]),
+        email=email,
+    )
 
     if existing_user:
         db.commit()

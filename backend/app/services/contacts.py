@@ -49,6 +49,40 @@ def _fill_missing_contact_fields(
     return contact
 
 
+def enrich_contact(
+    contact: Contact,
+    *,
+    middle_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    date_of_birth: Optional[str] = None,
+    drivers_license_number: Optional[str] = None,
+    address: Optional[str] = None,
+    suburb: Optional[str] = None,
+    state: Optional[str] = None,
+    postcode: Optional[str] = None,
+) -> Contact:
+    """Public form of the fill-in-the-blanks enrich, for callers holding a contact.
+
+    A contact is often first written from a half-filled draft — an auto-saved
+    lead has a name long before it has an email. Whoever later learns the missing
+    details is responsible for handing them here, or the CRM record stays a bare
+    name that no broker can search by email or ring.
+    """
+    return _fill_missing_contact_fields(
+        contact,
+        middle_name=middle_name,
+        email=email.strip().lower() if email else None,
+        phone=phone,
+        date_of_birth=date_of_birth,
+        drivers_license_number=drivers_license_number,
+        address=address,
+        suburb=suburb,
+        state=state,
+        postcode=postcode,
+    )
+
+
 def ensure_contact(
     db: Session,
     tenant_id: str,

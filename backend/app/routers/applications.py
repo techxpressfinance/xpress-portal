@@ -63,7 +63,7 @@ from app.services.email import (
     send_status_notification,
 )
 from app.services.notification_service import create_notification
-from app.services.contacts import ensure_contact
+from app.services.contacts import enrich_contact, ensure_contact
 from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
@@ -1097,6 +1097,30 @@ def update_application(
             email=application.applicant_email,
             phone=application.applicant_mobile,
         ).id
+    elif application.contact_id:
+        # The contact was filed from an earlier, thinner version of this
+        # application — typically a draft with a name and nothing else. Neither
+        # mirror above revisits an application that already has a contact_id, so
+        # without this the email and phone entered afterwards never reach the CRM
+        # and the record stays a bare name: not searchable by email, not
+        # dialable. Only ever fills blanks, so a contact edited in the CRM keeps
+        # what it has.
+        linked = db.query(Contact).filter(
+            Contact.id == application.contact_id,
+            Contact.tenant_id == tenant_id,
+        ).first()
+        if linked:
+            enrich_contact(
+                linked,
+                email=application.applicant_email,
+                phone=application.applicant_mobile,
+                middle_name=application.applicant_middle_name,
+                date_of_birth=application.applicant_dob,
+                address=application.applicant_address,
+                suburb=application.applicant_suburb,
+                state=application.applicant_state,
+                postcode=application.applicant_postcode,
+            )
 
     # A draft that has just become a company application (or just had its entity
     # attached) picks up that company's known directors, the same as one created
