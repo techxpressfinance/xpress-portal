@@ -2,23 +2,24 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
-import { useAuth } from '../../hooks/useAuth';
 import { formatDate, getInitials } from '../../lib/utils';
-import { Card, PageHeader, Button, Select, Input } from '../../components/ui';
-import { LOAN_TYPE_LABELS } from '../../lib/constants';
+import { Card, PageHeader, Button, Select, Input, Badge } from '../../components/ui';
+import { LOAN_TYPE_LABELS, STATUS_LABEL } from '../../lib/constants';
+import { applicantDisplayName, applicantEmail } from '../../lib/applicantName';
 
+import { APPLICATION_STATUSES } from '../../types';
 import type { LoanApplication } from '../../types';
 import { DocumentTextIcon, PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 
 export default function ReferrerApplications() {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loanTypeFilter, setLoanTypeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const perPage = 15;
 
@@ -28,6 +29,7 @@ export default function ReferrerApplications() {
     params.set('page', String(page));
     params.set('per_page', String(perPage));
     if (loanTypeFilter) params.set('loan_type', loanTypeFilter);
+    if (statusFilter) params.set('status', statusFilter);
     if (search) params.set('search', search);
 
     api
@@ -42,7 +44,7 @@ export default function ReferrerApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, loanTypeFilter]);
+  }, [page, loanTypeFilter, statusFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +87,16 @@ export default function ReferrerApplications() {
             <option value="">All Types</option>
             {Object.entries(LOAN_TYPE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
+            ))}
+          </Select>
+          <Select
+            label="Stage"
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">All Stages</option>
+            {APPLICATION_STATUSES.map((value) => (
+              <option key={value} value={value}>{STATUS_LABEL[value]}</option>
             ))}
           </Select>
           <div className="flex-1 min-w-[140px] sm:min-w-[200px]">
@@ -139,6 +151,7 @@ export default function ReferrerApplications() {
                     <th className="hidden lg:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Entity</th>
                     <th className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Type</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Amount</th>
+                    <th className="px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Stage</th>
                     <th className="hidden md:table-cell px-3 sm:px-6 py-4 text-[12px] font-medium text-muted-foreground">Created</th>
                   </tr>
                 </thead>
@@ -151,13 +164,11 @@ export default function ReferrerApplications() {
                     >
                       <td className="px-3 sm:px-6 py-4">
                         {(() => {
-                          const isDirectLead = app.user_id === currentUser?.id;
-                          const displayName = isDirectLead
-                            ? [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ') || null
-                            : app.user_name;
-                          const displayEmail = isDirectLead
-                            ? (() => { try { return JSON.parse(app.lend_extra_data || '{}').applicant_email ?? null; } catch { return null; } })()
-                            : app.user_email;
+                          // applicantName() already knows a referrer-owned lead
+                          // must not fall back to the owner's own name/email.
+                          const displayName = applicantDisplayName(app);
+                          const displayEmail = applicantEmail(app);
+                          const displayPhone = app.applicant_mobile;
                           return (
                             <div className="flex items-center gap-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
@@ -168,6 +179,7 @@ export default function ReferrerApplications() {
                               <div className="min-w-0">
                                 <p className="text-[14px] font-medium text-foreground truncate">{displayName || app.user_id.slice(0, 8) + '...'}</p>
                                 {displayEmail && <p className="text-[12px] text-muted-foreground truncate">{displayEmail}</p>}
+                                {displayPhone && <p className="text-[12px] text-muted-foreground truncate">{displayPhone}</p>}
                                 <p className="sm:hidden text-[12px] text-muted-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type} &middot; ${Number(app.amount).toLocaleString('en-AU')}</p>
                               </div>
                             </div>
@@ -179,6 +191,9 @@ export default function ReferrerApplications() {
                       </td>
                       <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString('en-AU')}</td>
+                      <td className="px-3 sm:px-6 py-4">
+                        <Badge type="status" value={app.status} />
+                      </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
                         {formatDate(app.created_at)}
                       </td>

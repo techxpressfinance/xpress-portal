@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Card, PageHeader, Button, Input } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
+import { DocumentPlusIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 
 interface ReferrerClient {
   id: string;
@@ -184,6 +186,7 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 export default function ReferrerClients() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [clients, setClients] = useState<ReferrerClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -284,16 +287,31 @@ export default function ReferrerClients() {
                       <td className="hidden sm:table-cell px-6 py-4 text-[13px] text-muted-foreground">{c.email || '—'}</td>
                       <td className="hidden md:table-cell px-6 py-4 text-[13px] text-foreground">{c.company_name || <span className="text-muted-foreground">—</span>}</td>
                       <td className="hidden sm:table-cell px-6 py-4 text-[13px] text-muted-foreground">{c.mobile || '—'}</td>
-                      <td className="px-4 py-4 text-right">
-                        <button
-                          onClick={() => setEditing(c)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                          aria-label="Edit contact"
-                        >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
-                          </svg>
-                        </button>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Deep links into Add Lead with this client already
+                              picked. Needs an email — that is what the picker
+                              matches on at the other end. */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={!c.email}
+                            title={c.email ? `Start a new application for ${name}` : 'Add an email for this contact first'}
+                            onClick={() => navigate(`/referrer/add-lead?client=${encodeURIComponent(c.email)}`)}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <DocumentPlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                              New Application
+                            </span>
+                          </Button>
+                          <button
+                            onClick={() => setEditing(c)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                            aria-label="Edit contact"
+                          >
+                            <PencilSquareIcon className="h-4 w-4" strokeWidth={1.5} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

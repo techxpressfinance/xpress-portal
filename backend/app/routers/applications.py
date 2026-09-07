@@ -722,7 +722,9 @@ def list_applications(
             db,
             referrer_map=referrer_map,
             list_item=not is_client,
-            include_lend_extra_data=(current_user.role == UserRole.referrer),
+            # A referrer's list is their only view of the lead until they open
+            # it, so it carries the applicant's name and contact details.
+            include_applicant_contact=(current_user.role == UserRole.referrer),
         )
         for app in items
     ]
@@ -1071,6 +1073,30 @@ def update_application(
     # details may have arrived after the entity. Keep the explicit company
     # contact idempotently mirrored into the CRM in either order.
     _sync_company_contact(db, application, tenant_id)
+
+    # Same mirror as the create path, for referrer leads that only became
+    # mirrorable later: AddLead auto-saves a draft before the email is typed, so
+    # the create-time check skips it and this is the first point the lead has a
+    # name and an address to file it under. _sync_company_contact covers the
+    # company case only, so an individual lead would otherwise never reach the
+    # contact book. Owner-based (not caller-based) so a broker finishing the
+    # lead still files it.
+    if (
+        not application.contact_id
+        and application.user
+        and application.user.role == UserRole.referrer
+        and application.applicant_first_name
+        and application.applicant_last_name
+        and application.applicant_email
+    ):
+        application.contact_id = ensure_contact(
+            db,
+            tenant_id,
+            application.applicant_first_name,
+            application.applicant_last_name,
+            email=application.applicant_email,
+            phone=application.applicant_mobile,
+        ).id
 
     # A draft that has just become a company application (or just had its entity
     # attached) picks up that company's known directors, the same as one created

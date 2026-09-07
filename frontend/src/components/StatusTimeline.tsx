@@ -44,13 +44,26 @@ const clientStatusOrder: Record<string, number> = {
   rejected: -1,
 };
 
+// Closed-without-settling outcomes. Neither sits on the step track, so both get
+// their own panel rather than an undefined index that greys out every step.
+const closedOutcomes: Partial<Record<ApplicationStatus, { title: string; detail: string }>> = {
+  rejected: {
+    title: 'Application Rejected',
+    detail: 'This application was not approved. Contact support for details.',
+  },
+  not_proceeding: {
+    title: 'Not Proceeding',
+    detail: 'This application was closed before settlement.',
+  },
+};
+
 export default function StatusTimeline({ currentStatus, clientView = false }: Props) {
   const steps = clientView ? clientSteps : brokerSteps;
   const statusOrder = clientView ? clientStatusOrder : brokerStatusOrder;
   const currentIndex = statusOrder[currentStatus];
-  const isRejected = currentStatus === 'rejected';
+  const closed = closedOutcomes[currentStatus];
 
-  if (isRejected) {
+  if (closed) {
     return (
       <div className="rounded-2xl bg-destructive/8 p-5" style={{ animation: 'scaleIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
         <div className="flex items-center gap-4">
@@ -58,8 +71,8 @@ export default function StatusTimeline({ currentStatus, clientView = false }: Pr
             <XMarkIcon className="h-5 w-5" strokeWidth={2} />
           </div>
           <div>
-            <p className="text-[15px] font-semibold text-destructive">Application Rejected</p>
-            <p className="text-[13px] text-muted-foreground">This application was not approved. Contact support for details.</p>
+            <p className="text-[15px] font-semibold text-destructive">{closed.title}</p>
+            <p className="text-[13px] text-muted-foreground">{closed.detail}</p>
           </div>
         </div>
       </div>

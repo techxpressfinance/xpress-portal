@@ -20,8 +20,9 @@ _SECRET_COLUMNS = {"client_invite_token", "invite_token"}
 # Encrypted PII columns the list views never render. Skipping them avoids a
 # Fernet decrypt per column per row on the applications list — lend_extra_data
 # alone can be a large JSON blob. applicant_first/last_name stay (admin and
-# referrer lists show the applicant); lend_extra_data is skipped too unless the
-# caller opts in (the referrer list still reads applicant_email out of it).
+# referrer lists show the applicant); applicant_email/applicant_mobile come back
+# for callers that opt in via ``include_applicant_contact`` (the referrer list
+# shows how to reach the lead), as does lend_extra_data via its own flag.
 _LIST_SKIP_COLUMNS = frozenset({
     "applicant_middle_name",
     "applicant_dob",
@@ -35,6 +36,9 @@ _LIST_SKIP_COLUMNS = frozenset({
     "emergency_contact_phone",
     "lend_extra_data",
 })
+
+# The subset of the above a list can ask for back: how to reach the applicant.
+_APPLICANT_CONTACT_COLUMNS = frozenset({"applicant_email", "applicant_mobile"})
 
 
 def _referrer_dict(user) -> dict:
@@ -89,6 +93,7 @@ def app_with_user(
     referrer_map: Optional[dict[str, dict]] = None,
     list_item: bool = False,
     include_lend_extra_data: bool = False,
+    include_applicant_contact: bool = False,
 ) -> dict:
     """Build response dict with user info and assigned brokers list.
 
@@ -103,6 +108,9 @@ def app_with_user(
             continue
         if list_item and c.name in _LIST_SKIP_COLUMNS:
             if c.name == "lend_extra_data" and include_lend_extra_data:
+                data[c.name] = getattr(app, c.name)
+                continue
+            if c.name in _APPLICANT_CONTACT_COLUMNS and include_applicant_contact:
                 data[c.name] = getattr(app, c.name)
                 continue
             data[c.name] = None

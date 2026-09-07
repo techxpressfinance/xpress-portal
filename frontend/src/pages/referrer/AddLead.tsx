@@ -368,12 +368,16 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // Clone mode: start from an existing application. Personal and company details
   // are copied in; only the loan details are entered fresh.
   const cloneFromId = searchParams.get('cloneFrom') || '';
+  // Deep link from the Clients page: start a lead for this client. Matched by
+  // email against the same /referrer/clients list the picker already loads, so
+  // there is one source of truth for who the referrer's clients are.
+  const prefillClientEmail = (searchParams.get('client') || '').toLowerCase();
   const [cloneSource, setCloneSource] = useState<{ id: string; name: string } | null>(null);
   const [cloneLoading, setCloneLoading] = useState(!!cloneFromId);
   const [createdAppId, setCreatedAppId] = useState<string | null>(null);
 
   // Client
-  const [clientMode, setClientMode] = useState<'new' | 'existing'>('new');
+  const [clientMode, setClientMode] = useState<'new' | 'existing'>(prefillClientEmail ? 'existing' : 'new');
   const [prevClients, setPrevClients] = useState<PrevClient[]>([]);
   const [prevClientsLoading, setPrevClientsLoading] = useState(false);
   const [prevClientSearch, setPrevClientSearch] = useState('');
@@ -659,7 +663,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         const list = skipEngagement
           ? raw.filter((u: { role: string; email: string }) => u.role === 'client' && !u.email.endsWith('@deleted.invalid'))
           : raw;
-        setPrevClients(list.map(c => {
+        const mapped = list.map(c => {
           const fName = c.first_name || c.full_name?.split(' ')[0] || '';
           const lName = c.last_name || c.full_name?.split(' ').slice(1).join(' ') || '';
           return {
@@ -669,11 +673,24 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             email: c.email,
             mobile: c.mobile || c.phone || undefined,
           };
-        }));
+        });
+        setPrevClients(mapped);
+        // Same assignment the picker's own click handler makes, so a deep link
+        // and a manual pick leave the form in identical shape.
+        if (prefillClientEmail) {
+          const match = mapped.find(c => c.email.toLowerCase() === prefillClientEmail);
+          if (match) {
+            setSelectedPrevClient(match);
+            setFirstName(match.firstName);
+            setLastName(match.lastName);
+            setEmail(match.email);
+            setMobile(match.mobile ?? '');
+          }
+        }
       })
       .catch(() => { })
       .finally(() => setPrevClientsLoading(false));
-  }, [clientMode, skipEngagement, showFullDetails]);
+  }, [clientMode, skipEngagement, showFullDetails, prefillClientEmail]);
 
   // Staff form only: the most recent referrers, offered as suggestions before
   // anything is typed. Anything beyond them is reached by searching.

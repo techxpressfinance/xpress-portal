@@ -7,11 +7,13 @@ import api from '../../api/client';
 import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
+import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker } from '../../components/ui';
 import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } from '../../lib/utils';
+import { applicantDisplayName, applicantEmail } from '../../lib/applicantName';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
@@ -956,6 +958,14 @@ export default function ReferrerApplicationDetail() {
             {/* ── OVERVIEW ── */}
             {activeTab === 'overview' && (
               <>
+                {/* Where the deal has got to. Uses the client-facing step set —
+                    a referrer is external, so the internal "submitted to lender"
+                    step stays folded into "Under Review" here too. */}
+                <Card>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Progress</h2>
+                  <StatusTimeline currentStatus={application.status} clientView />
+                </Card>
+
                 {/* Completion banner */}
                 {application.completed_by_name && (
                   <div className="rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-center gap-3">
@@ -969,9 +979,12 @@ export default function ReferrerApplicationDetail() {
                 {/* Application info */}
                 <Card>
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                    <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
-                      {application.loan_type} Loan
-                    </h1>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h1 className="text-[20px] sm:text-[28px] font-semibold text-foreground capitalize tracking-tight">
+                        {application.loan_type} Loan
+                      </h1>
+                      <Badge type="status" value={application.status} />
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {!editing && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
@@ -1135,14 +1148,12 @@ export default function ReferrerApplicationDetail() {
 
                 {/* Client Info */}
                 {(() => {
-                  const isDirectLead = application.user_id === currentUser?.id;
-                  const displayName = isDirectLead
-                    ? [application.applicant_first_name, application.applicant_last_name].filter(Boolean).join(' ')
-                    : client?.full_name;
-                  const displayEmail = isDirectLead
-                    ? (() => { try { return JSON.parse(application.lend_extra_data || '{}').applicant_email; } catch { return null; } })()
-                    : client?.email;
-                  const displayPhone = isDirectLead ? application.applicant_mobile : client?.phone;
+                  // The applicant, not the owner: on a lead the referrer
+                  // submitted themselves they are the owner, and on a company
+                  // application the entity is the applicant.
+                  const displayName = applicantDisplayName(application) || client?.full_name || '';
+                  const displayEmail = applicantEmail(application) || client?.email;
+                  const displayPhone = application.applicant_mobile || client?.phone;
                   if (!displayName) return null;
                   return (
                     <Card>

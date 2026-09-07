@@ -15,7 +15,6 @@ const DeletedApplications = lazy(() => import('./pages/admin/DeletedApplications
 const AllApplications = lazy(() => import('./pages/admin/AllApplications'));
 const KanbanBoard = lazy(() => import('./pages/admin/KanbanBoard'));
 const CreateApplication = lazy(() => import('./pages/admin/CreateApplication'));
-const CreateCommercialEntity = lazy(() => import('./pages/admin/CreateCommercialEntity'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const ReviewApplication = lazy(() => import('./pages/admin/ReviewApplication'));
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
@@ -188,14 +187,6 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <CreateApplication />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/applications/new-entity"
-                element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
-                    <CreateCommercialEntity />
                   </ProtectedRoute>
                 }
               />
