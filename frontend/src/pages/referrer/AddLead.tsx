@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults, AbrNameSearchResults, AbrResultCard, ReferrerSearchResults } from '../../components/ui';
-import { durationSince, getErrorMessage } from '../../lib/utils';
+import { durationSince, formatTime, getErrorMessage } from '../../lib/utils';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
@@ -43,6 +43,10 @@ function prefillSummary(fields: string[]): string {
 }
 
 const LABEL_CLS = 'block text-[13px] font-medium text-muted-foreground mb-2';
+// The raw `led-input` fields can't use the Input primitive's `error` prop, so
+// they borrow its treatment: red border, tinted ring, message with role=alert.
+const ERR_INPUT = '!border-[var(--led-danger)] !shadow-[0_0_0_3px_var(--led-danger-tint)]';
+const ERR_MSG = 'mt-1.5 text-[12px] font-medium text-[var(--led-danger)]';
 const LBL = 'block text-[12px] font-medium text-muted-foreground mb-1';
 
 
@@ -423,6 +427,41 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   const [draftAppId, setDraftAppId] = useState<string | null>(null);
   const draftCreatingRef = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Whether the last autosave landed. A silent save is indistinguishable from a
+  // broken one, and this form holds too much typing for that to be acceptable.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+
+  // Submit-time validation. Every failing field is reported at once, marked in
+  // place, and the first one scrolled to — reporting them one toast at a time
+  // meant a separate submit-and-hunt round trip per missing field.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
+  const registerField = (name: string) => (el: HTMLElement | null) => {
+    fieldRefs.current[name] = el;
+  };
+  const clearFieldError = (name: string) => setFieldErrors(prev => {
+    if (!prev[name]) return prev;
+    const next = { ...prev };
+    delete next[name];
+    return next;
+  });
+  /**
+   * Scroll to and focus the earliest offending field. Ordered by actual document
+   * position rather than a hand-kept list, because the business block renders
+   * above or below the person block depending on the applicant type.
+   */
+  const focusFirstError = (names: string[]) => {
+    const els = names
+      .map(n => fieldRefs.current[n])
+      .filter((el): el is HTMLElement => !!el && el.isConnected);
+    if (!els.length) return;
+    const first = els.reduce((a, b) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING) ? b : a);
+    first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // A no-op on the wrapper elements registered for button groups; harmless.
+    first.focus({ preventScroll: true });
+  };
 
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
 
@@ -732,6 +771,95 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     try { await api.delete(`/applications/${id}`); } catch { /* ignore */ }
   };
 
+  /**
+   * Every detail field the form holds, in the API's shape.
+   *
+   * Shared by the submit and by the draft autosave: the draft used to carry
+   * only the headline fields, so a broker who closed the tab lost the entire
+   * detail form. One builder means the two can no longer drift apart.
+   */
+  const buildExtraPayload = useCallback((): Record<string, unknown> => (isSelfManaged ? {
+    applicant_title: extra.applicant_title || null,
+    applicant_middle_name: extra.applicant_middle_name || null,
+    applicant_dob: extra.applicant_dob || null,
+    applicant_gender: extra.applicant_gender || null,
+    applicant_marital_status: extra.applicant_marital_status || null,
+    applicant_address: extra.applicant_address || null,
+    applicant_suburb: extra.applicant_suburb || null,
+    applicant_state: extra.applicant_state || null,
+    applicant_postcode: extra.applicant_postcode || null,
+    preferred_contact_method: extra.preferred_contact_method || null,
+    id_expiry_date: extra.id_expiry_date || null,
+    applicant_residency_status: extra.applicant_residency_status || null,
+    // Visa details only belong to a visa status — clear them if it changed.
+    applicant_visa_number: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_number || null) : null,
+    applicant_visa_category: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_category || null) : null,
+    residential_status: extra.residential_status || null,
+    time_at_address: extra.time_at_address || null,
+    applicant_num_dependants: extra.applicant_num_dependants ? parseInt(extra.applicant_num_dependants) : null,
+    has_partner: extra.has_partner,
+    partner_working: extra.partner_working,
+    employment_category: extra.employment_category || null,
+    employer_name: extra.employer_name || null,
+    employer_industry: extra.employer_industry || null,
+    job_title: extra.job_title || null,
+    income_frequency: extra.income_frequency || null,
+    gross_income: extra.gross_income ? parseFloat(extra.gross_income) : null,
+    business_name: extra.business_name || null,
+    business_abn: extra.business_abn || null,
+    trading_name: extra.trading_name || null,
+    business_structure: extra.business_structure || null,
+    gst_registered: extra.gst_registered,
+    num_directors: extra.num_directors ? parseInt(extra.num_directors) : null,
+    time_trading: extra.time_trading || null,
+    emergency_contact_name: extra.emergency_contact_name || null,
+    emergency_contact_relationship: extra.emergency_contact_relationship || null,
+    emergency_contact_phone: extra.emergency_contact_phone || null,
+    previously_declined: extra.previously_declined,
+    change_of_circumstances: extra.change_of_circumstances || null,
+    signature_name: extra.signature_name || null,
+    lend_extra_data: JSON.stringify({
+      identification: extra.id_number ? [{
+        type: extra.id_type === 'license' ? 'Drivers Licence' : 'Passport',
+        number: extra.id_number,
+        [extra.id_type === 'license' ? 'state' : 'country']: extra.id_issuing_state_country,
+        expiry_date: extra.id_expiry_date,
+      }] : [],
+      employments: [{
+        employment_type: extra.employment_type_detail || null,
+        start_date: extra.employment_start_date || null,
+        contact_details: extra.employer_contact_details || null,
+      }],
+      incomes: [
+        ...(extra.primary_income_amount ? [{ income_type: extra.primary_income_type || 'Salary', amount: parseFloat(extra.primary_income_amount) || 0, frequency: extra.primary_income_frequency || extra.income_frequency }] : []),
+        ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency })),
+      ].filter(i => i.amount > 0),
+      expenses: {
+        monthly_living: parseFloat(extra.monthly_living_expenses) || 0,
+        rent_mortgage: parseFloat(extra.rent_mortgage_payments) || 0,
+        child_support: parseFloat(extra.child_support) || 0,
+        other_commitments: parseFloat(extra.other_commitments) || 0,
+      },
+      assets: { real_estate: realEstateAssets, other: otherAssets },
+      liabilities,
+      loan_type_details: buildLoanTypeDetails(extra, subLoanType),
+    }),
+  } : {}), [
+    isSelfManaged, extra, subLoanType,
+    additionalIncomes, realEstateAssets, otherAssets, liabilities,
+  ]);
+
+  // Enough to identify the application for a placeholder draft. A company
+  // applicant may have no natural person on it at all — its directors are
+  // invited separately — so the entity's name stands in for the client's, and
+  // requiring one would leave that whole path with no autosave.
+  const draftIdentityReady = companyApplicant
+    ? Boolean(businessName)
+    : Boolean(firstName.trim() && lastName.trim() && email.trim());
+  // A company borrower carries its entity whatever the sub-type; an individual
+  // one only on business-purpose loans, as before.
+  const draftBusinessFields = companyApplicant || isBusinessSubType(subLoanType);
+
   // Create a draft in the backend once we have the minimum required fields.
   // Intentionally excludes client_engagement_model and applicant_email so the
   // backend does not create a client account or send invitation emails — those
@@ -740,7 +868,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     if (engagementModel === 'direct_engagement') return;
     // A clone starts from a real application already — no placeholder draft.
     if (cloneFromId) return;
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
+    if (!draftIdentityReady) return;
     if (!subLoanType || !amount || parseFloat(amount) <= 0) return;
     if (draftAppId || draftCreatingRef.current) return;
 
@@ -752,14 +880,20 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         const { data: app } = await api.post('/applications', {
           loan_type: effectiveLoanType,
           amount: parseFloat(amount),
-          applicant_first_name: firstName.trim(),
-          applicant_last_name: lastName.trim(),
+          // Sent only when present: a company draft legitimately has no person.
+          ...(firstName.trim() && { applicant_first_name: firstName.trim() }),
+          ...(lastName.trim() && { applicant_last_name: lastName.trim() }),
           ...(mobile.trim() && { applicant_mobile: mobile.trim() }),
           ...(notes.trim() && { notes: notes.trim() }),
-          ...(isBusinessSubType(subLoanType) && {
+          ...(draftBusinessFields && {
             business_name: businessName || null,
             business_abn: businessAbn || null,
           }),
+          // `applicant_type: 'company'` is deliberately NOT sent. Marking the
+          // draft as a company applicant makes the backend attach the entity and
+          // immediately seed its directors as parties — emailing each of them an
+          // invite to complete their block — for an application the broker is
+          // still halfway through typing. The real type is set on submit.
         });
         setDraftAppId(app.id);
       } catch {
@@ -770,8 +904,12 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     }, 1500);
 
     return () => clearTimeout(timer);
+    // The identity fields are listed raw, not just as `draftIdentityReady`: the
+    // timer closes over their values, so every keystroke has to reschedule the
+    // debounce. Depending on the derived boolean alone would fire 1.5s after the
+    // FIRST character and file the draft under a half-typed name.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstName, lastName, email, subLoanType, amount, engagementModel]);
+  }, [firstName, lastName, email, businessName, companyApplicant, subLoanType, amount, engagementModel]);
 
   // Delete draft when referrer switches to direct_engagement (which creates its own application).
   useEffect(() => {
@@ -783,7 +921,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engagementModel]);
 
-  // Patch the draft as the referrer keeps filling in details.
+  // Patch the draft as the referrer keeps filling in details — the whole detail
+  // form, not just the headline fields, so closing the tab costs nothing.
   useEffect(() => {
     if (!draftAppId) return;
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
@@ -796,19 +935,26 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         notes: notes.trim() || null,
         ...(effectiveLoanType && { loan_type: effectiveLoanType }),
         ...(parseFloat(amount) > 0 && { amount: parseFloat(amount) }),
-        ...(isBusinessSubType(subLoanType) && {
+        ...buildExtraPayload(),
+        // Business-purpose values win over the detail block's, as on submit.
+        ...(draftBusinessFields && {
           business_name: businessName || null,
           business_abn: businessAbn || null,
         }),
       };
+      setSaveState('saving');
       try {
         await api.patch(`/applications/${draftAppId}`, patch);
+        setSavedAt(new Date());
+        setSaveState('saved');
       } catch {
-        // silently fail
+        // Surfaced next to the submit button rather than as a toast: a failed
+        // save is a standing condition, not a moment.
+        setSaveState('error');
       }
     }, 1500);
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
-  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, subLoanType, businessName, businessAbn]);
+  }, [draftAppId, firstName, lastName, email, mobile, notes, amount, subLoanType, businessName, businessAbn, draftBusinessFields, buildExtraPayload]);
 
   const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -818,26 +964,40 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   const handleSubmit = async () => {
-    if (!skipEngagement && !engagementModel) { setEngagementError('Please select who will engage with the client'); return; }
+    // Collected rather than short-circuited: every problem is marked in one pass
+    // so the broker fixes them together instead of one submit per missing field.
+    const errors: Record<string, string> = {};
     // A company applicant has no natural person on it — its directors are invited
     // afterwards and fill in their own blocks. So the entity is what's required.
     if (companyApplicant) {
-      if (!businessName) {
-        toast('Please enter the business name', 'error');
-        return;
-      }
+      if (!businessName) errors.business_name = 'Enter the business name';
     } else {
-      if (!firstName.trim() || !lastName.trim()) { toast("Please enter the client's name", 'error'); return; }
-      if (!email.trim()) { toast("Please enter the client's email", 'error'); return; }
+      if (!firstName.trim()) errors.first_name = "Enter the client's first name";
+      if (!lastName.trim()) errors.last_name = "Enter the client's last name";
+      if (!email.trim()) errors.email = "Enter the client's email";
     }
-    if (!subLoanType) { toast('Please select a loan type', 'error'); return; }
+    if (!subLoanType) errors.sub_loan_type = 'Select a loan type';
     // ABN is required for full business-purpose applications (broker/admin create).
     // Quick referrer lead capture stays lenient — broker fills the ABN in later.
     if (showFullDetails && businessSubType && !businessAbn) {
-      toast('ABN is required for business loan applications', 'error');
+      errors.business_abn = 'ABN is required for a business loan';
+    }
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      errors.amount = 'Enter a valid amount';
+    }
+    // The engagement choice keeps its own error slot — it's a radio group with a
+    // message already wired in, not a field with a border to redden.
+    const engagementMissing = !skipEngagement && !engagementModel;
+    setEngagementError(engagementMissing ? 'Please select who will engage with the client' : '');
+
+    setFieldErrors(errors);
+    const missing = Object.keys(errors);
+    if (missing.length || engagementMissing) {
+      focusFirstError(engagementMissing ? [...missing, 'engagement'] : missing);
+      const count = missing.length + (engagementMissing ? 1 : 0);
+      toast(count === 1 ? '1 field still needs filling in' : `${count} fields still need filling in`, 'error');
       return;
     }
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) { toast('Please enter a valid amount', 'error'); return; }
 
     const effectiveLoanType = subTypeToLoanType(subLoanType);
 
@@ -864,73 +1024,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         });
         appId = result.application_id;
       } else {
-        const extraPayload = isSelfManaged ? {
-          applicant_title: extra.applicant_title || null,
-          applicant_middle_name: extra.applicant_middle_name || null,
-          applicant_dob: extra.applicant_dob || null,
-          applicant_gender: extra.applicant_gender || null,
-          applicant_marital_status: extra.applicant_marital_status || null,
-          applicant_address: extra.applicant_address || null,
-          applicant_suburb: extra.applicant_suburb || null,
-          applicant_state: extra.applicant_state || null,
-          applicant_postcode: extra.applicant_postcode || null,
-          preferred_contact_method: extra.preferred_contact_method || null,
-          id_expiry_date: extra.id_expiry_date || null,
-          applicant_residency_status: extra.applicant_residency_status || null,
-          // Visa details only belong to a visa status — clear them if it changed.
-          applicant_visa_number: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_number || null) : null,
-          applicant_visa_category: isVisaHolder(extra.applicant_residency_status) ? (extra.applicant_visa_category || null) : null,
-          residential_status: extra.residential_status || null,
-          time_at_address: extra.time_at_address || null,
-          applicant_num_dependants: extra.applicant_num_dependants ? parseInt(extra.applicant_num_dependants) : null,
-          has_partner: extra.has_partner,
-          partner_working: extra.partner_working,
-          employment_category: extra.employment_category || null,
-          employer_name: extra.employer_name || null,
-          employer_industry: extra.employer_industry || null,
-          job_title: extra.job_title || null,
-          income_frequency: extra.income_frequency || null,
-          gross_income: extra.gross_income ? parseFloat(extra.gross_income) : null,
-          business_name: extra.business_name || null,
-          business_abn: extra.business_abn || null,
-          trading_name: extra.trading_name || null,
-          business_structure: extra.business_structure || null,
-          gst_registered: extra.gst_registered,
-          num_directors: extra.num_directors ? parseInt(extra.num_directors) : null,
-          time_trading: extra.time_trading || null,
-          emergency_contact_name: extra.emergency_contact_name || null,
-          emergency_contact_relationship: extra.emergency_contact_relationship || null,
-          emergency_contact_phone: extra.emergency_contact_phone || null,
-          previously_declined: extra.previously_declined,
-          change_of_circumstances: extra.change_of_circumstances || null,
-          signature_name: extra.signature_name || null,
-          lend_extra_data: JSON.stringify({
-            identification: extra.id_number ? [{
-              type: extra.id_type === 'license' ? 'Drivers Licence' : 'Passport',
-              number: extra.id_number,
-              [extra.id_type === 'license' ? 'state' : 'country']: extra.id_issuing_state_country,
-              expiry_date: extra.id_expiry_date,
-            }] : [],
-            employments: [{
-              employment_type: extra.employment_type_detail || null,
-              start_date: extra.employment_start_date || null,
-              contact_details: extra.employer_contact_details || null,
-            }],
-            incomes: [
-              ...(extra.primary_income_amount ? [{ income_type: extra.primary_income_type || 'Salary', amount: parseFloat(extra.primary_income_amount) || 0, frequency: extra.primary_income_frequency || extra.income_frequency }] : []),
-              ...additionalIncomes.map(ai => ({ income_type: ai.income_type, amount: parseFloat(ai.amount) || 0, frequency: ai.frequency })),
-            ].filter(i => i.amount > 0),
-            expenses: {
-              monthly_living: parseFloat(extra.monthly_living_expenses) || 0,
-              rent_mortgage: parseFloat(extra.rent_mortgage_payments) || 0,
-              child_support: parseFloat(extra.child_support) || 0,
-              other_commitments: parseFloat(extra.other_commitments) || 0,
-            },
-            assets: { real_estate: realEstateAssets, other: otherAssets },
-            liabilities,
-            loan_type_details: buildLoanTypeDetails(extra, subLoanType),
-          }),
-        } : {};
+        const extraPayload = buildExtraPayload();
 
         const payload = {
           loan_type: effectiveLoanType,
@@ -1018,6 +1112,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     setExtraFields(EXTRA_DEFAULTS);
     setAdditionalIncomes([]); setRealEstateAssets([]); setOtherAssets([]); setLiabilities([]);
     setLoanType(''); setAmount(''); setNotes(''); setCategory('asset_finance'); setSubLoanType(''); setComBusinessName(''); setComAbn(''); setFiles([]);
+    setFieldErrors({}); setSaveState('idle'); setSavedAt(null);
     setDone(false);
   };
 
@@ -1123,12 +1218,14 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         <div className="relative">
           <label className={LBL}>Business Name or ABN</label>
           <input
+            ref={registerField('business_name')}
             type="text"
-            className="led-input"
+            className={`led-input ${fieldErrors.business_name ? ERR_INPUT : ''}`}
             placeholder="Search name or enter an 11-digit ABN"
             value={extra.business_name}
-            onChange={e => editBusinessName(e.target.value)}
+            onChange={e => { editBusinessName(e.target.value); clearFieldError('business_name'); }}
           />
+          {fieldErrors.business_name && <p role="alert" className={ERR_MSG}>{fieldErrors.business_name}</p>}
           {entityPanelVisible(extra.business_name) && (
             <EntitySearchResults
               matches={detailEntityMatches.matches}
@@ -1160,7 +1257,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         </div>
         <div>
           <label className={LBL}>ABN{businessSubType ? ' *' : ''}</label>
-          <input type="text" className="led-input" value={extra.business_abn} onChange={e => editBusinessAbn(e.target.value)} />
+          <input ref={registerField('business_abn')} type="text"
+            className={`led-input ${fieldErrors.business_abn ? ERR_INPUT : ''}`}
+            value={extra.business_abn}
+            onChange={e => { editBusinessAbn(e.target.value); clearFieldError('business_abn'); }} />
+          {fieldErrors.business_abn && <p role="alert" className={ERR_MSG}>{fieldErrors.business_abn}</p>}
         </div>
       </div>
       {/* The entity-book path shows its prefill note inside the picked-entity
@@ -1248,6 +1349,65 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               ? 'The selected business is the applicant. Any person entered below is its primary deal contact; directors remain separate signatories.'
               : 'The individual below is the applicant. You can still record their business where it is relevant to the loan.'}
           </p>
+        </Card>
+      )}
+
+      {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
+      {skipEngagement && !cloneFromId && (
+        <Card className="space-y-3">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              If this lead came from a referrer outside the portal (e.g. via WhatsApp), select them here so they're credited.
+            </p>
+          </div>
+          {creditReferrer ? (
+            <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[14px] font-medium text-foreground truncate">{creditReferrer.full_name || creditReferrer.email}</p>
+                <p className="text-[12px] text-muted-foreground truncate">
+                  {[creditReferrer.email, creditReferrer.organization_name].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCreditReferrer(null); setReferrerTerm(''); }}
+                className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
+              >
+                Change
+              </button>
+            </div>
+          ) : referrersLoaded && recentReferrers.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">
+              No referrer accounts found — add referrers under Referrer Management to credit them here.
+            </p>
+          ) : (
+            <div>
+              <Input
+                placeholder="Search referrers by name, email or organisation…"
+                value={referrerTerm}
+                onChange={e => setReferrerTerm(e.target.value)}
+                onFocus={() => setReferrerFocused(true)}
+                // Blur fires before the row's click, so let the click land first.
+                onBlur={() => setTimeout(() => setReferrerFocused(false), 150)}
+              />
+              {/* In the flow, not floating: this card is short and `.led-card`
+                  clips its overflow, so an overlay would be cut off at the
+                  card's edge instead of drawn over the section below. */}
+              {(referrerSearching || referrerFocused) && (
+                <ReferrerSearchResults
+                  inline
+                  matches={referrerOptions}
+                  loading={referrerSearching && referrerMatches.loading}
+                  searched={referrerSearching && referrerMatches.searched}
+                  heading={referrerSearching ? undefined : 'Recent referrers'}
+                  emptyLabel={`No referrer matched "${referrerQuery}"`}
+                  onSelect={r => { setCreditReferrer(r); setReferrerTerm(''); setReferrerFocused(false); }}
+                  onDismiss={() => { setCreditReferrer(null); setReferrerTerm(''); setReferrerFocused(false); }}
+                />
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -1353,15 +1513,18 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
               mustn't either. */}
           <div>
             <label className={LABEL_CLS}>First Name {personRequiredMark}</label>
-            <Input placeholder="John" value={firstName} onChange={e => { setFirstName(e.target.value); setPickedClient(null); }} />
+            <Input ref={registerField('first_name')} error={fieldErrors.first_name} placeholder="John" value={firstName}
+              onChange={e => { setFirstName(e.target.value); setPickedClient(null); clearFieldError('first_name'); }} />
           </div>
           <div>
             <label className={LABEL_CLS}>Last Name {personRequiredMark}</label>
-            <Input placeholder="Smith" value={lastName} onChange={e => setLastName(e.target.value)} />
+            <Input ref={registerField('last_name')} error={fieldErrors.last_name} placeholder="Smith" value={lastName}
+              onChange={e => { setLastName(e.target.value); clearFieldError('last_name'); }} />
           </div>
           <div>
             <label className={LABEL_CLS}>Email {personRequiredMark}</label>
-            <Input type="email" placeholder="john@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <Input ref={registerField('email')} error={fieldErrors.email} type="email" placeholder="john@example.com" value={email}
+              onChange={e => { setEmail(e.target.value); clearFieldError('email'); }} />
           </div>
           <div>
             <label className={LABEL_CLS}>Mobile <span className="font-normal">(optional)</span></label>
@@ -1374,7 +1537,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       {!skipEngagement && <Card className="space-y-3">
         <p className="text-[15px] font-semibold text-foreground">Who will engage with the client?</p>
         <label className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-colors ${engagementModel === 'direct_engagement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
-          <input type="radio" name="engagement" value="direct_engagement" checked={engagementModel === 'direct_engagement'} onChange={() => { setEngagementModel('direct_engagement'); setEngagementError(''); }} className="mt-0.5 accent-primary shrink-0" />
+          <input ref={registerField('engagement')} type="radio" name="engagement" value="direct_engagement" checked={engagementModel === 'direct_engagement'} onChange={() => { setEngagementModel('direct_engagement'); setEngagementError(''); }} className="mt-0.5 accent-primary shrink-0" />
           <div>
             <p className="text-[14px] font-medium text-foreground">Xpress Finance will engage with the client</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">Our team will contact and work with the client directly.</p>
@@ -1589,65 +1752,6 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         </>
       )}
 
-      {/* Referrer credit — staff form only; a clone keeps the client's existing referrer */}
-      {skipEngagement && !cloneFromId && (
-        <Card className="led-card-overflow space-y-3">
-          <div>
-            <p className="text-[15px] font-semibold text-foreground">Referrer <span className="text-[13px] font-normal text-muted-foreground">(optional)</span></p>
-            <p className="text-[12px] text-muted-foreground mt-0.5">
-              If this lead came from a referrer outside the portal (e.g. via WhatsApp), select them here so they're credited.
-            </p>
-          </div>
-          {creditReferrer ? (
-            <div className="flex items-center justify-between rounded-xl border border-primary bg-primary/5 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-[14px] font-medium text-foreground truncate">{creditReferrer.full_name || creditReferrer.email}</p>
-                <p className="text-[12px] text-muted-foreground truncate">
-                  {[creditReferrer.email, creditReferrer.organization_name].filter(Boolean).join(' · ')}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setCreditReferrer(null); setReferrerTerm(''); }}
-                className="text-[12px] font-medium text-primary hover:underline shrink-0 ml-3"
-              >
-                Change
-              </button>
-            </div>
-          ) : referrersLoaded && recentReferrers.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">
-              No referrer accounts found — add referrers under Referrer Management to credit them here.
-            </p>
-          ) : (
-            <div>
-              <Input
-                placeholder="Search referrers by name, email or organisation…"
-                value={referrerTerm}
-                onChange={e => setReferrerTerm(e.target.value)}
-                onFocus={() => setReferrerFocused(true)}
-                // Blur fires before the row's click, so let the click land first.
-                onBlur={() => setTimeout(() => setReferrerFocused(false), 150)}
-              />
-              {/* In the flow, not floating: this card is short and `.led-card`
-                  clips its overflow, so an overlay would be cut off at the
-                  card's edge instead of drawn over the section below. */}
-              {(referrerSearching || referrerFocused) && (
-                <ReferrerSearchResults
-                  inline
-                  matches={referrerOptions}
-                  loading={referrerSearching && referrerMatches.loading}
-                  searched={referrerSearching && referrerMatches.searched}
-                  heading={referrerSearching ? undefined : 'Recent referrers'}
-                  emptyLabel={`No referrer matched "${referrerQuery}"`}
-                  onSelect={r => { setCreditReferrer(r); setReferrerTerm(''); setReferrerFocused(false); }}
-                  onDismiss={() => { setCreditReferrer(null); setReferrerTerm(''); setReferrerFocused(false); }}
-                />
-              )}
-            </div>
-          )}
-        </Card>
-      )}
-
       {/* Tab switcher + Loan type section */}
       <Card className="space-y-4">
         <p className="text-[15px] font-semibold text-foreground">What does the client need?</p>
@@ -1660,11 +1764,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         </div>
 
         {/* Sub-types for the active category */}
-        <div className="grid grid-cols-2 gap-2">
+        <div ref={registerField('sub_loan_type')} className="grid grid-cols-2 gap-2">
           {(LOAN_CATEGORIES.find(c => c.value === category)?.types ?? []).map(type => {
             const active = subLoanType === type.value;
             return (
-              <button key={type.value} type="button" onClick={() => setSubLoanType(type.value)}
+              <button key={type.value} type="button" onClick={() => { setSubLoanType(type.value); clearFieldError('sub_loan_type'); }}
                 className={`rounded-xl border p-3 text-left transition-all ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border hover:border-primary/30 hover:bg-secondary/50'}`}
               >
                 <LoanTypeIcon type={type.value} className="h-5 w-5 text-muted-foreground" />
@@ -1674,6 +1778,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
             );
           })}
         </div>
+        {fieldErrors.sub_loan_type && <p role="alert" className={ERR_MSG}>{fieldErrors.sub_loan_type}</p>}
 
         {/* Business identity for business-purpose sub-types. The staff form has
             the Business Details block in the applicant group above, which owns
@@ -2138,17 +2243,19 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       <Card className="space-y-4">
         <div>
           <label className={LABEL_CLS}>Approximate Amount *</label>
-          <div className="flex h-10 overflow-hidden rounded-lg border border-[var(--led-line-2)] bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)]">
+          <div className={`flex h-10 overflow-hidden rounded-lg border bg-[var(--led-surface)] transition-all focus-within:border-[var(--led-accent)] focus-within:shadow-[0_0_0_3px_var(--led-accent-tint)] ${fieldErrors.amount ? ERR_INPUT : 'border-[var(--led-line-2)]'}`}>
             <span className="flex shrink-0 items-center border-r border-[var(--led-line-2)] bg-secondary/60 px-3.5 text-[13px] font-medium text-muted-foreground">AUD $</span>
             <input
+              ref={registerField('amount')}
               type="text"
               inputMode="numeric"
               placeholder="0"
               value={amount}
-              onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              onChange={e => { setAmount(e.target.value.replace(/[^0-9.]/g, '')); clearFieldError('amount'); }}
               className="flex-1 bg-transparent px-3.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
+          {fieldErrors.amount && <p role="alert" className={ERR_MSG}>{fieldErrors.amount}</p>}
         </div>
         <div>
           <label className={LABEL_CLS}>Notes <span className="font-normal">(optional)</span></label>
@@ -2478,13 +2585,28 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         )}
       </Card>
 
-      <div className="flex gap-3 pb-6">
+      <div className="flex flex-wrap items-center gap-3 pb-6">
         <Button size="lg" onClick={handleSubmit} disabled={submitting}>
           {submitting
             ? (cloneFromId ? 'Cloning...' : 'Submitting...')
             : (cloneFromId ? 'Create Cloned Application' : (submitLabel ?? 'Submit Lead'))}
         </Button>
         <Button variant="secondary" size="lg" onClick={() => navigate(basePath)}>Cancel</Button>
+        {/* Whether the work so far is safe. Sits with the submit button because
+            that's where the question "can I leave this now?" gets asked. */}
+        {saveState === 'saving' && (
+          <span className="text-[12.5px] text-muted-foreground">Saving draft…</span>
+        )}
+        {saveState === 'saved' && savedAt && (
+          <span className="text-[12.5px] text-muted-foreground">
+            Draft saved <span className="tabular-nums">{formatTime(savedAt)}</span>
+          </span>
+        )}
+        {saveState === 'error' && (
+          <span role="alert" className="text-[12.5px] font-medium text-[var(--led-danger)]">
+            Couldn't save the draft — your details are still on screen, but don't close this tab.
+          </span>
+        )}
       </div>
     </div>
   );
