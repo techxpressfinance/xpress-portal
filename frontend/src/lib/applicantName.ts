@@ -75,3 +75,70 @@ export function applicantEmail(
   if (app.user_email && !NON_APPLICANT_ROLES.has(app.user_role || '')) return app.user_email;
   return null;
 }
+
+/** The minimum of a party row (director / signatory) needed to name it. */
+export interface PartyNameFields {
+  is_primary?: boolean;
+  applicant_first_name?: string | null;
+  applicant_last_name?: string | null;
+  applicant_email?: string | null;
+  invite_email?: string | null;
+}
+
+export interface CounterpartFields extends ApplicantNameFields {
+  additional_applicants?: PartyNameFields[] | null;
+  pending_business_link?: { contact_name?: string | null } | null;
+  trading_name?: string | null;
+}
+
+/** The other side of the application's headline name. */
+export interface ApplicantCounterpart {
+  /** 'person' when naming a director/contact behind an entity applicant,
+   *  'entity' when naming the business behind an individual applicant. */
+  kind: 'person' | 'entity';
+  name: string;
+  /** Further parties not named here, for a "+2" suffix. 0 when there are none. */
+  extra: number;
+}
+
+function partyName(party: PartyNameFields): string {
+  return [party.applicant_first_name, party.applicant_last_name].filter(Boolean).join(' ');
+}
+
+/**
+ * The counterpart to the name a list or card already shows: the person behind a
+ * company applicant, or the company behind an individual one.
+ *
+ * A card showing only "Acme Pty Ltd" tells a broker nothing about who they ring,
+ * and one showing only "Jane Smith" hides which entity is borrowing — so
+ * whichever side `applicantDisplayName` prints, this returns the other.
+ *
+ * Returns null when there is no counterpart, or when it would merely repeat the
+ * headline name (an entity-first application with no director added yet shows
+ * the entity in both places).
+ */
+export function applicantCounterpart(app: CounterpartFields): ApplicantCounterpart | null {
+  const headline = applicantDisplayName(app);
+
+  if (isCompanyApplicant(app)) {
+    // The entity is borrowing; its directors are the people behind it. Prefer
+    // the primary, then anyone with a name, then whoever was merely invited.
+    const parties = app.additional_applicants || [];
+    const named = parties.filter((p) => partyName(p));
+    const pick = named.find((p) => p.is_primary) || named[0];
+    const name = (pick && partyName(pick))
+      // Legacy applicant-first apps flipped to 'company' keep an inline person.
+      || [app.applicant_first_name, app.applicant_last_name].filter(Boolean).join(' ')
+      || app.pending_business_link?.contact_name
+      || (parties[0]?.applicant_email || parties[0]?.invite_email)
+      || (app.user_name && !NON_APPLICANT_ROLES.has(app.user_role || '') ? app.user_name : '');
+    if (!name || name === headline) return null;
+    // Everyone bar the one named — the count is of parties, not just named ones,
+    // since an invited-but-unfilled director is still a party on the deal.
+    return { kind: 'person', name, extra: Math.max(parties.length - 1, 0) };
+  }
+
+  const entity = app.business_name || app.trading_name || '';
+  if (!entity || entity === headline) return null;
+  return { kind: 'entity', name: entity, extra: 0 };
+}

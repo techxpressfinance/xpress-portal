@@ -1243,6 +1243,29 @@ table {
   white-space: nowrap;
 }
 
+.led-kanban-card-party {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.led-kanban-card-party svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.led-kanban-card-party-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.led-kanban-card-party-more {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--led-ink-2);
+}
+
 .led-kanban-card-amt {
   font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   font-feature-settings: "tnum" 1;

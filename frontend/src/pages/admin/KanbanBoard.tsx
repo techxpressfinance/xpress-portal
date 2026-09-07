@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince, getErrorMessage } from '../../lib/utils';
 import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
-import { applicantDisplayName } from '../../lib/applicantName';
+import { applicantCounterpart, applicantDisplayName } from '../../lib/applicantName';
 
 // Category scope value meaning "the signed-in broker's specialties".
 const MY_FOCUS = 'mine';
@@ -204,8 +204,11 @@ function KanbanCard({
   const referrerName = app.referrer?.organization_name
     || app.referrer?.full_name
     || (app.user_role === 'referrer' ? app.user_name || null : null);
-  const businessSubtitle = app.business_name && app.business_name !== clientName ? app.business_name : null;
-  const subtitle = businessSubtitle || (!isDirectLead ? app.user_email : null) || '';
+  // The other side of the name: the director/contact behind an entity applicant,
+  // or the borrowing entity behind an individual one. Falls back to the owner's
+  // email, which is only the applicant's on a client-owned application.
+  const counterpart = applicantCounterpart(app);
+  const subtitle = counterpart ? null : (!isDirectLead ? app.user_email : null) || '';
   const brokers = app.assigned_brokers || [];
   // Time in THIS stage, matching the column header's average. updated_at moves
   // on any edit, so it would show a stale badge on a card that arrived today.
@@ -265,7 +268,20 @@ function KanbanCard({
       </div>
 
       <div className="led-kanban-card-title">{clientName}</div>
-      {subtitle ? <div className="led-kanban-card-sub">{subtitle}</div> : <div style={{ height: 8 }} />}
+      {counterpart ? (
+        <div
+          className="led-kanban-card-sub led-kanban-card-party"
+          title={counterpart.kind === 'person' ? 'Director / contact' : 'Borrowing entity'}
+        >
+          <Icon name={counterpart.kind === 'person' ? 'user' : 'briefcase'} size={11} />
+          <span className="led-kanban-card-party-name">{counterpart.name}</span>
+          {counterpart.extra > 0 && <span className="led-kanban-card-party-more">+{counterpart.extra}</span>}
+        </div>
+      ) : subtitle ? (
+        <div className="led-kanban-card-sub">{subtitle}</div>
+      ) : (
+        <div style={{ height: 8 }} />
+      )}
 
       <div className="led-kanban-card-row">
         <span className="led-kanban-card-amt">{fmtMoneyK(Number(app.amount) || 0)}</span>
