@@ -60,4 +60,9 @@ class TaxInvoiceUpdate(BaseModel):
     payout_account_name: Optional[str] = None
     payout_bsb: Optional[str] = None
     payout_account_number: Optional[str] = None
+    payout_creditor_name: Optional[str] = None
+    payout_creditor_bsb: Optional[str] = None
+    payout_creditor_account_number: Optional[str] = None
+    licence_name: Optional[str] = None
+    registration_name: Optional[str] = None
     notes: Optional[str] = None

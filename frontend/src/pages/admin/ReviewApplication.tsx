@@ -18,7 +18,7 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
-import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
+import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
@@ -89,6 +89,9 @@ export default function ReviewApplication() {
   const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  // Set when the broker got to the tax invoice tab by asking for the document
+  // rather than by browsing to it — see TaxInvoicePanel's autoOpen.
+  const [openTaxInvoice, setOpenTaxInvoice] = useState(false);
 
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingAppPdf, setDownloadingAppPdf] = useState(false);
@@ -3869,7 +3872,7 @@ export default function ReviewApplication() {
                 Full width: the document has ~25 fields and a printable preview,
                 which a sidebar cannot carry. Opening the tab is what loads it. */}
             {activeTab === 'invoices' && id && (
-              <TaxInvoicePanel applicationId={id} />
+              <TaxInvoicePanel applicationId={id} autoOpen={openTaxInvoice} />
             )}
 
             {activeTab === 'activity' && (
@@ -3984,6 +3987,20 @@ export default function ReviewApplication() {
               </div>
               {application.approval_lender_name && (
                 <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
+              )}
+              {/* Approval is the point the desk goes back to the dealer, so the
+                  request is raised here rather than left to be remembered. The
+                  draft is normally already waiting (see the backend's
+                  ensure_request_for_approval); this opens it, and raises one for
+                  a deal approved before that hook existed. */}
+              {applicationLoanCategory(application) === 'asset_finance' && (
+                <Button
+                  variant="secondary"
+                  className="w-full mb-3"
+                  onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); }}
+                >
+                  Generate tax invoice
+                </Button>
               )}
               {!!application.approval_conditions?.length && (
                 <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">

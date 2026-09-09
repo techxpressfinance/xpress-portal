@@ -324,6 +324,15 @@ _MIGRATIONS = [
     ("tax_invoices", "asset_registration_expiry", "VARCHAR(30)"),
     ("tax_invoices", "trade_in_value", "NUMERIC(12, 2)"),
     ("tax_invoices", "payout_amount", "NUMERIC(12, 2)"),
+    # Part payment 1 of settlement — the seller's existing financier, paid
+    # separately from the seller so an encumbered asset clears at settlement.
+    ("tax_invoices", "payout_creditor_name", "VARCHAR(500)"),
+    ("tax_invoices", "payout_creditor_bsb", "VARCHAR(500)"),
+    ("tax_invoices", "payout_creditor_account_number", "VARCHAR(500)"),
+    # Seller's name as it appears on their licence and the registration, held
+    # only so the four-way name match can run before funds go out.
+    ("tax_invoices", "licence_name", "VARCHAR(500)"),
+    ("tax_invoices", "registration_name", "VARCHAR(500)"),
     # Whether the applicant is a natural person or the borrowing entity itself.
     # Nullable on add so the backfill below can tell untouched rows apart.
     ("loan_applications", "applicant_type", "VARCHAR(20)"),

@@ -892,14 +892,47 @@ export interface TaxInvoiceTotals {
   trade_in: number;
   payout: number;
   deposit_paid: number;
+  /** The GST-exclusive value of the goods — what a business buyer books. */
+  ex_gst: number;
   /** Cash price, less the trade-in, plus the payout still owing on it, less
    *  the cash deposit — what the financier is asked to pay on settlement. */
   balance_due: number;
+  /** The lender's word for `balance_due`. The deposit has already come off, so
+   *  these are one number under two names — never subtract the deposit again. */
+  amount_financed: number;
+  /** Part payment 1: clears the finance owing on the asset. */
+  settlement_to_creditor: number;
+  /** Part payment 2: what actually reaches the seller. */
+  settlement_to_seller: number;
+  /** The two parts reconcile to `balance_due`. True by construction. */
+  settlement_balances: boolean;
+  /** Amount financed as a percentage of the cash price, or null with no price.
+   *  Over 100% means negative equity or fees rolled into the loan. */
+  lvr: number | null;
+  /** Payout owing on the trade-in beyond what it is worth, carried into the
+   *  new loan. Zero when the trade-in covers its own debt. */
+  negative_equity: number;
   /** False when the supplier is not registered for GST — the document must not
    *  then call itself a tax invoice. */
   is_tax_invoice: boolean;
   /** True at $1,000 or more, where the buyer's identity or ABN is required. */
   buyer_identity_required: boolean;
+}
+
+/** A deal the desk may still choose to write, flagged for a second look.
+ *  Never blocks issuing — that is what `missing` is for. */
+export interface TaxInvoiceAlert {
+  code: 'negative_equity' | 'lvr' | 'name_mismatch' | 'settlement_unbalanced';
+  message: string;
+}
+
+/** Whether every document behind the sale names the same seller. Null when
+ *  fewer than two names are on file — one name agrees with itself. */
+export interface TaxInvoiceNameMatch {
+  checked: string[];
+  missing: string[];
+  mismatched: string[];
+  matches: boolean;
 }
 
 export interface TaxInvoice {
@@ -953,6 +986,14 @@ export interface TaxInvoice {
   payout_account_name: string | null;
   payout_bsb: string | null;
   payout_account_number: string | null;
+  /** Part payment 1's payee — the seller's existing financier. */
+  payout_creditor_name: string | null;
+  payout_creditor_bsb: string | null;
+  payout_creditor_account_number: string | null;
+  /** The seller's name on their licence and on the registration. Not printed —
+   *  held so the four-way name match can run before funds go out. */
+  licence_name: string | null;
+  registration_name: string | null;
   notes: string | null;
   created_by_id: string | null;
   created_by_name: string | null;
@@ -962,6 +1003,9 @@ export interface TaxInvoice {
   totals: TaxInvoiceTotals;
   /** What still has to be filled in before it can be issued. */
   missing: string[];
+  /** Warnings for the broker. Do not gate issuing on these. */
+  alerts: TaxInvoiceAlert[];
+  name_match: TaxInvoiceNameMatch | null;
 }
 
 export interface KanbanColumn {

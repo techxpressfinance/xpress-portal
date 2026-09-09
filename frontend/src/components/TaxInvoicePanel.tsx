@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { Card, Badge, Button } from './ui';
@@ -47,6 +47,25 @@ const RELEASE_CONDITIONS = [
   'All transactions to be completed electronically.',
 ];
 
+/** Odometer bands from the desk's calculation sheet. A reading is objective
+ *  where a seller's description is an opinion, so it settles the question.
+ *  Kept in sync with classify_condition in backend services/tax_invoice.py. */
+const NEW_ODOMETER_CEILING = 500;
+const DEMO_ODOMETER_CEILING = 5_000;
+
+const CONDITION_LABEL: Record<string, string> = { new: 'New', demo: 'Demo', used: 'Used' };
+
+/** What the odometer says the asset is, or null with no reading — equipment is
+ *  metered in hours, so only a vehicle answers this. */
+function classifyByOdometer(value: string | number | boolean): string | null {
+  if (value === '' || value == null || typeof value === 'boolean') return null;
+  const km = Number(value);
+  if (!Number.isFinite(km)) return null;
+  if (km <= NEW_ODOMETER_CEILING) return 'new';
+  if (km <= DEMO_ODOMETER_CEILING) return 'demo';
+  return 'used';
+}
+
 const money = (n: number | null | undefined) =>
   n == null ? '—' : `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -58,7 +77,14 @@ type EditableField = {
 
 type Draft = Partial<Record<EditableField, string | number | boolean | null>>;
 
-export default function TaxInvoicePanel({ applicationId }: { applicationId: string }) {
+export default function TaxInvoicePanel({
+  applicationId,
+  /** Set when the broker arrived by "Generate tax invoice" rather than by
+   *  opening the tab: put the dealer request in front of them, raising it
+   *  first if approval never did (an application approved before the hook
+   *  existed, or moved through a board that skipped it). */
+  autoOpen = false,
+}: { applicationId: string; autoOpen?: boolean }) {
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +105,21 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
 
   // The panel only mounts when its tab is opened, so this is already lazy.
   useEffect(() => { load(); }, [load]);
+
+  // Once per arrival — re-running would fight the broker every time they
+  // collapsed the row, and could raise a second document to reconcile.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpen || loading || autoOpened.current) return;
+    autoOpened.current = true;
+    const dealer = invoices.find((i) => i.supplier_type === 'dealer');
+    if (dealer) {
+      setOpenId(dealer.id);
+      setDraft({});
+    } else {
+      create('dealer');
+    }
+  }, [autoOpen, loading, invoices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async (supplierType: SupplierType) => {
     try {
@@ -189,6 +230,8 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
             // A dealer document is a request for their invoice, not one we raise.
             const isRequest = invoice.supplier_type === 'dealer';
             const sameDelivery = Boolean(draft.delivery_same_as_buyer ?? invoice.delivery_same_as_buyer);
+            const hasPayout = invoice.totals.payout > 0;
+            const odometerSuggestion = classifyByOdometer(field(invoice, 'asset_odometer'));
             return (
               <div key={invoice.id} className="rounded-lg border border-[var(--led-line)]">
                 <button
@@ -216,6 +259,19 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
 
                 {open && (
                   <div className="border-t border-[var(--led-line)] px-3 py-3 space-y-4">
+                    {/* Warnings, never gates: each describes a deal the desk may
+                        still have good reason to write. `missing` is what blocks. */}
+                    {invoice.alerts.length > 0 && (
+                      <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2.5 space-y-1.5">
+                        {invoice.alerts.map((alert) => (
+                          <div key={alert.code} className="flex gap-2 text-[12.5px] text-foreground">
+                            <span aria-hidden className="text-danger">▲</span>
+                            <span>{alert.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {!invoice.totals.is_tax_invoice && (
                       <p className="rounded-md bg-secondary px-2.5 py-2 text-[12px] text-muted-foreground">
                         This supplier is not registered for GST, so the document is issued as an
@@ -304,10 +360,22 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
                       <Choice
                         label="New or used"
                         value={String(field(invoice, 'asset_condition'))}
-                        options={[['', '—'], ['new', 'New'], ['used', 'Used']]}
+                        options={[['', '—'], ['new', 'New'], ['demo', 'Demo'], ['used', 'Used']]}
                         onChange={(v) => set('asset_condition', v || null)}
                         disabled={locked}
                       />
+                      {/* The odometer decides this on prefill; say so, so a broker
+                          who overrides it knows they are overriding something. */}
+                      {odometerSuggestion && odometerSuggestion !== field(invoice, 'asset_condition') && !locked && (
+                        <button
+                          type="button"
+                          onClick={() => set('asset_condition', odometerSuggestion)}
+                          className="text-left text-[12px] text-primary hover:underline"
+                        >
+                          {Number(field(invoice, 'asset_odometer')).toLocaleString('en-AU')} km reads as{' '}
+                          <strong>{CONDITION_LABEL[odometerSuggestion]}</strong> — apply
+                        </button>
+                      )}
                       <Text label="Engine number" value={field(invoice, 'asset_engine_number')} onChange={(v) => set('asset_engine_number', v)} disabled={locked} />
                       <Text label="Build date" value={field(invoice, 'asset_build_date')} onChange={(v) => set('asset_build_date', v)} disabled={locked} />
                       <Text label="Compliance date" value={field(invoice, 'asset_compliance_date')} onChange={(v) => set('asset_compliance_date', v)} disabled={locked} />
@@ -327,10 +395,36 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
                       <Text label="Less cash deposit" type="number" value={field(invoice, 'deposit_paid')} onChange={(v) => set('deposit_paid', v === '' ? null : Number(v))} disabled={locked} />
                     </Section>
 
-                    <Section title="Pay the supplier">
+                    <Section title={hasPayout ? 'Part payment 2 — pay the seller' : 'Pay the supplier'}>
                       <Text label="Account name" value={field(invoice, 'payout_account_name')} onChange={(v) => set('payout_account_name', v)} disabled={locked} />
                       <Text label="BSB" value={field(invoice, 'payout_bsb')} onChange={(v) => set('payout_bsb', v)} disabled={locked} />
                       <Text label="Account number" value={field(invoice, 'payout_account_number')} onChange={(v) => set('payout_account_number', v)} disabled={locked} />
+                    </Section>
+
+                    {/* Only asked for once there is a payout to send: with the
+                        asset owned outright there is no second payee. */}
+                    {hasPayout && (
+                      <Section title="Part payment 1 — pay out the existing finance">
+                        <p className="text-[12px] text-muted-foreground">
+                          The payout goes straight to the seller's financier so the asset clears at
+                          settlement, and only the balance reaches the seller.
+                        </p>
+                        <Text label="Financier" value={field(invoice, 'payout_creditor_name')} onChange={(v) => set('payout_creditor_name', v)} disabled={locked} />
+                        <Text label="BSB" value={field(invoice, 'payout_creditor_bsb')} onChange={(v) => set('payout_creditor_bsb', v)} disabled={locked} />
+                        <Text label="Account number" value={field(invoice, 'payout_creditor_account_number')} onChange={(v) => set('payout_creditor_account_number', v)} disabled={locked} />
+                      </Section>
+                    )}
+
+                    {/* Not printed on the document — these exist only so the four
+                        names can be compared before money moves. */}
+                    <Section title="Identity check">
+                      <p className="text-[12px] text-muted-foreground">
+                        The seller's name as it appears on each document. Not printed — used to
+                        confirm one person owns the asset and is being paid.
+                      </p>
+                      <Text label="Name on driver licence" value={field(invoice, 'licence_name')} onChange={(v) => set('licence_name', v)} disabled={locked} />
+                      <Text label="Name on registration" value={field(invoice, 'registration_name')} onChange={(v) => set('registration_name', v)} disabled={locked} />
+                      {invoice.name_match && <NameMatchTable match={invoice.name_match} />}
                     </Section>
 
                     <div className="rounded-md bg-secondary px-3 py-2 text-[12.5px] tabular-nums">
@@ -340,7 +434,38 @@ export default function TaxInvoicePanel({ applicationId }: { applicationId: stri
                       {invoice.totals.payout > 0 && <Row label="Payout of the loan" value={money(invoice.totals.payout)} />}
                       <Row label={isRequest ? 'Less cash deposit' : 'Deposit paid'} value={money(invoice.totals.deposit_paid)} />
                       <Row label={isRequest ? 'Total payable for goods' : 'Balance due'} value={money(invoice.totals.balance_due)} strong />
+                      {/* The deposit is already out of the line above, so this is
+                          that same figure under the lender's name for it. */}
+                      <Row label="Amount financed" value={money(invoice.totals.amount_financed)} />
+                      <Row label="Ex GST" value={money(invoice.totals.ex_gst)} />
+                      {invoice.totals.lvr != null && (
+                        <Row label="LVR" value={`${invoice.totals.lvr.toFixed(1)}%`} />
+                      )}
+                      {invoice.totals.negative_equity > 0 && (
+                        <Row label="Negative equity" value={money(invoice.totals.negative_equity)} />
+                      )}
                     </div>
+
+                    {/* How the one payable figure reaches two payees. Shown only
+                        when there is a payout to carve out of it. */}
+                    {hasPayout && (
+                      <div className="rounded-md bg-secondary px-3 py-2 text-[12.5px] tabular-nums">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Settlement</p>
+                        <Row
+                          label={`Part payment 1 — ${invoice.payout_creditor_name || 'existing financier'}`}
+                          value={money(invoice.totals.settlement_to_creditor)}
+                        />
+                        <Row
+                          label={`Part payment 2 — ${invoice.payout_account_name || (isRequest ? 'dealer' : 'seller')}`}
+                          value={money(invoice.totals.settlement_to_seller)}
+                        />
+                        <Row
+                          label={invoice.totals.settlement_balances ? 'Reconciles to total payable' : 'Does not reconcile'}
+                          value={money(invoice.totals.settlement_to_creditor + invoice.totals.settlement_to_seller)}
+                          strong
+                        />
+                      </div>
+                    )}
 
                     {invoice.missing.length > 0 && !locked && (
                       <div className="rounded-md border border-[var(--led-line)] px-3 py-2">
@@ -425,6 +550,35 @@ function Check({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} />
       <span className="text-[13px] text-foreground">{label}</span>
     </label>
+  );
+}
+
+/** The four-way name check, shown as what agreed and what did not. Names left
+ *  blank read as "not on file" rather than as a pass — an unchecked document
+ *  proves nothing and should not look like it did. */
+function NameMatchTable({ match }: { match: NonNullable<TaxInvoice['name_match']> }) {
+  const rows: [string, string][] = [
+    ...match.checked.map((label): [string, string] =>
+      [label, match.mismatched.includes(label) ? 'Mismatch' : 'Match']),
+    ...match.missing.map((label): [string, string] => [label, 'Not on file']),
+  ];
+  return (
+    <div className="sm:col-span-2 lg:col-span-3 rounded-md bg-secondary px-3 py-2 text-[12px]">
+      {rows.map(([label, verdict]) => (
+        <div key={label} className="flex justify-between gap-3 py-0.5">
+          <span className="text-muted-foreground">{label}</span>
+          <span className={verdict === 'Mismatch' ? 'font-medium text-danger' : verdict === 'Match' ? 'text-foreground' : 'text-muted-foreground'}>
+            {verdict}
+          </span>
+        </div>
+      ))}
+      <div className="mt-1 border-t border-[var(--led-line)] pt-1 flex justify-between gap-3">
+        <span className="text-muted-foreground">Name match test</span>
+        <span className={match.matches ? 'font-medium text-foreground' : 'font-medium text-danger'}>
+          {match.matches ? 'Passed' : 'Failed'}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -687,14 +841,15 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
       </PrintSection>
 
       <PrintSection title="Full details of goods to be financed">
+        {/* Row order is the request sheet's, top to bottom: the dealer's
+            back-office reads down this list against their own stock card. */}
         <GoodsTable
           rows={[
             [['New or used', condition], ['Year', invoice.asset_year || '']],
-            [['Make', invoice.asset_make || ''], ['Colour', invoice.asset_colour || '']],
-            [['Model (full details)', invoice.asset_model || invoice.asset_description || '']],
+            [['Make', invoice.asset_make || ''], ['Model (full details)', invoice.asset_model || invoice.asset_description || '']],
             [['VIN or chassis number', invoice.asset_vin || ''], ['Engine number', invoice.asset_engine_number || '']],
             [['Build and compliance date', buildCompliance], ['Odometer', invoice.asset_odometer != null ? `${invoice.asset_odometer.toLocaleString('en-AU')} km` : '']],
-            [['Registration details including expiry', rego]],
+            [['Colour', invoice.asset_colour || ''], ['Registration details including expiry', rego]],
           ]}
         />
       </PrintSection>
@@ -702,7 +857,10 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
       <PrintSection title="Full cost of goods">
         <div className="break-inside-avoid" style={{ marginLeft: 'auto', width: 330 }}>
           <PrintRow label="Cash price (GST inclusive)" value={money(invoice.sale_price)} />
+          {/* "Cash Price (please show GST)" on the sheet — the dealer's invoice
+              has to break the same price into these two halves. */}
           <PrintRow label="GST included in the cash price" value={money(t.gst)} muted />
+          <PrintRow label="Cash price excluding GST" value={money(t.ex_gst)} muted />
           {invoice.other_charges != null && (
             <PrintRow label={invoice.other_charges_label || 'Other charges'} value={money(invoice.other_charges)} />
           )}
@@ -739,22 +897,60 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
         </div>
       </div>
 
-      {(invoice.payout_account_name || invoice.payout_bsb || invoice.payout_account_number) && (
-        <PrintSection title="Nominated seller's account">
-          <div className="break-inside-avoid">
-            {invoice.payout_account_name && <div>{invoice.payout_account_name}</div>}
-            <div>
-              {invoice.payout_bsb ? `BSB ${invoice.payout_bsb}` : ''}
-              {invoice.payout_account_number ? `  ACC ${invoice.payout_account_number}` : ''}
-            </div>
-          </div>
-        </PrintSection>
-      )}
+      <SettlementSection invoice={invoice} />
 
       {invoice.notes && (
         <p className="break-inside-avoid" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>{invoice.notes}</p>
       )}
     </DocumentShell>
+  );
+}
+
+/**
+ * Where settlement money lands. One payee where the asset is owned outright,
+ * two where it carries finance: the payout clears the existing loan and only
+ * the balance reaches the seller. Printing both parts is the point — it is
+ * what stops the desk paying a seller in full and trusting them to clear a
+ * debt secured over the very asset being bought.
+ */
+function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
+  const t = invoice.totals;
+  const seller = [invoice.payout_account_name, invoice.payout_bsb, invoice.payout_account_number].filter(Boolean);
+  const creditor = [invoice.payout_creditor_name, invoice.payout_creditor_bsb, invoice.payout_creditor_account_number].filter(Boolean);
+  if (!seller.length && !creditor.length) return null;
+
+  const account = (bsb: string | null, number: string | null) =>
+    [bsb ? `BSB ${bsb}` : '', number ? `ACC ${number}` : ''].filter(Boolean).join('   ');
+
+  if (t.payout <= 0) {
+    return (
+      <PrintSection title="Nominated seller's account">
+        <div className="break-inside-avoid">
+          {invoice.payout_account_name && <div>{invoice.payout_account_name}</div>}
+          <div>{account(invoice.payout_bsb, invoice.payout_account_number)}</div>
+        </div>
+      </PrintSection>
+    );
+  }
+
+  return (
+    <PrintSection title="Settlement — payable in two parts">
+      <div className="break-inside-avoid">
+        <div style={{ marginBottom: 6 }}>
+          <PrintRow label={`Part payment 1 — ${invoice.payout_creditor_name || 'existing financier'}`} value={money(t.settlement_to_creditor)} />
+          <div style={{ color: MUTED, fontSize: 10.5 }}>
+            {account(invoice.payout_creditor_bsb, invoice.payout_creditor_account_number) || 'Account details to be confirmed'}
+          </div>
+        </div>
+        <div>
+          <PrintRow label={`Part payment 2 — ${invoice.payout_account_name || 'seller'}`} value={money(t.settlement_to_seller)} />
+          <div style={{ color: MUTED, fontSize: 10.5 }}>
+            {account(invoice.payout_bsb, invoice.payout_account_number) || 'Account details to be confirmed'}
+          </div>
+        </div>
+        <PrintRow label="Total settlement" value={money(t.settlement_to_creditor + t.settlement_to_seller)} strong />
+      </div>
+    </PrintSection>
   );
 }
 
@@ -835,6 +1031,7 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
         <div className="break-inside-avoid" style={{ marginLeft: 'auto', width: 300, marginTop: 10 }}>
           <PrintRow label="Subtotal" value={money(t.subtotal)} />
           <PrintRow label={t.is_tax_invoice ? 'GST included in this total' : 'GST'} value={money(t.gst)} muted />
+          {t.is_tax_invoice && <PrintRow label="Total excluding GST" value={money(t.ex_gst)} muted />}
           {t.trade_in > 0 && <PrintRow label="Less trade in" value={money(t.trade_in)} />}
           {t.payout > 0 && <PrintRow label="Payout of the loan" value={money(t.payout)} />}
           {t.deposit_paid > 0 && <PrintRow label="Less deposit paid" value={money(t.deposit_paid)} />}
@@ -849,17 +1046,9 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
         </p>
       )}
 
-      {(invoice.payout_account_name || invoice.payout_bsb || invoice.payout_account_number) && (
-        <PrintSection title="Payment">
-          <div className="break-inside-avoid">
-            {invoice.payout_account_name && <div>{invoice.payout_account_name}</div>}
-            <div>
-              {invoice.payout_bsb ? `BSB ${invoice.payout_bsb}` : ''}
-              {invoice.payout_account_number ? `  ACC ${invoice.payout_account_number}` : ''}
-            </div>
-          </div>
-        </PrintSection>
-      )}
+      {/* A private sale is where the two-part settlement matters most: no dealer
+          stands between the buyer and an encumbered asset. */}
+      <SettlementSection invoice={invoice} />
 
       {invoice.notes && (
         <p className="break-inside-avoid" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>{invoice.notes}</p>

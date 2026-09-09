@@ -113,8 +113,9 @@ class TaxInvoice(Base):
     asset_vin: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     asset_registration: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     asset_odometer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # "new" or "used" — a used asset is priced and inspected differently, and
-    # the dealer's invoice has to agree with what the lender approved.
+    # "new", "demo" or "used". Priced and inspected differently at each step,
+    # and the dealer's invoice has to agree with what the lender approved. The
+    # odometer decides it where one is recorded — see classify_condition.
     asset_condition: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     asset_engine_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     # Free text: these arrive as "01/11/2021" or "11/2021" depending on what
@@ -139,9 +140,29 @@ class TaxInvoice(Base):
 
     # Where the money goes. Bank details are PII and encrypted, as on the
     # referrer billing profile.
+    #
+    # Settlement is paid in two parts where the asset carries finance: the
+    # payout goes straight to the seller's financier and only the remainder
+    # reaches the seller. A private sale is where this matters most — the buyer
+    # has no dealer standing between them and an encumbered asset — so each
+    # part has its own account rather than the desk paying one party and
+    # trusting them to clear the debt.
     payout_account_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+
+    # Part payment 1 — the seller's existing financier (NAB, Westpac, a lender's
+    # payout department). Blank when the asset is owned outright.
+    payout_creditor_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    payout_creditor_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    payout_creditor_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+
+    # Names the seller appears under on the documents backing the sale. They are
+    # not printed — they exist so the desk can see all four agree before it
+    # sends money, which is the cheapest fraud check available on a private
+    # sale. Personal names, so encrypted.
+    licence_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    registration_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

@@ -434,6 +434,43 @@ export const categoryForSubType = (subType: string): LoanCategory => {
   return 'commercial';
 };
 
+// Fallback when an application records no sub-type (LEND-mode or legacy rows):
+// resolve from the stored loan_type. Mirrors _LOAN_TYPE_FALLBACK in the
+// backend's services/loan_category.py.
+const LOAN_TYPE_CATEGORY_FALLBACK: Record<string, LoanCategory> = {
+  personal: 'asset_finance',
+  vehicle: 'asset_finance',
+  equipment_finance: 'asset_finance',
+  home: 'home_loan',
+  home_loan: 'home_loan',
+  business: 'commercial',
+  business_loan: 'commercial',
+  commercial_property: 'commercial',
+};
+
+/**
+ * The category an application falls in, derived the way the backend derives it:
+ * the sub-type recorded inside lend_extra_data first, the stored loan_type
+ * after. Takes the two fields it reads rather than the whole application, so
+ * this stays usable from anywhere.
+ *
+ * Keep in sync with application_loan_category in backend services/loan_category.py.
+ */
+export const applicationLoanCategory = (
+  app: { loan_type: string; lend_extra_data?: string | null },
+): LoanCategory | null => {
+  if (app.lend_extra_data) {
+    try {
+      const details = JSON.parse(app.lend_extra_data).loan_type_details;
+      const subType = details?.consumer_loan_type?.type || details?.commercial_loan_type?.type;
+      if (subType) return categoryForSubType(subType);
+    } catch {
+      // Malformed blob — fall through to the stored loan_type.
+    }
+  }
+  return LOAN_TYPE_CATEGORY_FALLBACK[app.loan_type] ?? null;
+};
+
 // Maps a form sub-type to the stored LoanType enum value. Includes legacy
 // sub-types (machinery_or_equipment, renovation, …) still present in old data.
 export const subTypeToLoanType = (subType: string): string => {

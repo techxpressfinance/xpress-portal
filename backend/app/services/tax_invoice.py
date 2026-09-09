@@ -22,6 +22,17 @@ from app.services.loan_category import application_asset_details, application_lo
 # GST is 1/11th of a GST-inclusive amount.
 GST_DIVISOR = Decimal("11")
 
+# A loan above this share of the asset's value is outside policy and worth a
+# broker's second look. Expressed as a percentage because that is how the desk
+# and every lender quote it.
+LVR_POLICY_CAP = Decimal("110")
+
+# Odometer bands that decide what the asset is sold as. A reading is objective
+# where a seller's description is not, so it settles the question wherever one
+# is recorded.
+DEMO_ODOMETER_CEILING = 5_000
+NEW_ODOMETER_CEILING = 500
+
 # Entity types whose ABN is issued against an ACN, so the ACN is the ABN's last
 # nine digits. A trust, partnership or sole trader has no ACN to derive.
 _ACN_ENTITY_TYPES = acn_service.ACN_BEARING_ENTITY_TYPES
@@ -51,21 +62,162 @@ def totals(invoice: TaxInvoice) -> dict:
     trade_in = _money(invoice.trade_in_value)
     payout = _money(invoice.payout_amount)
     deposit = _money(invoice.deposit_paid)
-    payable = subtotal - trade_in + payout - deposit
+    payable = _round(subtotal - trade_in + payout - deposit)
+
+    # Settlement reaches two parties, not one: the payout clears the finance
+    # still owing on the asset and the seller is paid the rest. Splitting the
+    # figure the desk has already agreed means the two parts can never add up
+    # to more than what is payable.
+    to_creditor = min(_round(payout), payable) if payout > 0 else Decimal("0")
+    to_seller = payable - to_creditor
+
+    # The deposit has already come off `payable`, so the amount financed is
+    # that same figure — the two names are the lender's and the dealer's words
+    # for one number, and taking the deposit off twice would understate the
+    # advance.
+    amount_financed = payable
+
+    # Asset value is read as the cash price: it is the only valuation on the
+    # file. That makes an LVR over 100% mean rolled-in negative equity or fees
+    # rather than an overpriced asset, which is the case worth catching.
+    lvr = (
+        _round(amount_financed / _round(_money(invoice.sale_price)) * 100)
+        if invoice.sale_price
+        else None
+    )
+
+    # What is still owing on the trade-in beyond what it is worth, carried into
+    # the new loan.
+    negative_equity = _round(payout - trade_in) if payout > trade_in else Decimal("0")
+
     return {
         "subtotal": float(_round(subtotal)),
         "gst": float(gst),
+        # The GST-exclusive value of the goods, which is the figure a business
+        # buyer carries into its books.
+        "ex_gst": float(_round(subtotal) - gst),
         "total": float(_round(subtotal)),
         "trade_in": float(_round(trade_in)),
         "payout": float(_round(payout)),
         "deposit_paid": float(_round(deposit)),
         # What the financier is asked to pay. Named balance_due since the
         # invoice documents also print it as the balance owing.
-        "balance_due": float(_round(payable)),
+        "balance_due": float(payable),
+        "amount_financed": float(amount_financed),
+        "settlement_to_creditor": float(to_creditor),
+        "settlement_to_seller": float(to_seller),
+        # Derived from one figure, so this holds by construction — it is
+        # returned so the document can show the split reconciling rather than
+        # asking the reader to add it up.
+        "settlement_balances": to_creditor + to_seller == payable,
+        "lvr": float(lvr) if lvr is not None else None,
+        "negative_equity": float(negative_equity),
         # The heading the document may legally carry.
         "is_tax_invoice": invoice.supplier_gst_registered,
         "buyer_identity_required": _round(subtotal) >= BUYER_IDENTITY_THRESHOLD,
     }
+
+
+def classify_condition(odometer: Optional[int]) -> Optional[str]:
+    """What the odometer says the asset is: new, a demo, or used.
+
+    Only vehicles have one — equipment is metered in hours — so this returns
+    nothing for an asset with no reading and the recorded description stands."""
+    if odometer is None:
+        return None
+    if odometer <= NEW_ODOMETER_CEILING:
+        return "new"
+    if odometer <= DEMO_ODOMETER_CEILING:
+        return "demo"
+    return "used"
+
+
+def _normalise_name(value: Optional[str]) -> Optional[str]:
+    """A name reduced to the parts worth comparing: case, punctuation and word
+    order dropped, so "SMITH, John" and "John Smith" are the same person and
+    "Robert Smith" is not."""
+    if not value:
+        return None
+    words = sorted(w for w in "".join(c if c.isalnum() else " " for c in value.lower()).split() if w)
+    return " ".join(words) or None
+
+
+def name_match(invoice: TaxInvoice) -> Optional[dict]:
+    """Whether every document behind the sale names the same seller.
+
+    The cheapest fraud check there is on a private sale: the person on the
+    invoice, on the licence, on the registration and on the account the money
+    lands in should all be one person. Returns None when there is nothing to
+    compare — one name on its own agrees with itself and proves nothing."""
+    sources = [
+        ("Invoice name", invoice.supplier_name),
+        ("Driver licence", invoice.licence_name),
+        ("Registration", invoice.registration_name),
+        ("Bank account", invoice.payout_account_name),
+    ]
+    present = [(label, raw, _normalise_name(raw)) for label, raw in sources if _normalise_name(raw)]
+    if len(present) < 2:
+        return None
+    baseline = present[0][2]
+    mismatched = [label for label, _raw, norm in present[1:] if norm != baseline]
+    return {
+        "checked": [label for label, _raw, _norm in present],
+        "missing": [label for label, raw in sources if not _normalise_name(raw)],
+        "mismatched": mismatched,
+        "matches": not mismatched,
+    }
+
+
+def alerts(invoice: TaxInvoice) -> list[dict]:
+    """Things worth a broker's attention before this document goes out.
+
+    Warnings, not gates. Every one of these describes a deal the desk may still
+    have good reason to write, so none of them blocks issuing — that is what
+    `completeness` is for, and it only ever reports missing data."""
+    found: list[dict] = []
+    sums = totals(invoice)
+
+    if sums["negative_equity"] > 0:
+        found.append({
+            "code": "negative_equity",
+            "message": (
+                f"Negative equity of {_fmt_money(sums['negative_equity'])} — the payout on the "
+                f"trade-in exceeds what it is worth and is being carried into the new loan."
+            ),
+        })
+
+    if sums["lvr"] is not None and Decimal(str(sums["lvr"])) > LVR_POLICY_CAP:
+        found.append({
+            "code": "lvr",
+            "message": (
+                f"LVR of {sums['lvr']:.0f}% is above the {LVR_POLICY_CAP:.0f}% policy cap — "
+                f"{_fmt_money(sums['amount_financed'])} financed against a "
+                f"{_fmt_money(sums['subtotal'])} cash price."
+            ),
+        })
+
+    names = name_match(invoice)
+    if names and not names["matches"]:
+        found.append({
+            "code": "name_mismatch",
+            "message": (
+                "The seller is named differently on " + ", ".join(names["mismatched"]) +
+                " than on the invoice. Confirm who owns the asset and who is being paid "
+                "before releasing funds."
+            ),
+        })
+
+    if not sums["settlement_balances"]:
+        found.append({
+            "code": "settlement_unbalanced",
+            "message": "The settlement split does not add up to the total payable.",
+        })
+
+    return found
+
+
+def _fmt_money(value: float) -> str:
+    return f"${value:,.2f}"
 
 
 def completeness(invoice: TaxInvoice) -> list[str]:
@@ -132,6 +284,15 @@ def _text(value) -> Optional[str]:
     are absence, not an answer."""
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _int(value) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(Decimal(str(value)))
+    except (ArithmeticError, ValueError):
+        return None
 
 
 def _decimal(value) -> Optional[Decimal]:
@@ -233,7 +394,13 @@ def prefill_from_application(
             reply_to = user.email
             break
 
-    condition = (_text(asset.get("condition")) or "").lower() or None
+    # The form offers "Used - Good" and friends, so read the leading word.
+    # Where an odometer is on file it decides instead: a reading is a fact and
+    # a description is an opinion.
+    described = (_text(asset.get("condition")) or "").lower()
+    condition = next((c for c in ("new", "demo", "used") if described.startswith(c)), None)
+    odometer = _int(asset.get("odometer"))
+    condition = classify_condition(odometer) or condition
 
     return {
         "invoice_date": date.today(),
@@ -246,7 +413,8 @@ def prefill_from_application(
         "asset_model": _text(asset.get("model")),
         "asset_year": (_text(asset.get("year")) or "")[:4] or None,
         "asset_vin": _text(asset.get("vin")),
-        "asset_condition": condition if condition in ("new", "used") else None,
+        "asset_odometer": odometer,
+        "asset_condition": condition,
         "sale_price": _decimal(asset.get("price")),
         "deposit_paid": _decimal(asset.get("deposit")),
     }
@@ -342,6 +510,11 @@ def serialize(invoice: TaxInvoice) -> dict:
         "payout_account_name": invoice.payout_account_name,
         "payout_bsb": invoice.payout_bsb,
         "payout_account_number": invoice.payout_account_number,
+        "payout_creditor_name": invoice.payout_creditor_name,
+        "payout_creditor_bsb": invoice.payout_creditor_bsb,
+        "payout_creditor_account_number": invoice.payout_creditor_account_number,
+        "licence_name": invoice.licence_name,
+        "registration_name": invoice.registration_name,
         "notes": invoice.notes,
         "created_by_id": invoice.created_by_id,
         "created_by_name": invoice.created_by.full_name if invoice.created_by else None,
@@ -351,4 +524,6 @@ def serialize(invoice: TaxInvoice) -> dict:
     }
     data["totals"] = totals(invoice)
     data["missing"] = completeness(invoice)
+    data["alerts"] = alerts(invoice)
+    data["name_match"] = name_match(invoice)
     return data
