@@ -9,7 +9,7 @@ import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
-import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES } from '../../lib/constants';
+import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -1164,6 +1164,57 @@ export default function ContactDetail() {
           )}
         </div>
       </Card>
+
+      {/* The inquiries this contact came from — contacts are only created when a
+          lead converts, so this is where the original ask is kept. */}
+      {contact.leads.length > 0 && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">
+            Lead Inquiries
+            <span className="ml-2 text-sm font-normal text-muted-foreground">({contact.leads.length})</span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="pb-3 font-medium">Inquiry</th>
+                  <th className="pb-3 font-medium">Looking for</th>
+                  <th className="pb-3 font-medium">Amount</th>
+                  <th className="pb-3 font-medium">Source</th>
+                  <th className="pb-3 font-medium">Notes</th>
+                  <th className="pb-3 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {contact.leads.map(lead => (
+                  <tr key={lead.id} className="border-b border-border/50 align-top">
+                    <td className="py-3 text-muted-foreground whitespace-nowrap">
+                      {formatDate(lead.created_at)}
+                      {lead.converted_at && <div className="text-[12px]">Converted {formatDate(lead.converted_at)}</div>}
+                    </td>
+                    <td className="py-3">
+                      {LOAN_CATEGORIES.find(c => c.value === lead.loan_category)?.label ?? lead.loan_category}
+                      {lead.sub_type && (
+                        <div className="text-[12px] text-muted-foreground">{findLoanSubType(lead.sub_type)?.short ?? lead.sub_type}</div>
+                      )}
+                    </td>
+                    <td className="py-3">{lead.amount != null ? `$${Number(lead.amount).toLocaleString('en-AU')}` : '—'}</td>
+                    <td className="py-3 text-muted-foreground">{lead.source || '—'}</td>
+                    <td className="py-3 text-muted-foreground whitespace-pre-wrap max-w-md">{lead.notes || '—'}</td>
+                    <td className="py-3">
+                      {lead.converted_application_id && (
+                        <Link to={`/admin/applications/${lead.converted_application_id}`}>
+                          <Button variant="ghost" size="sm">Application</Button>
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <ArrearsSection contact={{ id: contact.id, name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') }} />
 

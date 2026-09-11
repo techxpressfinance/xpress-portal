@@ -70,6 +70,11 @@ DEFAULT_KANBAN_COLUMNS = [
 # the fallback title for a stage created without one.
 STATUS_LABELS: dict[str, str] = {c["mapped_status"]: c["title"] for c in DEFAULT_KANBAN_COLUMNS}
 
+# Every board's plain status set opens with a lead column: deal inquiries that
+# have no application yet. It maps to no status — a lead becomes an application
+# (and a contact) when it is dragged into any application stage.
+DEFAULT_LEAD_COLUMN = {"title": "Deal Inquiry", "color": "muted-foreground"}
+
 # ── Board stage templates ───────────────────────────────────
 # A stage is an internal, per-board step. Several stages roll up to the same
 # `mapped_status`, which is what the client sees and what SMS/email copy, the
@@ -89,25 +94,35 @@ STATUS_LABELS: dict[str, str] = {c["mapped_status"]: c["title"] for c in DEFAULT
 # board's stage editor adds them without a deploy. Bodies may use
 # {client_name} {recipient_name} {stage} {lender} {amount} {reference}.
 
+# A stage with "card_kind": "lead" holds leads, not applications, and has no
+# mapped_status. "Deal Inquiry" is that lead stage; the draft stage that used to
+# carry the name is now "Started" (it keeps the af_deal_inquiry key — keys are
+# stable identifiers, never display text).
+#
+# `phase` groups consecutive stages under one band on the board ("Application
+# Started" over Started + Apps & Searches). It is display only and may span
+# statuses: Apps & Searches still reports Application Received, so the client's
+# "received" message goes out when the team actually starts on it.
 ASSET_FINANCE_STAGES: list[dict] = [
-    {"stage_key": "af_deal_inquiry", "title": "Deal Inquiry", "mapped_status": "draft", "team": None, "color": "muted-foreground"},
-    {"stage_key": "af_apps_searches", "title": "Apps & Searches", "mapped_status": "application_received", "team": "Offshore", "color": "primary"},
-    {"stage_key": "af_find_lender", "title": "Find a Lender", "mapped_status": "application_assessed", "team": "Melbourne", "color": "chart-4"},
-    {"stage_key": "af_lender_decided", "title": "Lender Decided / Waiting on Docs", "mapped_status": "application_assessed", "team": "Offshore", "color": "chart-4"},
-    {"stage_key": "af_submitted_lender", "title": "Submitted to Lender", "mapped_status": "submitted", "team": "Melbourne", "color": "chart-2", "gates": [
+    {"stage_key": "af_new_lead", "phase": "Inquiry", "title": "Deal Inquiry", "card_kind": "lead", "mapped_status": None, "team": None, "color": "muted-foreground"},
+    {"stage_key": "af_deal_inquiry", "phase": "Application Started", "title": "Started", "mapped_status": "draft", "team": None, "color": "muted-foreground"},
+    {"stage_key": "af_apps_searches", "phase": "Application Started","title": "Apps & Searches", "mapped_status": "application_received", "team": "Offshore", "color": "primary"},
+    {"stage_key": "af_find_lender", "phase": "Finding a Lender","title": "Find a Lender", "mapped_status": "application_assessed", "team": "Melbourne", "color": "chart-4"},
+    {"stage_key": "af_lender_decided", "phase": "Finding a Lender","title": "Lender Decided / Waiting on Docs", "mapped_status": "application_assessed", "team": "Offshore", "color": "chart-4"},
+    {"stage_key": "af_submitted_lender", "phase": "With the Lender","title": "Submitted to Lender", "mapped_status": "submitted", "team": "Melbourne", "color": "chart-2", "gates": [
         {"kind": "confirm", "label": "The client has signed the application form", "is_required": True},
         {"kind": "confirm", "label": "The client has signed the privacy consent", "is_required": True},
     ]},
-    {"stage_key": "af_credit_more_info", "title": "Credit Needs More Info", "mapped_status": "submitted", "team": "Melbourne", "color": "chart-4"},
-    {"stage_key": "af_approved_deals", "title": "Approved Deals", "mapped_status": "approval", "team": "Offshore", "color": "chart-5", "gates": [
+    {"stage_key": "af_credit_more_info", "phase": "With the Lender","title": "Credit Needs More Info", "mapped_status": "submitted", "team": "Melbourne", "color": "chart-4"},
+    {"stage_key": "af_approved_deals", "phase": "Approved → Settlement","title": "Approved Deals", "mapped_status": "approval", "team": "Offshore", "color": "chart-5", "gates": [
         {"kind": "checklist", "label": "Approval conditions", "is_required": True, "target": "approval_conditions",
          "help_text": "Record the lender and every condition of the approval. The team ticks these off as they are met."},
     ]},
-    {"stage_key": "af_waiting_tax_invoice", "title": "Waiting for Tax Invoice", "mapped_status": "approval", "team": "Offshore", "color": "chart-5"},
-    {"stage_key": "af_quote_locked", "title": "Invoice Recd. / Quote Locked In", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
-    {"stage_key": "af_loan_docs_issued", "title": "Loan Docs Issued", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
-    {"stage_key": "af_settlement_docs", "title": "Settlement Docs – Submitted to Lender", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
-    {"stage_key": "af_settled", "title": "Loan Settled – All Parties Informed", "mapped_status": "settled", "team": "Melbourne", "color": "success", "notifications": [
+    {"stage_key": "af_waiting_tax_invoice", "phase": "Approved → Settlement","title": "Waiting for Tax Invoice", "mapped_status": "approval", "team": "Offshore", "color": "chart-5"},
+    {"stage_key": "af_quote_locked", "phase": "Approved → Settlement","title": "Invoice Recd. / Quote Locked In", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
+    {"stage_key": "af_loan_docs_issued", "phase": "Approved → Settlement","title": "Loan Docs Issued", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
+    {"stage_key": "af_settlement_docs", "phase": "Approved → Settlement","title": "Settlement Docs – Submitted to Lender", "mapped_status": "approval", "team": "Melbourne", "color": "chart-5"},
+    {"stage_key": "af_settled", "phase": "Settled","title": "Loan Settled – All Parties Informed", "mapped_status": "settled", "team": "Melbourne", "color": "success", "notifications": [
         {"audience": "client", "channel": "email", "subject": "Your loan has settled",
          "body": "Hi {client_name},\n\nYour loan has settled. Thank you for choosing us — please get in touch if there is anything you need.",
          "default_enabled": True},
@@ -115,12 +130,53 @@ ASSET_FINANCE_STAGES: list[dict] = [
          "body": "Hi {recipient_name},\n\nThe loan you referred for {client_name} has settled.",
          "default_enabled": True},
     ]},
-    {"stage_key": "af_declined", "title": "Declined", "mapped_status": "rejected", "team": None, "color": "destructive"},
-    {"stage_key": "af_not_proceeding", "title": "Not Proceeding", "mapped_status": "not_proceeding", "team": None, "color": "muted-foreground"},
+    {"stage_key": "af_declined", "phase": "Closed","title": "Declined", "mapped_status": "rejected", "team": None, "color": "destructive"},
+    {"stage_key": "af_not_proceeding", "phase": "Closed","title": "Not Proceeding", "mapped_status": "not_proceeding", "team": None, "color": "muted-foreground"},
 ]
 
-# Home-loan and commercial desks keep the plain status board until their own
-# stage lists arrive; add them here and they seed the same way.
+# Commercial runs the same front half as asset finance (lead → searches → find a
+# lender → submitted) and diverges after approval: needs-more-info and the
+# conditions work sit inside Approval, then valuation/discharge, unconditional
+# approval and the conveyancer lead to settlement. "Needs More Info" follows
+# Approved Deals on the desk's list, so it reports as Approval — the lender has
+# approved subject to more information. Started, Declined and Not Proceeding are
+# not on that list but every status needs a stage or its cards have nowhere to
+# render, so they carry over from asset finance.
+COMMERCIAL_STAGES: list[dict] = [
+    {"stage_key": "cm_new_lead", "phase": "Inquiry", "title": "Deal Inquiry", "card_kind": "lead", "mapped_status": None, "team": None, "color": "muted-foreground"},
+    {"stage_key": "cm_started", "phase": "Application Started", "title": "Started", "mapped_status": "draft", "team": None, "color": "muted-foreground"},
+    {"stage_key": "cm_apps_searches", "phase": "Application Started", "title": "Apps & Searches", "mapped_status": "application_received", "team": "Offshore", "color": "primary"},
+    {"stage_key": "cm_find_lender", "phase": "Finding a Lender", "title": "Find a Lender", "mapped_status": "application_assessed", "team": "Melbourne", "color": "chart-4"},
+    {"stage_key": "cm_lender_decided", "phase": "Finding a Lender", "title": "Lender Decided / Waiting on Docs", "mapped_status": "application_assessed", "team": "Offshore", "color": "chart-4"},
+    {"stage_key": "cm_submitted_lender", "phase": "With the Lender", "title": "Submitted to Lender", "mapped_status": "submitted", "team": "Melbourne", "color": "chart-2", "gates": [
+        {"kind": "confirm", "label": "The client has signed the application form", "is_required": True},
+        {"kind": "confirm", "label": "The client has signed the privacy consent", "is_required": True},
+    ]},
+    {"stage_key": "cm_approved_deals", "phase": "Approved", "title": "Approved Deals", "mapped_status": "approval", "team": "Offshore", "color": "chart-5", "gates": [
+        {"kind": "checklist", "label": "Approval conditions", "is_required": True, "target": "approval_conditions",
+         "help_text": "Record the lender and every condition of the approval. The team ticks these off as they are met."},
+    ]},
+    {"stage_key": "cm_needs_more_info", "phase": "Approved", "title": "Needs More Info", "mapped_status": "approval", "team": "Melbourne", "color": "chart-4"},
+    {"stage_key": "cm_approval_conditions", "phase": "Approved", "title": "Approval Conditions", "mapped_status": "approval", "team": "Offshore", "color": "chart-5"},
+    {"stage_key": "cm_order_valuation", "phase": "Unconditional → Settlement", "title": "Order Valuation / Lodge Discharge", "mapped_status": "approval", "team": None, "color": "chart-5"},
+    {"stage_key": "cm_uncond_docs", "phase": "Unconditional → Settlement", "title": "Docs for Unconditional Approval", "mapped_status": "approval", "team": None, "color": "chart-5"},
+    {"stage_key": "cm_uncond_approval", "phase": "Unconditional → Settlement", "title": "Uncond. Approval & Loan Docs Issued", "mapped_status": "approval", "team": None, "color": "chart-5"},
+    {"stage_key": "cm_conveyancer_locked", "phase": "Unconditional → Settlement", "title": "Conveyancer Locked", "mapped_status": "approval", "team": None, "color": "chart-5"},
+    {"stage_key": "cm_settled", "phase": "Settled", "title": "Loan Settled – All Parties Informed", "mapped_status": "settled", "team": None, "color": "success", "notifications": [
+        {"audience": "client", "channel": "email", "subject": "Your loan has settled",
+         "body": "Hi {client_name},\n\nYour loan has settled. Thank you for choosing us — please get in touch if there is anything you need.",
+         "default_enabled": True},
+        {"audience": "referrer", "channel": "email", "subject": "Settled: {client_name}",
+         "body": "Hi {recipient_name},\n\nThe loan you referred for {client_name} has settled.",
+         "default_enabled": True},
+    ]},
+    {"stage_key": "cm_declined", "phase": "Closed", "title": "Declined", "mapped_status": "rejected", "team": None, "color": "destructive"},
+    {"stage_key": "cm_not_proceeding", "phase": "Closed", "title": "Not Proceeding", "mapped_status": "not_proceeding", "team": None, "color": "muted-foreground"},
+]
+
+# The home-loan desk keeps the plain status board until its stage list arrives;
+# add it here and it seeds the same way.
 BOARD_STAGE_TEMPLATES: dict[str, list[dict]] = {
     "asset_finance": ASSET_FINANCE_STAGES,
+    "commercial": COMMERCIAL_STAGES,
 }

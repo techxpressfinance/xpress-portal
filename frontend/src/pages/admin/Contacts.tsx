@@ -57,15 +57,17 @@ function NewContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
     return () => { cancelled = true; };
   }, [addToPipeline, boards.length, toast]);
 
-  // Columns of the selected board; the first (leftmost) stage is the default.
+  // Application stages of the selected board; the first (leftmost) is the
+  // default. Lead stages hold leads, not applications, so they aren't offered.
   useEffect(() => {
     if (!boardId) { setColumns([]); setColumnId(''); return; }
     let cancelled = false;
     api.get<KanbanBoard>(`/kanban/boards/${boardId}`)
       .then(({ data }) => {
         if (cancelled) return;
-        setColumns(data.columns);
-        setColumnId(data.columns[0]?.id || '');
+        const appColumns = data.columns.filter(c => c.card_kind !== 'lead');
+        setColumns(appColumns);
+        setColumnId(appColumns[0]?.id || '');
       })
       .catch(() => { if (!cancelled) { setColumns([]); setColumnId(''); } });
     return () => { cancelled = true; };

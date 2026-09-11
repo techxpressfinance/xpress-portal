@@ -123,12 +123,15 @@ class StageTransitionOut(BaseModel):
 
 
 class KanbanColumnCreate(BaseModel):
-    mapped_status: str
+    # Required for an application stage; a lead stage has none.
+    mapped_status: Optional[str] = None
+    card_kind: Literal["application", "lead"] = "application"
     title: Optional[str] = None
     position: int = 0
     color: Optional[str] = None
     stage_key: Optional[str] = None
     team: Optional[str] = None
+    phase: Optional[str] = None
     # Which category view the stage belongs to; null is the plain status set.
     loan_category: Optional[str] = None
 
@@ -138,6 +141,7 @@ class KanbanColumnUpdate(BaseModel):
     mapped_status: Optional[str] = None
     color: Optional[str] = None
     team: Optional[str] = None
+    phase: Optional[str] = None
 
 
 class KanbanColumnOut(BaseModel):
@@ -145,12 +149,15 @@ class KanbanColumnOut(BaseModel):
     board_id: str
     title: str
     mapped_status: Optional[str]
+    card_kind: str = "application"
     position: int
     color: Optional[str]
     stage_key: Optional[str] = None
     team: Optional[str] = None
+    phase: Optional[str] = None
     gates: list[StageGateOut] = Field(default_factory=list)
     notifications: list[StageNotificationOut] = Field(default_factory=list)
+    # Cards in the stage — applications, or leads on a lead stage.
     application_count: int = 0
 
     model_config = {"from_attributes": True}

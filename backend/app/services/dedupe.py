@@ -18,6 +18,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.lead import Lead
 from app.models.lending_history_entry import LendingHistoryEntry
 from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
 from app.models.loan_application import LoanApplication
@@ -381,6 +382,7 @@ def merge_contacts(db: Session, primary: Contact, duplicates: list[Contact]) -> 
         (LendingHistoryEntry, LendingHistoryEntry.contact_id),
         (LendingHistoryEntry, LendingHistoryEntry.guaranteed_by_contact_id),
         (TrustParty, TrustParty.contact_id),
+        (Lead, Lead.contact_id),
     ):
         db.query(model).filter(column.in_(dup_ids)).update(
             {column.key: primary.id}, synchronize_session="fetch"

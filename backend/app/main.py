@@ -31,6 +31,7 @@ from app.models.kanban import (  # noqa: F401 — ensure tables are created
     KanbanColumnGate,
     StageTransition,
 )
+from app.models.lead import Lead, LeadStagePlacement  # noqa: F401 — ensure tables are created
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
 from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
@@ -63,8 +64,8 @@ from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsRecordLender,
     ArrearsSnapshot,
 )
-from app.constants import DEFAULT_KANBAN_COLUMNS
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, users
+from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, users
 
 # Configure logging
 logging.basicConfig(
@@ -85,6 +86,9 @@ _MIGRATIONS = [
     ("approval_conditions", "completed_at", "TIMESTAMP"),
     ("approval_conditions", "completed_by_id", "VARCHAR(36) REFERENCES users(id)"),
     ("kanban_columns", "team", "VARCHAR(60)"),
+    ("kanban_columns", "card_kind", "VARCHAR(12) DEFAULT 'application' NOT NULL"),
+    ("leads", "company_abn", "TEXT"),
+    ("kanban_columns", "phase", "VARCHAR(60)"),
     ("kanban_boards", "enforce_transitions", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("arrears_attachments", "contact_attempt_id", "VARCHAR(36) REFERENCES arrears_contact_attempts(id)"),
     ("loan_applications", "analysis_status", "VARCHAR(10)"),
@@ -938,14 +942,17 @@ try:
         _boards = conn.execute(text("SELECT id FROM kanban_boards")).fetchall()
         for (_bid,) in _boards:
             _cols = conn.execute(
-                text("SELECT id, mapped_status, position FROM kanban_columns WHERE board_id = :bid ORDER BY position, created_at"),
+                text("SELECT id, mapped_status, position, card_kind FROM kanban_columns WHERE board_id = :bid ORDER BY position, created_at"),
                 {"bid": _bid},
             ).fetchall()
             _kept: set = set()
             _remove_ids = []
             _max_pos = -1
-            for _cid, _mapped, _pos in _cols:
+            for _cid, _mapped, _pos, _kind in _cols:
                 _max_pos = max(_max_pos, _pos or 0)
+                # Lead columns map to no status by design — they hold leads.
+                if _kind == "lead":
+                    continue
                 if _mapped in _status_set:
                     _kept.add(_mapped)
                 else:
@@ -963,8 +970,48 @@ try:
                     "VALUES (:id, (SELECT tenant_id FROM kanban_boards WHERE id = :bid), :bid, :title, :mapped_status, :position, :color, :now)"
                 ), {"id": str(_uuid.uuid4()), "bid": _bid, "title": _col_def["title"],
                     "mapped_status": _status, "position": _max_pos, "color": _col_def["color"], "now": _dt.now(_tz.utc)})
+            # The plain status set opens with a lead column, so leads always have
+            # somewhere to render. Added once — delete_column refuses to remove
+            # the last one — at the far left, shifting the status columns along.
+            _has_lead = conn.execute(
+                text("SELECT COUNT(*) FROM kanban_columns WHERE board_id = :bid AND loan_category IS NULL AND card_kind = 'lead'"),
+                {"bid": _bid},
+            ).scalar()
+            if not _has_lead:
+                conn.execute(
+                    text("UPDATE kanban_columns SET position = position + 1 WHERE board_id = :bid AND loan_category IS NULL"),
+                    {"bid": _bid},
+                )
+                conn.execute(text(
+                    "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, card_kind, position, color, created_at) "
+                    "VALUES (:id, (SELECT tenant_id FROM kanban_boards WHERE id = :bid), :bid, :title, NULL, 'lead', 0, :color, :now)"
+                ), {"id": str(_uuid.uuid4()), "bid": _bid, "title": DEFAULT_LEAD_COLUMN["title"],
+                    "color": DEFAULT_LEAD_COLUMN["color"], "now": _dt.now(_tz.utc)})
 except Exception as _e:
     _logger.debug("Kanban column reconciliation skipped (table may not exist yet): %s", _e)
+
+# "Deal Inquiry" became the lead stage and the draft stage that carried the name
+# became "Started". Renames only columns still showing the old default title, so
+# a stage the desk renamed keeps its name. Then fill in the phase band of any
+# template stage that predates phases (NULL only — "" is a deliberate clear).
+# Idempotent.
+try:
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE kanban_columns SET title = 'Started' WHERE stage_key = 'af_deal_inquiry' AND title = 'Deal Inquiry'"))
+        conn.execute(text("UPDATE kanban_columns SET title = 'Deal Inquiry' WHERE stage_key = 'af_new_lead' AND title = 'New Lead'"))
+        conn.execute(text(
+            "UPDATE kanban_columns SET title = :title "
+            "WHERE card_kind = 'lead' AND loan_category IS NULL AND title = 'New Leads'"
+        ), {"title": DEFAULT_LEAD_COLUMN["title"]})
+        for _category, _template in BOARD_STAGE_TEMPLATES.items():
+            for _stage in _template:
+                if _stage.get("phase"):
+                    conn.execute(text(
+                        "UPDATE kanban_columns SET phase = :phase "
+                        "WHERE stage_key = :key AND loan_category = :cat AND phase IS NULL"
+                    ), {"phase": _stage["phase"], "key": _stage["stage_key"], "cat": _category})
+except Exception as _e:
+    _logger.debug("Kanban stage rename/phase backfill skipped: %s", _e)
 
 # API docs are only served in development — the OpenAPI schema enumerates the
 # full attack surface and has no business being public in production.
@@ -1019,6 +1066,7 @@ app.include_router(dashboard.router)
 app.include_router(broker_analytics.router)
 app.include_router(settled_deals_analytics.router)
 app.include_router(kanban.router)
+app.include_router(leads.router)
 app.include_router(search.router)
 app.include_router(broker_groups.router)
 app.include_router(external_referrers.router)

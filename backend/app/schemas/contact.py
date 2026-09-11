@@ -7,6 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.models.loan_application import LoanType
+from app.schemas.lead import LeadOut
 from app.schemas.lending_history import LendingHistoryEntryOut
 
 
@@ -89,6 +90,8 @@ class ContactDetailOut(ContactOut):
     organizations: list[OrganizationOut] = []
     applications: list[ContactApplicationOut] = []
     lending_history: list[LendingHistoryEntryOut] = []
+    # The lead inquiries this contact was converted from.
+    leads: list[LeadOut] = []
 
 
 class ContactCreate(BaseModel):

@@ -55,6 +55,40 @@ CATEGORY_LOAN_TYPES = {
 }
 
 
+# The loan_type an application of each category is stored as when there is no
+# sub-type to be more specific — each resolves back to its category through
+# _LOAN_TYPE_FALLBACK.
+CATEGORY_DEFAULT_LOAN_TYPE = {
+    "asset_finance": LoanType.vehicle,
+    "home_loan": LoanType.home_loan,
+    "commercial": LoanType.business_loan,
+}
+
+
+def sub_type_to_loan_type(sub_type: str) -> LoanType:
+    """Mirror of subTypeToLoanType in frontend/src/lib/constants.ts — keep in sync."""
+    if sub_type in ("car", "motorcycle", "caravan", "other_vehicle"):
+        return LoanType.vehicle
+    if sub_type in ("purchase", "refinance"):
+        return LoanType.home_loan
+    if sub_type == "personal":
+        return LoanType.personal
+    if sub_type in ("vehicles_or_transport", "machinery_or_equipment", "new_fit_out", "renovation", "pay_suppliers"):
+        return LoanType.equipment_finance
+    if sub_type in ("property", "development_construction"):
+        return LoanType.commercial_property
+    return LoanType.business_loan
+
+
+def sub_type_extra_data(sub_type: Optional[str], label: Optional[str] = None) -> Optional[str]:
+    """lend_extra_data recording the form sub-type, so the card resolves to a
+    loan category. Mirrors buildLoanTypeDetails in frontend AddLead.tsx."""
+    if not sub_type:
+        return None
+    key = "consumer_loan_type" if sub_type in CONSUMER_SUB_TYPES else "commercial_loan_type"
+    return json.dumps({"loan_type_details": {key: {"type": sub_type, "label": label}}})
+
+
 def category_for_sub_type(sub_type: str) -> str:
     if sub_type in _HOME_SUB_TYPES:
         return "home_loan"

@@ -1015,14 +1015,67 @@ export interface KanbanColumn {
   // The status this stage rolls up to. Several stages on a board may share one —
   // the status is what the client sees, the stage is how the desk works.
   mapped_status: ApplicationStatus | null;
+  /** 'lead' stages hold leads (no status); dragging a lead out of one into an
+   *  application stage converts it into an application and a contact. */
+  card_kind: KanbanCardKind;
   position: number;
   color: string | null;
   // Set when the stage came from a board template (see BOARD_STAGE_TEMPLATES).
   stage_key: string | null;
   team: string | null;
+  /** Band over consecutive stages on the board, e.g. "Application Started". */
+  phase: string | null;
   gates: StageGate[];
   notifications: StageNotificationRule[];
+  /** Cards in the stage — applications, or leads on a lead stage. */
   application_count: number;
+}
+
+export type KanbanCardKind = 'application' | 'lead';
+
+/** Where an application sits on one board (staff-only — clients see status). */
+export interface ApplicationStagePosition {
+  board_id: string;
+  board_name: string;
+  is_default: boolean;
+  stage_id: string;
+  stage_title: string;
+  phase: string | null;
+  team: string | null;
+  /** When it entered the stage, if it was ever moved there. */
+  entered_at: string | null;
+}
+
+export type LeadStatus = 'open' | 'converted' | 'lost';
+
+/** A deal inquiry — on the board before there is an application. */
+export interface Lead {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  company_name: string | null;
+  company_abn: string | null;
+  loan_category: LoanCategory;
+  sub_type: string | null;
+  amount: number | null;
+  source: string | null;
+  notes: string | null;
+  status: LeadStatus;
+  lost_reason: string | null;
+  lost_at: string | null;
+  assigned_broker_id: string | null;
+  assigned_broker_name: string | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
+  converted_application_id: string | null;
+  converted_at: string | null;
+  contact_id: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Board only: when the lead entered the stage it is shown in. */
+  stage_entered_at: string | null;
 }
 
 export interface KanbanBoard {
@@ -1544,6 +1597,8 @@ export interface ContactDetail extends Contact {
   organizations: ContactOrganization[];
   applications: ContactApplication[];
   lending_history: LendingHistoryEntry[];
+  /** The lead inquiries this contact was converted from. */
+  leads: Lead[];
 }
 
 export type DuplicateConfidence = 'high' | 'review';

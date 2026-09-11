@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.constants import DEFAULT_KANBAN_COLUMNS
+from app.constants import DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
 from app.database import get_db
 from app.middleware.auth import require_super_admin
 from app.middleware.rate_limit import auth_limiter
@@ -118,6 +118,20 @@ def create_tenant(
         updated_at=now,
     )
     db.add(board)
+    # The board opens with a lead stage for deal inquiries, then the statuses.
+    db.add(
+        KanbanColumn(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant.id,
+            board_id=board.id,
+            title=DEFAULT_LEAD_COLUMN["title"],
+            mapped_status=None,
+            card_kind="lead",
+            position=0,
+            color=DEFAULT_LEAD_COLUMN["color"],
+            created_at=now,
+        )
+    )
     for col_def in DEFAULT_KANBAN_COLUMNS:
         db.add(
             KanbanColumn(
@@ -126,7 +140,7 @@ def create_tenant(
                 board_id=board.id,
                 title=col_def["title"],
                 mapped_status=col_def.get("mapped_status"),
-                position=col_def["position"],
+                position=col_def["position"] + 1,
                 color=col_def.get("color"),
                 created_at=now,
             )

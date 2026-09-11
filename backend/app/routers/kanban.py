@@ -27,6 +27,7 @@ from app.models.kanban import (
     StageGateKind,
     StageTransition,
 )
+from app.models.lead import Lead, LeadStagePlacement, LeadStatus
 from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User
@@ -50,11 +51,12 @@ from app.schemas.kanban import (
     KanbanColumnUpdate,
     StageGateOut,
 )
-from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, STATUS_LABELS
+from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN, STATUS_LABELS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.application_status import change_application_status
 from app.services.date_filter import apply_date_range_filter
+from app.services.leads import convert_lead, lead_name, lead_to_dict
 from app.services.loan_category import (
     LOAN_CATEGORIES,
     application_loan_category,
@@ -83,6 +85,38 @@ def _column_title(mapped_status: str) -> str:
 def _validate_loan_category(category: str) -> None:
     if category not in LOAN_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Invalid loan_category: {category}")
+
+
+def _validate_stage_kind(card_kind: str, mapped_status: Optional[str]) -> None:
+    """An application stage rolls up to a status; a lead stage has none — a lead
+    only gets a status by becoming an application."""
+    if card_kind == "lead":
+        if mapped_status:
+            raise HTTPException(status_code=400, detail="A lead stage has no status — leads become applications when moved out of it")
+        return
+    if not mapped_status:
+        raise HTTPException(status_code=400, detail="An application stage needs a status")
+    _validate_mapped_status(mapped_status)
+
+
+def _open_leads(db: Session, tenant_id: str, categories: Optional[set[str]] = None):
+    """Leads still waiting on the board. Category is a plain column on a lead, so
+    unlike applications this filters in SQL."""
+    query = db.query(Lead).filter(
+        Lead.tenant_id == tenant_id,
+        Lead.status == LeadStatus.open,
+        Lead.deleted_at.is_(None),
+    )
+    if categories:
+        query = query.filter(Lead.loan_category.in_(categories))
+    return query
+
+
+def _view_lead_categories(board: KanbanBoard, columns: list[KanbanColumn]) -> Optional[set[str]]:
+    """The categories a set of columns shows leads for: its stage category, else
+    the board's own category, else all of them (None)."""
+    category = next((c.loan_category for c in columns if c.loan_category), None) or board.loan_category
+    return {category} if category else None
 
 
 def _evaluate_gates(col: KanbanColumn, responses: list[GateResponse]) -> tuple[list[dict], Optional[str], Optional[list[str]]]:
@@ -159,7 +193,8 @@ def ensure_stage_columns(db: Session, board: KanbanBoard, category: Optional[str
     if not template:
         return
 
-    existing = {c.stage_key for c in board.columns if c.loan_category == category}
+    set_cols = [c for c in board.columns if c.loan_category == category]
+    existing = {c.stage_key for c in set_cols}
     created: list[tuple[KanbanColumn, dict]] = []
     for i, stage in enumerate(template):
         if stage["stage_key"] in existing:
@@ -171,7 +206,9 @@ def ensure_stage_columns(db: Session, board: KanbanBoard, category: Optional[str
             stage_key=stage["stage_key"],
             title=stage["title"],
             mapped_status=stage["mapped_status"],
+            card_kind=stage.get("card_kind", "application"),
             team=stage.get("team"),
+            phase=stage.get("phase"),
             color=stage.get("color"),
             position=i,
         )
@@ -180,6 +217,8 @@ def ensure_stage_columns(db: Session, board: KanbanBoard, category: Optional[str
 
     if not created:
         return
+    if set_cols:
+        _slot_new_stages(set_cols, created, template)
     try:
         db.flush()
         for col, stage in created:
@@ -191,6 +230,26 @@ def ensure_stage_columns(db: Session, board: KanbanBoard, category: Optional[str
         # committed, so drop ours and read the board back.
         db.rollback()
     db.refresh(board)
+
+
+def _slot_new_stages(set_cols: list[KanbanColumn], created: list[tuple[KanbanColumn, dict]], template: list[dict]) -> None:
+    """Position stages a template gained after a board already had its set.
+
+    Their template index would collide with a stage already sitting there (the
+    lead stage is index 0, where Deal Inquiry already is). Keep the desk's own
+    order for the stages it has, put each new one just before the next template
+    stage the board carries, then renumber the set."""
+    template_index = {s["stage_key"]: i for i, s in enumerate(template)}
+    order = sorted(set_cols, key=lambda c: (c.position, c.created_at))
+    for col, stage in sorted(created, key=lambda cs: template_index[cs[1]["stage_key"]]):
+        idx = template_index[stage["stage_key"]]
+        insert_at = next(
+            (j for j, c in enumerate(order) if template_index.get(c.stage_key, -1) > idx),
+            len(order),
+        )
+        order.insert(insert_at, col)
+    for pos, col in enumerate(order):
+        col.position = pos
 
 
 def board_columns(board: KanbanBoard, category: Optional[str]) -> list[KanbanColumn]:
@@ -301,6 +360,20 @@ def _column_application_counts(board: KanbanBoard, columns: list[KanbanColumn], 
             if col_id in counts:
                 counts[col_id] += count
 
+    # Lead stages count open leads: placed ones where they sit, the rest in the
+    # view's first lead stage — the same rule the board renders by.
+    lead_cols = [c for c in columns if c.card_kind == "lead"]
+    if lead_cols:
+        lead_col_ids = {c.id for c in lead_cols}
+        placements = dict(
+            db.query(LeadStagePlacement.lead_id, LeadStagePlacement.column_id)
+            .filter(LeadStagePlacement.board_id == board.id)
+            .all()
+        )
+        for (lead_id,) in _open_leads(db, tenant_id, _view_lead_categories(board, columns)).with_entities(Lead.id):
+            placed = placements.get(lead_id)
+            counts[placed if placed in lead_col_ids else lead_cols[0].id] += 1
+
     return counts
 
 
@@ -336,10 +409,12 @@ def _column_to_dict(col: KanbanColumn, count: int = 0) -> dict:
         "board_id": col.board_id,
         "title": col.title,
         "mapped_status": col.mapped_status,
+        "card_kind": col.card_kind,
         "position": col.position,
         "color": col.color,
         "stage_key": col.stage_key,
         "team": col.team,
+        "phase": col.phase or None,
         "gates": [_gate_to_dict(g) for g in sorted(col.gates, key=lambda g: (g.sort_order, g.created_at))],
         "notifications": [
             _rule_to_dict(r) for r in sorted(col.notification_rules, key=lambda r: (r.sort_order, r.created_at))
@@ -424,13 +499,29 @@ def create_board(
     db.flush()
 
     cols = data.columns or [KanbanColumnCreate(**c) for c in DEFAULT_KANBAN_COLUMNS]
-    for col_data in cols:
-        _validate_mapped_status(col_data.mapped_status)
+    # Every board opens with a lead stage, so a new inquiry has somewhere to go.
+    offset = 0
+    if not any(c.card_kind == "lead" for c in cols):
         db.add(KanbanColumn(
             board_id=board.id,
-            title=(col_data.title or "").strip() or _column_title(col_data.mapped_status),
-            mapped_status=col_data.mapped_status,
-            position=col_data.position,
+            title=DEFAULT_LEAD_COLUMN["title"],
+            mapped_status=None,
+            card_kind="lead",
+            position=0,
+            color=DEFAULT_LEAD_COLUMN["color"],
+            tenant_id=tenant_id,
+        ))
+        offset = 1
+    for col_data in cols:
+        _validate_stage_kind(col_data.card_kind, col_data.mapped_status)
+        db.add(KanbanColumn(
+            board_id=board.id,
+            title=(col_data.title or "").strip() or (
+                _column_title(col_data.mapped_status) if col_data.mapped_status else DEFAULT_LEAD_COLUMN["title"]
+            ),
+            mapped_status=col_data.mapped_status if col_data.card_kind == "application" else None,
+            card_kind=col_data.card_kind,
+            position=col_data.position + offset,
             color=col_data.color,
             tenant_id=tenant_id,
         ))
@@ -515,7 +606,7 @@ def add_column(
     board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    _validate_mapped_status(data.mapped_status)
+    _validate_stage_kind(data.card_kind, data.mapped_status)
     # A stage added while looking at a category belongs to that category's set,
     # not to the board's plain status columns.
     category = data.loan_category or None
@@ -527,17 +618,21 @@ def add_column(
     col = KanbanColumn(
         board_id=board_id,
         loan_category=category,
-        title=(data.title or "").strip() or _column_title(data.mapped_status),
-        mapped_status=data.mapped_status,
+        title=(data.title or "").strip() or (
+            _column_title(data.mapped_status) if data.mapped_status else DEFAULT_LEAD_COLUMN["title"]
+        ),
+        mapped_status=data.mapped_status if data.card_kind == "application" else None,
+        card_kind=data.card_kind,
         position=max_pos + 1,
         color=data.color,
         stage_key=data.stage_key,
         team=data.team,
+        phase=(data.phase or "").strip() or None,
         tenant_id=tenant_id,
     )
     db.add(col)
     db.flush()
-    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": col.title, "mapped_status": data.mapped_status, "board_id": board_id}, tenant_id=tenant_id)
+    log_activity(db, current_user.id, "column_created", "kanban_column", col.id, {"title": col.title, "mapped_status": col.mapped_status, "card_kind": col.card_kind, "board_id": board_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
     return _column_to_dict(col)
@@ -556,20 +651,29 @@ def update_column(
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
     updates = data.model_dump(exclude_unset=True)
-    new_mapped = updates.get("mapped_status") or col.mapped_status
-    _validate_mapped_status(new_mapped)
-    col.mapped_status = new_mapped
+    # A stage's kind is fixed: turning a lead stage into an application stage
+    # would strand the leads in it, and the reverse the applications.
+    if col.card_kind == "lead":
+        _validate_stage_kind("lead", updates.get("mapped_status"))
+    else:
+        new_mapped = updates.get("mapped_status") or col.mapped_status
+        _validate_mapped_status(new_mapped)
+        col.mapped_status = new_mapped
     if "title" in updates:
         title = (updates["title"] or "").strip()
         if not title:
             raise HTTPException(status_code=400, detail="Stage name cannot be empty")
         col.title = title
     elif not col.title:
-        col.title = _column_title(new_mapped)
+        col.title = _column_title(col.mapped_status) if col.mapped_status else DEFAULT_LEAD_COLUMN["title"]
     if "color" in updates:
         col.color = updates["color"]
     if "team" in updates:
         col.team = (updates["team"] or "").strip() or None
+    if "phase" in updates:
+        # "" (not NULL) records a deliberate clear, so the startup backfill
+        # doesn't put a template phase back.
+        col.phase = (updates["phase"] or "").strip()
     log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)
@@ -598,6 +702,17 @@ def delete_column(
     on_screen = _column_application_counts(board, columns, db, tenant_id).get(col.id, 0)
     if on_screen:
         raise HTTPException(status_code=400, detail=f"Move the {on_screen} card(s) out of '{col.title}' before deleting it")
+    # Removing the only lead stage would leave every open lead nowhere to render.
+    if col.card_kind == "lead":
+        if not any(c.card_kind == "lead" and c.id != column_id for c in columns):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{col.title}' is the only lead stage in this view — add another before deleting it",
+            )
+        log_activity(db, current_user.id, "column_deleted", "kanban_column", col.id, {"title": col.title, "board_id": board_id}, tenant_id=tenant_id)
+        db.delete(col)
+        db.commit()
+        return
     # Removing the only stage for a status would strand every application in
     # that status — they would have nowhere to fall back to. Siblings are only
     # those in the same set; the other set's columns are a different view.
@@ -861,6 +976,62 @@ def list_application_notifications(
     ]
 
 
+@router.get("/applications/{app_id}/stages")
+def list_application_stages(
+    app_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Where the application sits on each board it appears on: its stage, the
+    phase band over it and the owning team. Staff-only — clients see the status,
+    never internal stages. Resolved exactly as the board renders it: the
+    placement in the application's category view, else the first stage for its
+    status."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id
+    ).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    category = application_loan_category(application)
+    placements = {
+        p.board_id: p
+        for p in db.query(ApplicationStagePlacement).filter(ApplicationStagePlacement.application_id == app_id)
+    }
+    boards = (
+        db.query(KanbanBoard)
+        .filter(KanbanBoard.tenant_id == tenant_id)
+        .order_by(KanbanBoard.is_default.desc(), KanbanBoard.created_at)
+        .all()
+    )
+    out = []
+    for board in boards:
+        if board.loan_category and board.loan_category != category:
+            continue
+        columns = board_columns(board, _active_stage_category(board, {category} if category else set()))
+        app_cols = {c.id: c for c in columns if c.card_kind != "lead"}
+        placement = placements.get(board.id)
+        col = app_cols.get(placement.column_id) if placement else None
+        entered_at = placement.entered_at if col else None
+        if not col:
+            col = app_cols.get(_fallback_column_ids(columns).get(application.status.value))
+        if not col:
+            continue
+        out.append({
+            "board_id": board.id,
+            "board_name": board.name,
+            "is_default": board.is_default,
+            "stage_id": col.id,
+            "stage_title": col.title,
+            "phase": col.phase or None,
+            "team": col.team,
+            "entered_at": entered_at.isoformat() if entered_at else None,
+        })
+    return out
+
+
 @router.get("/applications/{app_id}/transitions", response_model=list[StageTransitionOut])
 def list_stage_transitions(
     app_id: str,
@@ -1032,6 +1203,9 @@ def get_board_applications(
     # once. A placement pointing at a stage since removed falls back too.
     columns = board_columns(board, stage_category)
     result: dict[str, list] = {col.id: [] for col in columns}
+    # Only application stages hold application cards; a placement naming a lead
+    # stage falls back like one pointing at a deleted stage.
+    app_col_ids = {col.id for col in columns if col.card_kind != "lead"}
     fallback = _fallback_column_ids(columns)
 
     placements: dict[str, tuple[str, datetime]] = {}
@@ -1053,7 +1227,7 @@ def get_board_applications(
     referrer_map = referrer_info_map(db, (app.user_id for app in apps))
     for app in apps:
         placed_col_id, entered_at = placements.get(app.id, (None, None))
-        col_id = placed_col_id if placed_col_id in result else fallback.get(app.status.value)
+        col_id = placed_col_id if placed_col_id in app_col_ids else fallback.get(app.status.value)
         if col_id:
             card = app_with_user(app, db, referrer_map=referrer_map)
             card["stage_entered_at"] = entered_at.isoformat() if entered_at and placed_col_id == col_id else None
@@ -1064,6 +1238,252 @@ def get_board_applications(
         result[col_id] = result[col_id][:per_column]
 
     return result
+
+
+# ── Leads grouped by lead stage ─────────────────────────────
+
+@router.get("/boards/{board_id}/leads")
+def get_board_leads(
+    board_id: str,
+    search: Optional[str] = None,
+    category: Optional[str] = Query(None, description="Loan category slug(s), comma-separated"),
+    sub_type: Optional[str] = None,
+    broker_id: Optional[str] = None,
+    date_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
+    updated_range: Optional[Literal["this_month", "last_month", "this_quarter", "last_quarter", "this_year"]] = None,
+    min_days_in_stage: Optional[int] = Query(None, ge=1, le=365),
+    per_column: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Open leads per lead stage in the view — the companion of
+    /applications, taking the same filters so both halves of the board agree."""
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    try:
+        requested = set(parse_categories(category))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    categories = requested or set(LOAN_CATEGORIES)
+    if board.loan_category:
+        categories &= {board.loan_category}
+    stage_category = _active_stage_category(board, requested)
+    ensure_stage_columns(db, board, stage_category, tenant_id)
+
+    lead_cols = [c for c in board_columns(board, stage_category) if c.card_kind == "lead"]
+    result: dict[str, list] = {c.id: [] for c in lead_cols}
+    if not lead_cols or not categories:
+        return result
+
+    query = _open_leads(db, tenant_id, categories).options(
+        joinedload(Lead.assigned_broker), joinedload(Lead.created_by)
+    )
+    if sub_type:
+        query = query.filter(Lead.sub_type == sub_type)
+    if broker_id:
+        query = query.filter(Lead.assigned_broker_id == broker_id)
+    if date_range:
+        query = apply_date_range_filter(query, Lead.created_at, date_range)
+    if updated_range:
+        query = apply_date_range_filter(query, Lead.updated_at, updated_range)
+    leads = query.order_by(Lead.created_at.desc()).all()
+
+    # Names and contact details are encrypted, so search runs over the
+    # decrypted values — lead volumes are small enough for that.
+    if search:
+        needle = search.strip().lower()
+        leads = [
+            lead for lead in leads
+            if any(needle in (v or "").lower() for v in (
+                lead_name(lead), lead.email, lead.phone, lead.company_name,
+            ))
+        ]
+
+    placements: dict[str, tuple[str, datetime]] = {}
+    if leads:
+        for lead_id, col_id, entered_at in (
+            db.query(LeadStagePlacement.lead_id, LeadStagePlacement.column_id, LeadStagePlacement.entered_at)
+            .filter(LeadStagePlacement.board_id == board_id, LeadStagePlacement.lead_id.in_([lead.id for lead in leads]))
+            .all()
+        ):
+            placements[lead_id] = (col_id, entered_at)
+
+    cutoff = (
+        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=min_days_in_stage)
+        if min_days_in_stage else None
+    )
+    first_lead_col = lead_cols[0].id
+    for lead in leads:
+        placed_col_id, entered_at = placements.get(lead.id, (None, None))
+        col_id = placed_col_id if placed_col_id in result else first_lead_col
+        in_stage_since = entered_at if placed_col_id == col_id and entered_at else lead.created_at
+        if cutoff and in_stage_since > cutoff:
+            continue
+        result[col_id].append(lead_to_dict(lead, stage_entered_at=in_stage_since))
+
+    for col_id in result:
+        result[col_id] = result[col_id][:per_column]
+    return result
+
+
+@router.post("/boards/{board_id}/columns/{column_id}/move-lead/{lead_id}")
+def move_lead(
+    board_id: str,
+    column_id: str,
+    lead_id: str,
+    payload: Optional[StageMoveRequest] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Move a lead. Into another lead stage it only changes place; into an
+    application stage it CONVERTS — a contact and an application are created
+    and the application enters that stage, with the stage's gates and messages
+    applied exactly as for an application moved there."""
+    board = db.query(KanbanBoard).filter(KanbanBoard.id == board_id, KanbanBoard.tenant_id == tenant_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
+    if not col:
+        raise HTTPException(status_code=404, detail="Column not found")
+    lead = db.query(Lead).filter(
+        Lead.id == lead_id, Lead.tenant_id == tenant_id, Lead.deleted_at.is_(None)
+    ).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.status != LeadStatus.open:
+        raise HTTPException(status_code=400, detail="Only an open lead can be moved")
+
+    placement = db.query(LeadStagePlacement).filter(
+        LeadStagePlacement.lead_id == lead_id, LeadStagePlacement.board_id == board_id
+    ).first()
+    view_lead_cols = [c for c in board_columns(board, col.loan_category) if c.card_kind == "lead"]
+    old_col_id = placement.column_id if placement else (view_lead_cols[0].id if view_lead_cols else None)
+    from_col = db.query(KanbanColumn).filter(KanbanColumn.id == old_col_id).first() if old_col_id else None
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if col.card_kind == "lead":
+        if old_col_id == column_id:
+            return {"status": "ok", "column_id": column_id, "column_title": col.title}
+        if placement:
+            placement.column_id = column_id
+            placement.entered_at = now
+            placement.moved_by_id = current_user.id
+        else:
+            db.add(LeadStagePlacement(
+                lead_id=lead_id, board_id=board_id, column_id=column_id,
+                tenant_id=tenant_id, entered_at=now, moved_by_id=current_user.id,
+            ))
+        log_activity(db, current_user.id, "kanban_moved", "lead", lead_id, {
+            "to_column": col.title, "from_column": from_col.title if from_col else None,
+        }, tenant_id=tenant_id)
+        db.commit()
+        return {"status": "ok", "column_id": column_id, "column_title": col.title}
+
+    # ── Conversion ──
+    if not col.mapped_status:
+        raise HTTPException(status_code=400, detail="This column is not mapped to an application status")
+    new_status = ApplicationStatus(col.mapped_status)
+
+    # Everything that can refuse the move is checked before anything is written.
+    gate_record, gate_lender, gate_conditions = _evaluate_gates(col, payload.gate_responses if payload else [])
+    lender_name = gate_lender or (payload.lender_name if payload else None)
+    conditions = gate_conditions or (payload.conditions if payload else None)
+    if new_status == ApplicationStatus.approval and not (
+        (lender_name or "").strip() and any(c.strip() for c in (conditions or []))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Lender name and at least one approval condition are required to move to Approval.",
+        )
+
+    application, contact = convert_lead(db, lead, current_user, tenant_id)
+    db.add(ApplicationStagePlacement(
+        application_id=application.id,
+        board_id=board_id,
+        column_id=column_id,
+        tenant_id=tenant_id,
+        entered_at=now,
+        moved_by_id=current_user.id,
+    ))
+    application.kanban_column_id = column_id
+    # A converted lead leaves every board; the application card replaces it.
+    db.query(LeadStagePlacement).filter(LeadStagePlacement.lead_id == lead_id).delete(synchronize_session=False)
+
+    # The compliance trail starts at the inquiry: the first transition names the
+    # lead stage the deal came from.
+    transition = StageTransition(
+        application_id=application.id,
+        tenant_id=tenant_id,
+        board_id=board_id,
+        from_column_id=old_col_id,
+        to_column_id=column_id,
+        from_stage_title=from_col.title if from_col else None,
+        to_stage_title=col.title,
+        from_status=None,
+        to_status=new_status.value,
+        actor_id=current_user.id,
+        actor_name=current_user.full_name,
+        gate_responses=json.dumps(gate_record) if gate_record else None,
+        created_at=now,
+    )
+    db.add(transition)
+    db.flush()
+
+    notified = record_stage_notifications(
+        db,
+        application,
+        col,
+        decisions={d.rule_id: d.send for d in (payload.notifications if payload else [])},
+        transition_id=transition.id,
+        actor_id=current_user.id,
+        tenant_id=tenant_id,
+    )
+
+    log_activity(db, current_user.id, "created", "application", application.id, {
+        "loan_type": application.loan_type.value, "amount": str(application.amount), "from_lead_id": lead_id,
+    }, tenant_id=tenant_id)
+    details: dict = {
+        "to_column": col.title,
+        "from_column": from_col.title if from_col else None,
+        "converted_from_lead": lead_name(lead),
+    }
+    attested = [e["label"] for e in gate_record if e.get("confirmed")]
+    if attested:
+        details["attested"] = attested
+    told = sorted({f"{r.audience.value} ({r.channel.value})" for r in notified if r.status.value in ("queued", "suppressed")})
+    withheld = sorted({f"{r.audience.value} ({r.channel.value})" for r in notified if r.status.value == "skipped"})
+    if told:
+        details["notified"] = told
+    if withheld:
+        details["not_notified"] = withheld
+    log_activity(db, current_user.id, "kanban_moved", "application", application.id, details, tenant_id=tenant_id)
+    log_activity(db, current_user.id, "converted", "lead", lead_id, {
+        "application_id": application.id, "contact_id": contact.id, "to_column": col.title,
+    }, tenant_id=tenant_id)
+
+    # A lead may go straight to any application stage, so the transition table
+    # does not apply; the approval requirements checked above still do.
+    if new_status != ApplicationStatus.draft:
+        change_application_status(
+            db, application, new_status, current_user.id, tenant_id,
+            lender_name=lender_name,
+            conditions=conditions,
+            enforce_transitions=False,
+        )
+    else:
+        db.commit()
+
+    return {
+        "status": "ok",
+        "column_id": column_id,
+        "column_title": col.title,
+        "application_id": application.id,
+        "contact_id": contact.id,
+        "application_status": new_status.value,
+    }
 
 
 # ── Move card (drag-and-drop) ───────────────────────────────
@@ -1084,6 +1504,11 @@ def move_card(
     col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
+    if col.card_kind == "lead":
+        raise HTTPException(
+            status_code=400,
+            detail="An application can't go back to being a lead — move it to Not Proceeding instead",
+        )
     if not col.mapped_status:
         raise HTTPException(status_code=400, detail="This column is not mapped to an application status")
     new_status = ApplicationStatus(col.mapped_status)

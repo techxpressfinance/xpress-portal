@@ -16,6 +16,7 @@ import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
+import ApplicationStagePill from '../../components/ApplicationStagePill';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
@@ -1566,6 +1567,9 @@ export default function ReviewApplication() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge value={application.status} />
+                      {/* The internal stage (and its phase) behind the status —
+                          keyed on status so a status change re-reads it. */}
+                      <ApplicationStagePill key={`${application.id}:${application.status}`} applicationId={application.id} />
                       {application.is_locked && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-500/20">
                           <LockClosedIcon className="h-3 w-3" strokeWidth={2.5} />

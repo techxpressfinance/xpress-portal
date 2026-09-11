@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
 
@@ -39,7 +38,9 @@ from app.services.dedupe import (
     merge_contacts,
 )
 from app.services.activity_log import log_activity
-from app.services.loan_category import CONSUMER_SUB_TYPES
+from app.models.lead import Lead
+from app.services.leads import lead_to_dict
+from app.services.loan_category import sub_type_extra_data
 from app.services.scoring import score, tokenize
 from app.services.search_cache import get_searchable_contacts
 from app.services.serialization import app_with_user
@@ -276,17 +277,14 @@ def _resolve_pipeline_column(
         column = next((c for c in board.columns if c.id == column_id), None)
         if not column:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found on that board")
+        if column.card_kind == "lead":
+            raise HTTPException(status_code=400, detail="Pick an application stage — lead stages hold leads, not applications")
         return column
-    return board.columns[0] if board.columns else None  # relationship is ordered by position
+    # The first application stage of the plain status set (the relationship is
+    # ordered by position; the lead stage now sits at the far left).
+    return next((c for c in board.columns if c.card_kind != "lead" and c.loan_category is None), None)
 
 
-def _sub_type_extra_data(sub_type: Optional[str], label: Optional[str]) -> Optional[str]:
-    """lend_extra_data recording the form sub-type, so the card resolves to a
-    loan category. Mirrors buildLoanTypeDetails in frontend AddLead.tsx."""
-    if not sub_type:
-        return None
-    key = "consumer_loan_type" if sub_type in CONSUMER_SUB_TYPES else "commercial_loan_type"
-    return json.dumps({"loan_type_details": {key: {"type": sub_type, "label": label}}})
 
 
 @router.post("/{contact_id}/pipeline", status_code=status.HTTP_201_CREATED)
@@ -316,7 +314,7 @@ def add_contact_to_pipeline(
         status=ApplicationStatus.draft,
         notes=data.notes,
         kanban_column_id=column.id if column else None,
-        lend_extra_data=_sub_type_extra_data(data.sub_type, data.sub_type_label),
+        lend_extra_data=sub_type_extra_data(data.sub_type, data.sub_type_label),
         applicant_first_name=contact.first_name,
         applicant_last_name=contact.last_name,
         applicant_middle_name=contact.middle_name,
@@ -496,11 +494,21 @@ def get_contact(
 
     lending_history = _list_lending_history(contact_id, db)
 
+    # The inquiries this contact came from — a contact is only created when a
+    # lead converts, so this is where the original ask is kept.
+    leads = (
+        db.query(Lead)
+        .filter(Lead.contact_id == contact_id, Lead.tenant_id == tenant_id, Lead.deleted_at.is_(None))
+        .order_by(Lead.created_at.desc())
+        .all()
+    )
+
     return {
         **_contact_with_count(contact, db),
         "organizations": organizations,
         "applications": applications,
         "lending_history": lending_history,
+        "leads": [lead_to_dict(lead) for lead in leads],
     }
 
 

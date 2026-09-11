@@ -63,8 +63,18 @@ class KanbanColumn(Base):
     # (one column per application status), shown when no templated category is in
     # view. A board holds one set per category and renders whichever is active.
     loan_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    # What the stage holds: "application" cards (rolling up to mapped_status) or
+    # "lead" cards — deal inquiries with no application yet, and so no status.
+    # server_default because main.py seeds columns with raw INSERTs.
+    card_kind: Mapped[str] = mapped_column(
+        String(12), default="application", server_default="application", nullable=False
+    )
     # Team that owns the stage, e.g. "Melbourne" / "Offshore" — display only.
     team: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    # Band over consecutive stages on the board ("Application Started") — display
+    # only. NULL means never set (the startup backfill may fill it from the
+    # template); "" means an admin cleared it, which the backfill leaves alone.
+    phase: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
