@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
-from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus
+from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus, QuoteSheetType
 from app.models.user import User
 from app.schemas.quote_sheet import (
     QuoteOptionCreate,
@@ -83,6 +83,7 @@ def create_standalone_quote_sheet(
         application_id=None,
         version=_next_version(db),
         title=data.title,
+        sheet_type=QuoteSheetType(data.sheet_type),
         broker_notes=data.broker_notes,
         input_parameters=data.input_parameters,
         recipient_name=data.recipient_name,
@@ -301,6 +302,13 @@ def send_standalone_quote_email(
     tenant_id: str = Depends(get_tenant_id),
 ):
     sheet = _get_sheet(db, sheet_id)
+
+    # Lender pricing is internal — it never goes to a client.
+    if sheet.sheet_type == QuoteSheetType.lender_pricing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lender pricing is internal and can't be emailed",
+        )
 
     if not sheet.options:
         raise HTTPException(

@@ -72,9 +72,12 @@ def list_quote_sheets(
     check_application_access(app, current_user, db=db)
     query = db.query(QuoteSheet).filter(QuoteSheet.application_id == app_id)
 
-    # Clients only see sent sheets
+    # Clients only see sent client quotes — lender pricing is internal
     if current_user.role.value == "client":
-        query = query.filter(QuoteSheet.status == QuoteSheetStatus.sent)
+        query = query.filter(
+            QuoteSheet.status == QuoteSheetStatus.sent,
+            QuoteSheet.sheet_type == QuoteSheetType.client_quote,
+        )
 
     sheets = query.order_by(QuoteSheet.version.desc()).all()
     result = [_serialize(s) for s in sheets]
@@ -140,7 +143,9 @@ def get_quote_sheet(
     check_application_access(app, current_user, db=db)
     sheet = _get_sheet(db, app_id, sheet_id)
 
-    if current_user.role.value == "client" and sheet.status != QuoteSheetStatus.sent:
+    if current_user.role.value == "client" and (
+        sheet.status != QuoteSheetStatus.sent or sheet.sheet_type != QuoteSheetType.client_quote
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote sheet not found")
 
     result = _serialize(sheet)

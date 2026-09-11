@@ -1263,6 +1263,42 @@ export interface QuoteSheet {
   updated_at: string;
 }
 
+// Lender Pricing — the deal as the lender approved it. Stored as a QuoteSheet
+// with sheet_type 'lender_pricing'; these inputs live in its input_parameters
+// JSON. Staff-only: clients never receive lender pricing.
+export const DIRECT_DEBIT_CYCLES = ['monthly', 'fortnightly', 'weekly'] as const;
+export type DirectDebitCycle = (typeof DIRECT_DEBIT_CYCLES)[number];
+
+export interface LenderPricingInputs {
+  facility_type: FacilityType;
+  payment_type: PaymentType;
+  asset_description: string;
+  asset_price: number;
+  deposit_percent: number;
+  deposit_amount: number | null;       // Dollar override — if set, takes priority over %
+  trade_in_amount: number;             // comes off the amount borrowed
+  payout_amount: number;               // payout owing on the trade-in — added to the amount borrowed
+  establishment_fee: number;
+  ppsr_fee: number;
+  origination_fee: number;
+  monthly_account_fee: number;
+  fees_financed: boolean;
+  non_taxable_charges: number;         // Lease only
+  luxury_car_tax: number;              // Lease only
+  interest_rate: number;
+  brokerage_amount: number;            // entered in dollars only (no %)
+  gst_on_brokerage: boolean;
+  gst_percent: number;
+  term_months: number | null;          // the one term the lender approved, typed in months
+  balloon_on_total_price: boolean;
+  balloon_percent: number;
+  balloon_amount: number | null;       // Dollar override — if set, takes priority over %
+  direct_debit_cycle: DirectDebitCycle; // repayment cycle as approved by the lender
+  // Asked when a negative-equity / over-110% alert fires
+  lender_accepts_shortfall: 'yes' | 'no' | null;
+  lender_acceptance_notes: string;
+}
+
 // Contacts & Organizations
 export interface ContactOrganization {
   id: string;

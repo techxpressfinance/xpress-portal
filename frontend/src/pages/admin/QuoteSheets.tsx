@@ -2,6 +2,10 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 import { Button, Card, EmptyState, ListSkeleton } from '../../components/ui';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
+import LenderPricingEditor from '../../components/LenderPricingEditor';
+import { LenderPricingRow } from '../../components/LenderPricingList';
+import LenderPricingView from '../../components/LenderPricingView';
+import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
 import { QUOTE_SHEET_STATUS_BADGE } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { formatDate, getErrorMessage } from '../../lib/utils';
@@ -20,6 +24,12 @@ export default function QuoteSheets() {
   const [viewingSheet, setViewingSheet] = useState<QuoteSheet | null>(null);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<{ sheet: QuoteSheet; clientFacing: boolean } | null>(null);
   const viewKeyRef = useRef(0);
+  // Lender Pricing section — the deal as the lender approved it (internal only)
+  const [lenderPricingMode, setLenderPricingMode] = useState<
+    { kind: 'new' } | { kind: 'edit' | 'view'; sheet: QuoteSheet } | null
+  >(null);
+  const lenderPdf = useLenderPricingPdf();
+  const listMode = !showForm && !editingSheet && !viewingSheet && !lenderPricingMode;
 
   // Send modal state
   const [sendModalSheet, setSendModalSheet] = useState<QuoteSheet | null>(null);
@@ -83,6 +93,16 @@ export default function QuoteSheets() {
     }
   };
 
+  const deleteLenderPricing = async (sheet: QuoteSheet) => {
+    try {
+      await api.delete(`/quote-sheets/${sheet.id}`);
+      setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
+      toast('Lender pricing deleted', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to delete'), 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -104,15 +124,71 @@ export default function QuoteSheets() {
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Quote Sheets</h1>
           <p className="text-sm text-muted-foreground mt-1">Create and manage standalone finance quotes</p>
         </div>
-        {!showForm && !editingSheet && !viewingSheet && (
-          <Button onClick={() => { setShowForm(true); setViewingSheet(null); setEditingSheet(null); }}>
-            <span className="flex items-center gap-1.5">
-              <PlusIcon className="h-4 w-4" strokeWidth={2} />
-              New Quote Sheet
-            </span>
-          </Button>
+        {listMode && (
+          <div className="flex items-center gap-2">
+            <Button onClick={() => { setShowForm(true); setViewingSheet(null); setEditingSheet(null); }}>
+              <span className="flex items-center gap-1.5">
+                <PlusIcon className="h-4 w-4" strokeWidth={2} />
+                New Quote Sheet
+              </span>
+            </Button>
+            <Button variant="secondary" onClick={() => setLenderPricingMode({ kind: 'new' })}>
+              <span className="flex items-center gap-1.5">
+                <PlusIcon className="h-4 w-4" strokeWidth={2} />
+                New Lender Pricing
+              </span>
+            </Button>
+          </div>
         )}
       </div>
+
+      {/* Lender Pricing — view / editor */}
+      {lenderPricingMode?.kind === 'view' ? (
+        <Card key={`lender-view-${lenderPricingMode.sheet.id}`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setLenderPricingMode(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeftIcon className="h-5 w-5" strokeWidth={2} />
+              </button>
+              <h3 className="text-[15px] font-semibold">
+                {lenderPricingMode.sheet.title || `Lender Pricing v${lenderPricingMode.sheet.version}`}
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={lenderPdf.pdfSheetId === lenderPricingMode.sheet.id}
+                onClick={() => lenderPdf.downloadPdf(lenderPricingMode.sheet)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                  PDF
+                </span>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setLenderPricingMode({ kind: 'edit', sheet: lenderPricingMode.sheet })}>
+                Edit
+              </Button>
+            </div>
+          </div>
+          <LenderPricingView sheet={lenderPricingMode.sheet} />
+        </Card>
+      ) : lenderPricingMode ? (
+        <LenderPricingEditor
+          key={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet.id : 'new'}
+          sheet={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet : undefined}
+          onSave={(sheet) => {
+            setQuoteSheets(prev => prev.some(s => s.id === sheet.id)
+              ? prev.map(s => s.id === sheet.id ? sheet : s)
+              : [sheet, ...prev]);
+            setLenderPricingMode({ kind: 'view', sheet });
+          }}
+          onCancel={() => setLenderPricingMode(null)}
+        />
+      ) : null}
 
       {/* Editor Mode */}
       {(showForm || editingSheet) && (
@@ -180,7 +256,7 @@ export default function QuoteSheets() {
       )}
 
       {/* List Mode */}
-      {!showForm && !editingSheet && !viewingSheet && (
+      {listMode && (
         <Card>
           {quoteSheets.length === 0 ? (
             <EmptyState
@@ -189,7 +265,18 @@ export default function QuoteSheets() {
             />
           ) : (
             <div className="space-y-3">
-              {quoteSheets.map(sheet => (
+              {quoteSheets.map(sheet => sheet.sheet_type === 'lender_pricing' ? (
+                <LenderPricingRow
+                  key={sheet.id}
+                  sheet={sheet}
+                  showBadge
+                  pdfLoading={lenderPdf.pdfSheetId === sheet.id}
+                  onView={() => setLenderPricingMode({ kind: 'view', sheet })}
+                  onEdit={() => setLenderPricingMode({ kind: 'edit', sheet })}
+                  onPdf={() => lenderPdf.downloadPdf(sheet)}
+                  onDelete={() => deleteLenderPricing(sheet)}
+                />
+              ) : (
                 <div
                   key={sheet.id}
                   className="rounded-xl border border-border/60 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors"
@@ -311,6 +398,8 @@ export default function QuoteSheets() {
           )}
         </Card>
       )}
+
+      {lenderPdf.pdfNode}
 
       {/* Off-screen PDF render */}
       {pdfRenderSheet && (

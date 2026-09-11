@@ -9,6 +9,10 @@ import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
+import LenderPricingEditor from '../../components/LenderPricingEditor';
+import LenderPricingList from '../../components/LenderPricingList';
+import LenderPricingView from '../../components/LenderPricingView';
+import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
@@ -26,7 +30,7 @@ import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, QuoteSheetType, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
@@ -107,7 +111,10 @@ export default function ReviewApplication() {
   // Quote sheets state
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
-  const [newSheetType, setNewSheetType] = useState<QuoteSheetType>('client_quote');
+  // Lender Pricing section — the deal as the lender approved it (internal only)
+  const [lenderPricingMode, setLenderPricingMode] = useState<
+    { kind: 'new' } | { kind: 'edit' | 'view'; sheet: QuoteSheet } | null
+  >(null);
   const [editingQuoteSheet, setEditingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [viewingQuoteSheet, setViewingQuoteSheet] = useState<QuoteSheet | null>(null);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<{ sheet: QuoteSheet; clientFacing: boolean } | null>(null);
@@ -116,6 +123,14 @@ export default function ReviewApplication() {
   const [sendModalSheet, setSendModalSheet] = useState<QuoteSheet | null>(null);
   const [sendModalTerms, setSendModalTerms] = useState<number[]>([]);
   const [sendingQuote, setSendingQuote] = useState(false);
+  const clientQuoteSheets = quoteSheets.filter(s => s.sheet_type !== 'lender_pricing');
+  const lenderPricingSheets = quoteSheets.filter(s => s.sheet_type === 'lender_pricing');
+  const lenderPdf = useLenderPricingPdf();
+  // Called on click, by which point client/application have loaded.
+  const downloadLenderPdf = (sheet: QuoteSheet) => lenderPdf.downloadPdf(sheet, {
+    clientName: client?.full_name,
+    applicationRef: application?.id ? application.id.split('-')[0].toUpperCase() : undefined,
+  });
 
   const handleDownloadPdf = useCallback(async (sheet: QuoteSheet, clientFacing = false) => {
     setPdfRenderSheet({ sheet, clientFacing });
@@ -3589,11 +3604,56 @@ export default function ReviewApplication() {
             {activeTab === 'quotes' && (
               <>
                 {/* Quote Form / Editor */}
-                {(showQuoteForm || editingQuoteSheet) ? (
+                {lenderPricingMode?.kind === 'view' ? (
+                  <Card key={`lender-view-${lenderPricingMode.sheet.id}`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setLenderPricingMode(null)}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <ArrowLeftIcon className="h-5 w-5" strokeWidth={2} />
+                        </button>
+                        <h3 className="text-[15px] font-semibold">
+                          {lenderPricingMode.sheet.title || `Lender Pricing v${lenderPricingMode.sheet.version}`}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          loading={lenderPdf.pdfSheetId === lenderPricingMode.sheet.id}
+                          onClick={() => downloadLenderPdf(lenderPricingMode.sheet)}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                            PDF
+                          </span>
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => setLenderPricingMode({ kind: 'edit', sheet: lenderPricingMode.sheet })}>
+                          Edit
+                        </Button>
+                      </div>
+                    </div>
+                    <LenderPricingView sheet={lenderPricingMode.sheet} />
+                  </Card>
+                ) : lenderPricingMode ? (
+                  <LenderPricingEditor
+                    key={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet.id : 'new'}
+                    applicationId={id!}
+                    sheet={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet : undefined}
+                    onSave={(sheet) => {
+                      setQuoteSheets(prev => prev.some(s => s.id === sheet.id)
+                        ? prev.map(s => s.id === sheet.id ? sheet : s)
+                        : [...prev, sheet]);
+                      setLenderPricingMode({ kind: 'view', sheet });
+                    }}
+                    onCancel={() => setLenderPricingMode(null)}
+                  />
+                ) : (showQuoteForm || editingQuoteSheet) ? (
                   <QuoteSheetEditor
                     applicationId={id!}
                     quoteSheet={editingQuoteSheet || undefined}
-                    sheetType={newSheetType}
                     onSave={(sheet) => {
                       setQuoteSheets(prev => {
                         const idx = prev.findIndex(s => s.id === sheet.id);
@@ -3650,23 +3710,16 @@ export default function ReviewApplication() {
                     <div className="flex items-center justify-between mb-5">
                       <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => { setNewSheetType('client_quote'); setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
+                        <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
                           <span className="flex items-center gap-1.5">
                             <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
                             Create Quote Sheet
                           </span>
                         </Button>
-                        {/* Same structure priced from the lender's side, locked in on invoice. */}
-                        <Button size="sm" variant="secondary" onClick={() => { setNewSheetType('lender_pricing'); setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
-                          <span className="flex items-center gap-1.5">
-                            <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                            Lender Pricing
-                          </span>
-                        </Button>
                       </div>
                     </div>
 
-                    {quoteSheets.length === 0 ? (
+                    {clientQuoteSheets.length === 0 ? (
                       <div className="rounded-xl bg-secondary/50 p-8 text-center">
                         <ClipboardDocumentListIcon className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <p className="text-[14px] font-medium text-muted-foreground">No quote sheets yet</p>
@@ -3674,7 +3727,7 @@ export default function ReviewApplication() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {[...quoteSheets].sort((a, b) => b.version - a.version).map(sheet => (
+                        {[...clientQuoteSheets].sort((a, b) => b.version - a.version).map(sheet => (
                           <div
                             key={sheet.id}
                             className="rounded-xl border border-border/60 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors"
@@ -3780,9 +3833,29 @@ export default function ReviewApplication() {
                       </div>
                     )}
                   </Card>
+
+                  <LenderPricingList
+                    sheets={lenderPricingSheets}
+                    onCreate={() => { setLenderPricingMode({ kind: 'new' }); setShowQuoteForm(false); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}
+                    onView={sheet => setLenderPricingMode({ kind: 'view', sheet })}
+                    onEdit={sheet => setLenderPricingMode({ kind: 'edit', sheet })}
+                    pdfSheetId={lenderPdf.pdfSheetId}
+                    onPdf={downloadLenderPdf}
+                    onDelete={async sheet => {
+                      try {
+                        await api.delete(`/applications/${id}/quote-sheets/${sheet.id}`);
+                        setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
+                        toast('Lender pricing deleted', 'success');
+                      } catch (err) {
+                        toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                      }
+                    }}
+                  />
                   <ApplicationCalculators applicationId={id!} />
                   </>
                 )}
+
+                {lenderPdf.pdfNode}
 
                 {/* On-demand off-screen render for PDF capture */}
                 {pdfRenderSheet && (
