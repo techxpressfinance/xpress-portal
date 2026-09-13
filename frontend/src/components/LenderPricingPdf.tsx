@@ -52,9 +52,14 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
   const alerts = lenderPricingAlerts(inputs);
   const cycle = DIRECT_DEBIT_CYCLE_LABELS[inputs.direct_debit_cycle];
   const options = [...sheet.options].sort((a, b) => a.sort_order - b.sort_order);
-  const answer = inputs.lender_accepts_shortfall === 'yes'
-    ? 'Yes'
-    : inputs.lender_accepts_shortfall === 'no' ? 'No' : 'Not answered';
+  const answer = inputs.shortfall_bypassed
+    ? 'No — bypassed temporarily'
+    : inputs.lender_accepts_shortfall === 'yes'
+      ? 'Yes'
+      : inputs.lender_accepts_shortfall === 'no' ? 'No' : 'Not answered';
+  const decisionNotes = inputs.shortfall_bypassed
+    ? inputs.shortfall_bypass_notes.trim()
+    : inputs.lender_accepts_shortfall === 'yes' ? inputs.lender_acceptance_notes.trim() : '';
 
   const summary: [string, string][] = [
     ['Asset', inputs.asset_description || '—'],
@@ -99,6 +104,18 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
       />
 
       <div style={{ padding: `0 ${PRINT_INSET}px` }}>
+        <div
+          className="break-inside-avoid"
+          style={{ marginTop: 14, border: `1px solid ${LINE}`, borderLeft: `3px solid ${NAVY}`, borderRadius: 4, padding: '8px 12px' }}
+        >
+          <p style={{ margin: 0, fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: MUTED }}>
+            Lender
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 700, color: NAVY }}>
+            {inputs.lender_name.trim() || '—'}
+          </p>
+        </div>
+
         <div className="break-inside-avoid">
           <SectionTitle>Loan summary</SectionTitle>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -135,8 +152,8 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
             ))}
             <div style={{ borderTop: '1px solid #f5c2c2', marginTop: 6, paddingTop: 6, fontSize: 10.5 }}>
               <strong>Lender OK to accept the shortfall and negative equity:</strong> {answer}
-              {inputs.lender_accepts_shortfall === 'yes' && inputs.lender_acceptance_notes.trim() && (
-                <p style={{ margin: '4px 0 0', color: MUTED, whiteSpace: 'pre-wrap' }}>{inputs.lender_acceptance_notes}</p>
+              {decisionNotes && (
+                <p style={{ margin: '4px 0 0', color: MUTED, whiteSpace: 'pre-wrap' }}>{decisionNotes}</p>
               )}
             </div>
           </div>

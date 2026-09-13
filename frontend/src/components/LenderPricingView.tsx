@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { QuoteSheet } from '../types';
 import {
   DIRECT_DEBIT_CYCLE_LABELS,
@@ -18,9 +19,14 @@ export default function LenderPricingView({ sheet }: { sheet: QuoteSheet }) {
   const alerts = lenderPricingAlerts(inputs);
   const cycle = DIRECT_DEBIT_CYCLE_LABELS[inputs.direct_debit_cycle];
   const options = [...sheet.options].sort((a, b) => a.sort_order - b.sort_order);
-  const answer = inputs.lender_accepts_shortfall === 'yes'
-    ? 'Yes'
-    : inputs.lender_accepts_shortfall === 'no' ? 'No' : 'Not answered';
+  const answer = inputs.shortfall_bypassed
+    ? 'No — bypassed temporarily'
+    : inputs.lender_accepts_shortfall === 'yes'
+      ? 'Yes'
+      : inputs.lender_accepts_shortfall === 'no' ? 'No' : 'Not answered';
+  const decisionNotes = inputs.shortfall_bypassed
+    ? inputs.shortfall_bypass_notes.trim()
+    : inputs.lender_accepts_shortfall === 'yes' ? inputs.lender_acceptance_notes.trim() : '';
 
   const summary: [string, string][] = [
     ['Asset', inputs.asset_description || '—'],
@@ -41,6 +47,19 @@ export default function LenderPricingView({ sheet }: { sheet: QuoteSheet }) {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-3">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Lender</p>
+        <p className="text-[18px] font-bold text-foreground mt-0.5">
+          {inputs.lender_id ? (
+            <Link to={`/admin/lenders/${inputs.lender_id}`} className="hover:underline">
+              {inputs.lender_name.trim() || 'Unknown lender'}
+            </Link>
+          ) : (
+            inputs.lender_name.trim() || '—'
+          )}
+        </p>
+      </div>
+
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
         {summary.map(([label, value]) => (
           <div key={label}>
@@ -60,8 +79,8 @@ export default function LenderPricingView({ sheet }: { sheet: QuoteSheet }) {
           ))}
           <div className="pt-2 mt-1 border-t border-danger/20 text-[12.5px] text-foreground">
             <span className="font-semibold">Lender OK to accept the shortfall and negative equity:</span> {answer}
-            {inputs.lender_accepts_shortfall === 'yes' && inputs.lender_acceptance_notes.trim() && (
-              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{inputs.lender_acceptance_notes}</p>
+            {decisionNotes && (
+              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{decisionNotes}</p>
             )}
           </div>
         </div>

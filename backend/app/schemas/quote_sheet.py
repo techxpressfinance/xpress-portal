@@ -102,6 +102,10 @@ class QuoteSheetCreate(BaseModel):
     options: list[QuoteOptionCreate] = []
     recipient_name: Optional[str] = None
     recipient_email: Optional[str] = None
+    # Lender pricing only — the lender it was approved by, from the tenant's
+    # lender list. The money figures are derived from input_parameters server
+    # side rather than trusted from the caller.
+    lender_id: Optional[str] = None
 
 
 class QuoteSheetUpdate(BaseModel):
@@ -111,6 +115,7 @@ class QuoteSheetUpdate(BaseModel):
     input_parameters: Optional[str] = None
     recipient_name: Optional[str] = None
     recipient_email: Optional[str] = None
+    lender_id: Optional[str] = None
 
 
 class QuoteSheetEmailRequest(BaseModel):
@@ -133,6 +138,17 @@ class QuoteSheetOut(BaseModel):
     input_parameters: Optional[str] = None
     recipient_name: Optional[str] = None
     recipient_email: Optional[str] = None
+    # Lender pricing only; None on a client quote.
+    lender_id: Optional[str] = None
+    lender_name: Optional[str] = None
+    asset_price: Optional[float] = None
+    deposit_amount: Optional[float] = None
+    trade_in_amount: Optional[float] = None
+    payout_amount: Optional[float] = None
+    amount_borrowed: Optional[float] = None
+    shortfall_accepted: Optional[str] = None
+    shortfall_bypassed: bool = False
+    shortfall_notes: Optional[str] = None
     sent_at: Optional[datetime]
     options: list[QuoteOptionOut] = []
     created_at: datetime

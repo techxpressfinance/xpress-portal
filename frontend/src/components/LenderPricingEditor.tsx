@@ -1,9 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Card } from './ui';
+import LenderShortfallDialog, { type ShortfallDecision } from './LenderShortfallDialog';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
-import { DIRECT_DEBIT_CYCLES, type FacilityType, type LenderPricingInputs, type QuoteSheet } from '../types';
+import { DIRECT_DEBIT_CYCLES, type FacilityType, type Lender, type LenderPricingInputs, type QuoteSheet } from '../types';
 import {
   DIRECT_DEBIT_CYCLE_LABELS,
   FACILITY_LABELS,
@@ -17,6 +19,7 @@ import {
   lenderPricingStructures,
   parseLenderPricingInputs,
   repaymentFor,
+  shortfallBlockReason,
 } from '../lib/lenderPricing';
 
 const fieldBase = "w-full h-9 rounded-lg bg-secondary text-[13px] text-foreground transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-background border border-transparent";
@@ -169,7 +172,6 @@ function SectionHeader({ children }: { children: ReactNode }) {
 }
 
 const CYCLE_OPTIONS = DIRECT_DEBIT_CYCLES.map(c => ({ value: c, label: DIRECT_DEBIT_CYCLE_LABELS[c] }));
-const YES_NO_OPTIONS = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] as const;
 
 interface LenderPricingEditorProps {
   /** Omit for standalone lender pricing (the general Quote Sheets page). */
@@ -185,6 +187,17 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
   const [brokerNotes, setBrokerNotes] = useState(sheet?.broker_notes || '');
   const [inputs, setInputs] = useState<LenderPricingInputs>(() => parseLenderPricingInputs(sheet));
   const [saving, setSaving] = useState(false);
+  const [shortfallOpen, setShortfallOpen] = useState(false);
+  const [lenderBook, setLenderBook] = useState<Lender[] | null>(null);
+
+  // The lender book (admin-managed at /admin/lenders). Null while loading; an
+  // empty list after a failure, so the field degrades to the recorded name
+  // rather than trapping the broker.
+  useEffect(() => {
+    api.get<Lender[]>('/lenders')
+      .then(({ data }) => setLenderBook(data))
+      .catch(() => setLenderBook([]));
+  }, []);
 
   const set = <K extends keyof LenderPricingInputs>(key: K, value: LenderPricingInputs[K]) => {
     setInputs(prev => ({ ...prev, [key]: value }));
@@ -201,6 +214,13 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
     deposit_amount: amt,
     deposit_percent: amt != null && prev.asset_price > 0 ? fmt2((amt / prev.asset_price) * 100) : prev.deposit_percent,
   }));
+  // Store the id and the name: the name keeps old sheets readable if the lender
+  // is later renamed or retired from the book.
+  const setLender = (id: string) => setInputs(prev => ({
+    ...prev,
+    lender_id: id || null,
+    lender_name: lenderBook?.find(l => l.id === id)?.name ?? (id ? prev.lender_name : ''),
+  }));
   const setBalloonPercent = (pct: number) => setInputs(prev => ({ ...prev, balloon_percent: pct, balloon_amount: null }));
   const setBalloonAmount = (amt: number | null) => setInputs(prev => {
     const base = computeLenderPricing(prev).balloonBase;
@@ -210,11 +230,46 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
   const derived = useMemo(() => computeLenderPricing(inputs), [inputs]);
   const structures = useMemo(() => lenderPricingStructures(inputs), [inputs]);
   const alerts = useMemo(() => lenderPricingAlerts(inputs), [inputs]);
+  const blockReason = shortfallBlockReason(inputs);
   const cycleLabel = DIRECT_DEBIT_CYCLE_LABELS[inputs.direct_debit_cycle];
+  // A lender recorded on this sheet that the book no longer offers.
+  const orphanedLender =
+    inputs.lender_id && lenderBook && !lenderBook.some(l => l.id === inputs.lender_id)
+      ? inputs.lender_name || 'Unknown lender'
+      : null;
+  const decisionLabel = inputs.shortfall_bypassed
+    ? 'No — bypassed temporarily'
+    : inputs.lender_accepts_shortfall === 'yes'
+      ? 'Yes'
+      : inputs.lender_accepts_shortfall === 'no' ? 'No' : 'Not answered';
+  const recordedNotes = inputs.shortfall_bypassed
+    ? inputs.shortfall_bypass_notes.trim()
+    : inputs.lender_accepts_shortfall === 'yes' ? inputs.lender_acceptance_notes.trim() : '';
   const isChattel = inputs.facility_type === 'chattel';
   const isLease = inputs.facility_type === 'lease';
 
+  // Raise the pop-up once the figures settle — not on every keystroke, or it
+  // would fire while the broker is still typing the payout figure.
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    if (!blockReason) return;
+    settleTimer.current = setTimeout(() => setShortfallOpen(true), 900);
+    return () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    };
+  }, [blockReason]);
+
+  const recordShortfallDecision = (decision: ShortfallDecision) => {
+    setInputs(prev => ({ ...prev, ...decision }));
+    setShortfallOpen(false);
+  };
+
   const handleSave = async () => {
+    if (!inputs.lender_id) {
+      toast('Select the lender this pricing was approved by', 'error');
+      return;
+    }
     if (inputs.asset_price <= 0) {
       toast('Please enter a valid asset price', 'error');
       return;
@@ -222,6 +277,12 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
     const term = inputs.term_months;
     if (term == null || term < MIN_TERM_MONTHS || term > MAX_TERM_MONTHS) {
       toast(`Enter a term between ${MIN_TERM_MONTHS} and ${MAX_TERM_MONTHS} months`, 'error');
+      return;
+    }
+    // A lender "no" stops the deal here — only a bypass with notes gets past.
+    if (blockReason) {
+      setShortfallOpen(true);
+      toast(blockReason, 'error');
       return;
     }
 
@@ -235,6 +296,7 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
           title: title.trim() || null,
           broker_notes: brokerNotes.trim() || null,
           input_parameters: inputParamsJson,
+          lender_id: inputs.lender_id,
         });
         for (const existing of sheet.options) {
           await api.delete(`${baseUrl}/${sheet.id}/options/${existing.id}`);
@@ -251,6 +313,7 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
           sheet_type: 'lender_pricing',
           broker_notes: brokerNotes.trim() || null,
           input_parameters: inputParamsJson,
+          lender_id: inputs.lender_id,
           options,
         });
         onSave(data);
@@ -269,6 +332,35 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
   return (
     <Card>
       <div className="space-y-6">
+
+        {/* Lender — the first thing on the sheet, picked from the lender book */}
+        <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-4">
+          <label className={`${labelBase} mb-1.5`} htmlFor="lender-pricing-lender">Lender</label>
+          <select
+            id="lender-pricing-lender"
+            value={inputs.lender_id ?? ''}
+            onChange={e => setLender(e.target.value)}
+            disabled={lenderBook == null}
+            className="w-full h-11 rounded-lg bg-background px-3 text-[17px] font-semibold text-foreground border border-border appearance-none transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+          >
+            <option value="">{lenderBook == null ? 'Loading lenders…' : 'Select a lender…'}</option>
+            {/* A lender retired from the book after this sheet was priced still
+                has to show, or re-saving would silently drop it. */}
+            {orphanedLender && <option value={inputs.lender_id ?? ''}>{orphanedLender} (no longer listed)</option>}
+            {(lenderBook ?? []).map(l => (
+              <option key={l.id} value={l.id}>{l.name}{l.is_active ? '' : ' (inactive)'}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            The lender that approved this pricing — shown at the top of the sheet and its PDF.{' '}
+            <Link to="/admin/lenders" className="text-primary hover:underline">Manage the lender list</Link>
+          </p>
+          {lenderBook?.length === 0 && (
+            <p className="text-[11px] font-semibold text-danger mt-1">
+              No lenders in the book yet — add one before pricing a deal.
+            </p>
+          )}
+        </div>
 
         {/* Sheet meta */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -359,31 +451,26 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
                   <span>{msg}</span>
                 </div>
               ))}
-              <div className="pt-2 mt-1 border-t border-danger/20">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                  <span className="text-[12.5px] font-semibold text-foreground">
-                    Is the lender OK to accept the shortfall and negative equity?
-                  </span>
-                  <RadioGroup
-                    name="lender_accepts_shortfall"
-                    value={inputs.lender_accepts_shortfall}
-                    options={YES_NO_OPTIONS}
-                    onChange={v => set('lender_accepts_shortfall', v)}
-                  />
-                </div>
-                {inputs.lender_accepts_shortfall === 'yes' && (
-                  <div className="mt-2">
-                    <label className={labelBase}>Notes</label>
-                    <textarea
-                      className="w-full rounded-lg bg-background px-3 py-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 border border-border min-h-[60px]"
-                      placeholder="e.g. Confirmed with the lender's BDM — negative equity accepted given strong servicing…"
-                      value={inputs.lender_acceptance_notes}
-                      onChange={e => set('lender_acceptance_notes', e.target.value)}
-                      rows={2}
-                    />
-                  </div>
-                )}
+              {/* The decision itself is made in the pop-up; this records it. */}
+              <div className="pt-2 mt-1 border-t border-danger/20 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="text-[12.5px] text-foreground">
+                  <span className="font-semibold">Lender OK to accept the shortfall and negative equity:</span>{' '}
+                  {decisionLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShortfallOpen(true)}
+                  className="text-[12px] font-semibold text-primary hover:underline"
+                >
+                  {inputs.lender_accepts_shortfall == null ? 'Answer now' : 'Review'}
+                </button>
               </div>
+              {recordedNotes && (
+                <p className="text-[12px] text-muted-foreground whitespace-pre-wrap">{recordedNotes}</p>
+              )}
+              {blockReason && (
+                <p className="text-[12px] font-semibold text-danger">{blockReason}</p>
+              )}
             </div>
           )}
         </section>
@@ -541,6 +628,19 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
             </div>
           </section>
         )}
+
+        <LenderShortfallDialog
+          open={shortfallOpen}
+          alerts={alerts}
+          decision={{
+            lender_accepts_shortfall: inputs.lender_accepts_shortfall,
+            lender_acceptance_notes: inputs.lender_acceptance_notes,
+            shortfall_bypassed: inputs.shortfall_bypassed,
+            shortfall_bypass_notes: inputs.shortfall_bypass_notes,
+          }}
+          onSave={recordShortfallDecision}
+          onCancel={() => setShortfallOpen(false)}
+        />
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-1 flex-wrap">

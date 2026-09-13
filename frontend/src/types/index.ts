@@ -976,6 +976,9 @@ export interface TaxInvoice {
   asset_compliance_date: string | null;
   asset_colour: string | null;
   asset_registration_expiry: string | null;
+  /** The financier, carried over from the lender pricing the deal was approved on. */
+  lender_id: string | null;
+  lender_name: string | null;
   sale_price: number | null;
   buyers_premium: number | null;
   other_charges: number | null;
@@ -1257,6 +1260,18 @@ export interface QuoteSheet {
   input_parameters: string | null;
   recipient_name: string | null;
   recipient_email: string | null;
+  /** Lender pricing only — mirrored from input_parameters server side so the
+   *  tax invoice and reporting can read them without parsing the blob. */
+  lender_id: string | null;
+  lender_name: string | null;
+  asset_price: number | null;
+  deposit_amount: number | null;
+  trade_in_amount: number | null;
+  payout_amount: number | null;
+  amount_borrowed: number | null;
+  shortfall_accepted: 'yes' | 'no' | null;
+  shortfall_bypassed: boolean;
+  shortfall_notes: string | null;
   sent_at: string | null;
   options: QuoteOption[];
   created_at: string;
@@ -1270,6 +1285,8 @@ export const DIRECT_DEBIT_CYCLES = ['monthly', 'fortnightly', 'weekly'] as const
 export type DirectDebitCycle = (typeof DIRECT_DEBIT_CYCLES)[number];
 
 export interface LenderPricingInputs {
+  lender_id: string | null;            // picked from the lender book (/lenders)
+  lender_name: string;                 // denormalised name, so old sheets still read if the lender is renamed or retired
   facility_type: FacilityType;
   payment_type: PaymentType;
   asset_description: string;
@@ -1297,6 +1314,10 @@ export interface LenderPricingInputs {
   // Asked when a negative-equity / over-110% alert fires
   lender_accepts_shortfall: 'yes' | 'no' | null;
   lender_acceptance_notes: string;
+  // The lender said no, but a broker/admin chose to carry on anyway. Notes are
+  // mandatory whenever this is set.
+  shortfall_bypassed: boolean;
+  shortfall_bypass_notes: string;
 }
 
 // Contacts & Organizations

@@ -34,7 +34,7 @@ def list_lenders(
 def create_lender(
     data: LenderCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     existing = db.query(Lender).filter(Lender.name == data.name, Lender.tenant_id == tenant_id).first()
@@ -52,7 +52,7 @@ def update_lender(
     lender_id: str,
     data: LenderUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
@@ -69,6 +69,9 @@ def update_lender(
     return lender
 
 
+# Brokers keep the lender book up to date — they are the ones who open the
+# accreditation and price the deal. Retiring a lender stays with admins: it
+# takes the lender out of every broker's pricing picker, not just their own.
 @router.delete("/{lender_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_lender(
     lender_id: str,
@@ -90,7 +93,7 @@ def add_contact(
     lender_id: str,
     data: LenderContactCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
@@ -109,7 +112,7 @@ def update_contact(
     contact_id: str,
     data: LenderContactUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     contact = db.query(LenderContact).filter(
@@ -131,7 +134,7 @@ def delete_contact(
     lender_id: str,
     contact_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin")),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     contact = db.query(LenderContact).filter(

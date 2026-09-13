@@ -17,6 +17,7 @@ from app.models.tax_invoice import BUYER_IDENTITY_THRESHOLD, SupplierType, TaxIn
 from app.models.user import User
 from app.services import acn as acn_service
 from app.services.activity_log import log_activity
+from app.services.lender_pricing import latest_for_application as latest_lender_pricing
 from app.services.loan_category import application_asset_details, application_loan_category
 
 # GST is 1/11th of a GST-inclusive amount.
@@ -402,6 +403,27 @@ def prefill_from_application(
     odometer = _int(asset.get("odometer"))
     condition = classify_condition(odometer) or condition
 
+    # The cost build-up comes from the lender pricing where the deal has been
+    # priced: those are the figures the lender approved, and the dealer has to
+    # invoice to them. The application's own asset block is the fallback for a
+    # file that has not been priced yet.
+    pricing = latest_lender_pricing(db, application.id)
+    money = {
+        "sale_price": _decimal(asset.get("price")),
+        "deposit_paid": _decimal(asset.get("deposit")),
+        "trade_in_value": None,
+        "payout_amount": None,
+        "lender_id": None,
+    }
+    if pricing is not None:
+        money = {
+            "sale_price": pricing.asset_price if pricing.asset_price is not None else money["sale_price"],
+            "deposit_paid": pricing.deposit_amount if pricing.deposit_amount is not None else money["deposit_paid"],
+            "trade_in_value": pricing.trade_in_amount or None,
+            "payout_amount": pricing.payout_amount or None,
+            "lender_id": pricing.lender_id,
+        }
+
     return {
         "invoice_date": date.today(),
         "reply_to_email": reply_to,
@@ -415,8 +437,7 @@ def prefill_from_application(
         "asset_vin": _text(asset.get("vin")),
         "asset_odometer": odometer,
         "asset_condition": condition,
-        "sale_price": _decimal(asset.get("price")),
-        "deposit_paid": _decimal(asset.get("deposit")),
+        **money,
     }
 
 
@@ -487,6 +508,8 @@ def serialize(invoice: TaxInvoice) -> dict:
         "delivery_abn": invoice.delivery_abn,
         "delivery_acn": invoice.delivery_acn,
         "delivery_address": invoice.delivery_address,
+        "lender_id": invoice.lender_id,
+        "lender_name": invoice.lender.name if invoice.lender else None,
         "asset_description": invoice.asset_description,
         "asset_make": invoice.asset_make,
         "asset_model": invoice.asset_model,

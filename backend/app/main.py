@@ -348,6 +348,20 @@ _MIGRATIONS = [
     ("loan_applications", "applicant_visa_category", "VARCHAR(100)"),
     ("loan_applicants", "applicant_visa_number", "TEXT"),
     ("loan_applicants", "applicant_visa_category", "VARCHAR(100)"),
+    # Lender pricing: the lender it was approved by, the loan-setup figures the
+    # tax invoice prefills from, and the shortfall decision the API enforces.
+    # Mirrored from input_parameters on every write (services/lender_pricing.py).
+    ("quote_sheets", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+    ("quote_sheets", "asset_price", "NUMERIC(12, 2)"),
+    ("quote_sheets", "deposit_amount", "NUMERIC(12, 2)"),
+    ("quote_sheets", "trade_in_amount", "NUMERIC(12, 2)"),
+    ("quote_sheets", "payout_amount", "NUMERIC(12, 2)"),
+    ("quote_sheets", "amount_borrowed", "NUMERIC(12, 2)"),
+    ("quote_sheets", "shortfall_accepted", "VARCHAR(10)"),
+    ("quote_sheets", "shortfall_bypassed", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("quote_sheets", "shortfall_notes", "TEXT"),
+    # The financier on a tax invoice, carried over from that lender pricing.
+    ("tax_invoices", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
 ]
 
 _logger = logging.getLogger(__name__)

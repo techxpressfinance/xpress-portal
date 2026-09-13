@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +13,7 @@ from app.models.loan_application import LoanApplication
 from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus, QuoteSheetType
 from app.models.user import User
 from app.services.access_control import check_application_access
+from app.services.lender_pricing import apply_lender_pricing
 from app.services.quote_serializers import serialize_quote_option as _serialize_option, serialize_quote_sheet as _serialize
 from app.schemas.quote_sheet import (
     QuoteOptionCreate,
@@ -48,6 +50,21 @@ def _require_draft(sheet: QuoteSheet) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot modify a sent quote sheet",
         )
+
+
+def _sync_lender_pricing(db: Session, sheet: QuoteSheet, raw_params: str | None, lender_id: str | None, tenant_id: str) -> None:
+    """Validate and mirror a lender pricing sheet's figures onto its columns.
+
+    Client quotes pass straight through — none of this applies to them."""
+    if sheet.sheet_type != QuoteSheetType.lender_pricing:
+        return
+    try:
+        params = json.loads(raw_params) if raw_params else {}
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lender pricing parameters are not valid JSON")
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lender pricing parameters are not valid JSON")
+    apply_lender_pricing(db, sheet, params, lender_id, tenant_id)
 
 
 def _next_version(db: Session, app_id: str) -> int:
@@ -114,6 +131,7 @@ def create_quote_sheet(
         created_by_id=current_user.id,
         tenant_id=tenant_id,
     )
+    _sync_lender_pricing(db, sheet, data.input_parameters, data.lender_id, tenant_id)
     db.add(sheet)
     db.flush()
 
@@ -185,8 +203,13 @@ def update_quote_sheet(
         if new_status == QuoteSheetStatus.sent:
             update_data["sent_at"] = datetime.now(timezone.utc)
 
+    lender_id = update_data.pop("lender_id", sheet.lender_id)
     for field, value in update_data.items():
         setattr(sheet, field, value)
+    # Re-derive from whatever the parameters now say — a PATCH that only touches
+    # the title must not leave stale figures behind either.
+    if sheet.sheet_type == QuoteSheetType.lender_pricing:
+        _sync_lender_pricing(db, sheet, sheet.input_parameters, lender_id, tenant_id)
 
     db.commit()
     db.refresh(sheet)

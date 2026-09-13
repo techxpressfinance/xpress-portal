@@ -125,6 +125,11 @@ class TaxInvoice(Base):
     asset_colour: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     asset_registration_expiry: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
+    # The financier behind the purchase, carried over from the lender pricing
+    # the deal was approved on. The dealer's request sheet names it, and it is
+    # what ties the invoice back to the structure that was priced.
+    lender_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lenders.id"), index=True, nullable=True)
+
     # Money. Stored as entered; totals are derived, never trusted from input.
     sale_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     # Auction only — the house's commission on top of the hammer price.
@@ -177,3 +182,4 @@ class TaxInvoice(Base):
     )
 
     created_by = relationship("User", foreign_keys=[created_by_id], lazy="selectin")
+    lender = relationship("Lender", lazy="selectin")

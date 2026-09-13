@@ -21,6 +21,8 @@ export const FACILITY_LABELS: Record<FacilityType, string> = {
 };
 
 export const LENDER_PRICING_DEFAULTS: LenderPricingInputs = {
+  lender_id: null,
+  lender_name: '',
   facility_type: 'chattel',
   payment_type: 'advance',
   asset_description: 'Motor Vehicle',
@@ -47,6 +49,8 @@ export const LENDER_PRICING_DEFAULTS: LenderPricingInputs = {
   direct_debit_cycle: 'monthly',
   lender_accepts_shortfall: null,
   lender_acceptance_notes: '',
+  shortfall_bypassed: false,
+  shortfall_bypass_notes: '',
 };
 
 export const fmt2 = (n: number) => Math.round(n * 100) / 100;
@@ -135,6 +139,23 @@ export function lenderPricingAlerts(inputs: LenderPricingInputs): string[] {
   return alerts;
 }
 
+/** Why the sheet cannot be saved while an alert is showing, or null when it can.
+ *  A "no" from the lender stops the deal; only a broker/admin bypass with
+ *  written reasons gets past it. */
+export function shortfallBlockReason(inputs: LenderPricingInputs): string | null {
+  if (lenderPricingAlerts(inputs).length === 0) return null;
+  if (inputs.shortfall_bypassed) {
+    return inputs.shortfall_bypass_notes.trim()
+      ? null
+      : 'Bypass notes are required before this pricing can be saved.';
+  }
+  if (inputs.lender_accepts_shortfall === 'yes') return null;
+  if (inputs.lender_accepts_shortfall === 'no') {
+    return 'The lender will not accept the shortfall and negative equity. Record a temporary bypass with notes to continue.';
+  }
+  return 'Confirm whether the lender accepts the shortfall and negative equity before saving.';
+}
+
 type Repayments = Pick<QuoteOption, 'repayment_monthly' | 'repayment_fortnightly' | 'repayment_weekly'>;
 
 /** The repayment on the lender's direct-debit cycle. */
@@ -213,7 +234,7 @@ export function lenderPricingOptions(inputs: LenderPricingInputs, structures: Le
   const months = inputs.term_months ?? 0;
   return structures.map((s, i) => ({
     lender_name: `${months} months${s.hasBalloon ? ` (${s.balloonPercent}% Balloon)` : ''}`,
-    lender_product: inputs.facility_type.toUpperCase(),
+    lender_product: [inputs.lender_name.trim(), inputs.facility_type.toUpperCase()].filter(Boolean).join(' · '),
     sort_order: i,
     is_recommended: false,
     purchase_price: inputs.asset_price,
@@ -251,6 +272,9 @@ export function parseLenderPricingInputs(sheet?: QuoteSheet | null): LenderPrici
     // Lender pricing made before this editor existed carries no term — take it
     // from the saved options.
     term_months: saved.term_months ?? sheet?.options[0]?.loan_term_months ?? null,
+    // The columns are the server's copy of these and win over a stale blob.
+    lender_id: sheet?.lender_id ?? saved.lender_id ?? null,
+    lender_name: sheet?.lender_name ?? saved.lender_name ?? '',
     brokerage_amount: saved.brokerage_amount ?? 0,
     gst_percent: 10,
   };

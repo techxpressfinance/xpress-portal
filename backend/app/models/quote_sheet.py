@@ -54,6 +54,27 @@ class QuoteSheet(Base):
     )
     broker_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     input_parameters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob of shared inputs
+
+    # ── Lender pricing only ───────────────────────────────────────────
+    # The rest of the sheet lives in input_parameters, which is shaped by the
+    # editor and opaque to the server. These are the figures something else
+    # downstream reads — the tax invoice prefills its cost build-up from them,
+    # and the shortfall decision has to be enforceable server-side — so they are
+    # columns, kept in step with the JSON on every write.
+    lender_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("lenders.id"), index=True, nullable=True
+    )
+    asset_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    deposit_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    trade_in_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    payout_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    amount_borrowed: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    # "yes" / "no" / None — the lender's answer when the negative-equity or
+    # over-110% alerts fire. A "no" only passes with a recorded bypass.
+    shortfall_accepted: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    shortfall_bypassed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    shortfall_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
@@ -73,6 +94,7 @@ class QuoteSheet(Base):
         lazy="selectin",
     )
     created_by = relationship("User", lazy="selectin")
+    lender = relationship("Lender", lazy="selectin")
 
 
 class QuoteOption(Base):

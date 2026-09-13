@@ -50,6 +50,9 @@ class TaxInvoiceUpdate(BaseModel):
     asset_compliance_date: Optional[str] = None
     asset_colour: Optional[str] = None
     asset_registration_expiry: Optional[str] = None
+    # The financier, from the tenant's lender list. Normally carried over from
+    # the lender pricing, but re-selectable if the deal moves lender.
+    lender_id: Optional[str] = None
     sale_price: Optional[float] = None
     buyers_premium: Optional[float] = None
     other_charges: Optional[float] = None

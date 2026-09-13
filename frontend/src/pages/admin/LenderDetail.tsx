@@ -16,7 +16,10 @@ export default function LenderDetail() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { user } = useAuth();
-  const isReadOnly = user?.role !== 'admin';
+  // Brokers can add and edit lenders and their contacts; only an admin can
+  // retire one, which takes it out of every broker's pricing picker.
+  const isReadOnly = user?.role !== 'admin' && user?.role !== 'broker';
+  const canDeactivate = user?.role === 'admin';
   const [lender, setLender] = useState<Lender | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -225,13 +228,15 @@ export default function LenderDetail() {
             {!isReadOnly && (
               <div className="flex gap-2 pt-3 border-t border-border">
                 <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
-                <Button
-                  variant={lender.is_active ? 'danger' : 'success'}
-                  size="sm"
-                  onClick={handleToggleActive}
-                >
-                  {lender.is_active ? 'Deactivate' : 'Activate'}
-                </Button>
+                {canDeactivate && (
+                  <Button
+                    variant={lender.is_active ? 'danger' : 'success'}
+                    size="sm"
+                    onClick={handleToggleActive}
+                  >
+                    {lender.is_active ? 'Deactivate' : 'Activate'}
+                  </Button>
+                )}
               </div>
             )}
           </>

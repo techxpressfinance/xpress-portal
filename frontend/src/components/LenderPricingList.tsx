@@ -19,6 +19,7 @@ interface LenderPricingRowProps {
 export function LenderPricingRow({ sheet, showBadge, pdfLoading, onView, onEdit, onPdf, onDelete }: LenderPricingRowProps) {
   const params = parseLenderPricingInputs(sheet);
   const meta = [
+    params.lender_name.trim() || null,
     params.term_months != null ? `${params.term_months} months` : null,
     `${DIRECT_DEBIT_CYCLE_LABELS[params.direct_debit_cycle]} direct debit`,
     formatDate(sheet.created_at),

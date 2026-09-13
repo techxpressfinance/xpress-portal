@@ -14,6 +14,7 @@ from app.models.user import User
 from app.schemas.tax_invoice import TaxInvoiceCreate, TaxInvoiceUpdate
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
+from app.services.lender_pricing import latest_for_application as latest_lender_pricing, resolve_lender
 from app.services.tax_invoice import (
     buyer_from_application,
     completeness,
@@ -123,6 +124,8 @@ def update_tax_invoice(
     _require_draft(invoice)
 
     updates = data.model_dump(exclude_unset=True)
+    if updates.get("lender_id"):
+        resolve_lender(db, updates["lender_id"], tenant_id)
     for field, value in updates.items():
         if field in _MONEY_FIELDS and value is not None:
             value = Decimal(str(value))
@@ -159,6 +162,45 @@ def refresh_tax_invoice_buyer(
 
     log_activity(db, current_user.id, "tax_invoice_buyer_refreshed", "application", app_id,
                  {"applicant_type": application.applicant_type}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(invoice)
+    return serialize(invoice)
+
+
+@router.post("/{invoice_id}/refresh-pricing")
+def refresh_tax_invoice_pricing(
+    app_id: str,
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Re-pull the cost build-up from the latest lender pricing.
+
+    The draft is raised at approval, which is often before the pricing is
+    finalised — and a deal can be re-priced or move lender afterwards. This
+    pulls the lender and the four figures the pricing owns; everything else the
+    broker has typed stands, as with refresh-buyer.
+    """
+    _get_application(db, app_id, tenant_id, current_user)
+    invoice = _get_invoice(db, app_id, invoice_id)
+    _require_draft(invoice)
+
+    pricing = latest_lender_pricing(db, app_id)
+    if pricing is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This application has no lender pricing to pull from",
+        )
+
+    invoice.lender_id = pricing.lender_id
+    invoice.sale_price = pricing.asset_price
+    invoice.deposit_paid = pricing.deposit_amount
+    invoice.trade_in_value = pricing.trade_in_amount or None
+    invoice.payout_amount = pricing.payout_amount or None
+
+    log_activity(db, current_user.id, "tax_invoice_pricing_refreshed", "application", app_id,
+                 {"quote_sheet_id": pricing.id, "version": pricing.version}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
     return serialize(invoice)

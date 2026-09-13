@@ -15,7 +15,9 @@ export default function LenderManagement() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  const isReadOnly = user?.role !== 'admin';
+  // Brokers keep the lender book up to date — they open the accreditations and
+  // price the deals. Retiring a lender stays with admins (see LenderDetail).
+  const isReadOnly = user?.role !== 'admin' && user?.role !== 'broker';
   const [lenders, setLenders] = useState<Lender[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

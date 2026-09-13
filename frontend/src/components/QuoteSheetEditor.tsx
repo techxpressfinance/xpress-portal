@@ -580,6 +580,18 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
       input_parameters: JSON.stringify(inputs),
       recipient_name: quoteSheet?.recipient_name ?? null,
       recipient_email: quoteSheet?.recipient_email ?? null,
+      // Lender pricing fields — never set on a client quote, and this preview
+      // only ever renders one.
+      lender_id: null,
+      lender_name: null,
+      asset_price: null,
+      deposit_amount: null,
+      trade_in_amount: null,
+      payout_amount: null,
+      amount_borrowed: null,
+      shortfall_accepted: null,
+      shortfall_bypassed: false,
+      shortfall_notes: null,
       sent_at: quoteSheet?.sent_at ?? null,
       options: scenariosToOptions(inputs, scenarios).map((opt, i) => ({
         ...opt,

@@ -6,7 +6,7 @@ import { getErrorMessage, formatDate } from '../lib/utils';
 import { downloadElementPdf } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
-import type { SupplierType, TaxInvoice } from '../types';
+import type { Lender, SupplierType, TaxInvoice } from '../types';
 
 /**
  * Tax invoices for the asset being financed.
@@ -91,6 +91,16 @@ export default function TaxInvoicePanel({
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
+  // The tenant's lender list, so the financier on the document is a real lender
+  // rather than a typed name. Empty after a failure — the field then shows what
+  // the lender pricing already recorded and nothing else.
+  const [lenderBook, setLenderBook] = useState<Lender[]>([]);
+
+  useEffect(() => {
+    api.get<Lender[]>('/lenders')
+      .then(({ data }) => setLenderBook(data))
+      .catch(() => setLenderBook([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -175,6 +185,30 @@ export default function TaxInvoicePanel({
       toast('Sold To updated from the application', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to update the Sold To party'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Re-pull the cost build-up from the latest lender pricing. The draft is
+   *  raised at approval, often before the deal is finally priced, and a deal can
+   *  be re-priced or move lender afterwards. */
+  const refreshPricing = async (invoice: TaxInvoice) => {
+    setSaving(true);
+    try {
+      await api.post(`/applications/${applicationId}/tax-invoices/${invoice.id}/refresh-pricing`);
+      // Drop unsaved edits to the figures the pricing owns — just replaced.
+      setDraft((prev) => {
+        const next = { ...prev };
+        for (const key of ['sale_price', 'deposit_paid', 'trade_in_value', 'payout_amount', 'lender_id'] as const) {
+          delete next[key];
+        }
+        return next;
+      });
+      await load();
+      toast('Amounts updated from the lender pricing', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to pull the lender pricing'), 'error');
     } finally {
       setSaving(false);
     }
@@ -384,6 +418,32 @@ export default function TaxInvoicePanel({
                     </Section>
 
                     <Section title="Amounts">
+                      {/* The financier and the four figures below come from the
+                          lender pricing this deal was approved on. */}
+                      <Choice
+                        label="Financier (from the lender pricing)"
+                        value={String(field(invoice, 'lender_id') ?? '')}
+                        options={[
+                          ['', '—'],
+                          // A lender the book no longer offers still has to show.
+                          ...(invoice.lender_id && !lenderBook.some((l) => l.id === invoice.lender_id)
+                            ? ([[invoice.lender_id, `${invoice.lender_name ?? 'Unknown lender'} (no longer listed)`]] as [string, string][])
+                            : []),
+                          ...lenderBook.map((l) => [l.id, l.name] as [string, string]),
+                        ]}
+                        onChange={(v) => set('lender_id', v || null)}
+                        disabled={locked}
+                      />
+                      {!locked && (
+                        <button
+                          type="button"
+                          onClick={() => refreshPricing(invoice)}
+                          disabled={saving}
+                          className="text-left text-[12px] text-primary hover:underline disabled:opacity-60"
+                        >
+                          Pull the sale price, deposit, trade-in and payout from the latest lender pricing
+                        </button>
+                      )}
                       <Text label="Sale price" type="number" value={field(invoice, 'sale_price')} onChange={(v) => set('sale_price', v === '' ? null : Number(v))} disabled={locked} />
                       {invoice.supplier_type === 'auction' && (
                         <Text label="Buyer's premium" type="number" value={field(invoice, 'buyers_premium')} onChange={(v) => set('buyers_premium', v === '' ? null : Number(v))} disabled={locked} />
@@ -856,6 +916,9 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
 
       <PrintSection title="Full cost of goods">
         <div className="break-inside-avoid" style={{ marginLeft: 'auto', width: 330 }}>
+          {/* The dealer releases the goods against a financier's settlement, so
+              the sheet names which one is paying. */}
+          {invoice.lender_name && <PrintRow label="Financier" value={invoice.lender_name} />}
           <PrintRow label="Cash price (GST inclusive)" value={money(invoice.sale_price)} />
           {/* "Cash Price (please show GST)" on the sheet — the dealer's invoice
               has to break the same price into these two halves. */}

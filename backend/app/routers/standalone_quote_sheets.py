@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 
@@ -19,6 +20,7 @@ from app.schemas.quote_sheet import (
     QuoteSheetUpdate,
 )
 from app.services.email import send_quote_sheet_email
+from app.services.lender_pricing import apply_lender_pricing
 from app.services.quote_serializers import serialize_quote_option as _serialize_option, serialize_quote_sheet as _serialize
 from app.services.tenant_scope import get_tenant_id
 
@@ -42,6 +44,21 @@ def _require_draft(sheet: QuoteSheet) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot modify a sent quote sheet",
         )
+
+
+def _sync_lender_pricing(db: Session, sheet: QuoteSheet, raw_params: str | None, lender_id: str | None, tenant_id: str) -> None:
+    """Validate and mirror a lender pricing sheet's figures onto its columns.
+
+    Client quotes pass straight through — none of this applies to them."""
+    if sheet.sheet_type != QuoteSheetType.lender_pricing:
+        return
+    try:
+        params = json.loads(raw_params) if raw_params else {}
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lender pricing parameters are not valid JSON")
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lender pricing parameters are not valid JSON")
+    apply_lender_pricing(db, sheet, params, lender_id, tenant_id)
 
 
 def _next_version(db: Session) -> int:
@@ -91,6 +108,7 @@ def create_standalone_quote_sheet(
         created_by_id=current_user.id,
         tenant_id=tenant_id,
     )
+    _sync_lender_pricing(db, sheet, data.input_parameters, data.lender_id, tenant_id)
     db.add(sheet)
     db.flush()
 
@@ -146,8 +164,13 @@ def update_standalone_quote_sheet(
         if new_status == QuoteSheetStatus.sent:
             update_data["sent_at"] = datetime.now(timezone.utc)
 
+    lender_id = update_data.pop("lender_id", sheet.lender_id)
     for field, value in update_data.items():
         setattr(sheet, field, value)
+    # Re-derive from whatever the parameters now say — a PATCH that only touches
+    # the title must not leave stale figures behind either.
+    if sheet.sheet_type == QuoteSheetType.lender_pricing:
+        _sync_lender_pricing(db, sheet, sheet.input_parameters, lender_id, tenant_id)
 
     db.commit()
     db.refresh(sheet)
@@ -184,10 +207,22 @@ def duplicate_standalone_quote_sheet(
         application_id=None,
         version=_next_version(db),
         title=source.title,
+        # Without this a duplicated lender pricing sheet came back as a client
+        # quote, losing its lender and its figures with it.
+        sheet_type=source.sheet_type,
         broker_notes=source.broker_notes,
         input_parameters=source.input_parameters,
         recipient_name=source.recipient_name,
         recipient_email=source.recipient_email,
+        lender_id=source.lender_id,
+        asset_price=source.asset_price,
+        deposit_amount=source.deposit_amount,
+        trade_in_amount=source.trade_in_amount,
+        payout_amount=source.payout_amount,
+        amount_borrowed=source.amount_borrowed,
+        shortfall_accepted=source.shortfall_accepted,
+        shortfall_bypassed=source.shortfall_bypassed,
+        shortfall_notes=source.shortfall_notes,
         created_by_id=current_user.id,
         tenant_id=tenant_id,
     )
