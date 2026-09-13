@@ -11,7 +11,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.contact import Organization
+from app.models.contact import Contact, Organization
+from app.models.loan_applicant import LoanApplicant
 from app.models.loan_application import APPLICANT_TYPE_COMPANY, LoanApplication
 from app.models.tax_invoice import BUYER_IDENTITY_THRESHOLD, SupplierType, TaxInvoice
 from app.models.user import User
@@ -305,16 +306,83 @@ def _decimal(value) -> Optional[Decimal]:
         return None
 
 
-def _applicant_address(application: LoanApplication) -> Optional[str]:
+def _address_block(street: object, suburb: object, state: object, postcode: object) -> Optional[str]:
     """Street on one line, suburb/state/postcode on the next — the shape the
     request sheet's address blocks are laid out in."""
-    street = _text(application.applicant_address)
-    locality = " ".join(
-        p for p in [_text(application.applicant_suburb), _text(application.applicant_state)] if p
-    )
-    postcode = _text(application.applicant_postcode)
+    street = _text(street)
+    locality = " ".join(p for p in [_text(suburb), _text(state)] if p)
+    postcode = _text(postcode)
     second = ", ".join(p for p in [locality, postcode] if p) if locality else postcode
     return "\n".join(p for p in [street, second] if p) or None
+
+
+def _applicant_address(application: LoanApplication) -> Optional[str]:
+    return _address_block(
+        application.applicant_address,
+        application.applicant_suburb,
+        application.applicant_state,
+        application.applicant_postcode,
+    )
+
+
+def _first(*values: object) -> Optional[str]:
+    """The first of these that holds anything."""
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return None
+
+
+def _person_from_application(db: Session, application: LoanApplication) -> dict:
+    """The individual behind the application — name and address.
+
+    Three places hold this and which one is filled depends on how the file was
+    made. The client-facing form writes the application's own applicant_*
+    columns; a commercial deal carries its people as loan_applicant rows and
+    names the primary one there; a staff-made or entity-first application often
+    has neither and only the contact card behind contact_id.
+
+    Each field takes the first source that answers it rather than the first
+    source that answers anything, so a half-filled form still completes from
+    the contact card instead of leaving the block blank. They describe the same
+    person — contact_id is this application's client — so mixing them is safe.
+    """
+    primary = (
+        db.query(LoanApplicant)
+        .filter(LoanApplicant.application_id == application.id, LoanApplicant.is_primary.is_(True))
+        .first()
+    )
+    contact = (
+        db.query(Contact).filter(Contact.id == application.contact_id).first()
+        if application.contact_id
+        else None
+    )
+
+    first_name = _first(
+        application.applicant_first_name,
+        primary.applicant_first_name if primary else None,
+        contact.first_name if contact else None,
+    )
+    last_name = _first(
+        application.applicant_last_name,
+        primary.applicant_last_name if primary else None,
+        contact.last_name if contact else None,
+    )
+    address = _first(
+        _applicant_address(application),
+        _address_block(
+            primary.applicant_address, primary.applicant_suburb,
+            primary.applicant_state, primary.applicant_postcode,
+        ) if primary else None,
+        _address_block(contact.address, contact.suburb, contact.state, contact.postcode)
+        if contact
+        else None,
+    )
+    return {
+        "name": " ".join(p for p in [first_name, last_name] if p).strip() or None,
+        "address": address,
+    }
 
 
 def buyer_from_application(db: Session, application: LoanApplication) -> dict:
@@ -333,13 +401,12 @@ def buyer_from_application(db: Session, application: LoanApplication) -> dict:
             db.query(Organization).filter(Organization.id == application.business_organization_id).first()
         )
 
-    entity_name = (organization.name if organization else None) or _text(application.business_name)
-    entity_abn = _text(organization.abn if organization else None) or _text(application.business_abn)
+    entity_name = _first(organization.name if organization else None, application.business_name)
+    entity_abn = _first(organization.abn if organization else None, application.business_abn)
     entity_address = _text(organization.address if organization else None)
-    person_name = " ".join(
-        p for p in [application.applicant_first_name, application.applicant_last_name] if p
-    ).strip() or None
-    person_address = _applicant_address(application)
+    person = _person_from_application(db, application)
+    person_name = person["name"]
+    person_address = person["address"]
 
     if application.applicant_type == APPLICANT_TYPE_COMPANY:
         buyer_name = entity_name or person_name
