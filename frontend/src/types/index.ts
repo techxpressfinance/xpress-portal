@@ -676,6 +676,16 @@ export interface Lender {
   name: string;
   notes: string | null;
   is_active: boolean;
+  address: string | null;
+  /** A lender is not one mailbox — each of these reaches a different desk
+   *  inside it, named for the job rather than the lender's own team names,
+   *  which differ at every one. */
+  service_request_email: string | null;
+  collections_email: string | null;
+  payout_letter_email: string | null;
+  settlements_email: string | null;
+  credit_email: string | null;
+  doc_request_email: string | null;
   contacts: LenderContact[];
   created_at: string;
   updated_at: string;

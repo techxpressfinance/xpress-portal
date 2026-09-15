@@ -186,6 +186,15 @@ _MIGRATIONS = [
     ("organizations", "entity_type", "VARCHAR(30)"),
     ("contact_organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("lenders", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+    ("lenders", "address", "VARCHAR(500)"),
+    # One mailbox per desk inside the lender — see models/lender.py for why
+    # these are columns and not a note.
+    ("lenders", "service_request_email", "VARCHAR(200)"),
+    ("lenders", "collections_email", "VARCHAR(200)"),
+    ("lenders", "payout_letter_email", "VARCHAR(200)"),
+    ("lenders", "settlements_email", "VARCHAR(200)"),
+    ("lenders", "credit_email", "VARCHAR(200)"),
+    ("lenders", "doc_request_email", "VARCHAR(200)"),
     ("lender_submissions", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("kanban_boards", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("kanban_columns", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),

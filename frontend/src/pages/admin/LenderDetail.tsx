@@ -6,10 +6,21 @@ import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../hooks/useConfirm';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { Card, Badge, Button, Input, Breadcrumbs } from '../../components/ui';
+import { LENDER_MAILBOXES } from '../../lib/constants';
+import type { LenderMailboxKey } from '../../lib/constants';
 import type { Lender, LenderContact } from '../../types';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
 const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: '' };
+
+// Every editable Lender column, held as strings so the inputs stay controlled;
+// blanks are normalised back to null on save.
+type LenderDraft = Record<'name' | 'notes' | 'address' | LenderMailboxKey, string>;
+const emptyLenderDraft: LenderDraft = {
+  name: '', notes: '', address: '',
+  service_request_email: '', credit_email: '', settlements_email: '',
+  payout_letter_email: '', doc_request_email: '', collections_email: '',
+};
 
 export default function LenderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -23,10 +34,11 @@ export default function LenderDetail() {
   const [lender, setLender] = useState<Lender | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Lender edit state
+  // Lender edit state. One draft over every editable column — the mailboxes
+  // alone are six fields, and a useState each would be six more things to keep
+  // in step on open, save and cancel.
   const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editNotes, setEditNotes] = useState('');
+  const [draft, setDraft] = useState<LenderDraft>(emptyLenderDraft);
   const [saving, setSaving] = useState(false);
 
   // Contact form state
@@ -47,8 +59,14 @@ export default function LenderDetail() {
 
   const startEdit = () => {
     if (!lender) return;
-    setEditName(lender.name);
-    setEditNotes(lender.notes || '');
+    setDraft({
+      name: lender.name,
+      notes: lender.notes || '',
+      address: lender.address || '',
+      ...Object.fromEntries(
+        LENDER_MAILBOXES.map(({ key }) => [key, lender[key] || '']),
+      ) as Record<LenderMailboxKey, string>,
+    });
     setEditing(true);
   };
 
@@ -56,10 +74,14 @@ export default function LenderDetail() {
     if (!id || !lender) return;
     setSaving(true);
     try {
+      // Send only what actually changed — a PATCH of every field would stamp
+      // updated_at on a lender nobody edited.
       const payload: Record<string, unknown> = {};
-      if (editName.trim() !== lender.name) payload.name = editName.trim();
-      const newNotes = editNotes.trim() || null;
-      if (newNotes !== lender.notes) payload.notes = newNotes;
+      if (draft.name.trim() !== lender.name) payload.name = draft.name.trim();
+      for (const key of ['notes', 'address', ...LENDER_MAILBOXES.map((m) => m.key)] as const) {
+        const next = draft[key].trim() || null;
+        if (next !== (lender[key] ?? null)) payload[key] = next;
+      }
       if (Object.keys(payload).length > 0) {
         const { data } = await api.patch(`/lenders/${id}`, payload);
         setLender(data);
@@ -191,19 +213,40 @@ export default function LenderDetail() {
       <Card className="mb-4">
         {editing ? (
           <div className="space-y-4">
-            <Input label="Name *" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <Input label="Name *" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+            <Input label="Address" value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} placeholder="Street, suburb, state, postcode" />
+
+            {/* One mailbox per desk. Blank is the honest answer for most
+                lenders — nobody should be guessing an address to send a payout
+                request to, so an empty field stays empty. */}
+            <div className="pt-2 border-t border-border">
+              <p className="text-[13px] font-medium text-foreground mb-1">Where to send things</p>
+              <p className="text-[12px] text-muted-foreground mb-3">Leave blank where the lender has no separate address — the BDM is the fallback.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {LENDER_MAILBOXES.map(({ key, label }) => (
+                  <Input
+                    key={key}
+                    label={label}
+                    type="email"
+                    value={draft[key]}
+                    onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                  />
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Notes</label>
               <textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
+                value={draft.notes}
+                onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
                 rows={3}
                 placeholder="Optional notes..."
                 className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
               />
             </div>
             <div className="flex gap-2 pt-1">
-              <Button onClick={handleSave} disabled={saving || !editName.trim()}>
+              <Button onClick={handleSave} disabled={saving || !draft.name.trim()}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
               <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
@@ -222,6 +265,28 @@ export default function LenderDetail() {
                 className={lender.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}
               />
             </div>
+            {lender.address && (
+              <p className="text-[14px] text-muted-foreground mb-4">{lender.address}</p>
+            )}
+
+            {/* Only the mailboxes this lender actually has. Rendering the empty
+                ones as dashes would fill the card with six rows of nothing. */}
+            {LENDER_MAILBOXES.some(({ key }) => lender[key]) && (
+              <div className="mb-4 rounded-xl border border-border p-3">
+                <p className="text-[13px] font-medium text-foreground mb-2">Where to send things</p>
+                <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                  {LENDER_MAILBOXES.filter(({ key }) => lender[key]).map(({ key, label }) => (
+                    <div key={key} className="min-w-0">
+                      <dt className="text-[12px] text-muted-foreground">{label}</dt>
+                      <dd className="text-[13px] text-foreground truncate">
+                        <a href={`mailto:${lender[key]}`} className="hover:underline">{lender[key]}</a>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+
             {lender.notes && (
               <p className="text-[14px] text-muted-foreground mb-4">{lender.notes}</p>
             )}

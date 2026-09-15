@@ -41,6 +41,14 @@ class LenderContactOut(BaseModel):
 class LenderCreate(BaseModel):
     name: str
     notes: Optional[str] = None
+    address: Optional[str] = None
+    # One mailbox per desk inside the lender (see models/lender.py).
+    service_request_email: Optional[str] = None
+    collections_email: Optional[str] = None
+    payout_letter_email: Optional[str] = None
+    settlements_email: Optional[str] = None
+    credit_email: Optional[str] = None
+    doc_request_email: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -54,6 +62,14 @@ class LenderUpdate(BaseModel):
     name: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    address: Optional[str] = None
+    # One mailbox per desk inside the lender (see models/lender.py).
+    service_request_email: Optional[str] = None
+    collections_email: Optional[str] = None
+    payout_letter_email: Optional[str] = None
+    settlements_email: Optional[str] = None
+    credit_email: Optional[str] = None
+    doc_request_email: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -68,6 +84,13 @@ class LenderOut(BaseModel):
     name: str
     notes: Optional[str]
     is_active: bool
+    address: Optional[str] = None
+    service_request_email: Optional[str] = None
+    collections_email: Optional[str] = None
+    payout_letter_email: Optional[str] = None
+    settlements_email: Optional[str] = None
+    credit_email: Optional[str] = None
+    doc_request_email: Optional[str] = None
     contacts: list[LenderContactOut] = []
     created_at: datetime
     updated_at: datetime

@@ -23,3 +23,25 @@ from app.models.service_request_checklist import ServiceRequestChecklistItem
 from app.models.notification import Notification
 
 __all__ = ["Tenant", "User", "LoanApplication", "LoanApplicant", "Document", "ActivityLog", "ApplicationNote", "DirectMessage", "Referral", "KanbanBoard", "KanbanColumn", "BrokerGroup", "ExternalReferral", "Lender", "LenderSubmission", "Task", "ChecklistItem", "QuoteSheet", "QuoteOption", "Contact", "Organization", "ContactOrganization", "ServiceRequest", "ServiceRequestBroker", "ServiceRequestNote", "ServiceRequestOrder", "ServiceRequestChecklistItem", "Notification"]
+
+
+# SQLAlchemy resolves relationship() targets by class name across the whole
+# registry, so touching ANY model needs every model imported — a query for a
+# Tenant will fail on LoanApplication's reference to ApprovalCondition if that
+# module was never loaded. The explicit list above is not complete, and main.py
+# makes up the difference with a long import block of its own; anything that is
+# not the app (create_admin.py, reset_password.py, seed_admin.py, one-off
+# imports) has no such block and used to fall over.
+#
+# Walking the package here means the registry is whole for every entry point,
+# and stays whole as models are added. Safe to do at the end of __init__: no
+# model module imports this package, so there is no cycle to trip over.
+def _load_all_models() -> None:
+    import importlib
+    import pkgutil
+
+    for module in pkgutil.iter_modules(__path__):
+        importlib.import_module(f"{__name__}.{module.name}")
+
+
+_load_all_models()

@@ -5,11 +5,21 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { Card, StatCard, PageHeader, Button, Badge } from '../../components/ui';
+import { LENDER_MAILBOXES } from '../../lib/constants';
+import type { LenderMailboxKey } from '../../lib/constants';
 import type { Lender, LenderContact } from '../../types';
 import { BuildingLibraryIcon, CheckCircleIcon, NoSymbolIcon } from '@heroicons/react/24/outline';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
 const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: '' };
+
+// Mirrors the editable Lender columns (see LenderDetail, which edits the same set).
+type LenderForm = Record<'name' | 'notes' | 'address' | LenderMailboxKey, string>;
+const emptyLenderForm: LenderForm = {
+  name: '', notes: '', address: '',
+  service_request_email: '', credit_email: '', settlements_email: '',
+  payout_letter_email: '', doc_request_email: '', collections_email: '',
+};
 
 export default function LenderManagement() {
   const navigate = useNavigate();
@@ -23,7 +33,7 @@ export default function LenderManagement() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', notes: '' });
+  const [form, setForm] = useState<LenderForm>(emptyLenderForm);
 
   // Pending contacts (create mode — queued until lender is saved)
   const [pendingContacts, setPendingContacts] = useState<ContactDraft[]>([]);
@@ -45,7 +55,7 @@ export default function LenderManagement() {
   useEffect(() => { fetchLenders(); }, []);
 
   const resetForm = () => {
-    setForm({ name: '', notes: '' });
+    setForm(emptyLenderForm);
     setEditingId(null);
     setShowForm(false);
     setShowContactForm(false);
@@ -60,7 +70,15 @@ export default function LenderManagement() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const payload = { name: form.name.trim(), notes: form.notes.trim() || null };
+      const payload = {
+        name: form.name.trim(),
+        // Blank stays null rather than an empty string, so "no address" reads
+        // the same whether the lender was created here or imported.
+        ...Object.fromEntries(
+          (['notes', 'address', ...LENDER_MAILBOXES.map((m) => m.key)] as const)
+            .map((key) => [key, form[key].trim() || null]),
+        ),
+      };
       if (editingId) {
         const { data } = await api.patch(`/lenders/${editingId}`, payload);
         setLenders(prev => prev.map(l => l.id === editingId ? { ...l, ...data } : l));
@@ -239,14 +257,45 @@ export default function LenderManagement() {
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-muted-foreground mb-1">Notes</label>
+                <label className="block text-[13px] font-medium text-muted-foreground mb-1">Address</label>
                 <input
                   type="text"
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  value={form.address}
+                  onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="Street, suburb, state, postcode"
                   className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
+            </div>
+
+            {/* One mailbox per desk inside the lender. All optional — the BDM
+                contact below is the fallback where a lender has no separate
+                address for a job. */}
+            <div className="pt-1">
+              <p className="text-[13px] font-medium text-foreground mb-2">Where to send things</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {LENDER_MAILBOXES.map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="block text-[13px] font-medium text-muted-foreground mb-1">{label}</label>
+                    <input
+                      type="email"
+                      value={form[key]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1">Notes</label>
+              <input
+                type="text"
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </div>
             <div className="flex gap-2">
               <Button type="submit" loading={saving}>{editingId ? 'Save Changes' : 'Create Lender'}</Button>

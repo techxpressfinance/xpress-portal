@@ -529,3 +529,16 @@ export const APPLICATION_SECTIONS = [
 export type ApplicationSectionKey = (typeof APPLICATION_SECTIONS)[number]['key'];
 
 
+// The desks inside a lender that a broker sends things to. Keys mirror the
+// columns on the Lender model; the labels name the job rather than the
+// lender's own team names, which differ at every one.
+export const LENDER_MAILBOXES = [
+  { key: 'service_request_email', label: 'Service requests' },
+  { key: 'credit_email', label: 'Credit / applications' },
+  { key: 'settlements_email', label: 'Settlements' },
+  { key: 'payout_letter_email', label: 'Payout letters' },
+  { key: 'doc_request_email', label: 'Document requests' },
+  { key: 'collections_email', label: 'Collections' },
+] as const;
+
+export type LenderMailboxKey = (typeof LENDER_MAILBOXES)[number]['key'];
