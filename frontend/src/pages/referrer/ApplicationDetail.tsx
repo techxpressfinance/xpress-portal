@@ -8,6 +8,7 @@ import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
 import StatusTimeline from '../../components/StatusTimeline';
+import JourneyTracker from '../../components/JourneyTracker';
 import { useToast } from '../../components/Toast';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
@@ -958,12 +959,16 @@ export default function ReferrerApplicationDetail() {
             {/* ── OVERVIEW ── */}
             {activeTab === 'overview' && (
               <>
-                {/* Where the deal has got to. Uses the client-facing step set —
-                    a referrer is external, so the internal "submitted to lender"
-                    step stays folded into "Under Review" here too. */}
+                {/* Where the deal has got to, and — the part a referrer can act
+                    on — whose move it is. Falls back to the client-facing step
+                    set for an application the server sent no journey for. */}
                 <Card>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Progress</h2>
-                  <StatusTimeline currentStatus={application.status} clientView />
+                  {application.journey ? (
+                    <JourneyTracker journey={application.journey} />
+                  ) : (
+                    <StatusTimeline currentStatus={application.status} clientView />
+                  )}
                 </Card>
 
                 {/* Completion banner */}

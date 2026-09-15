@@ -16,7 +16,9 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.lender_pricing import latest_for_application as latest_lender_pricing, resolve_lender
 from app.services.tax_invoice import (
+    blockers,
     buyer_from_application,
+    classify_condition,
     completeness,
     prefill_from_application,
     serialize,
@@ -29,7 +31,7 @@ router = APIRouter(prefix="/api/applications/{app_id}/tax-invoices", tags=["tax-
 # inherit binary-float error.
 _MONEY_FIELDS = {
     "sale_price", "buyers_premium", "other_charges", "deposit_paid",
-    "trade_in_value", "payout_amount",
+    "trade_in_value", "payout_amount", "asset_payout_amount",
 }
 
 
@@ -73,7 +75,7 @@ def list_tax_invoices(
         .order_by(TaxInvoice.created_at.desc())
         .all()
     )
-    return [serialize(i) for i in invoices]
+    return [serialize(i, db) for i in invoices]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -107,7 +109,7 @@ def create_tax_invoice(
     log_activity(db, current_user.id, "tax_invoice_created", "application", app_id, {"supplier_type": data.supplier_type}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
-    return serialize(invoice)
+    return serialize(invoice, db)
 
 
 @router.patch("/{invoice_id}")
@@ -131,10 +133,17 @@ def update_tax_invoice(
             value = Decimal(str(value))
         setattr(invoice, field, value)
 
+    # The odometer decides what the asset is sold as, so a corrected reading
+    # re-decides it — leaving a stale "new" beside 40,000km would misstate the
+    # goods on the document and the policy the deal was priced under. An
+    # explicit condition sent in the same request is the broker overriding it.
+    if "asset_odometer" in updates and "asset_condition" not in updates:
+        invoice.asset_condition = classify_condition(invoice.asset_odometer) or invoice.asset_condition
+
     log_activity(db, current_user.id, "tax_invoice_updated", "application", app_id, {"fields": sorted(updates)}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
-    return serialize(invoice)
+    return serialize(invoice, db)
 
 
 @router.post("/{invoice_id}/refresh-buyer")
@@ -164,7 +173,7 @@ def refresh_tax_invoice_buyer(
                  {"applicant_type": application.applicant_type}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
-    return serialize(invoice)
+    return serialize(invoice, db)
 
 
 @router.post("/{invoice_id}/refresh-pricing")
@@ -203,7 +212,7 @@ def refresh_tax_invoice_pricing(
                  {"quote_sheet_id": pricing.id, "version": pricing.version}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
-    return serialize(invoice)
+    return serialize(invoice, db)
 
 
 @router.post("/{invoice_id}/issue")
@@ -221,6 +230,10 @@ def issue_tax_invoice(
     invoice = _get_invoice(db, app_id, invoice_id)
     _require_draft(invoice)
 
+    stop = blockers(invoice)
+    if stop:
+        raise HTTPException(status_code=400, detail=f"Totals do not reconcile: {'; '.join(stop)}")
+
     missing = completeness(invoice)
     if missing:
         raise HTTPException(status_code=400, detail=f"Still needed: {'; '.join(missing)}")
@@ -230,7 +243,7 @@ def issue_tax_invoice(
     log_activity(db, current_user.id, "tax_invoice_issued", "application", app_id, {"invoice_number": invoice.invoice_number}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
-    return serialize(invoice)
+    return serialize(invoice, db)
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)

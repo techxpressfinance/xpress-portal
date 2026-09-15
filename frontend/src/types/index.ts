@@ -6,6 +6,31 @@ export type AuthMethod = string;
 export const LOAN_TYPES = ['personal', 'home', 'business', 'vehicle', 'equipment_finance', 'business_loan', 'commercial_property', 'home_loan'] as const;
 export type LoanType = (typeof LOAN_TYPES)[number];
 
+/** Whose move it is while an application sits in its current stage. The desk
+ *  sets this per stage on the board; it is the one part of the journey a
+ *  referrer can act on — "client" means a nudge would help, anything else
+ *  means leave it alone. */
+export const AWAITING_PARTIES = ['client', 'desk', 'lender', 'supplier', 'referrer', 'none'] as const;
+export type AwaitingParty = (typeof AWAITING_PARTIES)[number];
+
+/** The journey as a referrer is shown it: which phase, whose move, how long.
+ *  Deliberately carries no stage title, team or lender — those describe how the
+ *  desk works, not what a referrer should do about it. */
+export interface Journey {
+  /** The phase band the application is in, e.g. "Finding a Lender". */
+  phase: string | null;
+  /** The phases of this application's own board, in order. Detail view only. */
+  phases: string[];
+  /** Index of `phase` within `phases`, or null when the file is closed. */
+  phase_index: number | null;
+  awaiting: AwaitingParty | null;
+  entered_at: string | null;
+  /** Days waiting on whoever `awaiting` names. */
+  days_waiting: number | null;
+  /** 'rejected' or 'not_proceeding' — the journey ended rather than advanced. */
+  closed: string | null;
+}
+
 export const APPLICATION_STATUSES = ['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled', 'rejected', 'not_proceeding'] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
@@ -187,6 +212,9 @@ export interface LoanApplication {
   cloned_from_id?: string | null;
   // Referrer info (populated from referral data)
   referrer: ReferrerInfo | null;
+  // Where the file is up to, in referrer terms. Sent to referrer viewers only —
+  // `phases`/`phase_index` on the detail view, the rest on the list too.
+  journey?: Journey | null;
   // Soft delete
   deleted_at: string | null;
   // Broker lock — prevents client from editing the draft
@@ -890,7 +918,11 @@ export interface TaxInvoiceTotals {
   gst: number;
   total: number;
   trade_in: number;
+  /** Owing on the trade-in — added to the price. */
   payout: number;
+  /** Owing on the asset being bought — already inside the price, so it is
+   *  carved out of settlement rather than added to it. */
+  asset_payout: number;
   deposit_paid: number;
   /** The GST-exclusive value of the goods — what a business buyer books. */
   ex_gst: number;
@@ -900,11 +932,16 @@ export interface TaxInvoiceTotals {
   /** The lender's word for `balance_due`. The deposit has already come off, so
    *  these are one number under two names — never subtract the deposit again. */
   amount_financed: number;
-  /** Part payment 1: clears the finance owing on the asset. */
+  /** A trade-in and a deposit that between them more than cover the price —
+   *  an impossible deal rather than a refund owing. Blocks issuing. */
+  payable_is_negative: boolean;
+  /** Part payment 1: clears the finance owing on the asset being bought. */
   settlement_to_creditor: number;
   /** Part payment 2: what actually reaches the seller. */
   settlement_to_seller: number;
-  /** The two parts reconcile to `balance_due`. True by construction. */
+  settlement_total: number;
+  /** False when the payout is quoted higher than the price the deal was
+   *  written at, leaving nothing for the seller. Blocks issuing. */
   settlement_balances: boolean;
   /** Amount financed as a percentage of the cash price, or null with no price.
    *  Over 100% means negative equity or fees rolled into the loan. */
@@ -919,10 +956,17 @@ export interface TaxInvoiceTotals {
   buyer_identity_required: boolean;
 }
 
-/** A deal the desk may still choose to write, flagged for a second look.
- *  Never blocks issuing — that is what `missing` is for. */
+/** Something worth a second look before the document goes out. Negative equity
+ *  and a high LVR are deals the desk may still choose to write and never block
+ *  issuing; the arithmetic failures also appear in `blockers`, which does. */
 export interface TaxInvoiceAlert {
-  code: 'negative_equity' | 'lvr' | 'name_mismatch' | 'settlement_unbalanced';
+  code:
+    | 'negative_equity'
+    | 'lvr'
+    | 'name_mismatch'
+    | 'settlement_unbalanced'
+    | 'payable_negative'
+    | 'finance_variance';
   message: string;
 }
 
@@ -985,7 +1029,11 @@ export interface TaxInvoice {
   other_charges_label: string | null;
   deposit_paid: number | null;
   trade_in_value: number | null;
+  /** Still owing on the asset being traded in — added to the price. */
   payout_amount: number | null;
+  /** Still owing on the asset being bought — paid to the creditor out of the
+   *  price, so the asset clears and the seller receives only the balance. */
+  asset_payout_amount: number | null;
   payout_account_name: string | null;
   payout_bsb: string | null;
   payout_account_number: string | null;
@@ -1006,6 +1054,9 @@ export interface TaxInvoice {
   totals: TaxInvoiceTotals;
   /** What still has to be filled in before it can be issued. */
   missing: string[];
+  /** Sums that contradict each other. Also blocks issuing, and unlike
+   *  `missing` cannot be cleared by filling a field in. */
+  blockers: string[];
   /** Warnings for the broker. Do not gate issuing on these. */
   alerts: TaxInvoiceAlert[];
   name_match: TaxInvoiceNameMatch | null;

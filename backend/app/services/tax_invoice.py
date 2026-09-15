@@ -66,12 +66,20 @@ def totals(invoice: TaxInvoice) -> dict:
     deposit = _money(invoice.deposit_paid)
     payable = _round(subtotal - trade_in + payout - deposit)
 
-    # Settlement reaches two parties, not one: the payout clears the finance
-    # still owing on the asset and the seller is paid the rest. Splitting the
-    # figure the desk has already agreed means the two parts can never add up
-    # to more than what is payable.
-    to_creditor = min(_round(payout), payable) if payout > 0 else Decimal("0")
+    # Settlement reaches two parties, not one, where the asset being bought
+    # still carries finance: the payout clears that loan so the asset comes
+    # over unencumbered, and the seller is paid whatever the price leaves. That
+    # debt is already inside the price — unlike the trade-in payout above,
+    # which is added to it — so the two parts split `payable` rather than
+    # enlarging it.
+    to_creditor = _round(_money(invoice.asset_payout_amount))
     to_seller = payable - to_creditor
+
+    # A real test, not a restatement of the line above: the payout can be
+    # quoted higher than the price the deal was written at, and then there is
+    # nothing left for the seller and the settlement cannot be paid as
+    # structured. That is the case the desk has to see before funds move.
+    settlement_balances = to_seller >= 0
 
     # The deposit has already come off `payable`, so the amount financed is
     # that same figure — the two names are the lender's and the dealer's words
@@ -101,17 +109,19 @@ def totals(invoice: TaxInvoice) -> dict:
         "total": float(_round(subtotal)),
         "trade_in": float(_round(trade_in)),
         "payout": float(_round(payout)),
+        "asset_payout": float(to_creditor),
         "deposit_paid": float(_round(deposit)),
         # What the financier is asked to pay. Named balance_due since the
         # invoice documents also print it as the balance owing.
         "balance_due": float(payable),
         "amount_financed": float(amount_financed),
+        # A price that a trade-in and a deposit between them more than cover is
+        # an arithmetic impossibility on a finance deal, not a refund owing.
+        "payable_is_negative": payable < 0,
         "settlement_to_creditor": float(to_creditor),
         "settlement_to_seller": float(to_seller),
-        # Derived from one figure, so this holds by construction — it is
-        # returned so the document can show the split reconciling rather than
-        # asking the reader to add it up.
-        "settlement_balances": to_creditor + to_seller == payable,
+        "settlement_total": float(to_creditor + to_seller),
+        "settlement_balances": settlement_balances,
         "lvr": float(lvr) if lvr is not None else None,
         "negative_equity": float(negative_equity),
         # The heading the document may legally carry.
@@ -170,14 +180,40 @@ def name_match(invoice: TaxInvoice) -> Optional[dict]:
     }
 
 
-def alerts(invoice: TaxInvoice) -> list[dict]:
+def alerts(invoice: TaxInvoice, approved_amount: Optional[Decimal] = None) -> list[dict]:
     """Things worth a broker's attention before this document goes out.
 
-    Warnings, not gates. Every one of these describes a deal the desk may still
-    have good reason to write, so none of them blocks issuing — that is what
-    `completeness` is for, and it only ever reports missing data."""
+    Mostly warnings. Negative equity and a high LVR describe deals the desk may
+    still have good reason to write — an LVR outside policy is a referral point
+    for a broker to find a lender whose policy fits, not a "no" to the client —
+    so they never block issuing.
+
+    The two arithmetic failures are different in kind: a negative payable or a
+    settlement that cannot be paid as split are not risk judgements, they are
+    sums that do not work, and `blockers` stops those."""
     found: list[dict] = []
     sums = totals(invoice)
+
+    if sums["payable_is_negative"]:
+        found.append({
+            "code": "payable_negative",
+            "message": (
+                f"Total payable comes out at {_fmt_money(sums['balance_due'])} — the trade-in and "
+                f"deposit together exceed the price. Check the cost build-up before going further."
+            ),
+        })
+
+    if not sums["settlement_balances"]:
+        found.append({
+            "code": "settlement_unbalanced",
+            "message": (
+                f"The settlement does not reconcile: a payout of "
+                f"{_fmt_money(sums['settlement_to_creditor'])} against "
+                f"{_fmt_money(sums['balance_due'])} payable leaves "
+                f"{_fmt_money(sums['settlement_to_seller'])} for the seller. Confirm the payout "
+                f"letter and the purchase price before any funds are released."
+            ),
+        })
 
     if sums["negative_equity"] > 0:
         found.append({
@@ -198,6 +234,23 @@ def alerts(invoice: TaxInvoice) -> list[dict]:
             ),
         })
 
+    # The dealer has to invoice to the deal the lender approved. Where the two
+    # figures have drifted apart, one of them is out of date and settling on
+    # the wrong one leaves the financier short or the client overcommitted.
+    if approved_amount is not None:
+        variance = _round(Decimal(str(sums["amount_financed"])) - _round(approved_amount))
+        if variance != 0:
+            direction = "above" if variance > 0 else "below"
+            found.append({
+                "code": "finance_variance",
+                "message": (
+                    f"This invoice finances {_fmt_money(sums['amount_financed'])}, "
+                    f"{_fmt_money(abs(float(variance)))} {direction} the "
+                    f"{_fmt_money(float(approved_amount))} approved on the lender pricing. "
+                    f"Re-price or correct the invoice before settlement."
+                ),
+            })
+
     names = name_match(invoice)
     if names and not names["matches"]:
         found.append({
@@ -209,13 +262,28 @@ def alerts(invoice: TaxInvoice) -> list[dict]:
             ),
         })
 
-    if not sums["settlement_balances"]:
-        found.append({
-            "code": "settlement_unbalanced",
-            "message": "The settlement split does not add up to the total payable.",
-        })
-
     return found
+
+
+def blockers(invoice: TaxInvoice) -> list[str]:
+    """Sums that do not work, which stop the document being issued.
+
+    Kept apart from `completeness` because these are not blanks a broker can
+    fill in — they are figures that contradict each other — and apart from
+    `alerts` because everything there is a judgement the desk is allowed to
+    make."""
+    stop: list[str] = []
+    sums = totals(invoice)
+    if sums["payable_is_negative"]:
+        stop.append(
+            f"Total payable is negative ({_fmt_money(sums['balance_due'])})"
+        )
+    if not sums["settlement_balances"]:
+        stop.append(
+            f"The settlement does not reconcile — {_fmt_money(sums['settlement_to_creditor'])} "
+            f"payout against {_fmt_money(sums['balance_due'])} payable"
+        )
+    return stop
 
 
 def _fmt_money(value: float) -> str:
@@ -268,6 +336,14 @@ def completeness(invoice: TaxInvoice) -> list[str]:
             missing.append("Buyer name or ABN (required at $1,000 or more)")
         if invoice.supplier_type == SupplierType.auction and invoice.buyers_premium is None:
             missing.append("Buyer's premium")
+
+    # Settlement is paid in two parts where the asset carries finance, so the
+    # first payee needs an account to be paid into. Without it the payout leg
+    # has nowhere to go and the asset does not clear.
+    if _money(invoice.asset_payout_amount) > 0 and not (
+        invoice.payout_creditor_name and invoice.payout_creditor_account_number
+    ):
+        missing.append("Existing financier's name and account for the payout")
     return missing
 
 
@@ -548,7 +624,14 @@ def ensure_request_for_approval(
     return invoice
 
 
-def serialize(invoice: TaxInvoice) -> dict:
+def approved_finance_amount(db: Session, application_id: str) -> Optional[Decimal]:
+    """What the lender pricing this deal was approved on says is being borrowed,
+    so the invoice can be checked against it."""
+    pricing = latest_lender_pricing(db, application_id)
+    return pricing.amount_borrowed if pricing is not None else None
+
+
+def serialize(invoice: TaxInvoice, db: Optional[Session] = None) -> dict:
     data = {
         "id": invoice.id,
         "application_id": invoice.application_id,
@@ -597,6 +680,9 @@ def serialize(invoice: TaxInvoice) -> dict:
         "deposit_paid": float(invoice.deposit_paid) if invoice.deposit_paid is not None else None,
         "trade_in_value": float(invoice.trade_in_value) if invoice.trade_in_value is not None else None,
         "payout_amount": float(invoice.payout_amount) if invoice.payout_amount is not None else None,
+        "asset_payout_amount": (
+            float(invoice.asset_payout_amount) if invoice.asset_payout_amount is not None else None
+        ),
         "payout_account_name": invoice.payout_account_name,
         "payout_bsb": invoice.payout_bsb,
         "payout_account_number": invoice.payout_account_number,
@@ -614,6 +700,12 @@ def serialize(invoice: TaxInvoice) -> dict:
     }
     data["totals"] = totals(invoice)
     data["missing"] = completeness(invoice)
-    data["alerts"] = alerts(invoice)
+    data["blockers"] = blockers(invoice)
+    # Without a session the approved figure cannot be read, so the variance
+    # alert is simply absent rather than wrongly reported as nil variance.
+    data["alerts"] = alerts(
+        invoice,
+        approved_amount=approved_finance_amount(db, invoice.application_id) if db else None,
+    )
     data["name_match"] = name_match(invoice)
     return data

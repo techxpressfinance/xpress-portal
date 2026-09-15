@@ -264,7 +264,7 @@ export default function TaxInvoicePanel({
             // A dealer document is a request for their invoice, not one we raise.
             const isRequest = invoice.supplier_type === 'dealer';
             const sameDelivery = Boolean(draft.delivery_same_as_buyer ?? invoice.delivery_same_as_buyer);
-            const hasPayout = invoice.totals.payout > 0;
+            const hasPayout = invoice.totals.asset_payout > 0;
             const odometerSuggestion = classifyByOdometer(field(invoice, 'asset_odometer'));
             return (
               <div key={invoice.id} className="rounded-lg border border-[var(--led-line)]">
@@ -293,8 +293,9 @@ export default function TaxInvoicePanel({
 
                 {open && (
                   <div className="border-t border-[var(--led-line)] px-3 py-3 space-y-4">
-                    {/* Warnings, never gates: each describes a deal the desk may
-                        still have good reason to write. `missing` is what blocks. */}
+                    {/* Mostly warnings — negative equity and a high LVR describe
+                        deals the desk may still have good reason to write. The
+                        arithmetic failures repeat in `blockers`, which gates. */}
                     {invoice.alerts.length > 0 && (
                       <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2.5 space-y-1.5">
                         {invoice.alerts.map((alert) => (
@@ -451,7 +452,12 @@ export default function TaxInvoicePanel({
                       <Text label="Other charges" type="number" value={field(invoice, 'other_charges')} onChange={(v) => set('other_charges', v === '' ? null : Number(v))} disabled={locked} />
                       <Text label="Other charges — label" value={field(invoice, 'other_charges_label')} onChange={(v) => set('other_charges_label', v)} disabled={locked} />
                       <Text label="Less trade in" type="number" value={field(invoice, 'trade_in_value')} onChange={(v) => set('trade_in_value', v === '' ? null : Number(v))} disabled={locked} />
-                      <Text label="Payout of the loan (if any)" type="number" value={field(invoice, 'payout_amount')} onChange={(v) => set('payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      {/* Two debts, opposite directions. What is owing on the
+                          trade-in is added — the dealer clears it for the buyer.
+                          What is owing on the asset being bought is already
+                          inside its price and comes out of settlement. */}
+                      <Text label="Payout owing on the trade-in" type="number" value={field(invoice, 'payout_amount')} onChange={(v) => set('payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      <Text label="Payout owing on the asset being bought" type="number" value={field(invoice, 'asset_payout_amount')} onChange={(v) => set('asset_payout_amount', v === '' ? null : Number(v))} disabled={locked} />
                       <Text label="Less cash deposit" type="number" value={field(invoice, 'deposit_paid')} onChange={(v) => set('deposit_paid', v === '' ? null : Number(v))} disabled={locked} />
                     </Section>
 
@@ -466,8 +472,8 @@ export default function TaxInvoicePanel({
                     {hasPayout && (
                       <Section title="Part payment 1 — pay out the existing finance">
                         <p className="text-[12px] text-muted-foreground">
-                          The payout goes straight to the seller's financier so the asset clears at
-                          settlement, and only the balance reaches the seller.
+                          The payout owing on the asset goes straight to the seller's financier so
+                          it clears at settlement, and only the balance reaches the seller.
                         </p>
                         <Text label="Financier" value={field(invoice, 'payout_creditor_name')} onChange={(v) => set('payout_creditor_name', v)} disabled={locked} />
                         <Text label="BSB" value={field(invoice, 'payout_creditor_bsb')} onChange={(v) => set('payout_creditor_bsb', v)} disabled={locked} />
@@ -491,7 +497,7 @@ export default function TaxInvoicePanel({
                       <Row label={isRequest ? 'Cash price' : 'Subtotal'} value={money(invoice.totals.subtotal)} />
                       <Row label={invoice.totals.is_tax_invoice ? 'GST included' : 'GST'} value={money(invoice.totals.gst)} />
                       {invoice.totals.trade_in > 0 && <Row label="Less trade in" value={money(invoice.totals.trade_in)} />}
-                      {invoice.totals.payout > 0 && <Row label="Payout of the loan" value={money(invoice.totals.payout)} />}
+                      {invoice.totals.payout > 0 && <Row label="Payout owing on the trade in" value={money(invoice.totals.payout)} />}
                       <Row label={isRequest ? 'Less cash deposit' : 'Deposit paid'} value={money(invoice.totals.deposit_paid)} />
                       <Row label={isRequest ? 'Total payable for goods' : 'Balance due'} value={money(invoice.totals.balance_due)} strong />
                       {/* The deposit is already out of the line above, so this is
@@ -521,9 +527,18 @@ export default function TaxInvoicePanel({
                         />
                         <Row
                           label={invoice.totals.settlement_balances ? 'Reconciles to total payable' : 'Does not reconcile'}
-                          value={money(invoice.totals.settlement_to_creditor + invoice.totals.settlement_to_seller)}
+                          value={money(invoice.totals.settlement_total)}
                           strong
                         />
+                      </div>
+                    )}
+
+                    {invoice.blockers.length > 0 && !locked && (
+                      <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2">
+                        <p className="text-[12px] font-medium text-foreground mb-1">These figures do not reconcile</p>
+                        <ul className="text-[12px] text-muted-foreground list-disc pl-4 space-y-0.5">
+                          {invoice.blockers.map((b) => <li key={b}>{b}</li>)}
+                        </ul>
                       </div>
                     )}
 
@@ -928,7 +943,7 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
             <PrintRow label={invoice.other_charges_label || 'Other charges'} value={money(invoice.other_charges)} />
           )}
           <PrintRow label="Less trade in" value={money(t.trade_in)} />
-          <PrintRow label="Payout of the loan (if any)" value={money(t.payout)} />
+          <PrintRow label="Payout owing on the trade in (if any)" value={money(t.payout)} />
           <PrintRow label="Less cash deposit" value={money(t.deposit_paid)} />
           <PrintRow label="Total payable for goods" value={money(t.balance_due)} strong />
         </div>
@@ -970,11 +985,11 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
 }
 
 /**
- * Where settlement money lands. One payee where the asset is owned outright,
- * two where it carries finance: the payout clears the existing loan and only
- * the balance reaches the seller. Printing both parts is the point — it is
- * what stops the desk paying a seller in full and trusting them to clear a
- * debt secured over the very asset being bought.
+ * Where settlement money lands. One payee where the asset being bought is owned
+ * outright, two where it carries finance: the payout clears the existing loan
+ * and only the balance reaches the seller. Printing both parts is the point —
+ * it is what stops the desk paying a seller in full and trusting them to clear
+ * a debt secured over the very asset being bought.
  */
 function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
   const t = invoice.totals;
@@ -985,7 +1000,7 @@ function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
   const account = (bsb: string | null, number: string | null) =>
     [bsb ? `BSB ${bsb}` : '', number ? `ACC ${number}` : ''].filter(Boolean).join('   ');
 
-  if (t.payout <= 0) {
+  if (t.asset_payout <= 0) {
     return (
       <PrintSection title="Nominated seller's account">
         <div className="break-inside-avoid">
@@ -1011,7 +1026,7 @@ function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
             {account(invoice.payout_bsb, invoice.payout_account_number) || 'Account details to be confirmed'}
           </div>
         </div>
-        <PrintRow label="Total settlement" value={money(t.settlement_to_creditor + t.settlement_to_seller)} strong />
+        <PrintRow label="Total settlement" value={money(t.settlement_total)} strong />
       </div>
     </PrintSection>
   );
@@ -1096,7 +1111,7 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
           <PrintRow label={t.is_tax_invoice ? 'GST included in this total' : 'GST'} value={money(t.gst)} muted />
           {t.is_tax_invoice && <PrintRow label="Total excluding GST" value={money(t.ex_gst)} muted />}
           {t.trade_in > 0 && <PrintRow label="Less trade in" value={money(t.trade_in)} />}
-          {t.payout > 0 && <PrintRow label="Payout of the loan" value={money(t.payout)} />}
+          {t.payout > 0 && <PrintRow label="Payout owing on the trade in" value={money(t.payout)} />}
           {t.deposit_paid > 0 && <PrintRow label="Less deposit paid" value={money(t.deposit_paid)} />}
           <PrintRow label="Balance due" value={money(t.balance_due)} strong />
         </div>

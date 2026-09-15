@@ -8,8 +8,39 @@ import { LOAN_TYPE_LABELS, STATUS_LABEL } from '../../lib/constants';
 import { applicantDisplayName, applicantEmail } from '../../lib/applicantName';
 
 import { APPLICATION_STATUSES } from '../../types';
-import type { LoanApplication } from '../../types';
+import type { AwaitingParty, Journey, LoanApplication } from '../../types';
 import { DocumentTextIcon, PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+
+// How a closed file reads on the list. The journey ended rather than advanced,
+// so neither a phase nor a waiting line applies.
+const CLOSED_LABELS: Record<string, string> = {
+  rejected: 'Not approved',
+  not_proceeding: 'Not proceeding',
+};
+
+// Whose move it is, in two words. "Your client" is the only one a referrer needs
+// to act on, so it is the only one that carries colour — everything else is
+// there to say "not your problem" without making them open the file to find out.
+const WAITING_LABELS: Record<AwaitingParty, { label: string; nudge: boolean } | null> = {
+  client: { label: 'Your client', nudge: true },
+  desk: { label: 'Our team', nudge: false },
+  lender: { label: 'The lender', nudge: false },
+  supplier: { label: 'The supplier', nudge: false },
+  referrer: { label: 'You', nudge: true },
+  none: null,
+};
+
+function JourneyWaitingLine({ journey }: { journey: Journey }) {
+  if (journey.closed || !journey.awaiting) return null;
+  const waiting = WAITING_LABELS[journey.awaiting];
+  if (!waiting) return null;
+  return (
+    <p className={`text-[12px] ${waiting.nudge ? 'font-medium text-warning' : 'text-muted-foreground'}`}>
+      {waiting.nudge ? '\u23F3' : '\u2713'} {waiting.label}
+      {journey.days_waiting != null && ` \u00B7 ${journey.days_waiting}d`}
+    </p>
+  );
+}
 
 export default function ReferrerApplications() {
   const { toast } = useToast();
@@ -191,8 +222,20 @@ export default function ReferrerApplications() {
                       </td>
                       <td className="hidden sm:table-cell px-3 sm:px-6 py-4 text-[14px] font-medium text-foreground">{LOAN_TYPE_LABELS[app.loan_type] || app.loan_type}</td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[14px] font-semibold text-foreground">${Number(app.amount).toLocaleString('en-AU')}</td>
+                      {/* Phase, then whose move it is. The second line is what
+                          turns the list into a worklist: a referrer scans for
+                          "Your client" and ignores the rest. */}
                       <td className="px-3 sm:px-6 py-4">
-                        <Badge type="status" value={app.status} />
+                        {app.journey ? (
+                          <>
+                            <p className="text-[13px] font-medium text-foreground">
+                              {app.journey.closed ? CLOSED_LABELS[app.journey.closed] ?? 'Closed' : app.journey.phase}
+                            </p>
+                            <JourneyWaitingLine journey={app.journey} />
+                          </>
+                        ) : (
+                          <Badge type="status" value={app.status} />
+                        )}
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-4 text-[13px] text-muted-foreground">
                         {formatDate(app.created_at)}

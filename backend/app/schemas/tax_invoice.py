@@ -59,7 +59,10 @@ class TaxInvoiceUpdate(BaseModel):
     other_charges_label: Optional[str] = None
     deposit_paid: Optional[float] = None
     trade_in_value: Optional[float] = None
+    # Owing on the trade-in (added to the price) and owing on the asset being
+    # bought (taken out of it) respectively — see the model.
     payout_amount: Optional[float] = None
+    asset_payout_amount: Optional[float] = None
     payout_account_name: Optional[str] = None
     payout_bsb: Optional[str] = None
     payout_account_number: Optional[str] = None

@@ -89,6 +89,9 @@ _MIGRATIONS = [
     ("kanban_columns", "card_kind", "VARCHAR(12) DEFAULT 'application' NOT NULL"),
     ("leads", "company_abn", "TEXT"),
     ("kanban_columns", "phase", "VARCHAR(60)"),
+    # Whose move it is while a card sits in the stage — drives the referrer's
+    # "waiting on your client" line. See services/journey.py.
+    ("kanban_columns", "awaiting", "VARCHAR(12)"),
     ("kanban_boards", "enforce_transitions", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("arrears_attachments", "contact_attempt_id", "VARCHAR(36) REFERENCES arrears_contact_attempts(id)"),
     ("loan_applications", "analysis_status", "VARCHAR(10)"),
@@ -328,6 +331,10 @@ _MIGRATIONS = [
     ("tax_invoices", "asset_registration_expiry", "VARCHAR(30)"),
     ("tax_invoices", "trade_in_value", "NUMERIC(12, 2)"),
     ("tax_invoices", "payout_amount", "NUMERIC(12, 2)"),
+    # What is still owing on the asset being BOUGHT, as against payout_amount
+    # above which is owing on the trade-in. It comes out of the purchase price
+    # rather than adding to it, so the two can never be one column.
+    ("tax_invoices", "asset_payout_amount", "NUMERIC(12, 2)"),
     # Part payment 1 of settlement — the seller's existing financier, paid
     # separately from the seller so an encumbered asset clears at settlement.
     ("tax_invoices", "payout_creditor_name", "VARCHAR(500)"),
@@ -1024,8 +1031,47 @@ try:
                         "UPDATE kanban_columns SET phase = :phase "
                         "WHERE stage_key = :key AND loan_category = :cat AND phase IS NULL"
                     ), {"phase": _stage["phase"], "key": _stage["stage_key"], "cat": _category})
+                # Same rule as phase: fill only what was never set, so a desk
+                # that has re-answered "whose move is it" for its own board
+                # keeps its answer.
+                if _stage.get("awaiting"):
+                    conn.execute(text(
+                        "UPDATE kanban_columns SET awaiting = :awaiting "
+                        "WHERE stage_key = :key AND loan_category = :cat AND awaiting IS NULL"
+                    ), {"awaiting": _stage["awaiting"], "key": _stage["stage_key"], "cat": _category})
 except Exception as _e:
     _logger.debug("Kanban stage rename/phase backfill skipped: %s", _e)
+
+# Notification rules are seeded only for stages a template CREATES, so boards
+# that already had their stage set never received the referrer rules added with
+# the journey view. Add any that are missing, keyed on (column, audience,
+# channel) exactly as _sync_template_notifications is — wording the desk has
+# since edited is left alone, and a rule an admin deleted on purpose comes back
+# only here, once, rather than on every board view.
+try:
+    with engine.begin() as conn:
+        for _category, _template in BOARD_STAGE_TEMPLATES.items():
+            for _stage in _template:
+                for _i, _rule in enumerate(_stage.get("notifications", [])):
+                    _cols = conn.execute(text(
+                        "SELECT c.id, c.tenant_id FROM kanban_columns c "
+                        "WHERE c.stage_key = :key AND c.loan_category = :cat "
+                        "AND NOT EXISTS (SELECT 1 FROM stage_notification_rules r "
+                        "WHERE r.column_id = c.id AND r.audience = :aud AND r.channel = :chan)"
+                    ), {"key": _stage["stage_key"], "cat": _category,
+                        "aud": _rule["audience"], "chan": _rule["channel"]}).fetchall()
+                    for _col_id, _col_tenant in _cols:
+                        conn.execute(text(
+                            "INSERT INTO stage_notification_rules "
+                            "(id, tenant_id, column_id, audience, channel, subject, body, default_enabled, sort_order, created_at) "
+                            "VALUES (:id, :tid, :cid, :aud, :chan, :subj, :body, :enabled, :sort, :now)"
+                        ), {"id": str(_uuid.uuid4()), "tid": _col_tenant, "cid": _col_id,
+                            "aud": _rule["audience"], "chan": _rule["channel"],
+                            "subj": _rule.get("subject"), "body": _rule["body"],
+                            "enabled": _rule.get("default_enabled", True), "sort": _i,
+                            "now": _dt.now(_tz.utc)})
+except Exception as _e:
+    _logger.debug("Stage notification rule backfill skipped: %s", _e)
 
 # API docs are only served in development — the OpenAPI schema enumerates the
 # full attack surface and has no business being public in production.

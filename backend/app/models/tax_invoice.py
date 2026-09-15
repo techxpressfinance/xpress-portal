@@ -17,7 +17,7 @@ plus the desk's own "Tax Invoice Request" sheet — the document sent TO a deale
 on approval asking them to invoice us: who it is addressed to, the Sold To /
 Delivery To parties, the full identity of the goods (build and compliance
 dates, engine number, colour, rego expiry) and the cost build-up that nets a
-trade-in and an existing payout against the cash price.
+trade-in and its outstanding payout against the cash price.
 
 A `dealer` invoice therefore prints as that request; `private` and `auction`
 print as the invoice/receipt this desk raises itself.
@@ -139,25 +139,36 @@ class TaxInvoice(Base):
     deposit_paid: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     # Netted off the cash price when the buyer trades an asset in.
     trade_in_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
-    # Added back on: what is still owing on the trade-in, which the dealer pays
-    # out of the settlement rather than the buyer clearing it first.
+
+    # Two different debts are called "the payout" on a deal and they move the
+    # money in opposite directions, so they are two columns:
+    #
+    # payout_amount — what is still owing on the asset the buyer is TRADING IN.
+    #   The dealer clears it rather than the buyer paying it off first, so it is
+    #   added back on to what we owe the dealer.
+    # asset_payout_amount — what is still owing on the asset being BOUGHT. It is
+    #   already inside the purchase price: the creditor is paid out of the
+    #   proceeds so the asset clears, and the seller receives only the balance.
+    #   Adding it would charge the same debt twice.
     payout_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    asset_payout_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Where the money goes. Bank details are PII and encrypted, as on the
     # referrer billing profile.
     #
-    # Settlement is paid in two parts where the asset carries finance: the
-    # payout goes straight to the seller's financier and only the remainder
-    # reaches the seller. A private sale is where this matters most — the buyer
-    # has no dealer standing between them and an encumbered asset — so each
-    # part has its own account rather than the desk paying one party and
-    # trusting them to clear the debt.
+    # Settlement is paid in two parts where the asset being bought carries
+    # finance: asset_payout_amount goes straight to the seller's financier and
+    # only the remainder reaches the seller. A private sale is where this
+    # matters most — the buyer has no dealer standing between them and an
+    # encumbered asset — so each part has its own account rather than the desk
+    # paying one party and trusting them to clear the debt.
     payout_account_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
-    # Part payment 1 — the seller's existing financier (NAB, Westpac, a lender's
-    # payout department). Blank when the asset is owned outright.
+    # Part payment 1 — the financier holding the loan over the asset being sold
+    # (NAB, Westpac, a lender's payout department). Blank when it is owned
+    # outright.
     payout_creditor_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_creditor_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     payout_creditor_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)

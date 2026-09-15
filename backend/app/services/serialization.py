@@ -94,6 +94,7 @@ def app_with_user(
     list_item: bool = False,
     include_lend_extra_data: bool = False,
     include_applicant_contact: bool = False,
+    journey: Optional[dict] = None,
 ) -> dict:
     """Build response dict with user info and assigned brokers list.
 
@@ -160,6 +161,11 @@ def app_with_user(
                 if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
                     referrer_info = _referrer_dict(ref.referrer)
     data["referrer"] = referrer_info
+    # Where the file is up to, for the viewers who are shown a journey rather
+    # than a status (see services/journey.py). Resolved by the caller, since
+    # only a referrer's endpoints pay for it.
+    if journey is not None:
+        data["journey"] = journey
 
     if list_item:
         return data

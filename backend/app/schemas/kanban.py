@@ -132,6 +132,7 @@ class KanbanColumnCreate(BaseModel):
     stage_key: Optional[str] = None
     team: Optional[str] = None
     phase: Optional[str] = None
+    awaiting: Optional[str] = None
     # Which category view the stage belongs to; null is the plain status set.
     loan_category: Optional[str] = None
 
@@ -142,6 +143,9 @@ class KanbanColumnUpdate(BaseModel):
     color: Optional[str] = None
     team: Optional[str] = None
     phase: Optional[str] = None
+    # Whose move it is while a card sits here — what the referrer's journey
+    # view reads. One of AWAITING_VALUES.
+    awaiting: Optional[str] = None
 
 
 class KanbanColumnOut(BaseModel):
@@ -155,6 +159,7 @@ class KanbanColumnOut(BaseModel):
     stage_key: Optional[str] = None
     team: Optional[str] = None
     phase: Optional[str] = None
+    awaiting: Optional[str] = None
     gates: list[StageGateOut] = Field(default_factory=list)
     notifications: list[StageNotificationOut] = Field(default_factory=list)
     # Cards in the stage — applications, or leads on a lead stage.

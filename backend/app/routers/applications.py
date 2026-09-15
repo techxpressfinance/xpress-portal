@@ -52,6 +52,7 @@ from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.loan_category import category_filtered_ids, parse_categories
+from app.services.journey import summary as journey_summary, summary_map as journey_summary_map
 from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
 from app.services.email import (
     send_assignment_notification,
@@ -716,6 +717,11 @@ def list_applications(
 
     referrer_map = referrer_info_map(db, (app.user_id for app in items))
     is_client = current_user.role == UserRole.client
+    is_referrer = current_user.role == UserRole.referrer
+    # Where each file is up to and whose move it is. Only a referrer's list
+    # renders it, and it costs two queries for the page, so it is resolved only
+    # for them.
+    journeys = journey_summary_map(db, items) if is_referrer else {}
     items_out = [
         _app_with_user(
             app,
@@ -724,7 +730,8 @@ def list_applications(
             list_item=not is_client,
             # A referrer's list is their only view of the lead until they open
             # it, so it carries the applicant's name and contact details.
-            include_applicant_contact=(current_user.role == UserRole.referrer),
+            include_applicant_contact=is_referrer,
+            journey=journeys.get(app.id),
         )
         for app in items
     ]
@@ -871,6 +878,8 @@ def get_application(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
     result = _app_with_user(application, db)
+    if current_user.role == UserRole.referrer:
+        result["journey"] = journey_summary(db, application)
     if current_user.role in (UserRole.admin, UserRole.broker):
         _ensure_client_invite_link(application, db)
         _attach_invite_urls(result, application)

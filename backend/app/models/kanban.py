@@ -74,7 +74,15 @@ class KanbanColumn(Base):
     # Band over consecutive stages on the board ("Application Started") — display
     # only. NULL means never set (the startup backfill may fill it from the
     # template); "" means an admin cleared it, which the backfill leaves alone.
+    # Doubles as the referrer-facing journey step: a referrer is shown the phase,
+    # never `title` or `team`, which name internal steps and desks.
     phase: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    # Whose move it is while a card sits here — "client", "desk", "lender",
+    # "supplier", "referrer" or "none". It is what tells a referrer whether to
+    # chase their own client or leave the file alone, which is the only part of
+    # the journey they can act on. NULL falls back to the stage's status (see
+    # services/journey.py) so a board with no stage template still answers.
+    awaiting: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

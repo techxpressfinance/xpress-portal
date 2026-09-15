@@ -209,6 +209,7 @@ def ensure_stage_columns(db: Session, board: KanbanBoard, category: Optional[str
             card_kind=stage.get("card_kind", "application"),
             team=stage.get("team"),
             phase=stage.get("phase"),
+            awaiting=stage.get("awaiting"),
             color=stage.get("color"),
             position=i,
         )
@@ -403,6 +404,24 @@ def _rule_to_dict(rule: StageNotificationRule) -> dict:
     }
 
 
+# Whose move it is while a card sits in a stage. Kept to a closed set because
+# the referrer's journey view maps each one to a line of copy — an unrecognised
+# value would render as nothing at all.
+AWAITING_VALUES = {"client", "desk", "lender", "supplier", "referrer", "none"}
+
+
+def _clean_awaiting(value: Optional[str]) -> Optional[str]:
+    cleaned = (value or "").strip().lower()
+    if not cleaned:
+        return None
+    if cleaned not in AWAITING_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"awaiting must be one of: {', '.join(sorted(AWAITING_VALUES))}",
+        )
+    return cleaned
+
+
 def _column_to_dict(col: KanbanColumn, count: int = 0) -> dict:
     return {
         "id": col.id,
@@ -415,6 +434,7 @@ def _column_to_dict(col: KanbanColumn, count: int = 0) -> dict:
         "stage_key": col.stage_key,
         "team": col.team,
         "phase": col.phase or None,
+        "awaiting": col.awaiting or None,
         "gates": [_gate_to_dict(g) for g in sorted(col.gates, key=lambda g: (g.sort_order, g.created_at))],
         "notifications": [
             _rule_to_dict(r) for r in sorted(col.notification_rules, key=lambda r: (r.sort_order, r.created_at))
@@ -628,6 +648,7 @@ def add_column(
         stage_key=data.stage_key,
         team=data.team,
         phase=(data.phase or "").strip() or None,
+        awaiting=_clean_awaiting(data.awaiting),
         tenant_id=tenant_id,
     )
     db.add(col)
@@ -674,6 +695,10 @@ def update_column(
         # "" (not NULL) records a deliberate clear, so the startup backfill
         # doesn't put a template phase back.
         col.phase = (updates["phase"] or "").strip()
+    if "awaiting" in updates:
+        # Same convention as phase: "" is an answered "nobody", NULL is never
+        # answered and stays open to the backfill.
+        col.awaiting = _clean_awaiting(updates["awaiting"]) or ""
     log_activity(db, current_user.id, "column_updated", "kanban_column", col.id, updates, tenant_id=tenant_id)
     db.commit()
     db.refresh(col)

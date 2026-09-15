@@ -306,6 +306,21 @@ class PendingBusinessLink(BaseModel):
     organization_abn: Optional[str] = None
 
 
+class JourneyOut(BaseModel):
+    """Where the file is up to, in the terms a referrer is shown. Attached only
+    for referrer viewers — it deliberately carries no stage title, team or
+    lender. `phases` and `phase_index` come back on the detail view only; the
+    list needs just the phase and whose move it is."""
+
+    phase: Optional[str] = None
+    phases: list[str] = []
+    phase_index: Optional[int] = None
+    awaiting: Optional[str] = None
+    entered_at: Optional[str] = None
+    days_waiting: Optional[int] = None
+    closed: Optional[str] = None
+
+
 class LoanApplicationOut(BaseModel):
     id: str
     user_id: str
@@ -416,6 +431,8 @@ class LoanApplicationOut(BaseModel):
     invite_url: Optional[str] = None
     approval_lender_name: Optional[str] = None
     approval_conditions: list[ApprovalConditionOut] = []
+    # Referrer viewers only — where the client is up to and whose move it is.
+    journey: Optional[JourneyOut] = None
 
     model_config = {"from_attributes": True}
 
