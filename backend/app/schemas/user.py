@@ -28,9 +28,17 @@ def _validate_specialties(v):
     return out
 
 
+PASSWORD_MAX_LENGTH = 64
+
+
 def _validate_password(v: str) -> str:
     if len(v) < 8:
         raise ValueError("Password must be at least 8 characters")
+    # bcrypt hashes at most 72 bytes and (since 4.1) raises on longer input,
+    # which surfaced as a 500. Cap well under that so multi-byte characters
+    # never push the encoded length over the limit.
+    if len(v.encode("utf-8")) > PASSWORD_MAX_LENGTH:
+        raise ValueError(f"Password must be at most {PASSWORD_MAX_LENGTH} characters")
     if not any(c.isupper() for c in v):
         raise ValueError("Password must contain at least one uppercase letter")
     if not any(c.isdigit() for c in v):

@@ -9,18 +9,21 @@ from app.database import get_db
 def get_tenant_id(request: Request, db: Session = Depends(get_db)) -> str:
     """FastAPI dependency: extract tenant_id from request state (set by
     TenantMiddleware) or, for paths the middleware skips (e.g. /api/auth/*),
-    resolve it from the X-Tenant-Slug header or ?tenant= query param.
+    resolve it with the middleware's own rule (Host subdomain; header/query
+    only when ALLOW_TENANT_HEADER is on). Inactive tenants are rejected.
     """
     tenant_id = getattr(request.state, "tenant_id", None)
     if tenant_id:
         return tenant_id
 
-    slug = request.headers.get("x-tenant-slug") or request.query_params.get("tenant")
+    from app.middleware.tenant import resolve_tenant_slug
+
+    slug = resolve_tenant_slug(request)
     if not slug:
         raise HTTPException(status_code=400, detail="Tenant context required")
 
     from app.models.tenant import Tenant
-    tenant = db.query(Tenant).filter(Tenant.slug == slug.lower().strip()).first()
+    tenant = db.query(Tenant).filter(Tenant.slug == slug, Tenant.is_active.is_(True)).first()
     if not tenant:
         raise HTTPException(status_code=400, detail="Invalid tenant")
     return tenant.id

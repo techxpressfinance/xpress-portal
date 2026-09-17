@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { Card, Button, ListSkeleton } from '../../components/ui';
 import { getErrorMessage } from '../../lib/utils';
 import type { BrokerGroup, User } from '../../types';
@@ -16,6 +17,7 @@ const EMPTY_FORM: GroupFormState = { name: '', description: '', member_ids: [] }
 
 export default function BrokerGroups() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [groups, setGroups] = useState<BrokerGroup[]>([]);
   const [brokers, setBrokers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +88,8 @@ export default function BrokerGroups() {
   };
 
   const handleDelete = async (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!(await confirm({ title: `Delete ${group?.name ?? 'this group'}?`, message: 'Members keep their accounts; only the group and its assignments are removed.', confirmText: 'Delete', variant: 'danger' }))) return;
     setDeletingId(groupId);
     try {
       await api.delete(`/broker-groups/${groupId}`);
@@ -111,6 +115,7 @@ export default function BrokerGroups() {
   };
 
   const handleRemoveMember = async (groupId: string, brokerId: string) => {
+    if (!(await confirm({ title: 'Remove this broker from the group?', confirmText: 'Remove', variant: 'danger' }))) return;
     setRemovingMemberId(brokerId);
     try {
       const { data } = await api.delete(`/broker-groups/${groupId}/members?broker_id=${brokerId}`);

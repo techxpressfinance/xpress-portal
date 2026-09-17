@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
+import { useConfirm } from '../hooks/useConfirm';
 import { Button, Card } from './ui';
 import { BASCalculator, PayCalculator, RatiosCalculator } from '../pages/admin/BasCalculator';
 import type { BASCalcState, PayCalcState, RatiosCalcState } from '../pages/admin/BasCalculator';
@@ -28,6 +29,7 @@ const TYPE_LABELS: Record<CalcType, string> = {
 
 export default function ApplicationCalculators({ applicationId }: { applicationId: string }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [savedCalcs, setSavedCalcs] = useState<SavedCalc[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCalcType, setActiveCalcType] = useState<CalcType | null>(null);
@@ -96,6 +98,7 @@ export default function ApplicationCalculators({ applicationId }: { applicationI
   };
 
   const handleDelete = async (calcId: string) => {
+    if (!(await confirm({ title: 'Delete this saved calculator?', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       await api.delete(`/applications/${applicationId}/calculators/${calcId}`);
       setSavedCalcs(prev => prev.filter(c => c.id !== calcId));

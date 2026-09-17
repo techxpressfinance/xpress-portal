@@ -6,6 +6,7 @@ import LenderPricingEditor from '../../components/LenderPricingEditor';
 import { LenderPricingRow } from '../../components/LenderPricingList';
 import LenderPricingView from '../../components/LenderPricingView';
 import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
+import { useConfirm } from '../../hooks/useConfirm';
 import { QUOTE_SHEET_STATUS_BADGE } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { formatDate, getErrorMessage } from '../../lib/utils';
@@ -17,6 +18,7 @@ import { ArrowDownTrayIcon, ArrowLeftIcon, EnvelopeIcon, PaperAirplaneIcon, Plus
 
 export default function QuoteSheets() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -94,6 +96,7 @@ export default function QuoteSheets() {
   };
 
   const deleteLenderPricing = async (sheet: QuoteSheet) => {
+    if (!(await confirm({ title: 'Delete this lender pricing?', message: 'This cannot be undone.', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       await api.delete(`/quote-sheets/${sheet.id}`);
       setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
@@ -378,6 +381,7 @@ export default function QuoteSheets() {
                     {sheet.status === 'draft' && (
                       <button
                         onClick={async () => {
+                          if (!(await confirm({ title: 'Delete this quote sheet?', message: 'The draft and its options are removed permanently.', confirmText: 'Delete', variant: 'danger' }))) return;
                           try {
                             await api.delete(`/quote-sheets/${sheet.id}`);
                             setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));

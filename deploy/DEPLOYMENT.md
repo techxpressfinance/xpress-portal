@@ -6,7 +6,7 @@
 Internet → Route 53 (DNS)
          → EC2 t4g.small (Ubuntu 24.04 ARM)
            ├── Nginx (port 80/443) — HTTPS + frontend static + /api reverse proxy
-           ├── Uvicorn (FastAPI, port 8000) — 2 workers
+           ├── Uvicorn (FastAPI, port 8000) — 1 worker (in-process scheduler; see systemd unit)
            ├── PostgreSQL 16 (localhost:5432)
            ├── Tesseract OCR
            └── Cron → daily pg_dump → S3
@@ -121,6 +121,17 @@ Ensure these match your domain:
 FRONTEND_URL=https://yourdomain.com
 CORS_ORIGINS=https://yourdomain.com
 ```
+
+If the portal is served on a host with **no tenant subdomain** (an apex domain
+such as `yourdomain.com`, or `www.`), the tenant cannot be read from the Host
+header — name it explicitly, or every login returns 400:
+```
+DEFAULT_TENANT_SLUG=default          # the slug used by create_admin.py --tenant-slug
+```
+Leave it empty only on a genuinely multi-tenant host, where each tenant is
+reached at `{slug}.yourdomain.com`. Do not use `ALLOW_TENANT_HEADER=true`
+instead: that lets any caller choose the tenant that login, registration and
+password reset act on.
 
 Restart:
 ```bash

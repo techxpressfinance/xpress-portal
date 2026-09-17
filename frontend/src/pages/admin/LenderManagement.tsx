@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
+import { useConfirm } from '../../hooks/useConfirm';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate } from '../../lib/utils';
 import { Card, StatCard, PageHeader, Button, Badge } from '../../components/ui';
@@ -24,6 +25,7 @@ const emptyLenderForm: LenderForm = {
 export default function LenderManagement() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   // Brokers keep the lender book up to date — they open the accreditations and
   // price the deals. Retiring a lender stays with admins (see LenderDetail).
@@ -187,6 +189,7 @@ export default function LenderManagement() {
 
   const removeContact = async (contact: LenderContact) => {
     if (!editingId) return;
+    if (!(await confirm({ title: `Remove ${contact.name || 'this contact'}?`, message: 'The contact is removed from this lender.', confirmText: 'Remove', variant: 'danger' }))) return;
     try {
       await api.delete(`/lenders/${editingId}/contacts/${contact.id}`);
       setLenders(prev => prev.map(l =>

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import DocumentTitle from './components/DocumentTitle';
 import ErrorBoundary from './components/ErrorBoundary';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import Layout from './components/Layout';
@@ -52,6 +53,7 @@ const Profile = lazy(() => import('./pages/client/Profile'));
 const AdminMessages = lazy(() => import('./pages/admin/Messages'));
 const ClientMessages = lazy(() => import('./pages/client/Messages'));
 const Login = lazy(() => import('./pages/Login'));
+const NotFound = lazy(() => import('./components/NotFound'));
 const Register = lazy(() => import('./pages/Register'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const ResendVerification = lazy(() => import('./pages/ResendVerification'));
@@ -82,6 +84,7 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
         <ConfirmProvider>
+          <DocumentTitle />
           <ImpersonationBanner />
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
           <Routes>
@@ -479,6 +482,7 @@ export default function App() {
                 }
               />
             </Route>
+            <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
         </ConfirmProvider>
