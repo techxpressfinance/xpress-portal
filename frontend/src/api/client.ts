@@ -57,9 +57,18 @@ export function getCsrfToken(): string {
   return pair ? decodeURIComponent(pair.slice('csrf_token='.length)) : '';
 }
 
+/**
+ * Resolve the tenant slug the same way the backend does: from the Host
+ * subdomain, or from VITE_TENANT_SLUG when the portal is served on a host
+ * with no tenant subdomain. The localStorage override, ?tenant= param and the
+ * bare 'default' fallback are development conveniences only — in production
+ * they let a misconfigured deployment quietly talk to the wrong tenant.
+ */
 export function getTenantSlug(): string | null {
-  const stored = localStorage.getItem('dev-tenant-slug');
-  if (stored) return stored;
+  if (import.meta.env.DEV) {
+    const stored = localStorage.getItem('dev-tenant-slug');
+    if (stored) return stored;
+  }
 
   const host = window.location.hostname;
   const parts = host.split('.');
@@ -71,8 +80,12 @@ export function getTenantSlug(): string | null {
     }
   }
 
-  const params = new URLSearchParams(window.location.search);
-  return params.get('tenant') || import.meta.env.VITE_TENANT_SLUG || 'default';
+  if (import.meta.env.DEV) {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('tenant');
+    if (fromQuery) return fromQuery;
+  }
+  return import.meta.env.VITE_TENANT_SLUG || (import.meta.env.DEV ? 'default' : null);
 }
 
 api.interceptors.request.use((config) => {

@@ -14,6 +14,30 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 // as a comma-separated list), '' means every category.
 const MY_FOCUS = 'mine';
 
+// Module-level on purpose: defined inside the page it was recreated on every
+// render, which remounted the header cells (and dropped their focus) on each
+// keystroke in the search box.
+function SortHead({ k, sort, onToggle, children, align = 'left' }: {
+  k: SortKey;
+  sort: { key: SortKey; dir: SortDir };
+  onToggle: (k: SortKey) => void;
+  children: ReactNode;
+  align?: 'left' | 'right';
+}) {
+  return (
+    <th style={{ textAlign: align }}>
+      <button
+        type="button"
+        className={`led-sort-head ${sort.key === k ? 'led-sort-active' : ''}`}
+        onClick={() => onToggle(k)}
+      >
+        {children}
+        {sort.key === k && <Icon name={sort.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={10} />}
+      </button>
+    </th>
+  );
+}
+
 // ── Icons ──
 
 function Icon({ name, size = 14, strokeWidth = 1.75, className = '' }: { name: string; size?: number; strokeWidth?: number; className?: string }) {
@@ -239,19 +263,6 @@ export default function AllApplications() {
     ? 'My focus'
     : (LOAN_CATEGORIES.find((c) => c.value === categoryFilter)?.label || 'All');
 
-  const SortHead = ({ k, children, align = 'left' }: { k: SortKey; children: ReactNode; align?: 'left' | 'right' }) => (
-    <th style={{ textAlign: align }}>
-      <button
-        type="button"
-        className={`led-sort-head ${sort.key === k ? 'led-sort-active' : ''}`}
-        onClick={() => toggleSort(k)}
-      >
-        {children}
-        {sort.key === k && <Icon name={sort.dir === 'asc' ? 'arrowUp' : 'arrowDown'} size={10} />}
-      </button>
-    </th>
-  );
-
   return (
     <div className="ledger-theme led-fade-up -m-4 sm:-m-6 lg:-m-10" style={{ minHeight: '100%', background: 'var(--led-bg)', padding: 0 }}>
       {/* Header */}
@@ -405,15 +416,15 @@ export default function AllApplications() {
             <table className="led-table" style={{ minWidth: 1120 }}>
               <thead>
                 <tr>
-                  <SortHead k="user_name">Applicant</SortHead>
+                  <SortHead k="user_name" sort={sort} onToggle={toggleSort}>Applicant</SortHead>
                   <th>Entity</th>
                   <th>ID</th>
                   <th>Type</th>
-                  <SortHead k="amount" align="right">Amount</SortHead>
-                  <SortHead k="status">Status</SortHead>
+                  <SortHead k="amount" sort={sort} onToggle={toggleSort} align="right">Amount</SortHead>
+                  <SortHead k="status" sort={sort} onToggle={toggleSort}>Status</SortHead>
                   <th>Broker</th>
                   <th>Referrer</th>
-                  <SortHead k="updated_at" align="right">Updated</SortHead>
+                  <SortHead k="updated_at" sort={sort} onToggle={toggleSort} align="right">Updated</SortHead>
                   <th style={{ width: 36 }}></th>
                 </tr>
               </thead>

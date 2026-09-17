@@ -442,7 +442,7 @@ def create_application(
             _send_party_invite(party, app.business_name)
 
     db.refresh(app, attribute_names=["user"])
-    result = _app_with_user(app, db)
+    result = _app_with_user(app, db, viewer=current_user)
     if direct_engagement_invite_url:
         # One-time disclosure to the inviter; the token never appears on GETs
         result["invite_url"] = direct_engagement_invite_url
@@ -634,7 +634,7 @@ def clone_application(
     db.commit()
 
     db.refresh(app, attribute_names=["user"])
-    return _app_with_user(app, db)
+    return _app_with_user(app, db, viewer=current_user)
 
 
 @router.get("", response_model=PaginatedApplications)
@@ -732,6 +732,7 @@ def list_applications(
             # it, so it carries the applicant's name and contact details.
             include_applicant_contact=is_referrer,
             journey=journeys.get(app.id),
+            viewer=current_user,
         )
         for app in items
     ]
@@ -840,7 +841,7 @@ def list_deleted_applications(
         .all()
     )
     referrer_map = referrer_info_map(db, (app.user_id for app in apps))
-    return [_app_with_user(app, db, referrer_map=referrer_map) for app in apps]
+    return [_app_with_user(app, db, referrer_map=referrer_map, viewer=current_user) for app in apps]
 
 
 @router.post("/{app_id}/restore", response_model=LoanApplicationOut)
@@ -863,7 +864,7 @@ def restore_application(
     log_activity(db, current_user.id, "restored", "application", app_id, {"loan_type": application.loan_type.value}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.get("/{app_id}", response_model=LoanApplicationOut)
@@ -877,7 +878,7 @@ def get_application(
     if not application:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
-    result = _app_with_user(application, db)
+    result = _app_with_user(application, db, viewer=current_user)
     if current_user.role == UserRole.referrer:
         result["journey"] = journey_summary(db, application)
     if current_user.role in (UserRole.admin, UserRole.broker):
@@ -1163,7 +1164,7 @@ def update_application(
             _send_party_invite(party, application.business_name)
 
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.patch("/{app_id}/status", response_model=LoanApplicationOut)
@@ -1187,7 +1188,7 @@ def change_status(
     )
 
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 def _get_approval_condition(app_id: str, item_id: str, tenant_id: str, db: Session) -> ApprovalCondition:
@@ -1338,7 +1339,7 @@ def set_application_lock(
     log_activity(db, current_user.id, action, "application", app_id, {}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 class ClientSectionsUpdate(BaseModel):
@@ -1376,7 +1377,7 @@ def set_client_sections(
     log_activity(db, current_user.id, "client_sections_set", "application", app_id, {"sections": selected}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.post("/{app_id}/assign", response_model=LoanApplicationOut)
@@ -1430,7 +1431,7 @@ def assign_broker(
     if broker.email:
         send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
 
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.delete("/{app_id}/assign", response_model=LoanApplicationOut)
@@ -1499,7 +1500,7 @@ def unassign_broker(
 
     db.commit()
     db.refresh(application, attribute_names=["user", "assigned_broker"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.post("/{app_id}/assign-group", response_model=LoanApplicationOut)
@@ -1559,7 +1560,7 @@ def assign_broker_group(
             if broker.email:
                 send_assignment_notification(broker.email, broker.full_name, False, item_label, current_user.full_name, link)
 
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 @router.post("/{app_id}/analyze")
@@ -2186,7 +2187,7 @@ def set_application_client(
                  {"contact_id": contact.id, "prefilled": filled}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 class BusinessLinkRequest(BaseModel):
@@ -2245,7 +2246,7 @@ def confirm_business_link(
                   "role": data.role}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 class ReconcileRequest(BaseModel):
@@ -2272,7 +2273,7 @@ def reconcile_application(
                  {"note": data.note}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application)
-    return _app_with_user(application, db)
+    return _app_with_user(application, db, viewer=current_user)
 
 
 # ---------------------------------------------------------------------------

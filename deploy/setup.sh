@@ -106,6 +106,11 @@ FIELD_ENCRYPTION_KEY=${ENCRYPTION_KEY}
 FRONTEND_URL=https://${DOMAIN:-yourdomain.com}
 CORS_ORIGINS=https://${DOMAIN:-yourdomain.com}
 
+# Tenant served on this host. Required when the domain carries no tenant
+# subdomain ({slug}.yourdomain.com) — set it to the slug you pass to
+# create_admin.py --tenant-slug. Leave empty only on a multi-tenant host.
+DEFAULT_TENANT_SLUG=default
+
 # OCR
 OCR_ENGINE=tesseract
 

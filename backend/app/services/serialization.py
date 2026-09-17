@@ -40,6 +40,51 @@ _LIST_SKIP_COLUMNS = frozenset({
 # The subset of the above a list can ask for back: how to reach the applicant.
 _APPLICANT_CONTACT_COLUMNS = frozenset({"applicant_email", "applicant_mobile"})
 
+# Keys that describe the desk's own workflow rather than the applicant's file:
+# the underwriting assessment, the approving lender and its conditions,
+# reconciliation flags, board position, invite bookkeeping and Lend controls.
+# They are stripped from every response built for a client or referrer viewer.
+# Staff (admin/broker/super_admin) get the full dict. The response schema
+# (LoanApplicationOut) defaults each of these, so popping them is safe.
+STAFF_ONLY_KEYS = frozenset({
+    "analysis_status",
+    "analysis_result",
+    "analysis_error",
+    "analyzed_at",
+    "approval_lender_name",
+    "approval_conditions",
+    "needs_reconciliation",
+    "reconciliation_note",
+    "kanban_column_id",
+    "pending_business_link",
+    "business_link_declined",
+    "cloned_from_id",
+    "client_invite_email",
+    "client_invite_sent_at",
+    "client_account_pending",
+    "deleted_at",
+    "lend_product_type_id",
+    "lend_owner_type",
+    "lend_send_type",
+    "lend_who_to_contact",
+})
+
+_STAFF_ROLES = frozenset({UserRole.admin, UserRole.broker, UserRole.super_admin})
+
+
+def is_staff_viewer(viewer) -> bool:
+    """True when the viewer may see the desk's internal state on an application."""
+    return viewer is not None and getattr(viewer, "role", None) in _STAFF_ROLES
+
+
+def redact_for_viewer(data: dict, viewer) -> dict:
+    """Drop STAFF_ONLY_KEYS in place unless the viewer is staff. Returns ``data``."""
+    if is_staff_viewer(viewer):
+        return data
+    for key in STAFF_ONLY_KEYS:
+        data.pop(key, None)
+    return data
+
 
 def _referrer_dict(user) -> dict:
     return {
@@ -95,8 +140,12 @@ def app_with_user(
     include_lend_extra_data: bool = False,
     include_applicant_contact: bool = False,
     journey: Optional[dict] = None,
+    viewer=None,
 ) -> dict:
     """Build response dict with user info and assigned brokers list.
+
+    ``viewer`` is the requesting User. Anyone who is not staff (client,
+    referrer) gets STAFF_ONLY_KEYS removed — see redact_for_viewer.
 
     For list endpoints, pass ``referrer_map`` from referrer_info_map() so the
     referrer lookup is two batched queries instead of one per application, and
@@ -168,7 +217,7 @@ def app_with_user(
         data["journey"] = journey
 
     if list_item:
-        return data
+        return redact_for_viewer(data, viewer)
 
     # Completion info
     if app.completed_by:
@@ -209,7 +258,7 @@ def app_with_user(
         and all(_is_signed(a) for a in direct_parties)
         and all(g["ready"] for g in guarantors)
     )
-    return data
+    return redact_for_viewer(data, viewer)
 
 
 def _pending_business_link(app: LoanApplication, db: Session) -> Optional[dict]:

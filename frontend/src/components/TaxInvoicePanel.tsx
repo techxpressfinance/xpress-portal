@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useToast } from './Toast';
+import { useConfirm } from '../hooks/useConfirm';
 import { Card, Badge, Button } from './ui';
 import { getErrorMessage, formatDate } from '../lib/utils';
 import { downloadElementPdf } from '../lib/pdfExport';
@@ -86,6 +87,7 @@ export default function TaxInvoicePanel({
   autoOpen = false,
 }: { applicationId: string; autoOpen?: boolean }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -215,6 +217,7 @@ export default function TaxInvoicePanel({
   };
 
   const remove = async (invoice: TaxInvoice) => {
+    if (!(await confirm({ title: 'Delete this tax invoice?', message: 'The request sheet and its figures are removed permanently.', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       await api.delete(`/applications/${applicationId}/tax-invoices/${invoice.id}`);
       if (openId === invoice.id) setOpenId(null);

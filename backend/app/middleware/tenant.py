@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.config import ALLOW_TENANT_HEADER, DEFAULT_TENANT_SLUG
 from app.database import SessionLocal
 from app.models.tenant import Tenant
 
@@ -26,17 +27,25 @@ _SKIP_PREFIXES = (
 )
 
 
-def _resolve_tenant_slug(request: Request) -> Optional[str]:
-    """Resolve tenant slug from header, query param, or subdomain."""
-    # 1. X-Tenant-Slug header (local dev fallback)
-    header_slug = request.headers.get("x-tenant-slug")
-    if header_slug:
-        return header_slug.lower().strip()
+def resolve_tenant_slug(request: Request) -> Optional[str]:
+    """Resolve the tenant slug from the request.
 
-    # 2. ?tenant= query param (local dev fallback)
-    tenant_param = request.query_params.get("tenant")
-    if tenant_param:
-        return tenant_param.lower().strip()
+    Header and query-param sources are only consulted when ALLOW_TENANT_HEADER
+    is set (default: development only); otherwise the Host subdomain decides,
+    falling back to DEFAULT_TENANT_SLUG when the Host carries no tenant
+    subdomain (apex domain, www, api). Shared with services.tenant_scope so the
+    auth routes the middleware skips resolve the tenant by exactly the same rule.
+    """
+    if ALLOW_TENANT_HEADER:
+        # 1. X-Tenant-Slug header (local dev fallback)
+        header_slug = request.headers.get("x-tenant-slug")
+        if header_slug:
+            return header_slug.lower().strip()
+
+        # 2. ?tenant= query param (local dev fallback)
+        tenant_param = request.query_params.get("tenant")
+        if tenant_param:
+            return tenant_param.lower().strip()
 
     # 3. Extract from subdomain
     host = request.headers.get("host", "")
@@ -55,7 +64,8 @@ def _resolve_tenant_slug(request: Request) -> Optional[str]:
         if slug != "www":
             return slug
 
-    return None
+    # 4. Single-tenant deployment on a host with no tenant subdomain
+    return DEFAULT_TENANT_SLUG or None
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
@@ -72,11 +82,11 @@ class TenantMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        slug = _resolve_tenant_slug(request)
+        slug = resolve_tenant_slug(request)
         if not slug:
             return JSONResponse(
                 status_code=400,
-                content={"detail": "Could not resolve tenant. Use a tenant subdomain or set X-Tenant-Slug header."},
+                content={"detail": "Could not resolve tenant from the request host."},
             )
 
         db = SessionLocal()

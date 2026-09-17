@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import axios from 'axios';
+import { getTenantSlug } from '../api/client';
 import type { TenantBranding } from '../types';
 
 interface TenantState {
@@ -20,30 +21,10 @@ export function useTenant() {
   return useContext(TenantContext);
 }
 
+// One resolver for the whole app — the API client's rule, so the branding
+// request and every API call agree on which tenant this page belongs to.
 function resolveSlug(): string | null {
-  // 1. localStorage override (for local dev)
-  const stored = localStorage.getItem('dev-tenant-slug');
-  if (stored) return stored;
-
-  // 2. Subdomain extraction: <slug>.localhost or <slug>.xpresstech.ai
-  const host = window.location.hostname;
-  const parts = host.split('.');
-  const isSubdomain = parts.length >= 3 || (parts.length === 2 && parts[1] === 'localhost');
-  if (isSubdomain) {
-    const sub = parts[0];
-    // Skip if it's www or an IP segment
-    if (sub !== 'www' && !/^\d+$/.test(sub)) {
-      return sub;
-    }
-  }
-
-  // 3. Query param fallback: ?tenant=slug
-  const params = new URLSearchParams(window.location.search);
-  const paramSlug = params.get('tenant');
-  if (paramSlug) return paramSlug;
-
-  // Fall back to "default" tenant
-  return 'default';
+  return getTenantSlug();
 }
 
 export function TenantProvider({ children }: { children: ReactNode }) {
@@ -55,18 +36,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    // A null slug is normal in production: on a host with no tenant subdomain
+    // the server answers with its DEFAULT_TENANT_SLUG, and we take the slug
+    // from the branding it returns rather than guessing one here.
     const slug = resolveSlug();
-    if (!slug) {
-      setState({ tenant: null, slug: null, loading: false, error: 'No tenant found' });
-      return;
-    }
-
     setState((s) => ({ ...s, slug, loading: true }));
 
     axios
-      .get(`/api/tenants/branding?slug=${encodeURIComponent(slug)}`)
+      .get('/api/tenants/branding', { params: slug ? { slug } : undefined })
       .then(({ data }) => {
-        setState({ tenant: data, slug, loading: false, error: null });
+        setState({ tenant: data, slug: data.slug ?? slug, loading: false, error: null });
 
         // Apply primary color as CSS custom property if provided
         if (data.primary_color) {

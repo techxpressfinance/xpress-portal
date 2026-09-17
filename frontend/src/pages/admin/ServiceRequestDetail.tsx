@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 import { formatDate, formatDateTime, getErrorMessage, toDateTimeLocalInput, dateTimeLocalToUTC } from '../../lib/utils';
 import { SERVICE_REQUEST_TYPES } from '../../lib/constants';
 import { Button, Breadcrumbs } from '../../components/ui';
@@ -33,6 +34,7 @@ export default function ServiceRequestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [req, setReq] = useState<ServiceRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -191,6 +193,7 @@ export default function ServiceRequestDetail() {
 
   const deleteChecklistItem = async (itemId: string) => {
     if (!id) return;
+    if (!(await confirm({ title: 'Delete this checklist item?', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       const { data } = await api.delete(`/service-requests/${id}/checklist/${itemId}`);
       setReq(data);
@@ -263,6 +266,7 @@ export default function ServiceRequestDetail() {
 
   const deleteAttachment = async (attachmentId: string) => {
     if (!id) return;
+    if (!(await confirm({ title: 'Delete this attachment?', message: 'The file is removed from storage.', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       const { data } = await api.delete(`/service-requests/${id}/attachments/${attachmentId}`);
       setReq(data);

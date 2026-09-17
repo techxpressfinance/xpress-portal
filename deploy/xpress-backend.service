@@ -4,11 +4,16 @@ After=network.target postgresql.service
 Requires=postgresql.service
 
 [Service]
+# One worker on purpose: the in-process APScheduler jobs (reminders, settled-deal
+# archiving, arrears snapshots) and the in-memory rate limiter assume a single
+# process, and the startup migrations in app/main.py are not safe to run
+# concurrently. Scale out only after the scheduler runs as its own service and
+# REDIS_URL is set.
 User=xpress
 Group=xpress
 WorkingDirectory=/opt/xpress-tech-portal/backend
 EnvironmentFile=/opt/xpress-tech-portal/backend/.env
-ExecStart=/opt/xpress-tech-portal/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+ExecStart=/opt/xpress-tech-portal/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=5
 StandardOutput=journal

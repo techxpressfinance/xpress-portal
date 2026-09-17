@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
+import { useConfirm } from '../../hooks/useConfirm';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { Card, StatCard, PageHeader, Button, Input, InviteLinkBox, SpecialtyPicker } from '../../components/ui';
 import PeopleNav from '../../components/PeopleNav';
@@ -140,6 +141,7 @@ type SendingReset = string | null; // userId
 
 export default function BrokerManagement() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user: currentUser, impersonate } = useAuth();
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -283,6 +285,8 @@ export default function BrokerManagement() {
   };
 
   const handleDeleteGroup = async (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!(await confirm({ title: `Delete ${group?.name ?? 'this group'}?`, message: 'Members keep their accounts; only the group and its assignments are removed.', confirmText: 'Delete', variant: 'danger' }))) return;
     try {
       await api.delete(`/broker-groups/${groupId}`);
       setGroups(prev => prev.filter(g => g.id !== groupId));
@@ -303,6 +307,7 @@ export default function BrokerManagement() {
   };
 
   const handleRemoveMember = async (groupId: string, brokerId: string) => {
+    if (!(await confirm({ title: 'Remove this broker from the group?', confirmText: 'Remove', variant: 'danger' }))) return;
     try {
       const { data } = await api.delete(`/broker-groups/${groupId}/members?broker_id=${brokerId}`);
       setGroups(prev => prev.map(g => g.id === groupId ? data : g));

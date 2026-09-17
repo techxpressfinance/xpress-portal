@@ -20,7 +20,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        # bcrypt rejects inputs over 72 bytes and malformed stored hashes (the
+        # "!" / "!invited" placeholders). Neither is a valid credential.
+        return False
 
 
 def create_access_token(user_id: str, role: str, tenant_id: str = "", impersonator_id: Optional[str] = None) -> str:

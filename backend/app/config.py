@@ -77,6 +77,23 @@ SCHEDULER_ENABLED = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
 # CORS origins - comma-separated list
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 
+# Tenant resolution. In production the tenant comes from the request Host
+# ({slug}.<domain>) only. The X-Tenant-Slug header and ?tenant= query param are
+# development conveniences: honouring them in production lets any caller name
+# the tenant that login, registration and password-reset flows act on. Set
+# ALLOW_TENANT_HEADER=true only if the portal is served on a host that carries
+# no tenant subdomain (then the frontend must be built with VITE_TENANT_SLUG).
+ALLOW_TENANT_HEADER = os.getenv(
+    "ALLOW_TENANT_HEADER", "true" if ENVIRONMENT == "development" else "false"
+).lower() in ("1", "true", "yes")
+
+# Tenant used when the Host carries no tenant subdomain — an apex domain
+# (xpresstech.ai), www, or a service prefix like api. Server-side config, so
+# unlike the header it cannot be chosen by the caller: a single-tenant
+# deployment sets this instead of opening ALLOW_TENANT_HEADER. Leave empty on a
+# genuinely multi-tenant host so an unresolvable Host is still rejected.
+DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "").lower().strip()
+
 # SMS / Twilio — optional, silently skipped if not configured
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
