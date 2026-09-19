@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor } from '../../lib/utils';
@@ -162,6 +162,14 @@ export default function AllApplications() {
   // resolved before this route renders (ProtectedRoute blocks on auth loading).
   const [categoryFilter, setCategoryFilter] = useState(() => (mySpecialties.length ? MY_FOCUS : ''));
   const [brokerFilter, setBrokerFilter] = useState('');
+  // Client referrals: '' = no filter, 'any' = every deal an existing client
+  // referred, otherwise that client's contact id (name kept for the pill).
+  // Seeded from ?referred_by= so a client's page can link to their referrals.
+  const [searchParams] = useSearchParams();
+  const [referredByFilter, setReferredByFilter] = useState<{ id: string; name: string } | null>(() => {
+    const id = searchParams.get('referred_by');
+    return id ? { id, name: searchParams.get('referred_by_name') || 'Selected client' } : null;
+  });
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'updated_at', dir: 'desc' });
@@ -185,6 +193,7 @@ export default function AllApplications() {
     const categoryParam = categoryFilter === MY_FOCUS ? mySpecialties.join(',') : categoryFilter;
     if (categoryParam) params.set('category', categoryParam);
     if (search) params.set('search', search);
+    if (referredByFilter) params.set('referred_by', referredByFilter.id);
 
     api
       .get(`/applications?${params}`)
@@ -198,7 +207,7 @@ export default function AllApplications() {
 
   useEffect(() => {
     fetchData();
-  }, [page, view, statusFilter, loanTypeFilter, categoryFilter, search]);
+  }, [page, view, statusFilter, loanTypeFilter, categoryFilter, search, referredByFilter]);
 
   useEffect(() => {
     api.get('/users')
@@ -240,7 +249,7 @@ export default function AllApplications() {
   }, [applications, brokerFilter, sort]);
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const activeFilterCount = [statusFilter, loanTypeFilter, categoryFilter, brokerFilter, search].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, loanTypeFilter, categoryFilter, brokerFilter, search, referredByFilter].filter(Boolean).length;
   const viewStatuses = view === 'active' ? ACTIVE_STATUSES : CLOSED_STATUSES;
 
   const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
@@ -250,6 +259,7 @@ export default function AllApplications() {
     setLoanTypeFilter('');
     setCategoryFilter('');
     setBrokerFilter('');
+    setReferredByFilter(null);
     setSearchDraft('');
     setSearch('');
     setPage(1);
@@ -259,6 +269,7 @@ export default function AllApplications() {
   const statusPill = statusFilter ? (STATUS_LABEL[statusFilter as ApplicationStatus] || statusFilter) : 'All';
   const typePill = loanTypeFilter ? (LOAN_TYPE_LABEL[loanTypeFilter] || loanTypeFilter) : 'All';
   const brokerPill = brokerFilter ? (brokersList.find((b) => b.id === brokerFilter)?.full_name.split(' ')[0] || 'All') : 'Any';
+  const referralPill = !referredByFilter ? 'Any' : referredByFilter.id === 'any' ? 'By a client' : referredByFilter.name;
   const categoryPill = categoryFilter === MY_FOCUS
     ? 'My focus'
     : (LOAN_CATEGORIES.find((c) => c.value === categoryFilter)?.label || 'All');
@@ -401,6 +412,21 @@ export default function AllApplications() {
           </FilterPill>
         )}
 
+        <FilterPill label="Client referral" value={referralPill} active={!!referredByFilter} icon="users">
+          {(close) => (
+            <>
+              <button type="button" className={`led-popover-item ${!referredByFilter ? 'led-active' : ''}`} onClick={() => { setReferredByFilter(null); setPage(1); close(); }}>Any</button>
+              <button type="button" className={`led-popover-item ${referredByFilter?.id === 'any' ? 'led-active' : ''}`} onClick={() => { setReferredByFilter({ id: 'any', name: '' }); setPage(1); close(); }}>Referred by a client</button>
+              {referredByFilter && referredByFilter.id !== 'any' && (
+                <button type="button" className="led-popover-item led-active" onClick={close}>{referredByFilter.name}</button>
+              )}
+              <p style={{ margin: 0, padding: '6px 10px', fontSize: 11.5, color: 'var(--led-muted)', maxWidth: 220 }}>
+                Click a client's name in the Referrer column to see just their referrals.
+              </p>
+            </>
+          )}
+        </FilterPill>
+
         {activeFilterCount > 0 && (
           <button type="button" className="led-btn led-btn-ghost led-btn-sm" onClick={clearFilters} style={{ color: 'var(--led-muted)' }}>
             <Icon name="close" size={12} /> Clear
@@ -541,9 +567,24 @@ export default function AllApplications() {
                         )}
                       </td>
                       <td>
-                        {referrerName ? (
+                        {referrerName && (
                           <span title={referrerName} style={{ display: 'block', maxWidth: 140, fontSize: 12.5, color: 'var(--led-ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referrerName}</span>
-                        ) : (
+                        )}
+                        {app.referred_by && (
+                          <button
+                            type="button"
+                            title={`Referred by existing client ${app.referred_by.name} — show all their referrals`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReferredByFilter({ id: app.referred_by!.contact_id, name: app.referred_by!.name });
+                              setPage(1);
+                            }}
+                            style={{ display: 'block', maxWidth: 140, fontSize: 12, color: 'var(--led-accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                          >
+                            Client · {app.referred_by.name}
+                          </button>
+                        )}
+                        {!referrerName && !app.referred_by && (
                           <span style={{ fontSize: 12, color: 'var(--led-muted)' }}>None</span>
                         )}
                       </td>

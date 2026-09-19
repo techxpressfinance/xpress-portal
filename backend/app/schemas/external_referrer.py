@@ -88,8 +88,23 @@ class ReferrerBusinessProfileOut(ReferrerBusinessProfile):
     business_details_updated_at: Optional[datetime] = None
     # True once every field needed to raise a tax invoice is present.
     is_complete: bool = False
+    # False when the viewer may read the business details but not the bank
+    # account — the three bank fields come back null in that case.
+    bank_details_visible: bool = True
 
     model_config = {"from_attributes": True}
+
+
+class ReferrerDetailOut(ReferrerBusinessProfileOut):
+    """Everything the admin/broker referrer page shows about one referrer."""
+
+    is_active: bool = True
+    email_verified: bool = False
+    created_at: Optional[datetime] = None
+    invited_by_name: Optional[str] = None
+    stats: "ReferrerDetailStats"
+    referrals: list["ExternalReferralOut"] = []
+    applications: list[dict] = []
 
 
 class ReferrerCreate(ReferrerBusinessProfile):
@@ -133,3 +148,12 @@ class ExternalReferrerStats(BaseModel):
     total_referred: int
     signed_up: int
     applied: int
+
+
+class ReferrerDetailStats(ExternalReferrerStats):
+    """Referral counts plus how many applications came through the referrer."""
+
+    applications: int = 0
+
+
+ReferrerDetailOut.model_rebuild()

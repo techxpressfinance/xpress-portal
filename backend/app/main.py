@@ -32,6 +32,7 @@ from app.models.kanban import (  # noqa: F401 — ensure tables are created
     StageTransition,
 )
 from app.models.lead import Lead, LeadStagePlacement  # noqa: F401 — ensure tables are created
+from app.models.tracking_link import TrackingLink  # noqa: F401 — ensure table is created
 from app.models.broker_group import BrokerGroup, broker_group_members  # noqa: F401 — ensure tables are created
 from app.models.external_referral import ExternalReferral  # noqa: F401 — ensure table is created
 from app.models.lender import Lender, LenderContact  # noqa: F401 — ensure tables are created
@@ -65,7 +66,7 @@ from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsSnapshot,
 )
 from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, organizations, public_apply, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
 
 # Configure logging
 logging.basicConfig(
@@ -378,6 +379,11 @@ _MIGRATIONS = [
     ("quote_sheets", "shortfall_notes", "TEXT"),
     # The financier on a tax invoice, carried over from that lender pricing.
     ("tax_invoices", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+    # The existing client who referred the deal (tracking only).
+    ("loan_applications", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
+    ("leads", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
+    # The referrer partner who sent a lead (see Lead.referrer_id).
+    ("leads", "referrer_id", "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -1151,6 +1157,8 @@ app.include_router(service_requests.router)
 app.include_router(application_calculators.router)
 app.include_router(arrears.router)
 app.include_router(public_apply.router)
+app.include_router(public_track.router)
+app.include_router(tracking_links.router)
 
 
 @app.get("/api/health")

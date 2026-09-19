@@ -93,6 +93,41 @@ export interface ReferrerBusinessProfile {
   business_details_updated_at: string | null;
   /** Every invoice-critical field is present (logo/letterhead are optional). */
   is_complete: boolean;
+  /** False for a broker — the three bank fields come back null for them. */
+  bank_details_visible?: boolean;
+}
+
+/** One client a referrer sent us, as the admin referrer page lists them. */
+export interface ExternalReferral {
+  id: string;
+  referrer_id: string;
+  referrer_name: string | null;
+  referred_email: string;
+  referred_client_id: string | null;
+  referred_client_name: string | null;
+  status: string;
+  client_engagement_model: ClientEngagementModel | null;
+  created_at: string;
+  converted_at: string | null;
+}
+
+/**
+ * Everything we hold on one referrer — account, the business and payment
+ * details they filled in themselves, and what they have sent us.
+ */
+export interface ReferrerDetail extends ReferrerBusinessProfile {
+  is_active: boolean;
+  email_verified: boolean;
+  created_at: string | null;
+  invited_by_name: string | null;
+  stats: {
+    total_referred: number;
+    signed_up: number;
+    applied: number;
+    applications: number;
+  };
+  referrals: ExternalReferral[];
+  applications: LoanApplication[];
 }
 
 export interface TenantBranding {
@@ -212,6 +247,9 @@ export interface LoanApplication {
   cloned_from_id?: string | null;
   // Referrer info (populated from referral data)
   referrer: ReferrerInfo | null;
+  // Staff-only: the existing client (contact) credited with referring this deal.
+  referred_by_contact_id?: string | null;
+  referred_by?: ReferredBy | null;
   // Where the file is up to, in referrer terms. Sent to referrer viewers only —
   // `phases`/`phase_index` on the detail view, the rest on the list too.
   journey?: Journey | null;
@@ -433,6 +471,15 @@ export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
 
 export const CLIENT_ENGAGEMENT_MODELS = ['self_managed', 'direct_engagement'] as const;
 export type ClientEngagementModel = (typeof CLIENT_ENGAGEMENT_MODELS)[number];
+
+/** An existing client credited with referring a deal — marketing attribution
+ *  only, set by staff per lead/application. Distinct from ReferrerInfo, which
+ *  is a paid referrer partner. */
+export interface ReferredBy {
+  contact_id: string;
+  name: string;
+  email: string | null;
+}
 
 export interface ReferrerInfo {
   id: string;
@@ -1136,6 +1183,12 @@ export interface Lead {
   converted_application_id: string | null;
   converted_at: string | null;
   contact_id: string | null;
+  /** The existing client (contact) who referred this inquiry. */
+  referred_by_contact_id: string | null;
+  referred_by: ReferredBy | null;
+  /** The referrer partner who sent this inquiry (staff-set). */
+  referrer_id: string | null;
+  referrer_name: string | null;
   created_at: string;
   updated_at: string;
   /** Board only: when the lead entered the stage it is shown in. */
@@ -1805,3 +1858,50 @@ export interface ServiceRequest {
   created_at: string;
   updated_at: string;
 }
+
+// ── Progress (tracking) links ──
+// A no-login, read-only progress page: one standing link per referrer, one per
+// deal for its borrower. See backend services/tracking_links.py.
+
+export type TrackingAudience = 'referrer' | 'client';
+
+/** A link as staff see it — for copying, emailing and regenerating. */
+export interface TrackingLinkInfo {
+  audience: TrackingAudience;
+  url: string;
+  created_at: string;
+  last_opened_at: string | null;
+  open_count: number;
+  recipient_name: string | null;
+  recipient_email: string | null;
+}
+
+/** One deal on a progress page. */
+export interface TrackedDeal {
+  type: 'application' | 'lead';
+  reference: string;
+  client_name: string | null;
+  business_name: string | null;
+  category: string | null;
+  loan_type: string | null;
+  amount: number | null;
+  term_months: number | null;
+  asset: string | null;
+  created_at: string;
+  settled: boolean;
+  journey: Journey;
+  outstanding_documents: string[];
+}
+
+export type TrackingPage =
+  | {
+      kind: 'referrer';
+      referrer: { name: string; organization_name: string | null };
+      deals: TrackedDeal[];
+    }
+  | {
+      kind: 'deal';
+      first_name: string | null;
+      deal: TrackedDeal;
+      broker: { name: string; email: string | null; phone: string | null } | null;
+    };

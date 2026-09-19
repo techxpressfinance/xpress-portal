@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Button, Card } from './ui';
+import SheetEditorHeader from './SheetEditorHeader';
 import QuoteSheetComparison from './QuoteSheetComparison';
 import type { QuoteOption, QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
 import api from '../api/client';
@@ -687,6 +688,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
   return (
     <Card>
       <div className="space-y-6">
+        <SheetEditorHeader type="client_quote" version={quoteSheet?.version} onBack={onCancel} />
 
         {/* Sheet meta */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

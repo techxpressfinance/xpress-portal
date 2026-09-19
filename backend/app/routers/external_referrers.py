@@ -5,13 +5,13 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.config import FRONTEND_URL
 from app.database import get_db
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import require_role
 from app.models.external_referral import ClientEngagementModel, ExternalReferral, ExternalReferralStatus
 from app.models.user import User, UserRole
 from app.schemas.external_referrer import (
@@ -21,6 +21,7 @@ from app.schemas.external_referrer import (
     ReferrerBusinessProfile,
     ReferrerBusinessProfileOut,
     ReferrerCreate,
+    ReferrerDetailOut,
 )
 from app.schemas.user import InvitedUserOut, UserOut
 from app.services.contacts import ensure_contact
@@ -213,15 +214,71 @@ def list_business_profiles(
     return [_business_profile_out(r) for r in referrers]
 
 
+@router.get("/{referrer_id}/detail", response_model=ReferrerDetailOut)
+def get_referrer_detail(
+    referrer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Everything we hold on one referrer — the admin referrer page.
+
+    Account fields, the business/payment details they filled in themselves,
+    the clients they referred and the applications that came through them, so
+    a broker never has to impersonate a referrer to see what they submitted.
+    """
+    referrer = _load_referrer(db, referrer_id, tenant_id)
+    is_admin = current_user.role == UserRole.admin
+    data = _business_profile_out(referrer, include_bank=is_admin)
+
+    invited_by = (
+        db.query(User).filter(User.id == referrer.invited_by_id).first()
+        if referrer.invited_by_id
+        else None
+    )
+    data.update(
+        is_active=referrer.is_active,
+        email_verified=referrer.email_verified,
+        created_at=referrer.created_at,
+        invited_by_name=(invited_by.full_name or invited_by.email) if invited_by else None,
+    )
+
+    referrals = (
+        db.query(ExternalReferral)
+        .filter(ExternalReferral.referrer_id == referrer.id)
+        .order_by(ExternalReferral.created_at.desc())
+        .all()
+    )
+    data["referrals"] = _serialize_referrals(referrals, db)
+    data["applications"] = _referrer_applications(db, referrer, tenant_id, current_user)
+    data["stats"] = {
+        "total_referred": len(referrals),
+        "signed_up": sum(
+            1 for r in referrals
+            if r.status in (ExternalReferralStatus.signed_up, ExternalReferralStatus.applied)
+        ),
+        "applied": sum(1 for r in referrals if r.status == ExternalReferralStatus.applied),
+        "applications": len(data["applications"]),
+    }
+    return data
+
+
 @router.get("/{referrer_id}/business-profile", response_model=ReferrerBusinessProfileOut)
 def get_referrer_business_profile(
     referrer_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """A referrer's billing details, for raising their monthly tax invoice."""
-    return _business_profile_out(_load_referrer(db, referrer_id, tenant_id))
+    """A referrer's billing details, for raising their monthly tax invoice.
+
+    Brokers get everything but the bank account — only an admin, and the
+    referrer themselves, see where the money goes.
+    """
+    return _business_profile_out(
+        _load_referrer(db, referrer_id, tenant_id),
+        include_bank=current_user.role == UserRole.admin,
+    )
 
 
 @router.put("/{referrer_id}/business-profile", response_model=ReferrerBusinessProfileOut)
@@ -416,7 +473,49 @@ def _load_referrer(db: Session, referrer_id: str, tenant_id: str) -> User:
     return referrer
 
 
-def _business_profile_out(user: User) -> dict:
+def _referrer_applications(db: Session, referrer: User, tenant_id: str, viewer: User) -> list[dict]:
+    """Applications a referrer can see, serialized for a staff viewer.
+
+    Same scope as the referrer's own applications list: files owned by a client
+    they referred, plus leads they submitted themselves.
+    """
+    from sqlalchemy import or_
+
+    from app.models.loan_application import LoanApplication
+    from app.services.serialization import app_with_user, referrer_info_map
+
+    referred_client_ids = db.query(ExternalReferral.referred_client_id).filter(
+        ExternalReferral.referrer_id == referrer.id,
+        ExternalReferral.referred_client_id.isnot(None),
+    )
+    apps = (
+        db.query(LoanApplication)
+        .filter(
+            LoanApplication.tenant_id == tenant_id,
+            LoanApplication.deleted_at.is_(None),
+            or_(
+                LoanApplication.user_id.in_(referred_client_ids),
+                LoanApplication.user_id == referrer.id,
+            ),
+        )
+        .order_by(LoanApplication.created_at.desc())
+        .all()
+    )
+    referrer_map = referrer_info_map(db, (a.user_id for a in apps))
+    return [
+        app_with_user(a, db, referrer_map=referrer_map, list_item=True, viewer=viewer)
+        for a in apps
+    ]
+
+
+def _business_profile_out(user: User, *, include_bank: bool = True) -> dict:
+    """The referrer's billing details.
+
+    ``include_bank`` False blanks the three bank columns for a viewer who may
+    see the business details but not where the money goes (a broker). The
+    completeness flag is still computed off the real values, so a broker can
+    tell whether we can invoice without reading the account.
+    """
     return {
         "id": user.id,
         "full_name": user.full_name,
@@ -427,9 +526,10 @@ def _business_profile_out(user: User) -> dict:
         "business_gst_registered": user.business_gst_registered,
         "business_director_name": user.business_director_name,
         "business_address": user.business_address,
-        "bank_account_name": user.bank_account_name,
-        "bank_bsb": user.bank_bsb,
-        "bank_account_number": user.bank_account_number,
+        "bank_account_name": user.bank_account_name if include_bank else None,
+        "bank_bsb": user.bank_bsb if include_bank else None,
+        "bank_account_number": user.bank_account_number if include_bank else None,
+        "bank_details_visible": include_bank,
         "business_logo_filename": user.business_logo_filename,
         "business_letterhead_filename": user.business_letterhead_filename,
         "business_details_updated_at": user.business_details_updated_at,

@@ -28,10 +28,10 @@ from app.models.notification_outbox import (
     NotificationStatus,
 )
 from app.models.user import User
-from app.services.serialization import referrer_info_map
+from app.services import tracking_links
 
 # Placeholders a rule's subject/body may use. Anything else is left as written.
-PLACEHOLDERS = ("client_name", "recipient_name", "stage", "lender", "amount", "reference")
+PLACEHOLDERS = ("client_name", "recipient_name", "stage", "lender", "amount", "reference", "tracking_link")
 
 
 def _client_name(application: LoanApplication, client: Optional[User]) -> str:
@@ -78,11 +78,11 @@ def _recipients(
         return [(name, address)]
 
     if audience == NotificationAudience.referrer:
-        info = referrer_info_map(db, [application.user_id]).get(application.user_id)
-        if not info:
+        referrer = tracking_links.application_referrer(db, application)
+        if referrer is None or referrer.deleted_at is not None:
             return []
-        address = info.get("email") if channel == NotificationChannel.email else info.get("phone")
-        return [(info.get("full_name") or "Referrer", address)]
+        address = referrer.email if channel == NotificationChannel.email else referrer.phone
+        return [(referrer.full_name or "Referrer", address)]
 
     brokers = list(application.brokers) or []
     if not brokers and application.assigned_broker_id:
@@ -92,6 +92,43 @@ def _recipients(
         (b.full_name or "Broker", b.email if channel == NotificationChannel.email else b.phone)
         for b in brokers
     ]
+
+
+def _tracking_url(
+    db: Session,
+    application: LoanApplication,
+    audience: NotificationAudience,
+    tenant_id: Optional[str],
+    actor_id: str,
+) -> str:
+    """The progress link a referrer or client message carries, minted on first
+    use. A referrer gets their one standing link; a client the deal's own —
+    unless the file is still held back from them (hidden_from_client), when a
+    link would show them what the portal deliberately doesn't yet."""
+    if not tenant_id:
+        return ""
+    if audience == NotificationAudience.referrer:
+        referrer = tracking_links.application_referrer(db, application)
+        if referrer is None:
+            return ""
+        link = tracking_links.get_or_create(
+            db, tenant_id, tracking_links.KIND_REFERRER, referrer_id=referrer.id, created_by_id=actor_id
+        )
+        return tracking_links.link_url(link)
+    if audience == NotificationAudience.client and not application.hidden_from_client:
+        link = tracking_links.get_or_create(
+            db, tenant_id, tracking_links.KIND_DEAL, application_id=application.id, created_by_id=actor_id
+        )
+        return tracking_links.link_url(link)
+    return ""
+
+
+def _with_tracking_link(body: str, url: str) -> str:
+    """Every referrer and client message carries the link: where the desk's
+    wording places it, that is where it goes; otherwise it is added at the end."""
+    if not url or "{tracking_link}" in body:
+        return body
+    return f"{body.rstrip()}\n\nTrack progress: {{tracking_link}}"
 
 
 def record_stage_notifications(
@@ -160,8 +197,12 @@ def record_stage_notifications(
             ))
             continue
 
+        url = ""
+        if any(address for _, address in parties):
+            url = _tracking_url(db, application, rule.audience, tenant_id, actor_id)
+        body_template = _with_tracking_link(rule.body, url)
         for name, address in parties:
-            recipient_values = {**values, "recipient_name": name}
+            recipient_values = {**values, "recipient_name": name, "tracking_link": url}
             if not address:
                 status, reason = NotificationStatus.skipped, f"No {rule.channel.value} address on file"
             elif STAGE_COMMS_ENABLED:
@@ -179,7 +220,7 @@ def record_stage_notifications(
                 recipient_name=name,
                 recipient_address=address,
                 subject=render(rule.subject, recipient_values) if rule.subject else None,
-                body=render(rule.body, recipient_values),
+                body=render(body_template, recipient_values),
                 status=status,
                 status_reason=reason,
                 decided_by_id=actor_id,

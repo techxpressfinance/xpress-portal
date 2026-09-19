@@ -17,6 +17,9 @@ import { CheckIcon, ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   journey: Journey;
+  /** Whose view it is. The referrer portal and a referrer's progress link
+   *  speak about "your client"; a borrower's progress link speaks to them. */
+  audience?: 'referrer' | 'client';
 }
 
 /** What each party's turn means to a referrer, in their words. `nudge` marks
@@ -51,6 +54,47 @@ const AWAITING_COPY: Record<AwaitingParty, { title: string; detail: string; nudg
   none: { title: '', detail: '', nudge: false },
 };
 
+/** The same turns, told to the borrower on their own progress link. */
+const CLIENT_AWAITING_COPY: Record<AwaitingParty, { title: string; detail: string; nudge: boolean }> = {
+  client: {
+    title: 'We need something from you',
+    detail: 'Nothing moves until it arrives — see what we are waiting on below, or get in touch with your broker.',
+    nudge: true,
+  },
+  desk: {
+    title: 'With our team',
+    detail: 'We are working on it. Nothing needed from you right now.',
+    nudge: false,
+  },
+  lender: {
+    title: 'With the lender',
+    detail: 'The lender is reviewing your application. Nothing needed from you right now.',
+    nudge: false,
+  },
+  supplier: {
+    title: 'Waiting on the supplier',
+    detail: 'We are waiting on paperwork from the seller. Nothing needed from you right now.',
+    nudge: false,
+  },
+  referrer: {
+    title: 'Getting started',
+    detail: 'We are setting up your application. Nothing needed from you right now.',
+    nudge: false,
+  },
+  none: { title: '', detail: '', nudge: false },
+};
+
+const CLIENT_CLOSED_COPY: Record<string, { title: string; detail: string }> = {
+  rejected: {
+    title: 'Not approved',
+    detail: 'This application was not approved. Your broker can talk you through the options.',
+  },
+  not_proceeding: {
+    title: 'Not proceeding',
+    detail: 'This application has been closed. Get in touch with your broker if that is unexpected.',
+  },
+};
+
 const CLOSED_COPY: Record<string, { title: string; detail: string }> = {
   rejected: {
     title: 'Not approved',
@@ -69,13 +113,15 @@ function waitedFor(days: number | null): string {
   return `${days} days`;
 }
 
-export default function JourneyTracker({ journey }: Props) {
+export default function JourneyTracker({ journey, audience = 'referrer' }: Props) {
   const { phases, phase_index: currentIndex, awaiting, closed, days_waiting: days } = journey;
+  const awaitingCopy = audience === 'client' ? CLIENT_AWAITING_COPY : AWAITING_COPY;
+  const closedCopy = audience === 'client' ? CLIENT_CLOSED_COPY : CLOSED_COPY;
 
   // A closed file is not partway along anything, so the track would be a row of
   // greyed circles saying nothing. Replace it outright.
   if (closed) {
-    const copy = CLOSED_COPY[closed] ?? CLOSED_COPY.not_proceeding;
+    const copy = closedCopy[closed] ?? closedCopy.not_proceeding;
     return (
       <div className="rounded-2xl bg-destructive/8 p-5">
         <div className="flex items-center gap-4">
@@ -91,12 +137,23 @@ export default function JourneyTracker({ journey }: Props) {
     );
   }
 
-  const copy = awaiting ? AWAITING_COPY[awaiting] : null;
+  const copy = awaiting ? awaitingCopy[awaiting] : null;
   const showPanel = Boolean(copy?.title);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center" style={{ animation: 'fadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
+      {/* Phone width can't fit the step labels side by side, so the track
+          collapses to "Step n of m" and a bar there. */}
+      {currentIndex != null && (
+        <div className="sm:hidden">
+          <p className="text-[12px] text-muted-foreground">Step {currentIndex + 1} of {phases.length}</p>
+          <p className="text-[15px] font-semibold text-foreground">{phases[currentIndex]}</p>
+          <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${((currentIndex + 1) / phases.length) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      <div className={`${currentIndex != null ? 'hidden sm:flex' : 'flex'} items-center`} style={{ animation: 'fadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
         {phases.map((phase, i) => {
           const isCompleted = currentIndex != null && i < currentIndex;
           const isCurrent = i === currentIndex;

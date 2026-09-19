@@ -38,6 +38,7 @@ const BasCalculator = lazy(() => import('./pages/admin/BasCalculator'));
 const AdminServiceRequests = lazy(() => import('./pages/admin/ServiceRequests'));
 const ServiceRequestDetail = lazy(() => import('./pages/admin/ServiceRequestDetail'));
 const ClientServiceRequests = lazy(() => import('./pages/client/ServiceRequests'));
+const ReferrerDetail = lazy(() => import('./pages/admin/ReferrerDetail'));
 const ReferrerApplications = lazy(() => import('./pages/referrer/Applications'));
 const ReferrerClients = lazy(() => import('./pages/referrer/Clients'));
 const ReferrerApplicationDetail = lazy(() => import('./pages/referrer/ApplicationDetail'));
@@ -62,6 +63,7 @@ const SetupAccount = lazy(() => import('./pages/SetupAccount'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicApply = lazy(() => import('./pages/PublicApply'));
+const TrackProgress = lazy(() => import('./pages/TrackProgress'));
 const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'));
 const TenantManagement = lazy(() => import('./pages/platform/TenantManagement'));
 const CreateTenant = lazy(() => import('./pages/platform/CreateTenant'));
@@ -90,6 +92,7 @@ export default function App() {
           <Routes>
             <Route path="/platform-login" element={<PlatformLogin />} />
             <Route path="/apply/:token" element={<PublicApply />} />
+            <Route path="/track/:token" element={<TrackProgress />} />
             <Route path="/setup-account" element={<SetupAccount />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -233,6 +236,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <ReferrerManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/referrers/:id"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <ReferrerDetail />
                   </ProtectedRoute>
                 }
               />

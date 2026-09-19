@@ -1038,3 +1038,52 @@ def send_assignment_notification(
     html_body = _get_base_html(content)
 
     _send_async(to_email, subject, body, html_body)
+
+
+def send_tracking_link_email(
+    to_email: str,
+    name: str,
+    url: str,
+    *,
+    for_referrer: bool,
+    deal_label: Optional[str] = None,
+) -> bool:
+    """Email someone their progress link. Non-blocking; returns False when email
+    isn't configured so the caller can say so.
+
+    Deliberately ignores REFERRER_EMAILS_ENABLED: that pause is for automatic
+    referrer mail, and this is only ever sent because someone on the desk
+    clicked "Email link", usually with the referrer on the phone."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping tracking link email for %s", to_email)
+        return False
+
+    first = (name or "").split(" ")[0] or "there"
+    if for_referrer:
+        subject = "Track your referrals — Xpress Finance"
+        intro = (
+            "Here is your personal link to see where each of your referred clients is up to"
+            f"{' — including ' + deal_label if deal_label else ''}. "
+            "It shows every deal you have referred to us and whose move it is, and it stays the same, so feel free to bookmark it."
+        )
+    else:
+        subject = "Track your loan — Xpress Finance"
+        intro = (
+            f"Here is your personal link to see how your {deal_label or 'application'} is progressing "
+            "and whether we need anything from you. No login needed."
+        )
+    body = (
+        f"Hi {first},\n\n{intro}\n\n{url}\n\n"
+        "This link is personal to you — please don't share it.\n\n"
+        "Best regards,\nXpress Finance Team"
+    )
+    content = f"""
+        <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #3f3f46;">Hi {_esc(first)},</p>
+        <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">{_esc(intro)}</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{_esc(url)}" style="display: inline-block; background-color: #09090b; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px;">View progress</a>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #71717a; text-align: center;">This link is personal to you — please don't share it.</p>
+    """
+    _send_async(to_email, subject, body, _get_base_html(content))
+    return True

@@ -6,6 +6,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.loan_application import ReferredByOut
+
 
 class LeadCreate(BaseModel):
     first_name: str
@@ -20,6 +22,10 @@ class LeadCreate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     assigned_broker_id: Optional[str] = None
+    # The existing client (contact) who referred this inquiry.
+    referred_by_contact_id: Optional[str] = None
+    # The referrer partner who sent it.
+    referrer_id: Optional[str] = None
     # The lead stage it was added from. Without one the lead renders in each
     # board's first lead stage.
     board_id: Optional[str] = None
@@ -39,6 +45,8 @@ class LeadUpdate(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     assigned_broker_id: Optional[str] = None
+    referred_by_contact_id: Optional[str] = None
+    referrer_id: Optional[str] = None
 
 
 class LeadLostRequest(BaseModel):
@@ -68,6 +76,10 @@ class LeadOut(BaseModel):
     converted_application_id: Optional[str] = None
     converted_at: Optional[datetime] = None
     contact_id: Optional[str] = None
+    referred_by_contact_id: Optional[str] = None
+    referred_by: Optional[ReferredByOut] = None
+    referrer_id: Optional[str] = None
+    referrer_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     # Board-only: when the lead entered the stage it is shown in.

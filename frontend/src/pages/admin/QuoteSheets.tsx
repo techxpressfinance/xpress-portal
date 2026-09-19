@@ -4,6 +4,7 @@ import QuoteSheetEditor from '../../components/QuoteSheetEditor';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import LenderPricingEditor from '../../components/LenderPricingEditor';
 import { LenderPricingRow } from '../../components/LenderPricingList';
+import SheetTypeTag from '../../components/SheetTypeTag';
 import LenderPricingView from '../../components/LenderPricingView';
 import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -32,6 +33,12 @@ export default function QuoteSheets() {
   >(null);
   const lenderPdf = useLenderPricingPdf();
   const listMode = !showForm && !editingSheet && !viewingSheet && !lenderPricingMode;
+  // The two kinds of sheet share a model but never a list: a quote goes to the
+  // client, lender pricing never leaves the desk. Tabs rather than stacked
+  // sections so a long quote list can't push lender pricing off the screen.
+  const [activeTab, setActiveTab] = useState<'client_quote' | 'lender_pricing'>('client_quote');
+  const clientQuoteSheets = quoteSheets.filter(s => s.sheet_type !== 'lender_pricing');
+  const lenderPricingSheets = quoteSheets.filter(s => s.sheet_type === 'lender_pricing');
 
   // Send modal state
   const [sendModalSheet, setSendModalSheet] = useState<QuoteSheet | null>(null);
@@ -125,24 +132,8 @@ export default function QuoteSheets() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Quote Sheets</h1>
-          <p className="text-sm text-muted-foreground mt-1">Create and manage standalone finance quotes</p>
+          <p className="text-sm text-muted-foreground mt-1">Client quotes and lender pricing, not tied to an application</p>
         </div>
-        {listMode && (
-          <div className="flex items-center gap-2">
-            <Button onClick={() => { setShowForm(true); setViewingSheet(null); setEditingSheet(null); }}>
-              <span className="flex items-center gap-1.5">
-                <PlusIcon className="h-4 w-4" strokeWidth={2} />
-                New Quote Sheet
-              </span>
-            </Button>
-            <Button variant="secondary" onClick={() => setLenderPricingMode({ kind: 'new' })}>
-              <span className="flex items-center gap-1.5">
-                <PlusIcon className="h-4 w-4" strokeWidth={2} />
-                New Lender Pricing
-              </span>
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Lender Pricing — view / editor */}
@@ -159,6 +150,7 @@ export default function QuoteSheets() {
               <h3 className="text-[15px] font-semibold">
                 {lenderPricingMode.sheet.title || `Lender Pricing v${lenderPricingMode.sheet.version}`}
               </h3>
+              <SheetTypeTag type="lender_pricing" />
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -224,6 +216,7 @@ export default function QuoteSheets() {
               <h3 className="text-[15px] font-semibold">
                 {viewingSheet.title || `Quote Sheet v${viewingSheet.version}`}
               </h3>
+              <SheetTypeTag type="client_quote" />
               <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[viewingSheet.status].className}`}>
                 {QUOTE_SHEET_STATUS_BADGE[viewingSheet.status].label}
               </span>
@@ -258,149 +251,216 @@ export default function QuoteSheets() {
         </Card>
       )}
 
-      {/* List Mode */}
+      {/* List Mode — the two kinds of sheet live in their own sections. They
+          share a table and look alike, but a quote goes to the client and
+          lender pricing never leaves the desk, so they never share a list. */}
       {listMode && (
-        <Card>
-          {quoteSheets.length === 0 ? (
-            <EmptyState
-              title="No quote sheets yet"
-              description="Create a standalone quote sheet to compare finance options"
-            />
-          ) : (
-            <div className="space-y-3">
-              {quoteSheets.map(sheet => sheet.sheet_type === 'lender_pricing' ? (
-                <LenderPricingRow
-                  key={sheet.id}
-                  sheet={sheet}
-                  showBadge
-                  pdfLoading={lenderPdf.pdfSheetId === sheet.id}
-                  onView={() => setLenderPricingMode({ kind: 'view', sheet })}
-                  onEdit={() => setLenderPricingMode({ kind: 'edit', sheet })}
-                  onPdf={() => lenderPdf.downloadPdf(sheet)}
-                  onDelete={() => deleteLenderPricing(sheet)}
-                />
-              ) : (
-                <div
-                  key={sheet.id}
-                  className="rounded-xl border border-border/60 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors"
+        <>
+          <div className="flex items-end justify-between border-b border-border">
+            <div className="flex">
+              {([
+                { key: 'client_quote', label: 'Quote Sheets', count: clientQuoteSheets.length },
+                { key: 'lender_pricing', label: 'Lender Pricing', count: lenderPricingSheets.length },
+              ] as const).map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  aria-current={activeTab === tab.key ? 'page' : undefined}
+                  className={`flex items-center gap-2 px-5 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px ${activeTab === tab.key
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[13px] font-bold text-foreground">v{sheet.version}</span>
-                        {sheet.title && (
-                          <span className="text-[13px] font-medium text-foreground truncate">{sheet.title}</span>
-                        )}
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[sheet.status].className}`}>
-                          {QUOTE_SHEET_STATUS_BADGE[sheet.status].label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-[11px] text-muted-foreground">
-                          {sheet.options.length} option{sheet.options.length !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-muted-foreground">·</span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {formatDate(sheet.created_at)}
-                        </span>
-                        {sheet.created_by_name && (
-                          <>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-[11px] text-muted-foreground">by {sheet.created_by_name}</span>
-                          </>
-                        )}
-                        {sheet.recipient_name && (
-                          <>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-[11px] text-muted-foreground">
-                              for {sheet.recipient_name}
-                              {sheet.recipient_email && ` (${sheet.recipient_email})`}
-                            </span>
-                          </>
-                        )}
-                        {sheet.sent_at && (
-                          <>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-[11px] text-success font-medium">Sent {formatDate(sheet.sent_at)}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => { viewKeyRef.current++; setViewingSheet(sheet); setEditingSheet(null); setShowForm(false); }}
-                      className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
-                    >
-                      View
-                    </button>
-                    {sheet.status === 'draft' && (
-                      <button
-                        onClick={() => { setEditingSheet(sheet); setShowForm(false); setViewingSheet(null); }}
-                        className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
-                      >
-                        Edit
-                      </button>
-                    )}
-                    {sheet.status === 'draft' && (
-                      <button
-                        onClick={() => {
-                          const terms = optionTermMonths(sheet.options);
-                          setSendModalTerms(terms);
-                          setSendModalSheet(sheet);
-                        }}
-                        className="rounded-lg bg-success/10 px-3 py-1.5 text-[12px] font-medium text-success hover:bg-success/20 transition-colors"
-                      >
-                        Mark as Sent
-                      </button>
-                    )}
-                    <button
-                      onClick={() => openEmailModal(sheet)}
-                      className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
-                    >
-                      <span className="flex items-center gap-1">
-                        <EnvelopeIcon className="h-3 w-3" strokeWidth={2} />
-                        Email
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => handleDownloadPdf(sheet, false)}
-                      className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
-                      title="Internal PDF (includes interest rate)"
-                    >
-                      PDF
-                    </button>
-                    <button
-                      onClick={() => handleDownloadPdf(sheet, true)}
-                      className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
-                      title="Client PDF (no interest rate)"
-                    >
-                      Client PDF
-                    </button>
-                    {sheet.status === 'draft' && (
-                      <button
-                        onClick={async () => {
-                          if (!(await confirm({ title: 'Delete this quote sheet?', message: 'The draft and its options are removed permanently.', confirmText: 'Delete', variant: 'danger' }))) return;
-                          try {
-                            await api.delete(`/quote-sheets/${sheet.id}`);
-                            setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
-                            toast('Quote sheet deleted', 'success');
-                          } catch (err) {
-                            toast(getErrorMessage(err, 'Failed to delete'), 'error');
-                          }
-                        }}
-                        className="rounded-lg bg-destructive/10 px-3 py-1.5 text-[12px] font-medium text-destructive hover:bg-destructive/20 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  {tab.label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${activeTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                    }`}>
+                    {tab.count}
+                  </span>
+                </button>
               ))}
             </div>
-          )}
-        </Card>
+            <div className="pb-2">
+              {activeTab === 'client_quote' ? (
+                <Button size="sm" onClick={() => { setShowForm(true); setViewingSheet(null); setEditingSheet(null); }}>
+                  <span className="flex items-center gap-1.5">
+                    <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                    New Quote Sheet
+                  </span>
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => { setLenderPricingMode({ kind: 'new' }); setShowForm(false); setViewingSheet(null); setEditingSheet(null); }}>
+                  <span className="flex items-center gap-1.5">
+                    <PlusIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                    New Lender Pricing
+                  </span>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <Card>
+            <div className="flex items-center gap-2 mb-4">
+              <SheetTypeTag type={activeTab} />
+              <p className="text-[12px] text-muted-foreground">
+                {activeTab === 'client_quote'
+                  ? 'Client-facing — the option comparison you send out'
+                  : 'Internal'}
+              </p>
+            </div>
+
+            {activeTab === 'lender_pricing' ? (
+              lenderPricingSheets.length === 0 ? (
+                <EmptyState
+                  title="No lender pricing yet"
+                  description="Record the term, direct debit cycle and structure the lender approved"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {[...lenderPricingSheets].sort((a, b) => b.version - a.version).map(sheet => (
+                    <LenderPricingRow
+                      key={sheet.id}
+                      sheet={sheet}
+                      pdfLoading={lenderPdf.pdfSheetId === sheet.id}
+                      onView={() => setLenderPricingMode({ kind: 'view', sheet })}
+                      onEdit={() => setLenderPricingMode({ kind: 'edit', sheet })}
+                      onPdf={() => lenderPdf.downloadPdf(sheet)}
+                      onDelete={() => deleteLenderPricing(sheet)}
+                    />
+                  ))}
+                </div>
+              )
+            ) : clientQuoteSheets.length === 0 ? (
+              <EmptyState
+                title="No quote sheets yet"
+                description="Create a standalone quote sheet to compare finance options"
+              />
+            ) : (
+              <div className="space-y-3">
+                {clientQuoteSheets.map(sheet => (
+                  <div
+                    key={sheet.id}
+                    className="rounded-xl border border-border/60 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[13px] font-bold text-foreground">v{sheet.version}</span>
+                          {sheet.title && (
+                            <span className="text-[13px] font-medium text-foreground truncate">{sheet.title}</span>
+                          )}
+                          <SheetTypeTag type="client_quote" />
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[sheet.status].className}`}>
+                            {QUOTE_SHEET_STATUS_BADGE[sheet.status].label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-[11px] text-muted-foreground">
+                            {sheet.options.length} option{sheet.options.length !== 1 ? 's' : ''}
+                          </span>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {formatDate(sheet.created_at)}
+                          </span>
+                          {sheet.created_by_name && (
+                            <>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-[11px] text-muted-foreground">by {sheet.created_by_name}</span>
+                            </>
+                          )}
+                          {sheet.recipient_name && (
+                            <>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                for {sheet.recipient_name}
+                                {sheet.recipient_email && ` (${sheet.recipient_email})`}
+                              </span>
+                            </>
+                          )}
+                          {sheet.sent_at && (
+                            <>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-[11px] text-success font-medium">Sent {formatDate(sheet.sent_at)}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => { viewKeyRef.current++; setViewingSheet(sheet); setEditingSheet(null); setShowForm(false); }}
+                        className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                      >
+                        View
+                      </button>
+                      {sheet.status === 'draft' && (
+                        <button
+                          onClick={() => { setEditingSheet(sheet); setShowForm(false); setViewingSheet(null); }}
+                          className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {sheet.status === 'draft' && (
+                        <button
+                          onClick={() => {
+                            const terms = optionTermMonths(sheet.options);
+                            setSendModalTerms(terms);
+                            setSendModalSheet(sheet);
+                          }}
+                          className="rounded-lg bg-success/10 px-3 py-1.5 text-[12px] font-medium text-success hover:bg-success/20 transition-colors"
+                        >
+                          Mark as Sent
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openEmailModal(sheet)}
+                        className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <span className="flex items-center gap-1">
+                          <EnvelopeIcon className="h-3 w-3" strokeWidth={2} />
+                          Email
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadPdf(sheet, false)}
+                        className="rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                        title="Internal PDF (includes interest rate)"
+                      >
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => handleDownloadPdf(sheet, true)}
+                        className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                        title="Client PDF (no interest rate)"
+                      >
+                        Client PDF
+                      </button>
+                      {sheet.status === 'draft' && (
+                        <button
+                          onClick={async () => {
+                            if (!(await confirm({ title: 'Delete this quote sheet?', message: 'The draft and its options are removed permanently.', confirmText: 'Delete', variant: 'danger' }))) return;
+                            try {
+                              await api.delete(`/quote-sheets/${sheet.id}`);
+                              setQuoteSheets(prev => prev.filter(s => s.id !== sheet.id));
+                              toast('Quote sheet deleted', 'success');
+                            } catch (err) {
+                              toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                            }
+                          }}
+                          className="rounded-lg bg-destructive/10 px-3 py-1.5 text-[12px] font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </>
       )}
 
       {lenderPdf.pdfNode}
@@ -566,11 +626,10 @@ export default function QuoteSheets() {
                               selected ? prev.filter(t => t !== term) : [...prev, term]
                             );
                           }}
-                          className={`rounded-lg px-3.5 py-2 text-[13px] font-medium transition-all duration-150 border ${
-                            selected
+                          className={`rounded-lg px-3.5 py-2 text-[13px] font-medium transition-all duration-150 border ${selected
                               ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                               : 'bg-secondary/60 text-muted-foreground border-border hover:bg-secondary hover:text-foreground'
-                          }`}
+                            }`}
                         >
                           {termLabelShort(term)}
                         </button>

@@ -255,6 +255,18 @@ class CorporateGuarantorOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReferredByOut(BaseModel):
+    """The existing client (a contact) who referred a deal. Staff-only."""
+    contact_id: str
+    name: str
+    email: Optional[str] = None
+
+
+class ReferredByUpdate(BaseModel):
+    # None clears the tag.
+    contact_id: Optional[str] = None
+
+
 class ReferrerInfoOut(BaseModel):
     id: str
     full_name: Optional[str] = None
@@ -417,6 +429,8 @@ class LoanApplicationOut(BaseModel):
     client_engagement_model: Optional[str] = None
     cloned_from_id: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
+    referred_by_contact_id: Optional[str] = None
+    referred_by: Optional[ReferredByOut] = None
     additional_applicants: list[LoanApplicantOut] = []
     corporate_guarantors: list[CorporateGuarantorOut] = []
     parties_ready: bool = False
