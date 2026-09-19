@@ -10,6 +10,7 @@ import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
 import LenderPricingEditor from '../../components/LenderPricingEditor';
+import SheetTypeTag from '../../components/SheetTypeTag';
 import LenderPricingList from '../../components/LenderPricingList';
 import LenderPricingView from '../../components/LenderPricingView';
 import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
@@ -22,6 +23,8 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import ApplicationStagePill from '../../components/ApplicationStagePill';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
+import ReferredByPicker from '../../components/ReferredByPicker';
+import ProgressLink from '../../components/ProgressLink';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
@@ -30,7 +33,7 @@ import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
@@ -59,6 +62,7 @@ export default function ReviewApplication() {
   const [linkingReferrer, setLinkingReferrer] = useState(false);
   const [confirmUnlinkReferrer, setConfirmUnlinkReferrer] = useState(false);
   const [unlinkingReferrer, setUnlinkingReferrer] = useState(false);
+  const [savingReferredBy, setSavingReferredBy] = useState(false);
   const [loading, setLoading] = useState(true);
   // Sections that failed to load, by name. Rendered as a banner so an empty tab
   // is never mistaken for "there is nothing here".
@@ -405,6 +409,21 @@ export default function ReviewApplication() {
       toast(getErrorMessage(err, 'Failed to link referrer'), 'error');
     } finally {
       setLinkingReferrer(false);
+    }
+  };
+
+  // Credit an existing client with sending us this deal (marketing tracking).
+  const handleReferredByChange = async (next: ReferredBy | null) => {
+    if (!id) return;
+    setSavingReferredBy(true);
+    try {
+      const { data } = await api.put<LoanApplication>(`/applications/${id}/referred-by`, { contact_id: next?.contact_id ?? null });
+      setApplication((prev) => (prev ? { ...prev, referred_by_contact_id: data.referred_by_contact_id, referred_by: data.referred_by } : prev));
+      toast(next ? `Credited to ${next.name}` : 'Client referral removed', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update the client referral'), 'error');
+    } finally {
+      setSavingReferredBy(false);
     }
   };
 
@@ -1230,7 +1249,14 @@ export default function ReviewApplication() {
                     <dl className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl bg-secondary/50 p-3">
                         <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.full_name || '—'}</dd>
+                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          {referrer.id ? (
+                            // Their full record — business and payment details included.
+                            <Link to={`/admin/referrers/${referrer.id}`} className="text-primary hover:underline">
+                              {referrer.full_name || 'View referrer'}
+                            </Link>
+                          ) : (referrer.full_name || '—')}
+                        </dd>
                       </div>
                       {referrer.organization_name && (
                         <div className="rounded-xl bg-secondary/50 p-3">
@@ -1253,6 +1279,51 @@ export default function ReviewApplication() {
                     </dl>
                   </Card>
                 )}
+
+                {/* No-login progress links for whoever rings asking where this
+                    is up to. The referrer's is their one standing link. */}
+                <Card>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-1">Share progress</h2>
+                  <p className="text-[13px] text-muted-foreground mb-4">
+                    Read-only links showing where this deal is up to — no login needed.
+                  </p>
+                  <div className="space-y-5">
+                    <ProgressLink base={`/tracking-links/applications/${application.id}`} audience="client" label="For the client" />
+                    {application.hidden_from_client && (
+                      <p className="text-[12px] text-warning -mt-3">
+                        This application is still hidden from the client's portal — sending this link lets them see its progress.
+                      </p>
+                    )}
+                    <ProgressLink
+                      base={`/tracking-links/applications/${application.id}`}
+                      audience="referrer"
+                      label="For the referrer — their link for all their deals"
+                      canRegenerate={false}
+                    />
+                  </div>
+                </Card>
+
+                {/* Client referral — an existing client who sent us this deal.
+                    Tracking only; separate from a paid referrer partner above. */}
+                <Card>
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-[15px] font-semibold text-foreground">Referred by a client</h2>
+                    {application.referred_by && (
+                      <Link to={`/admin/contacts/${application.referred_by.contact_id}`} className="text-[13px] text-primary hover:underline">
+                        View client
+                      </Link>
+                    )}
+                  </div>
+                  <p className="text-[13px] text-muted-foreground mb-3">
+                    If an existing client sent us this deal, credit them here so we can see who's referring business.
+                    Internal only — the client isn't notified.
+                  </p>
+                  <ReferredByPicker
+                    value={application.referred_by ?? null}
+                    onChange={handleReferredByChange}
+                    disabled={savingReferredBy}
+                  />
+                </Card>
 
                 {/* Comprehensive Loan Type Details */}
                 {application.lend_extra_data && (() => {
@@ -3617,6 +3688,7 @@ export default function ReviewApplication() {
                         <h3 className="text-[15px] font-semibold">
                           {lenderPricingMode.sheet.title || `Lender Pricing v${lenderPricingMode.sheet.version}`}
                         </h3>
+                        <SheetTypeTag type="lender_pricing" />
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
@@ -3678,6 +3750,7 @@ export default function ReviewApplication() {
                         <h3 className="text-[15px] font-semibold">
                           {viewingQuoteSheet.title || `Quote Sheet v${viewingQuoteSheet.version}`}
                         </h3>
+                        <SheetTypeTag type="client_quote" />
                         <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[viewingQuoteSheet.status].className}`}>
                           {QUOTE_SHEET_STATUS_BADGE[viewingQuoteSheet.status].label}
                         </span>
@@ -3708,7 +3781,13 @@ export default function ReviewApplication() {
                   <>
                   <Card>
                     <div className="flex items-center justify-between mb-5">
-                      <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-[15px] font-semibold text-foreground">Quote Sheets</h2>
+                          <SheetTypeTag type="client_quote" />
+                        </div>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">Client-facing — the option comparison you send out</p>
+                      </div>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => { setShowQuoteForm(true); setViewingQuoteSheet(null); setEditingQuoteSheet(null); }}>
                           <span className="flex items-center gap-1.5">
@@ -3739,6 +3818,7 @@ export default function ReviewApplication() {
                                   {sheet.title && (
                                     <span className="text-[13px] font-medium text-foreground truncate">{sheet.title}</span>
                                   )}
+                                  <SheetTypeTag type="client_quote" />
                                   <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${QUOTE_SHEET_STATUS_BADGE[sheet.status].className}`}>
                                     {QUOTE_SHEET_STATUS_BADGE[sheet.status].label}
                                   </span>

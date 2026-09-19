@@ -78,6 +78,21 @@ class Lead(Base):
         String(36), ForeignKey("contacts.id", ondelete="SET NULL"), index=True, nullable=True
     )
 
+    # The existing client who referred this inquiry. Carried onto the
+    # application on conversion — see LoanApplication.referred_by_contact_id.
+    referred_by_contact_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("contacts.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    # The referrer partner who sent this inquiry. Staff-set — referrers submit
+    # applications, not leads. Referrer credit is otherwise client-level (an
+    # ExternalReferral on the application owner), but a lead has no client
+    # account yet, and the application it converts into is staff-owned, so the
+    # credit stays here and is read through converted_application_id.
+    referrer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), index=True, nullable=False
@@ -91,6 +106,8 @@ class Lead(Base):
 
     created_by = relationship("User", foreign_keys=[created_by_id])
     assigned_broker = relationship("User", foreign_keys=[assigned_broker_id])
+    referred_by_contact = relationship("Contact", foreign_keys=[referred_by_contact_id])
+    referrer = relationship("User", foreign_keys=[referrer_id])
 
 
 class LeadStagePlacement(Base):

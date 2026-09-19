@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getErrorMessage, formatDate, getInitials } from '../../lib/utils';
 import { Card, StatCard, PageHeader, Button, Input, Select, InviteLinkBox } from '../../components/ui';
-import BusinessDetailsForm from '../../components/referrer/BusinessDetailsForm';
 import PeopleNav from '../../components/PeopleNav';
 import { CopyButton } from '../../components/ui/CopyButton';
 import type { Invitation, PaginatedResponse, User } from '../../types';
@@ -79,35 +79,6 @@ function EditReferrerModal({ referrer, onClose, onSaved }: { referrer: User; onC
   );
 }
 
-/** Billing details for a referrer, edited in its own modal. */
-function BusinessDetailsModal({ referrer, onClose }: { referrer: User; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 py-10">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-3xl rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both' }}>
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-[17px] font-semibold text-foreground">Business & Payment Details</h3>
-            <p className="text-[13px] text-muted-foreground">{referrer.full_name} — {referrer.email}</p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
-        </div>
-        <BusinessDetailsForm
-          basePath={`/external-referrers/${referrer.id}`}
-          contactNote="Email and phone are edited from the referrer's profile."
-        />
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 interface ReferrerForm {
   full_name: string;
   email: string;
@@ -138,6 +109,7 @@ type PendingAction =
 type SendingReset = string | null;
 
 export default function ReferrerManagement() {
+  const navigate = useNavigate();
   const { user: currentUser, impersonate } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const { toast } = useToast();
@@ -162,7 +134,6 @@ export default function ReferrerManagement() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
   const [editingReferrer, setEditingReferrer] = useState<User | null>(null);
-  const [billingReferrer, setBillingReferrer] = useState<User | null>(null);
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -369,7 +340,11 @@ export default function ReferrerManagement() {
               </thead>
               <tbody className="divide-y divide-border">
                 {referrers.map(referrer => (
-                  <tr key={referrer.id} className="transition-colors hover:bg-secondary/50">
+                  <tr
+                    key={referrer.id}
+                    className="cursor-pointer transition-colors hover:bg-secondary/50"
+                    onClick={() => navigate(`/admin/referrers/${referrer.id}`)}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-chart-4/10">
@@ -389,12 +364,12 @@ export default function ReferrerManagement() {
                       </span>
                     </td>
                     <td className="hidden md:table-cell px-6 py-4 text-[13px] text-muted-foreground">{formatDate(referrer.created_at)}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => navigate(`/admin/referrers/${referrer.id}`)}>View</Button>
                         {isAdmin && (
                           <>
                             <Button size="sm" variant="secondary" onClick={() => setEditingReferrer(referrer)}>Edit</Button>
-                            <Button size="sm" variant="secondary" onClick={() => setBillingReferrer(referrer)}>Billing</Button>
                             {referrer.is_active && (
                               <Button size="sm" variant="secondary" loading={impersonatingId === referrer.id} onClick={() => handleImpersonate(referrer.id)}>Login as</Button>
                             )}
@@ -484,10 +459,6 @@ export default function ReferrerManagement() {
           </>
         )}
       </Card>
-
-      {billingReferrer && (
-        <BusinessDetailsModal referrer={billingReferrer} onClose={() => setBillingReferrer(null)} />
-      )}
 
       {editingReferrer && (
         <EditReferrerModal

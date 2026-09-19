@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.middleware.auth import require_role
@@ -13,6 +13,7 @@ from app.models.lead import Lead, LeadStagePlacement, LeadStatus
 from app.models.user import User, UserRole
 from app.schemas.lead import LeadCreate, LeadLostRequest, LeadOut, LeadUpdate
 from app.services.activity_log import log_activity
+from app.services.contacts import referring_contact_id
 from app.services.leads import lead_name, lead_to_dict, validate_lead_category
 from app.services.loan_category import parse_categories
 from app.services.organizations import normalize_abn
@@ -35,13 +36,33 @@ def _clean_abn(value: Optional[str]) -> Optional[str]:
 def _get_lead(lead_id: str, tenant_id: str, db: Session) -> Lead:
     lead = (
         db.query(Lead)
-        .options(joinedload(Lead.assigned_broker), joinedload(Lead.created_by))
+        .options(
+            joinedload(Lead.assigned_broker),
+            joinedload(Lead.created_by),
+            selectinload(Lead.referred_by_contact),
+            joinedload(Lead.referrer),
+        )
         .filter(Lead.id == lead_id, Lead.tenant_id == tenant_id, Lead.deleted_at.is_(None))
         .first()
     )
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
     return lead
+
+
+def _referrer_id(referrer_id: Optional[str], tenant_id: str, db: Session) -> Optional[str]:
+    """A lead's referrer must be a live referrer partner in this tenant."""
+    if not referrer_id:
+        return None
+    referrer = db.query(User).filter(
+        User.id == referrer_id,
+        User.tenant_id == tenant_id,
+        User.role == UserRole.referrer,
+        User.deleted_at.is_(None),
+    ).first()
+    if not referrer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Referrer not found")
+    return referrer.id
 
 
 def _validate_broker(broker_id: Optional[str], tenant_id: str, db: Session) -> None:
@@ -67,7 +88,12 @@ def list_leads(
 ):
     query = (
         db.query(Lead)
-        .options(joinedload(Lead.assigned_broker), joinedload(Lead.created_by))
+        .options(
+            joinedload(Lead.assigned_broker),
+            joinedload(Lead.created_by),
+            selectinload(Lead.referred_by_contact),
+            joinedload(Lead.referrer),
+        )
         .filter(Lead.tenant_id == tenant_id, Lead.deleted_at.is_(None))
     )
     if lead_status and lead_status != "all":
@@ -140,6 +166,8 @@ def create_lead(
         amount=data.amount,
         source=_clean(data.source),
         notes=_clean(data.notes),
+        referred_by_contact_id=referring_contact_id(db, tenant_id, data.referred_by_contact_id),
+        referrer_id=_referrer_id(data.referrer_id, tenant_id, db),
     )
     db.add(lead)
     db.flush()
@@ -200,6 +228,10 @@ def update_lead(
     if "assigned_broker_id" in updates:
         _validate_broker(updates["assigned_broker_id"], tenant_id, db)
         lead.assigned_broker_id = updates["assigned_broker_id"] or None
+    if "referred_by_contact_id" in updates:
+        lead.referred_by_contact_id = referring_contact_id(db, tenant_id, updates["referred_by_contact_id"])
+    if "referrer_id" in updates:
+        lead.referrer_id = _referrer_id(updates["referrer_id"], tenant_id, db)
 
     if "loan_category" in updates or "sub_type" in updates:
         category = updates.get("loan_category") or lead.loan_category

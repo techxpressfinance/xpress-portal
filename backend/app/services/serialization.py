@@ -67,6 +67,10 @@ STAFF_ONLY_KEYS = frozenset({
     "lend_owner_type",
     "lend_send_type",
     "lend_who_to_contact",
+    # Which existing client referred the deal — marketing attribution, so it
+    # stays off the client and referrer portals.
+    "referred_by_contact_id",
+    "referred_by",
 })
 
 _STAFF_ROLES = frozenset({UserRole.admin, UserRole.broker, UserRole.super_admin})
@@ -84,6 +88,14 @@ def redact_for_viewer(data: dict, viewer) -> dict:
     for key in STAFF_ONLY_KEYS:
         data.pop(key, None)
     return data
+
+
+def referred_by_dict(contact: Optional[Contact]) -> Optional[dict]:
+    """The existing client credited with referring a deal (application or lead)."""
+    if contact is None:
+        return None
+    name = " ".join(filter(None, [contact.first_name, contact.last_name])).strip()
+    return {"contact_id": contact.id, "name": name or contact.email or "Unnamed contact", "email": contact.email}
 
 
 def _referrer_dict(user) -> dict:
@@ -210,6 +222,7 @@ def app_with_user(
                 if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
                     referrer_info = _referrer_dict(ref.referrer)
     data["referrer"] = referrer_info
+    data["referred_by"] = referred_by_dict(app.referred_by_contact) if app.referred_by_contact_id else None
     # Where the file is up to, for the viewers who are shown a journey rather
     # than a status (see services/journey.py). Resolved by the caller, since
     # only a referrer's endpoints pay for it.

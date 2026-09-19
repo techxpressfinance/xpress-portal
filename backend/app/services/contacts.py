@@ -176,3 +176,19 @@ def ensure_contact(
     db.add(contact)
     db.flush()
     return contact
+
+
+def referring_contact_id(db: Session, tenant_id: str, contact_id: Optional[str]) -> Optional[str]:
+    """Validate the contact credited with referring a deal; empty clears it.
+
+    Any contact-book person qualifies, portal login or not — a past client who
+    never used the portal can still send us business.
+    """
+    if not contact_id:
+        return None
+    from fastapi import HTTPException
+
+    exists = db.query(Contact.id).filter(Contact.id == contact_id, Contact.tenant_id == tenant_id).first()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Referring client not found")
+    return contact_id

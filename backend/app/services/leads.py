@@ -29,6 +29,7 @@ from app.services.loan_category import (
     sub_type_to_loan_type,
 )
 from app.services.organizations import find_or_create_organization_by_abn
+from app.services.serialization import referred_by_dict
 
 CATEGORY_LABELS = {"asset_finance": "Asset Finance", "home_loan": "Home Loan", "commercial": "Commercial"}
 
@@ -70,6 +71,10 @@ def lead_to_dict(lead: Lead, *, stage_entered_at: Optional[datetime] = None) -> 
         "converted_application_id": lead.converted_application_id,
         "converted_at": lead.converted_at,
         "contact_id": lead.contact_id,
+        "referred_by_contact_id": lead.referred_by_contact_id,
+        "referred_by": referred_by_dict(lead.referred_by_contact) if lead.referred_by_contact_id else None,
+        "referrer_id": lead.referrer_id,
+        "referrer_name": lead.referrer.full_name if lead.referrer else None,
         "created_at": lead.created_at,
         "updated_at": lead.updated_at,
         "stage_entered_at": stage_entered_at,
@@ -139,6 +144,7 @@ def convert_lead(db: Session, lead: Lead, actor: User, tenant_id: str) -> tuple[
         business_name=lead.company_name,
         business_abn=lead.company_abn,
         assigned_broker_id=assigned_broker_id,
+        referred_by_contact_id=lead.referred_by_contact_id,
     )
     # An ABN from the ABR search identifies the entity exactly, so it wins over
     # a name match — the same rule as the application create path.

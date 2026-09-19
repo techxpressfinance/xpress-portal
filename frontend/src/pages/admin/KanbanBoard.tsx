@@ -13,6 +13,9 @@ import { useAbrNameSearch } from '../../hooks/useAbrLookup';
 // Category scope value meaning "the signed-in broker's specialties".
 const MY_FOCUS = 'mine';
 import { AbrNameSearchResults, ConfirmDialog, EmptyState } from '../../components/ui';
+import ReferredByPicker from '../../components/ReferredByPicker';
+import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
+import ProgressLink from '../../components/ProgressLink';
 import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanCardKind, KanbanColumn, Lead, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
 
 // ── Design tokens (map column color value → the theme token for the dot) ──
@@ -319,6 +322,7 @@ function KanbanCard({
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referrerName}</span>
         </div>
       )}
+      {app.referred_by && <ReferredByLine name={app.referred_by.name} />}
       <div className="led-kanban-card-foot">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {brokers.length > 0 ? (
@@ -364,6 +368,19 @@ function leadTypeChip(lead: Lead): { icon: string; label: string } {
   const sub = lead.sub_type ? findLoanSubType(lead.sub_type) : undefined;
   const icon = lead.loan_category === 'home_loan' ? 'home' : lead.loan_category === 'commercial' ? 'briefcase' : 'car';
   return { icon, label: sub?.short || CATEGORY_SHORT[lead.loan_category] || lead.loan_category };
+}
+
+/** "Referred by <client>" on a card — an existing client who sent us the deal. */
+function ReferredByLine({ name }: { name: string }) {
+  return (
+    <div
+      style={{ fontSize: 11, color: 'var(--led-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}
+      title="Referred by an existing client"
+    >
+      <Icon name="user" size={10} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Referred by {name}</span>
+    </div>
+  );
 }
 
 function LeadCard({
@@ -488,6 +505,7 @@ function LeadCard({
           via {lead.source}
         </div>
       )}
+      {lead.referred_by && <ReferredByLine name={lead.referred_by.name} />}
       <div className="led-kanban-card-foot">
         {lead.assigned_broker_name ? (
           <Avatar name={lead.assigned_broker_name} size="sm" />
@@ -2300,7 +2318,8 @@ export default function KanbanBoardPage() {
             <div style={{ fontSize: 11, color: 'var(--led-muted)', lineHeight: 1.45, marginBottom: 8 }}>
               Offered to whoever moves the card, pre-ticked. Nothing sends yet — every
               decision is recorded so you can review the traffic before switching it on.
-              You can use {'{client_name}'}, {'{recipient_name}'}, {'{stage}'}, {'{lender}'}, {'{amount}'} and {'{reference}'}.
+              You can use {'{client_name}'}, {'{recipient_name}'}, {'{stage}'}, {'{lender}'}, {'{amount}'}, {'{reference}'} and {'{tracking_link}'}.
+              Client and referrer messages get their progress link added at the end if you don't place it yourself.
             </div>
             {editingColumn.notifications.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
@@ -2691,7 +2710,14 @@ function LeadEditor({
   const [source, setSource] = useState(lead?.source ?? '');
   const [notes, setNotes] = useState(lead?.notes ?? '');
   const [brokerId, setBrokerId] = useState(lead?.assigned_broker_id ?? '');
+  const [referredBy, setReferredBy] = useState(lead?.referred_by ?? null);
+  const [referrer, setReferrer] = useState<PickedReferrer | null>(
+    lead?.referrer_id ? { id: lead.referrer_id, name: lead.referrer_name ?? 'Referrer' } : null,
+  );
   const [busy, setBusy] = useState(false);
+  // Opening the share panel is what mints the lead's link, so a lead that is
+  // only being edited never gets one.
+  const [sharing, setSharing] = useState(false);
   const [losing, setLosing] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2725,6 +2751,8 @@ function LeadEditor({
     source: source.trim() || null,
     notes: notes.trim() || null,
     assigned_broker_id: brokerId || null,
+    referred_by_contact_id: referredBy?.contact_id ?? null,
+    referrer_id: referrer?.id ?? null,
   });
 
   const save = () => {
@@ -2821,6 +2849,8 @@ function LeadEditor({
           <input className="led-input" type="number" min={0} placeholder="Amount ($)" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input className="led-input" placeholder="Source — phone, website, dealer…" value={source} onChange={(e) => setSource(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
         </div>
+        <ReferrerPicker value={referrer} onChange={setReferrer} />
+        <ReferredByPicker value={referredBy} onChange={setReferredBy} />
         {brokers.length > 0 && (
           <select className="led-input" value={brokerId} onChange={(e) => setBrokerId(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="">Unassigned</option>
@@ -2834,6 +2864,26 @@ function LeadEditor({
             : 'To start an application, move the card into an application stage. '}
           The lead's details go onto the application and a new contact.
         </p>
+
+        {lead && (
+          <details
+            style={{ borderTop: '1px solid var(--led-border)', paddingTop: 8 }}
+            onToggle={(e) => setSharing(e.currentTarget.open)}
+          >
+            <summary className="led-caption" style={{ cursor: 'pointer', fontWeight: 600 }}>Share progress</summary>
+            {sharing && <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
+              <ProgressLink base={`/tracking-links/leads/${lead.id}`} audience="client" label="For the client" />
+              {lead.referrer_id && (
+                <ProgressLink
+                  base={`/tracking-links/leads/${lead.id}`}
+                  audience="referrer"
+                  label="For the referrer — their link for all their deals"
+                  canRegenerate={false}
+                />
+              )}
+            </div>}
+          </details>
+        )}
 
         {lead && losing && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

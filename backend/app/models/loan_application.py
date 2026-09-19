@@ -184,6 +184,14 @@ class LoanApplication(Base):
     # Contact linkage
     contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), nullable=True)
 
+    # The existing client who sent us this deal — a contact-book person, so a
+    # past client with no portal login can be credited. Tracking only: unlike a
+    # referrer partner (ExternalReferral, client-level and paid), this is set by
+    # staff per deal and never shown to the client or a referrer.
+    referred_by_contact_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("contacts.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
     # Business / company linkage
     business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
 
@@ -234,6 +242,7 @@ class LoanApplication(Base):
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])
+    referred_by_contact = relationship("Contact", foreign_keys=[referred_by_contact_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     # Legacy single-broker FK kept for backward compat / migration

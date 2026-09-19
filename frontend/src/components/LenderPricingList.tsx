@@ -1,13 +1,12 @@
 import { ClipboardDocumentListIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { Button, Card } from './ui';
+import SheetTypeTag from './SheetTypeTag';
 import type { QuoteSheet } from '../types';
 import { formatDate } from '../lib/utils';
 import { DIRECT_DEBIT_CYCLE_LABELS, parseLenderPricingInputs } from '../lib/lenderPricing';
 
 interface LenderPricingRowProps {
   sheet: QuoteSheet;
-  /** Label the row as lender pricing — for lists that mix it with quote sheets. */
-  showBadge?: boolean;
   pdfLoading?: boolean;
   onView: () => void;
   onEdit: () => void;
@@ -16,7 +15,7 @@ interface LenderPricingRowProps {
 }
 
 /** One lender pricing sheet in a list: version, title, term/cycle and actions. */
-export function LenderPricingRow({ sheet, showBadge, pdfLoading, onView, onEdit, onPdf, onDelete }: LenderPricingRowProps) {
+export function LenderPricingRow({ sheet, pdfLoading, onView, onEdit, onPdf, onDelete }: LenderPricingRowProps) {
   const params = parseLenderPricingInputs(sheet);
   const meta = [
     params.lender_name.trim() || null,
@@ -33,9 +32,7 @@ export function LenderPricingRow({ sheet, showBadge, pdfLoading, onView, onEdit,
         {sheet.title && (
           <span className="text-[13px] font-medium text-foreground truncate">{sheet.title}</span>
         )}
-        {showBadge && (
-          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">Lender Pricing</span>
-        )}
+        <SheetTypeTag type="lender_pricing" />
       </div>
       <p className="text-[11px] text-muted-foreground mt-1 mb-3">{meta}</p>
       <div className="flex items-center gap-2 flex-wrap">
@@ -77,7 +74,10 @@ export default function LenderPricingList({ sheets, pdfSheetId, onCreate, onView
     <Card>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-[15px] font-semibold text-foreground">Lender Pricing</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold text-foreground">Lender Pricing</h2>
+            <SheetTypeTag type="lender_pricing" />
+          </div>
           <p className="text-[12px] text-muted-foreground mt-0.5">Internal — never shown to the client</p>
         </div>
         <Button size="sm" onClick={onCreate}>

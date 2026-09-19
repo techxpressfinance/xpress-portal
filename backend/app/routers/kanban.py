@@ -1160,6 +1160,7 @@ def get_board_applications(
         selectinload(LoanApplication.additional_applicants),
         selectinload(LoanApplication.corporate_guarantors).selectinload(ApplicationGuarantor.signatories),
         selectinload(LoanApplication.corporate_guarantors).joinedload(ApplicationGuarantor.organization),
+        selectinload(LoanApplication.referred_by_contact),
     ).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
     # Brokers can view every application on the board — no assignment filter.
@@ -1303,7 +1304,8 @@ def get_board_leads(
         return result
 
     query = _open_leads(db, tenant_id, categories).options(
-        joinedload(Lead.assigned_broker), joinedload(Lead.created_by)
+        joinedload(Lead.assigned_broker), joinedload(Lead.created_by), selectinload(Lead.referred_by_contact),
+        joinedload(Lead.referrer),
     )
     if sub_type:
         query = query.filter(Lead.sub_type == sub_type)

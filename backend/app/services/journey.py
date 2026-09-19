@@ -19,6 +19,7 @@ from typing import Iterable, Optional
 from sqlalchemy.orm import Session
 
 from app.models.kanban import ApplicationStagePlacement, KanbanColumn
+from app.models.lead import Lead, LeadStagePlacement, LeadStatus
 from app.models.loan_application import LoanApplication
 
 # Whose move it is. Mirrors the `awaiting` values the stage templates carry.
@@ -217,3 +218,35 @@ def summary_map(db: Session, applications: Iterable[LoanApplication]) -> dict[st
             "closed": closed,
         }
     return result
+
+
+# A lead is an inquiry, not yet a file: it sits one step ahead of the
+# application's track and is always with the desk until it converts.
+LEAD_PHASE = "Inquiry Received"
+
+
+def lead_summary(db: Session, lead: Lead) -> dict:
+    """`summary` for a lead, in the same shape so one view renders both.
+
+    The track is the default application track with the inquiry in front of it
+    — a lead has no board category of its own to read phases from until it
+    becomes an application. A lost lead is closed the way a file that did not
+    proceed is."""
+    placement = (
+        db.query(LeadStagePlacement)
+        .filter(LeadStagePlacement.lead_id == lead.id)
+        .order_by(LeadStagePlacement.entered_at.desc())
+        .first()
+    )
+    entered_at = placement.entered_at if placement else lead.created_at
+    closed = "not_proceeding" if lead.status == LeadStatus.lost else None
+    track = [LEAD_PHASE, *DEFAULT_PHASES]
+    return {
+        "phase": "Closed" if closed else LEAD_PHASE,
+        "phases": track,
+        "phase_index": None if closed else 0,
+        "awaiting": AWAITING_NONE if closed else "desk",
+        "entered_at": entered_at.isoformat() if entered_at else None,
+        "days_waiting": None if closed else _days_since(entered_at),
+        "closed": closed,
+    }

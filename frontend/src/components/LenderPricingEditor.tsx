@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card } from './ui';
 import LenderShortfallDialog, { type ShortfallDecision } from './LenderShortfallDialog';
+import SheetEditorHeader from './SheetEditorHeader';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
@@ -332,6 +333,7 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
   return (
     <Card>
       <div className="space-y-6">
+        <SheetEditorHeader type="lender_pricing" version={sheet?.version} onBack={onCancel} />
 
         {/* Lender — the first thing on the sheet, picked from the lender book */}
         <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-4">

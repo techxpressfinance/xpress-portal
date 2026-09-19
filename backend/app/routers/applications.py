@@ -53,7 +53,7 @@ from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.loan_category import category_filtered_ids, parse_categories
 from app.services.journey import summary as journey_summary, summary_map as journey_summary_map
-from app.services.serialization import app_with_user as _app_with_user, referrer_info_map
+from app.services.serialization import app_with_user as _app_with_user, is_staff_viewer, referrer_info_map
 from app.services.email import (
     send_assignment_notification,
     send_complete_application_email,
@@ -64,7 +64,7 @@ from app.services.email import (
     send_status_notification,
 )
 from app.services.notification_service import create_notification
-from app.services.contacts import enrich_contact, ensure_contact
+from app.services.contacts import enrich_contact, ensure_contact, referring_contact_id
 from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
@@ -83,6 +83,7 @@ from app.schemas.loan_application import (
     LoanApplicationUpdate,
     PaginatedApplications,
     PartyInviteRequest,
+    ReferredByUpdate,
 )
 from app.services.serialization import guarantor_dict
 from app.services.tenant_scope import get_tenant_id
@@ -646,6 +647,9 @@ def list_applications(
     category: Optional[str] = Query(None, description="Loan category slug(s), comma-separated"),
     search: Optional[str] = None,
     closed: Optional[bool] = Query(None),
+    referred_by: Optional[str] = Query(
+        None, description="Staff only: a contact id, or 'any' for every deal an existing client referred"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
@@ -654,7 +658,11 @@ def list_applications(
     # parties/guarantors/completed_by graphs that the slim serializer never reads.
     # Clients keep the full graph — their list doubles as the form prefill source
     # (NewApplication reads decrypted PII from the latest few applications).
-    options = [joinedload(LoanApplication.user), selectinload(LoanApplication.brokers)]
+    options = [
+        joinedload(LoanApplication.user),
+        selectinload(LoanApplication.brokers),
+        selectinload(LoanApplication.referred_by_contact),
+    ]
     if current_user.role == UserRole.client:
         options += [
             selectinload(LoanApplication.completed_by),
@@ -695,6 +703,12 @@ def list_applications(
         query = query.filter(LoanApplication.status.in_(CLOSED_STATUSES))
     if loan_type:
         query = query.filter(LoanApplication.loan_type == loan_type)
+    # The tag is staff-only, so it can't be probed through the filter either.
+    if referred_by and is_staff_viewer(current_user):
+        if referred_by == "any":
+            query = query.filter(LoanApplication.referred_by_contact_id.isnot(None))
+        else:
+            query = query.filter(LoanApplication.referred_by_contact_id == referred_by)
     # Category scope. Resolved to an ID set before the search join below, so the
     # whereclause handed to the helper only references loan_applications.
     if category:
@@ -1339,6 +1353,44 @@ def set_application_lock(
     log_activity(db, current_user.id, action, "application", app_id, {}, tenant_id=tenant_id)
     db.commit()
     db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application, db, viewer=current_user)
+
+
+@router.put("/{app_id}/referred-by", response_model=LoanApplicationOut)
+def set_referred_by(
+    app_id: str,
+    data: ReferredByUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Credit (or un-credit) an existing client with referring this deal.
+
+    Marketing attribution only — no payment, nothing emailed, not shown to the
+    client or a referrer. Editable at any status, since who sent the deal is
+    often only learned after it is underway.
+    """
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+
+    contact_id = referring_contact_id(db, tenant_id, data.contact_id)
+    if contact_id and contact_id == application.contact_id:
+        raise HTTPException(status_code=400, detail="A client can't be credited with referring their own deal")
+    previous = application.referred_by_contact_id
+    if contact_id != previous:
+        application.referred_by_contact_id = contact_id
+        log_activity(
+            db, current_user.id, "referred_by_set" if contact_id else "referred_by_cleared", "application", app_id,
+            {"from_contact_id": previous, "to_contact_id": contact_id}, tenant_id=tenant_id,
+        )
+        db.commit()
+    db.refresh(application, attribute_names=["user", "referred_by_contact"])
     return _app_with_user(application, db, viewer=current_user)
 
 

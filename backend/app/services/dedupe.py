@@ -383,6 +383,8 @@ def merge_contacts(db: Session, primary: Contact, duplicates: list[Contact]) -> 
         (LendingHistoryEntry, LendingHistoryEntry.guaranteed_by_contact_id),
         (TrustParty, TrustParty.contact_id),
         (Lead, Lead.contact_id),
+        (LoanApplication, LoanApplication.referred_by_contact_id),
+        (Lead, Lead.referred_by_contact_id),
     ):
         db.query(model).filter(column.in_(dup_ids)).update(
             {column.key: primary.id}, synchronize_session="fetch"
