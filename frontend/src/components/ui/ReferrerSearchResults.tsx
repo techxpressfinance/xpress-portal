@@ -12,8 +12,8 @@ const referrerName = (r: User) => r.full_name || r.email || 'Unnamed referrer';
  *
  * The sibling of {@link ClientSearchResults}. Crediting the right referrer is
  * what gets them paid, so each row carries what tells two same-named referrers
- * apart — their email and the organisation they refer under — and flags a
- * deactivated account rather than letting it be picked blind.
+ * apart — their email, the organisation they refer under and their mobile —
+ * and flags a deactivated account rather than letting it be picked blind.
  */
 export default function ReferrerSearchResults({
   matches,
@@ -75,7 +75,7 @@ export default function ReferrerSearchResults({
       </div>
       <ul className="max-h-64 overflow-y-auto">
         {matches.map((r) => {
-          const detail = [r.email, r.organization_name].filter(Boolean).join(' · ');
+          const detail = [r.email, r.organization_name, r.phone].filter(Boolean).join(' · ');
           return (
             <li key={r.id} className="border-b border-border/50 last:border-b-0">
               <button
