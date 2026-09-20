@@ -10,9 +10,9 @@ const contactName = (c: Contact) =>
  * The sibling of {@link EntitySearchResults}, and the answer to the same
  * problem: a client typed in fresh each time becomes several people. Each row
  * carries what tells two same-named clients apart — their email, the companies
- * they're linked to, how many applications they already have — and says whether
- * they already have a portal login, since choosing someone who does reuses
- * their account instead of creating a second one.
+ * they're linked to, their mobile, how many applications they already have —
+ * and says whether they already have a portal login, since choosing someone
+ * who does reuses their account instead of creating a second one.
  */
 export default function ClientSearchResults({
   matches,
@@ -62,6 +62,7 @@ export default function ClientSearchResults({
           const detail = [
             c.email,
             orgs.length ? orgs.join(', ') : null,
+            c.phone,
             c.application_count
               ? `${c.application_count} application${c.application_count === 1 ? '' : 's'}`
               : null,

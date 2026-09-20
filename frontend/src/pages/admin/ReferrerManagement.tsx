@@ -134,6 +134,7 @@ export default function ReferrerManagement() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sendingReset, setSendingReset] = useState<SendingReset>(null);
   const [editingReferrer, setEditingReferrer] = useState<User | null>(null);
+  const [referrerSearch, setReferrerSearch] = useState('');
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -253,6 +254,14 @@ export default function ReferrerManagement() {
 
   const totalPages = Math.ceil(historyTotal / perPage);
   const activeReferrers = referrers.filter(r => r.is_active);
+  // The whole list is already in hand, so filter here rather than round-trip.
+  // Name and organisation are what staff actually search by — email is matched
+  // too since it's the one field that's always filled in.
+  const referrerQuery = referrerSearch.trim().toLowerCase();
+  const visibleReferrers = referrerQuery
+    ? referrers.filter(r => [r.full_name, r.organization_name, r.email]
+        .some(field => (field || '').toLowerCase().includes(referrerQuery)))
+    : referrers;
 
   return (
     <div>
@@ -327,6 +336,20 @@ export default function ReferrerManagement() {
         ) : referrers.length === 0 ? (
           <div className="p-10 text-center text-[14px] text-muted-foreground">No referrers yet. Add one to get started.</div>
         ) : (
+          <>
+          <div className="border-b border-border px-4 sm:px-6 py-3">
+            <Input
+              placeholder="Search referrers by name, organization or email…"
+              value={referrerSearch}
+              onChange={e => setReferrerSearch(e.target.value)}
+              className="w-full sm:max-w-sm"
+            />
+          </div>
+          {visibleReferrers.length === 0 ? (
+            <div className="p-10 text-center text-[14px] text-muted-foreground">
+              No referrers match “{referrerSearch.trim()}”.
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[14px]">
               <thead>
@@ -339,7 +362,7 @@ export default function ReferrerManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {referrers.map(referrer => (
+                {visibleReferrers.map(referrer => (
                   <tr
                     key={referrer.id}
                     className="cursor-pointer transition-colors hover:bg-secondary/50"
@@ -391,6 +414,8 @@ export default function ReferrerManagement() {
               </tbody>
             </table>
           </div>
+          )}
+          </>
         )}
       </Card>
 

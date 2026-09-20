@@ -74,6 +74,7 @@ export default function ApplicantSearchResults({
                 const detail = [
                   c.email,
                   orgs.length ? orgs.join(', ') : null,
+                  c.phone,
                   c.application_count
                     ? `${c.application_count} application${c.application_count === 1 ? '' : 's'}`
                     : null,

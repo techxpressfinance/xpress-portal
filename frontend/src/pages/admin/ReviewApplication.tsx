@@ -24,6 +24,7 @@ import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLink
 import ApplicationStagePill from '../../components/ApplicationStagePill';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import ReferredByPicker from '../../components/ReferredByPicker';
+import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
@@ -57,8 +58,7 @@ export default function ReviewApplication() {
   const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null; organization_name?: string | null } | null>(null);
   const [brokers, setBrokers] = useState<User[]>([]);
   // Linking a referrer to a client who has none (lead arrived outside the portal)
-  const [referrers, setReferrers] = useState<User[]>([]);
-  const [linkReferrerId, setLinkReferrerId] = useState('');
+  const [pickedReferrer, setPickedReferrer] = useState<PickedReferrer | null>(null);
   const [linkingReferrer, setLinkingReferrer] = useState(false);
   const [confirmUnlinkReferrer, setConfirmUnlinkReferrer] = useState(false);
   const [unlinkingReferrer, setUnlinkingReferrer] = useState(false);
@@ -279,13 +279,12 @@ export default function ReviewApplication() {
     Promise.all([
       api.get(`/applications/${id}`),
       api.get(`/documents/application/${id}`),
-      // Only the two roles this page offers in pickers — not every user in the
-      // tenant, which pulled every client's email and phone into the browser.
+      // Brokers are a short list this page assigns from. Referrers are not
+      // fetched up front — ReferrerPicker searches them on the server.
       api.get('/users', { params: { role: 'broker' } }),
-      api.get('/users', { params: { role: 'referrer' } }),
       api.get(`/applications/${id}/notes`),
     ])
-      .then(([appRes, docRes, brokersRes, referrersRes, notesRes]) => {
+      .then(([appRes, docRes, brokersRes, notesRes]) => {
         setApplication(appRes.data);
         setDocuments(docRes.data);
         setAppNotes(notesRes.data);
@@ -337,7 +336,6 @@ export default function ReviewApplication() {
         });
 
         setBrokers(brokersRes.data);
-        setReferrers(referrersRes.data);
 
         // The application's owner is fetched by id rather than found in a list of
         // everyone — it may be the client, or the referrer on a direct lead, or
@@ -398,12 +396,12 @@ export default function ReviewApplication() {
   };
 
   const handleLinkReferrer = async () => {
-    if (!client || !linkReferrerId) return;
+    if (!client || !pickedReferrer) return;
     setLinkingReferrer(true);
     try {
-      const { data } = await api.post(`/users/${client.id}/referrer`, { referrer_id: linkReferrerId });
+      const { data } = await api.post(`/users/${client.id}/referrer`, { referrer_id: pickedReferrer.id });
       setReferrer(data.referrer);
-      setLinkReferrerId('');
+      setPickedReferrer(null);
       toast('Referrer linked', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to link referrer'), 'error');
@@ -1203,82 +1201,98 @@ export default function ReviewApplication() {
                   </div>
                 )}
 
-                {/* Referrer — admin/broker only (this whole page is staff-gated) */}
-                {!referrer && client && (
-                  <Card>
-                    <h2 className="text-[15px] font-semibold text-foreground mb-2">Referrer</h2>
-                    <p className="text-[13px] text-muted-foreground mb-4">
-                      No referrer is linked to this application. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
-                    </p>
-                    {referrers.length === 0 && (
-                      <p className="text-[13px] text-muted-foreground">
-                        No referrer accounts found — add referrers under Referrer Management first.
+                {/* Referrals — both kinds in one box: the paid referrer partner
+                    and an existing client who passed the deal on. Admin/broker
+                    only (this whole page is staff-gated). */}
+                <Card>
+                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrals</h2>
+                  <div className="space-y-5">
+                    {/* Referrer partner — a referrer account we pay */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[13px] font-semibold text-foreground">Referrer partner</h3>
+                        {referrer && client && (
+                          <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
+                            Unlink
+                          </Button>
+                        )}
+                      </div>
+                      {referrer ? (
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {referrer.id ? (
+                                // Their full record — business and payment details included.
+                                <Link to={`/admin/referrers/${referrer.id}`} className="text-primary hover:underline">
+                                  {referrer.full_name || 'View referrer'}
+                                </Link>
+                              ) : (referrer.full_name || '—')}
+                            </dd>
+                          </div>
+                          {referrer.organization_name && (
+                            <div className="rounded-xl bg-secondary/50 p-3">
+                              <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
+                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
+                            </div>
+                          )}
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
+                            </dd>
+                          </div>
+                          <div className="rounded-xl bg-secondary/50 p-3">
+                            <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
+                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                              {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
+                            </dd>
+                          </div>
+                        </dl>
+                      ) : client ? (
+                        <>
+                          <p className="text-[13px] text-muted-foreground mb-3">
+                            No referrer is linked to this application. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
+                          </p>
+                          {/* Picking is not the link — the link is client-level, so it
+                              lands on every deal of theirs. Confirm with the button. */}
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                            <div className="sm:flex-1">
+                              <ReferrerPicker value={pickedReferrer} onChange={setPickedReferrer} disabled={linkingReferrer} />
+                            </div>
+                            <Button size="sm" onClick={handleLinkReferrer} disabled={!pickedReferrer || linkingReferrer} className="shrink-0">
+                              {linkingReferrer ? 'Linking…' : 'Link Referrer'}
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-[13px] text-muted-foreground">No referrer is linked to this application.</p>
+                      )}
+                    </div>
+
+                    {/* Client referral — an existing client who sent us this deal.
+                        Tracking only; separate from a paid referrer partner above. */}
+                    <div className="border-t border-border pt-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[13px] font-semibold text-foreground">Referred by a client</h3>
+                        {application.referred_by && (
+                          <Link to={`/admin/contacts/${application.referred_by.contact_id}`} className="text-[13px] text-primary hover:underline">
+                            View client
+                          </Link>
+                        )}
+                      </div>
+                      <p className="text-[13px] text-muted-foreground mb-3">
+                        If an existing client sent us this deal, credit them here so we can see who's referring business.
+                        Internal only — the client isn't notified.
                       </p>
-                    )}
-                    {referrers.length > 0 && (
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <select
-                        value={linkReferrerId}
-                        onChange={e => setLinkReferrerId(e.target.value)}
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 sm:flex-1"
-                      >
-                        <option value="">Select referrer...</option>
-                        {referrers.map(r => (
-                          <option key={r.id} value={r.id}>
-                            {(r.full_name || r.email)}{r.organization_name ? ` — ${r.organization_name}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <Button size="sm" onClick={handleLinkReferrer} disabled={!linkReferrerId || linkingReferrer} className="shrink-0">
-                        {linkingReferrer ? 'Linking…' : 'Link Referrer'}
-                      </Button>
+                      <ReferredByPicker
+                        value={application.referred_by ?? null}
+                        onChange={handleReferredByChange}
+                        disabled={savingReferredBy}
+                      />
                     </div>
-                    )}
-                  </Card>
-                )}
-                {referrer && (
-                  <Card>
-                    <div className="flex items-center justify-between mb-5">
-                      <h2 className="text-[15px] font-semibold text-foreground">Referrer</h2>
-                      {client && (
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
-                          Unlink
-                        </Button>
-                      )}
-                    </div>
-                    <dl className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {referrer.id ? (
-                            // Their full record — business and payment details included.
-                            <Link to={`/admin/referrers/${referrer.id}`} className="text-primary hover:underline">
-                              {referrer.full_name || 'View referrer'}
-                            </Link>
-                          ) : (referrer.full_name || '—')}
-                        </dd>
-                      </div>
-                      {referrer.organization_name && (
-                        <div className="rounded-xl bg-secondary/50 p-3">
-                          <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
-                          <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
-                        </div>
-                      )}
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
-                        </dd>
-                      </div>
-                      <div className="rounded-xl bg-secondary/50 p-3">
-                        <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
-                        <dd className="mt-0.5 text-[14px] font-medium text-foreground">
-                          {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </Card>
-                )}
+                  </div>
+                </Card>
 
                 {/* No-login progress links for whoever rings asking where this
                     is up to. The referrer's is their one standing link. */}
@@ -1301,28 +1315,6 @@ export default function ReviewApplication() {
                       canRegenerate={false}
                     />
                   </div>
-                </Card>
-
-                {/* Client referral — an existing client who sent us this deal.
-                    Tracking only; separate from a paid referrer partner above. */}
-                <Card>
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-[15px] font-semibold text-foreground">Referred by a client</h2>
-                    {application.referred_by && (
-                      <Link to={`/admin/contacts/${application.referred_by.contact_id}`} className="text-[13px] text-primary hover:underline">
-                        View client
-                      </Link>
-                    )}
-                  </div>
-                  <p className="text-[13px] text-muted-foreground mb-3">
-                    If an existing client sent us this deal, credit them here so we can see who's referring business.
-                    Internal only — the client isn't notified.
-                  </p>
-                  <ReferredByPicker
-                    value={application.referred_by ?? null}
-                    onChange={handleReferredByChange}
-                    disabled={savingReferredBy}
-                  />
                 </Card>
 
                 {/* Comprehensive Loan Type Details */}
