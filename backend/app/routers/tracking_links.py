@@ -20,7 +20,7 @@ from app.models.tracking_link import TrackingLink
 from app.models.user import User, UserRole
 from app.services import tracking_links as links
 from app.services.activity_log import log_activity
-from app.services.email import send_tracking_link_email
+from app.services.email import send_referrer_access_email, send_tracking_link_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/tracking-links", tags=["tracking-links"])
@@ -111,7 +111,13 @@ def referrer_link(
     referrer = _referrer(referrer_id, tenant_id, db)
     link = links.get_or_create(db, tenant_id, links.KIND_REFERRER, referrer_id=referrer.id, created_by_id=current_user.id)
     db.commit()
-    return _out(link, "referrer", referrer)
+    return _referrer_out(link, referrer)
+
+
+def _referrer_out(link: TrackingLink, referrer: User) -> dict:
+    """A referrer's link plus whether they can log in yet, so the card can say
+    what the access email will contain."""
+    return {**_out(link, "referrer", referrer), "login_state": links.login_state(referrer)}
 
 
 @router.post("/referrers/{referrer_id}/regenerate")
@@ -125,7 +131,7 @@ def regenerate_referrer_link(
     link = links.regenerate(db, tenant_id, links.KIND_REFERRER, referrer_id=referrer.id, created_by_id=current_user.id)
     log_activity(db, current_user.id, "tracking_link_regenerated", "user", referrer.id, {"kind": "referrer"}, tenant_id=tenant_id)
     db.commit()
-    return _out(link, "referrer", referrer)
+    return _referrer_out(link, referrer)
 
 
 @router.post("/referrers/{referrer_id}/email")
@@ -135,12 +141,21 @@ def email_referrer_link(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    """The referrer's access email: their progress link and a way into the
+    portal — a setup link until they have a password, a reset link after —
+    so the desk sends one thing instead of a link and a separate reset."""
     referrer = _referrer(referrer_id, tenant_id, db)
+    to = _usable_email(referrer.email)
+    if not to:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There's no email address on file to send it to")
     link = links.get_or_create(db, tenant_id, links.KIND_REFERRER, referrer_id=referrer.id, created_by_id=current_user.id)
-    _send(link, referrer.email, referrer.full_name, for_referrer=True, deal_label=None)
-    log_activity(db, current_user.id, "tracking_link_emailed", "user", referrer.id, {"kind": "referrer"}, tenant_id=tenant_id)
+    login = links.issue_login_link(referrer, staff=True)
+    if not send_referrer_access_email(to, referrer.full_name, progress_url=links.link_url(link), login=login):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Email isn't configured on this server")
+    log_activity(db, current_user.id, "tracking_link_emailed", "user", referrer.id,
+                 {"kind": "referrer", "login": login["action"] if login else None}, tenant_id=tenant_id)
     db.commit()
-    return _out(link, "referrer", referrer)
+    return _referrer_out(link, referrer)
 
 
 # ── Deal links ───────────────────────────────────────────────────────────

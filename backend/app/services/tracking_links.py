@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import or_
@@ -34,7 +34,7 @@ from app.models.lead import Lead, LeadStatus
 from app.models.loan_application import LoanApplication
 from app.models.referral import Referral
 from app.models.tracking_link import TrackingLink
-from app.models.user import User, UserRole
+from app.models.user import SETUP_PLACEHOLDER_HASHES, User, UserRole
 from app.services import journey
 from app.services.loan_category import application_asset_details, application_loan_category, application_sub_type
 
@@ -325,6 +325,64 @@ def _closed_last(card: dict) -> tuple:
     return (done, -(created.timestamp() if created else 0))
 
 
+# ── Referrer portal login ────────────────────────────────────────────────
+# The progress link and the portal login travel together in one email, but the
+# link itself never logs anyone in: it is a bearer link that gets forwarded, so
+# the most a holder can do is have a password link sent to the referrer's own
+# inbox. Setup and reset tokens are only ever emailed, never returned.
+
+LOGIN_SETUP_PENDING = "setup_pending"
+LOGIN_ACTIVE = "active"
+LOGIN_INACTIVE = "inactive"
+
+# Sent by the desk, often with the referrer on the phone, so they last long
+# enough to be used later that day or week. Self-serve requests from the
+# progress page keep the standard forgot-password window.
+STAFF_SETUP_TTL = timedelta(days=7)
+STAFF_RESET_TTL = timedelta(hours=24)
+SELF_SERVE_SETUP_TTL = timedelta(hours=48)
+SELF_SERVE_RESET_TTL = timedelta(hours=1)
+
+
+def login_state(user: User) -> str:
+    if not user.is_active:
+        return LOGIN_INACTIVE
+    if user.password_hash in SETUP_PLACEHOLDER_HASHES:
+        return LOGIN_SETUP_PENDING
+    return LOGIN_ACTIVE
+
+
+def issue_login_link(user: User, *, staff: bool) -> Optional[dict]:
+    """Mint the link that gets this user into the portal, or None for an
+    inactive account.
+
+    Never set up → a fresh setup link, which replaces any earlier invite (the
+    setup endpoint only honours the newest token). Already set up → a password
+    reset link. Returned for emailing only — callers must not send it back
+    over the API."""
+    state = login_state(user)
+    if state == LOGIN_INACTIVE:
+        return None
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(32)
+    if state == LOGIN_SETUP_PENDING:
+        ttl = STAFF_SETUP_TTL if staff else SELF_SERVE_SETUP_TTL
+        user.email_verification_token = token
+        user.email_verification_token_expires_at = now + ttl
+        return {"action": "setup", "url": f"{FRONTEND_URL}/setup-account?token={token}", "ttl": ttl}
+    ttl = STAFF_RESET_TTL if staff else SELF_SERVE_RESET_TTL
+    user.password_reset_token = token
+    user.password_reset_token_expires_at = now + ttl
+    return {"action": "reset", "url": f"{FRONTEND_URL}/reset-password?token={token}", "ttl": ttl}
+
+
+def mask_email(email: str) -> str:
+    """j•••@acme.com — enough for the person to recognise their own inbox, not
+    enough for whoever holds a forwarded link to learn the address."""
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}•••@{domain}" if domain else "your email"
+
+
 def referrer_page(db: Session, tenant_id: str, referrer: User) -> dict:
     applications, leads = referrer_deals(db, tenant_id, referrer.id)
     cards = [application_card(db, a) for a in applications] + [lead_card(db, lead) for lead in leads]
@@ -334,6 +392,8 @@ def referrer_page(db: Session, tenant_id: str, referrer: User) -> dict:
         "referrer": {
             "name": referrer.full_name,
             "organization_name": getattr(referrer, "organization_name", None),
+            # Only whether to say "set up" or "log in" — no address, no token.
+            "has_login": login_state(referrer) == LOGIN_ACTIVE,
         },
         "deals": cards,
     }

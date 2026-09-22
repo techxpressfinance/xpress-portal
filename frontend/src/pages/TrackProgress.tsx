@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import api from '../api/client';
 import JourneyTracker from '../components/JourneyTracker';
 import { useTenant } from '../contexts/TenantContext';
 import { getErrorMessage } from '../lib/utils';
 import type { TrackedDeal, TrackingPage } from '../types';
 import {
+  ArrowRightOnRectangleIcon,
   CheckBadgeIcon,
   DocumentTextIcon,
   EnvelopeIcon,
@@ -100,6 +101,65 @@ function DealCard({ deal, audience }: { deal: TrackedDeal; audience: 'referrer' 
   );
 }
 
+/**
+ * The way from the progress page into the portal. This page's link is a bearer
+ * credential that gets forwarded, so it never logs anyone in: the button only
+ * asks for a setup/reset link to be emailed to the referrer's own inbox, and
+ * all that comes back is the masked address it went to.
+ */
+function PortalLogin({ token, hasLogin }: { token: string; hasLogin: boolean }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const request = async () => {
+    setState('sending');
+    setError(null);
+    try {
+      const { data } = await api.post<{ sent_to: string }>(`/public/track/${encodeURIComponent(token)}/login-link`);
+      setSentTo(data.sent_to);
+      setState('sent');
+    } catch (err) {
+      setError(getErrorMessage(err, "We couldn't send that just now. Please try again later."));
+      setState('idle');
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+      <p className="flex items-center gap-2 text-[15px] font-semibold">
+        <ArrowRightOnRectangleIcon className="h-5 w-5 text-muted-foreground" strokeWidth={2} />
+        {hasLogin ? 'Log in to your portal' : 'Set up your portal login'}
+      </p>
+      <p className="mt-1 text-[14px] text-muted-foreground">
+        {hasLogin
+          ? 'Refer new clients, upload documents and manage your business and payment details.'
+          : "You haven't set a password yet. We'll email you a link to set one up — then you can refer clients and manage your payment details."}
+      </p>
+      {state === 'sent' ? (
+        <p className="mt-3 text-[14px] text-foreground">
+          Sent to <strong>{sentTo}</strong>. Check your inbox — the link {hasLogin ? 'expires in 1 hour' : 'expires in 48 hours'}.
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {hasLogin && (
+            <Link to="/login" className="led-btn led-btn-primary led-btn-sm">Log in</Link>
+          )}
+          <button
+            type="button"
+            onClick={request}
+            disabled={state === 'sending'}
+            className={`led-btn ${hasLogin ? 'led-btn-ghost' : 'led-btn-primary'} led-btn-sm`}
+          >
+            {state === 'sending' ? 'Sending…' : hasLogin ? 'Forgot your password? Email me a reset link' : 'Email me a setup link'}
+          </button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-[13px] text-destructive">{error}</p>}
+    </section>
+  );
+}
+
 export default function TrackProgress() {
   const { token } = useParams<{ token: string }>();
   const { tenant } = useTenant();
@@ -165,6 +225,7 @@ export default function TrackProgress() {
             ) : (
               page.deals.map((deal) => <DealCard key={`${deal.type}-${deal.reference}`} deal={deal} audience="referrer" />)
             )}
+            {token && <PortalLogin token={token} hasLogin={page.referrer.has_login} />}
           </>
         )}
 

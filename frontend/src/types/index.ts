@@ -118,6 +118,8 @@ export interface ExternalReferral {
 export interface ReferrerDetail extends ReferrerBusinessProfile {
   is_active: boolean;
   email_verified: boolean;
+  /** Whether they can log in: invited but never set a password, or not. */
+  login_state: 'setup_pending' | 'active' | 'inactive';
   created_at: string | null;
   invited_by_name: string | null;
   stats: {
@@ -1941,6 +1943,8 @@ export interface TrackingLinkInfo {
   open_count: number;
   recipient_name: string | null;
   recipient_email: string | null;
+  /** Referrer links only — decides what the access email's login half says. */
+  login_state?: 'setup_pending' | 'active' | 'inactive';
 }
 
 /** One deal on a progress page. */
@@ -1963,7 +1967,8 @@ export interface TrackedDeal {
 export type TrackingPage =
   | {
       kind: 'referrer';
-      referrer: { name: string; organization_name: string | null };
+      /** has_login: whether to offer "log in" or "set up your login". */
+      referrer: { name: string; organization_name: string | null; has_login: boolean };
       deals: TrackedDeal[];
     }
   | {

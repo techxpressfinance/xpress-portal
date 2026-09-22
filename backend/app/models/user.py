@@ -20,6 +20,10 @@ class UserRole(str, enum.Enum):
     super_admin = "super_admin"
 
 
+# password_hash values that mean "invited, never set a password". An account on
+# one of these can only get in through its setup link.
+SETUP_PLACEHOLDER_HASHES = ("!", "!invited")
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),)

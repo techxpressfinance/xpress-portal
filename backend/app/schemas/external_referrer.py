@@ -100,6 +100,8 @@ class ReferrerDetailOut(ReferrerBusinessProfileOut):
 
     is_active: bool = True
     email_verified: bool = False
+    # "setup_pending" (invited, no password yet) / "active" / "inactive".
+    login_state: str = "active"
     created_at: Optional[datetime] = None
     invited_by_name: Optional[str] = None
     stats: "ReferrerDetailStats"

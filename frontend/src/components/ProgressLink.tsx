@@ -22,11 +22,15 @@ export default function ProgressLink({
   audience,
   label,
   canRegenerate = true,
+  emailVerb = 'Email to',
 }: {
   base: string;
   audience?: TrackingAudience;
   label?: string;
   canRegenerate?: boolean;
+  /** Button wording before the address — a referrer's email is their whole
+   *  access email (progress + login), so it reads "Email access link to". */
+  emailVerb?: string;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -57,7 +61,7 @@ export default function ProgressLink({
     try {
       const { data } = await api.post<TrackingLinkInfo>(`${base}/email`, null, { params });
       setInfo(data);
-      toast(`Link emailed to ${data.recipient_email}`, 'success');
+      toast(`Sent to ${data.recipient_email}`, 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to email the link'), 'error');
     } finally {
@@ -123,10 +127,10 @@ export default function ProgressLink({
           className="led-btn led-btn-ghost led-btn-sm"
           onClick={handleEmail}
           disabled={!info?.recipient_email || busy !== null}
-          title={info?.recipient_email ? `Email to ${info.recipient_email}` : 'No email address on file'}
+          title={info?.recipient_email ? `${emailVerb} ${info.recipient_email}` : 'No email address on file'}
         >
           <EnvelopeIcon className="h-3.5 w-3.5" strokeWidth={2} />
-          {busy === 'email' ? 'Sending…' : info?.recipient_email ? `Email to ${info.recipient_email}` : 'No email on file'}
+          {busy === 'email' ? 'Sending…' : info?.recipient_email ? `${emailVerb} ${info.recipient_email}` : 'No email on file'}
         </button>
         {canRegenerate && (
           <button

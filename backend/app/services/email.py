@@ -1090,6 +1090,107 @@ def send_tracking_link_email(
     return True
 
 
+def _ttl_text(ttl) -> str:
+    hours = int(ttl.total_seconds() // 3600)
+    if hours % 24 == 0 and hours >= 48:
+        return f"{hours // 24} days"
+    return "1 hour" if hours == 1 else f"{hours} hours"
+
+
+def send_referrer_access_email(
+    to_email: str,
+    name: str,
+    *,
+    progress_url: Optional[str],
+    login: Optional[dict],
+    inviter_name: Optional[str] = None,
+    respect_pause: bool = False,
+) -> bool:
+    """A referrer's way in, in one email: their no-login progress link and the
+    link into the portal — "set up your login" until they have a password,
+    "reset your password" after. Either half may be absent: no progress link
+    when the referrer asked for a password link from the progress page itself,
+    no login half for a deactivated account.
+
+    Staff sends ignore REFERRER_EMAILS_ENABLED like the old "Email link" did;
+    the welcome email on account creation passes respect_pause so the pause
+    still covers mail nobody explicitly asked for. Returns False when nothing
+    was sent so the caller can say so."""
+    if respect_pause and not REFERRER_EMAILS_ENABLED:
+        logger.debug("Referrer emails paused, skipping referrer access email for %s", to_email)
+        return False
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping referrer access email for %s", to_email)
+        return False
+
+    first = (name or "").split(" ")[0] or "there"
+    setup = bool(login and login["action"] == "setup")
+    if progress_url and setup and inviter_name:
+        subject = "Welcome to Xpress Finance — your referrer access"
+    elif progress_url:
+        subject = "Your referrer access — Xpress Finance"
+    elif setup:
+        subject = "Set up your Xpress Finance login"
+    else:
+        subject = "Reset your Xpress Finance password"
+
+    button = (
+        '<div style="text-align: center; margin: 20px 0 28px;"><a href="{url}" style="display: inline-block; '
+        "background-color: #09090b; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; "
+        'padding: 12px 28px; border-radius: 8px;">{label}</a></div>'
+    )
+    para = '<p style="margin: 0 0 12px; font-size: 15px; line-height: 1.6; color: #3f3f46;">{}</p>'
+    heading = '<p style="margin: 8px 0 6px; font-size: 16px; font-weight: 600; color: #09090b;">{}</p>'
+
+    text_parts = [f"Hi {first},"]
+    html_parts = [para.format(f"Hi {_esc(first)},")]
+    if inviter_name and setup:
+        line = f"{inviter_name} has set you up as a referrer with Xpress Finance."
+        text_parts.append(line)
+        html_parts.append(para.format(_esc(line)))
+
+    if progress_url:
+        intro = (
+            "See where each client you have referred is up to, and whose move it is — no login needed. "
+            "The link stays the same, so bookmark it."
+        )
+        text_parts += ["Track your referrals", intro, progress_url]
+        html_parts += [
+            heading.format("Track your referrals"),
+            para.format(_esc(intro)),
+            button.format(url=_esc(progress_url), label="View progress"),
+        ]
+
+    if login:
+        expiry = _ttl_text(login["ttl"])
+        if setup:
+            title = "Set up your portal login"
+            intro = (
+                "Log in to refer new clients, upload documents and keep your business and bank details up to "
+                "date so we can pay your commission."
+            )
+            label = "Set up my login"
+        else:
+            title = "Log in to the portal"
+            intro = f"Log in at {FRONTEND_URL}/login. If you have forgotten your password, set a new one here:"
+            label = "Reset my password"
+        note = f"This link expires in {expiry}."
+        text_parts += [title, intro, login["url"], note]
+        html_parts += [
+            heading.format(title),
+            para.format(_esc(intro)),
+            button.format(url=_esc(login["url"]), label=label),
+            f'<p style="margin: 0 0 20px; font-size: 13px; color: #71717a;">{_esc(note)}</p>',
+        ]
+
+    footer = "These links are personal to you — please don't share them."
+    text_parts += [footer, "Best regards,\nXpress Finance Team"]
+    html_parts.append(f'<p style="margin: 8px 0 0; font-size: 13px; color: #71717a; text-align: center;">{_esc(footer)}</p>')
+
+    _send_async(to_email, subject, "\n\n".join(text_parts), _get_base_html("".join(html_parts)))
+    return True
+
+
 def _send_with_attachment(
     to_emails: list[str], subject: str, body: str, filename: str, content: bytes, mime_subtype: str,
 ) -> None:

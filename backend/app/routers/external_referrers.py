@@ -28,8 +28,10 @@ from app.services.contacts import ensure_contact
 from app.services.email import (
     notify_admins_new_account,
     send_referral_notification_email,
+    send_referrer_access_email,
     send_setup_account_email,
 )
+from app.services import tracking_links
 from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.services.tenant_scope import get_tenant_id
 from app.services.upload_validation import safe_filename, validate_attachment
@@ -89,7 +91,7 @@ def create_referrer(
         invited_by_id=current_user.id,
         tenant_id=tenant_id,
         email_verification_token=setup_token,
-        email_verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+        email_verification_token_expires_at=datetime.now(timezone.utc) + tracking_links.STAFF_SETUP_TTL,
         # Whatever billing detail the inviter already knows — the referrer completes
         # the rest on the business-details page after setting their password.
         business_abn=data.business_abn,
@@ -105,7 +107,19 @@ def create_referrer(
     db.refresh(user)
 
     setup_url = f"{FRONTEND_URL}/setup-account?token={setup_token}"
-    send_setup_account_email(data.email, data.full_name, setup_url, current_user.full_name, role="referrer")
+    # The welcome is the same access email the desk re-sends later: progress
+    # link and setup link together, so a new referrer has both from day one.
+    progress = tracking_links.get_or_create(
+        db, tenant_id, tracking_links.KIND_REFERRER, referrer_id=user.id, created_by_id=current_user.id,
+    )
+    db.commit()
+    send_referrer_access_email(
+        data.email, data.full_name,
+        progress_url=tracking_links.link_url(progress),
+        login={"action": "setup", "url": setup_url, "ttl": tracking_links.STAFF_SETUP_TTL},
+        inviter_name=current_user.full_name,
+        respect_pause=True,
+    )
 
     notify_admins_new_account(
         db, tenant_id, "referrer", data.full_name, data.email, current_user.full_name or current_user.email,
@@ -239,6 +253,7 @@ def get_referrer_detail(
     data.update(
         is_active=referrer.is_active,
         email_verified=referrer.email_verified,
+        login_state=tracking_links.login_state(referrer),
         created_at=referrer.created_at,
         invited_by_name=(invited_by.full_name or invited_by.email) if invited_by else None,
     )
