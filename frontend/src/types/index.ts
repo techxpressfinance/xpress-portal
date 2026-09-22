@@ -1494,6 +1494,11 @@ export interface LenderPricingInputs {
   balloon_percent: number;
   balloon_amount: number | null;       // Dollar override — if set, takes priority over %
   direct_debit_cycle: DirectDebitCycle; // repayment cycle as approved by the lender
+  // The monthly repayment exactly as the lender's approval states it, typed over
+  // the calculated one (rounding, lender-specific fees). One per structure; null
+  // = use the calculation. Fortnightly/weekly and the totals follow from it.
+  monthly_repayment_override: number | null;
+  monthly_repayment_override_balloon: number | null;
   // Asked when a negative-equity / over-110% alert fires
   lender_accepts_shortfall: 'yes' | 'no' | null;
   lender_acceptance_notes: string;

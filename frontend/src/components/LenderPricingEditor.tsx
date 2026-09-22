@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card } from './ui';
+import LenderCombobox from './LenderCombobox';
 import LenderShortfallDialog, { type ShortfallDecision } from './LenderShortfallDialog';
 import SheetEditorHeader from './SheetEditorHeader';
 import api from '../api/client';
@@ -18,6 +19,7 @@ import {
   lenderPricingAlerts,
   lenderPricingOptions,
   lenderPricingStructures,
+  monthlyOverride,
   parseLenderPricingInputs,
   repaymentFor,
   shortfallBlockReason,
@@ -338,21 +340,14 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
         {/* Lender — the first thing on the sheet, picked from the lender book */}
         <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-4">
           <label className={`${labelBase} mb-1.5`} htmlFor="lender-pricing-lender">Lender</label>
-          <select
+          <LenderCombobox
             id="lender-pricing-lender"
-            value={inputs.lender_id ?? ''}
-            onChange={e => setLender(e.target.value)}
-            disabled={lenderBook == null}
-            className="w-full h-11 rounded-lg bg-background px-3 text-[17px] font-semibold text-foreground border border-border appearance-none transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
-          >
-            <option value="">{lenderBook == null ? 'Loading lenders…' : 'Select a lender…'}</option>
-            {/* A lender retired from the book after this sheet was priced still
-                has to show, or re-saving would silently drop it. */}
-            {orphanedLender && <option value={inputs.lender_id ?? ''}>{orphanedLender} (no longer listed)</option>}
-            {(lenderBook ?? []).map(l => (
-              <option key={l.id} value={l.id}>{l.name}{l.is_active ? '' : ' (inactive)'}</option>
-            ))}
-          </select>
+            lenders={lenderBook}
+            value={inputs.lender_id}
+            orphanedName={orphanedLender || null}
+            onChange={setLender}
+            className="h-11 rounded-lg bg-background px-3 text-[17px] font-semibold text-foreground border border-border transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+          />
           <p className="text-[10px] text-muted-foreground mt-1.5">
             The lender that approved this pricing — shown at the top of the sheet and its PDF.{' '}
             <Link to="/admin/lenders" className="text-primary hover:underline">Manage the lender list</Link>
@@ -602,6 +597,7 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
                     {!isChattel && <th className={`${th} text-right`}>Stamp Duty</th>}
                     {isLease && <th className={`${th} text-right`}>GST</th>}
                     <th className={`${th} text-right`}>{cycleLabel} Repayment</th>
+                    <th className={`${th} text-right`}>Lender's Monthly Figure</th>
                     <th className={`${th} text-right`}>Total Interest</th>
                     <th className={`${th} text-right`}>All Up Rate</th>
                   </tr>
@@ -618,6 +614,41 @@ export default function LenderPricingEditor({ applicationId, sheet, onSave, onCa
                       {isLease && <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.gst)}</td>}
                       <td className="py-2 px-3 text-right font-bold tabular-nums">
                         {fmtCurrency(repaymentFor(inputs.direct_debit_cycle, s) ?? 0)}
+                        {s.overridden && (
+                          <span className="block text-[10px] font-medium text-warning">Lender&rsquo;s figure</span>
+                        )}
+                      </td>
+                      {/* Typed over the calculation when the lender's approval
+                          states a different figure; the calculated one stays in
+                          view so a later change to the rate or price shows up. */}
+                      <td className="py-2 px-3 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          aria-label={`Lender's monthly repayment, ${s.hasBalloon ? 'with' : 'no'} balloon`}
+                          className="w-28 rounded-md border border-border bg-background px-2 py-1 text-right text-[12px] tabular-nums"
+                          placeholder={s.calculatedMonthly.toFixed(2)}
+                          value={monthlyOverride(inputs, s.hasBalloon) ?? ''}
+                          onChange={e => set(
+                            s.hasBalloon ? 'monthly_repayment_override_balloon' : 'monthly_repayment_override',
+                            e.target.value === '' ? null : Number(e.target.value),
+                          )}
+                        />
+                        {s.overridden && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground tabular-nums">
+                            Calculated {fmtCurrency(s.calculatedMonthly)}
+                            {' '}({s.repayment_monthly - s.calculatedMonthly >= 0 ? '+' : '−'}{fmtCurrency(Math.abs(fmt2(s.repayment_monthly - s.calculatedMonthly)))})
+                            {' · '}
+                            <button
+                              type="button"
+                              className="font-medium text-primary hover:underline"
+                              onClick={() => set(s.hasBalloon ? 'monthly_repayment_override_balloon' : 'monthly_repayment_override', null)}
+                            >
+                              Use calculated
+                            </button>
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums">{fmtCurrency(s.totalInterest)}</td>
                       <td className="py-2 px-3 text-right font-bold tabular-nums text-primary">

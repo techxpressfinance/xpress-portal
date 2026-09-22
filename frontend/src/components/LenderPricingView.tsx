@@ -7,6 +7,7 @@ import {
   fmtCurrency,
   lenderPricingAlerts,
   parseLenderPricingInputs,
+  monthlyOverride,
   repaymentFor,
 } from '../lib/lenderPricing';
 
@@ -109,7 +110,12 @@ export default function LenderPricingView({ sheet }: { sheet: QuoteSheet }) {
                       {balloon > 0 ? `With Balloon${pct ? ` (${pct[1]}%)` : ''}` : 'No Balloon'}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums">{balloon > 0 ? money(balloon) : '—'}</td>
-                    <td className="py-2 px-3 text-right font-bold tabular-nums">{money(repaymentFor(inputs.direct_debit_cycle, o))}</td>
+                    <td className="py-2 px-3 text-right font-bold tabular-nums">
+                      {money(repaymentFor(inputs.direct_debit_cycle, o))}
+                      {monthlyOverride(inputs, balloon > 0) != null && (
+                        <span className="block text-[10px] font-medium text-warning" title={o.notes ?? undefined}>Lender&rsquo;s figure</span>
+                      )}
+                    </td>
                     <td className="py-2 px-3 text-right tabular-nums">{money(o.total_repayments)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{money(o.total_interest)}</td>
                     <td className="py-2 px-3 text-right font-bold tabular-nums text-primary">

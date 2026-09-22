@@ -47,6 +47,8 @@ export const LENDER_PRICING_DEFAULTS: LenderPricingInputs = {
   balloon_percent: 0,
   balloon_amount: null,
   direct_debit_cycle: 'monthly',
+  monthly_repayment_override: null,
+  monthly_repayment_override_balloon: null,
   lender_accepts_shortfall: null,
   lender_acceptance_notes: '',
   shortfall_bypassed: false,
@@ -179,6 +181,16 @@ export interface LenderPricingStructure extends Repayments {
   totalOverTerm: number;
   totalInterest: number;
   allUpRate: number | null; // annual, as a fraction (advance only)
+  /** The monthly repayment the formula gives, kept when the lender's figure
+   *  has been typed over it so the difference stays visible. */
+  calculatedMonthly: number;
+  overridden: boolean;
+}
+
+/** The lender's typed monthly figure for this structure, if one is set. */
+export function monthlyOverride(inputs: LenderPricingInputs, hasBalloon: boolean): number | null {
+  const v = hasBalloon ? inputs.monthly_repayment_override_balloon : inputs.monthly_repayment_override;
+  return v != null && v > 0 ? v : null;
 }
 
 /** The approved term priced with no balloon and, when one is set, with it. */
@@ -190,23 +202,42 @@ export function lenderPricingStructures(inputs: LenderPricingInputs): LenderPric
   const monthlyRate = inputs.interest_rate / 100 / 12;
   const isAdvance = inputs.payment_type === 'advance';
   const isLease = inputs.facility_type === 'lease';
-  const sdRate = stampDutyRate(inputs);
   const balloonNet = inputs.balloon_amount ?? fmt2(balloonBase * (inputs.balloon_percent / 100));
   const balloonGst = isLease ? fmt2(balloonNet * (inputs.gst_percent / 100)) : 0;
+
+  const gstRate = isLease ? inputs.gst_percent / 100 : 0;
+  const dutyRate = stampDutyRate(inputs);
+
+  // Rental → stamp duty (HP/lease) → GST (lease) → plus the account fee, with
+  // the quote sheet's rounding at each step.
+  const monthlyFromRental = (netRental: number) => {
+    const stampDuty = fmt2(netRental * dutyRate);
+    const rentalSubTotal = netRental + stampDuty;
+    const gst = fmt2(rentalSubTotal * gstRate);
+    return { stampDuty, gst, monthly: fmt2(fmt2(rentalSubTotal + gst) + inputs.monthly_account_fee) };
+  };
 
   const build = (useBalloon: boolean): LenderPricingStructure => {
     const balloon = useBalloon ? balloonNet : 0;
     // PMT — quote sheet formula page B36 (advance) / B37 (arrears)
-    const netRental = fmt2(isAdvance
+    const calcNetRental = fmt2(isAdvance
       ? -pmt(monthlyRate, months, amountFinanced, -balloon, 1)
       : -pmt(monthlyRate, months - 1, amountFinanced * (1 + monthlyRate), -balloon, 1));
+    const calculatedMonthly = monthlyFromRental(calcNetRental).monthly;
+
+    // The lender's own figure wins where one was typed in. The rental behind it
+    // is worked back through the same account fee, stamp duty and GST, so the
+    // breakdown and the all-up rate describe the repayment actually approved.
+    const override = monthlyOverride(inputs, useBalloon);
+    const netRental = override != null
+      ? fmt2((override - inputs.monthly_account_fee) / (1 + gstRate) / (1 + dutyRate))
+      : calcNetRental;
     // All-up rate — quote sheet formula page B46 (advance only)
-    const allUpRate = isAdvance && subTotal > 0 ? rateNR(months, netRental, -subTotal, balloon, 1) * 12 : null;
-    const stampDuty = inputs.facility_type === 'chattel' ? 0 : fmt2(netRental * sdRate);
-    const rentalSubTotal = netRental + stampDuty;
-    const gst = isLease ? fmt2(rentalSubTotal * (inputs.gst_percent / 100)) : 0;
-    const totalRental = fmt2(rentalSubTotal + gst);
-    const monthly = fmt2(totalRental + inputs.monthly_account_fee);
+    const allUpRate = isAdvance && subTotal > 0 && netRental > 0
+      ? rateNR(months, netRental, -subTotal, balloon, 1) * 12
+      : null;
+    const { stampDuty, gst, monthly: builtUp } = monthlyFromRental(netRental);
+    const monthly = override ?? builtUp;
     const totalOverTerm = fmt2(monthly * months + balloon);
     return {
       hasBalloon: useBalloon,
@@ -222,6 +253,8 @@ export function lenderPricingStructures(inputs: LenderPricingInputs): LenderPric
       totalOverTerm,
       totalInterest: fmt2(totalOverTerm - amountBorrowed),
       allUpRate,
+      calculatedMonthly,
+      overridden: override != null,
     };
   };
 
@@ -256,7 +289,8 @@ export function lenderPricingOptions(inputs: LenderPricingInputs, structures: Le
     total_interest: s.totalInterest,
     total_fees: fmt2(d.totalFees + d.brokerage),
     features: null,
-    notes: null,
+    // Says on the saved option that the repayment is the lender's, not ours.
+    notes: s.overridden ? `Monthly repayment entered from the lender's approval (calculated ${fmtCurrency(s.calculatedMonthly)})` : null,
   }));
 }
 
