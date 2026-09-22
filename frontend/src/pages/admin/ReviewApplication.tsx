@@ -9,6 +9,7 @@ import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
+import LenderCombobox from '../../components/LenderCombobox';
 import LenderPricingEditor from '../../components/LenderPricingEditor';
 import SheetTypeTag from '../../components/SheetTypeTag';
 import LenderPricingList from '../../components/LenderPricingList';
@@ -2966,16 +2967,14 @@ export default function ReviewApplication() {
                         {!editingSubId && (
                           <div>
                             <label className="block text-[12px] font-medium text-muted-foreground mb-1">Lender *</label>
-                            <select
-                              value={subForm.lender_id}
-                              onChange={e => setSubForm(f => ({ ...f, lender_id: e.target.value }))}
-                              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            >
-                              <option value="">Select lender...</option>
-                              {availableLenders
-                                .filter(l => !lenderSubmissions.some(s => s.lender_id === l.id) || (editingSubId && lenderSubmissions.find(s => s.id === editingSubId)?.lender_id === l.id))
-                                .map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                            </select>
+                            {/* Lenders already submitted to are left out — one
+                                submission per lender. */}
+                            <LenderCombobox
+                              lenders={availableLenders.filter(l => !lenderSubmissions.some(s => s.lender_id === l.id))}
+                              value={subForm.lender_id || null}
+                              onChange={lenderId => setSubForm(f => ({ ...f, lender_id: lenderId }))}
+                              className="rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            />
                           </div>
                         )}
                         <div>

@@ -13,6 +13,7 @@ type PdfWorker = {
   get(key: string): PdfWorker;
   then(onFulfilled: (value: unknown) => void): PdfWorker;
   save(): Promise<void>;
+  outputPdf(type: 'blob'): Promise<Blob>;
 };
 
 /** The module ships both a CJS default and a callable namespace depending on
@@ -236,10 +237,32 @@ export async function downloadElementPdf(
   filename: string,
   orientation: 'portrait' | 'landscape' = 'portrait',
 ): Promise<void> {
+  await renderElementPdf(elementId, filename, orientation, 'save');
+}
+
+/**
+ * The same PDF as downloadElementPdf, returned as a Blob instead of saved — for
+ * a document that is sent on by the server (e.g. emailing an issued tax
+ * invoice), so what is sent is exactly what the Download button produces.
+ */
+export async function elementPdfBlob(
+  elementId: string,
+  orientation: 'portrait' | 'landscape' = 'portrait',
+): Promise<Blob | null> {
+  return renderElementPdf(elementId, 'document.pdf', orientation, 'blob');
+}
+
+/** Saves the file in 'save' mode (resolving null); returns it in 'blob' mode. */
+async function renderElementPdf(
+  elementId: string,
+  filename: string,
+  orientation: 'portrait' | 'landscape',
+  mode: 'save' | 'blob',
+): Promise<Blob | null> {
   const el = document.getElementById(elementId);
   if (!el) {
     console.error(`PDF export: element #${elementId} not found`);
-    return;
+    return null;
   }
 
   await waitForImages(el);
@@ -248,7 +271,7 @@ export async function downloadElementPdf(
   (el.parentElement ?? document.body).appendChild(clone);
   try {
     stripModernColors(clone);
-    await pdfWorker()
+    const worker = pdfWorker()
       .set({
         margin: [0, 0, 22, 0],
         filename,
@@ -260,8 +283,10 @@ export async function downloadElementPdf(
       .from(clone)
       .toPdf()
       .get('pdf')
-      .then((pdf) => paintXpressFooter(pdf as PdfDoc))
-      .save();
+      .then((pdf) => paintXpressFooter(pdf as PdfDoc));
+    if (mode === 'blob') return await worker.outputPdf('blob');
+    await worker.save();
+    return null;
   } catch (err) {
     console.error('PDF export failed:', err);
     throw err;

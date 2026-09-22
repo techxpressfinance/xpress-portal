@@ -23,6 +23,10 @@ class TaxInvoiceUpdate(BaseModel):
     reply_to_email: Optional[str] = None
     supplier_name: Optional[str] = None
     supplier_abn: Optional[str] = None
+    supplier_acn: Optional[str] = None
+    # Normally set by the ABN Lookup endpoint. Settable by hand for a seller
+    # with no ABN, or when ABN Lookup is unavailable.
+    supplier_abn_status: Optional[Literal["active", "cancelled", "not_found", "none"]] = None
     supplier_address: Optional[str] = None
     supplier_email: Optional[str] = None
     supplier_phone: Optional[str] = None
@@ -53,6 +57,9 @@ class TaxInvoiceUpdate(BaseModel):
     # The financier, from the tenant's lender list. Normally carried over from
     # the lender pricing, but re-selectable if the deal moves lender.
     lender_id: Optional[str] = None
+    # Chattel mortgage names the client as Sold To; a lease or hire purchase
+    # names the lender. Pulled from the lender pricing, re-selectable here.
+    facility_type: Optional[Literal["chattel", "hp", "lease", "novated_lease"]] = None
     sale_price: Optional[float] = None
     buyers_premium: Optional[float] = None
     other_charges: Optional[float] = None
@@ -71,4 +78,16 @@ class TaxInvoiceUpdate(BaseModel):
     payout_creditor_account_number: Optional[str] = None
     licence_name: Optional[str] = None
     registration_name: Optional[str] = None
+    payout_letter_name: Optional[str] = None
+    valuation_needed: Optional[bool] = None
+    ppsr_charge: Optional[bool] = None
+    ppsr_all_pap: Optional[bool] = None
+    payout_reduced: Optional[bool] = None
+    # {document key: received}. Merged into what is stored, so a request only
+    # carries the ticks it changes.
+    seller_documents: Optional[dict[str, bool]] = None
+    valuation_market_value: Optional[float] = None
+    valuation_forced_sale_value: Optional[float] = None
+    valuer_name: Optional[str] = None
+    valuation_date: Optional[date] = None
     notes: Optional[str] = None

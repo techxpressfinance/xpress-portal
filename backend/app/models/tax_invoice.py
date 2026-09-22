@@ -46,6 +46,33 @@ class SupplierType(str, enum.Enum):
     auction = "auction"
 
 
+class FacilityType(str, enum.Enum):
+    """How the deal is financed, which decides who the dealer sells to.
+
+    Under a chattel mortgage the client buys the goods and mortgages them to the
+    lender, so the client is the purchaser. Under any lease or hire purchase the
+    lender buys the goods and the client only takes possession of them, so the
+    dealer invoices the lender and delivers to the client."""
+
+    chattel = "chattel"
+    hp = "hp"
+    lease = "lease"
+    novated_lease = "novated_lease"
+
+
+# Facilities where the financier owns the goods, so it is the "Sold To" party.
+LENDER_OWNED_FACILITIES = frozenset({FacilityType.hp, FacilityType.lease, FacilityType.novated_lease})
+
+
+class AbnStatus(str, enum.Enum):
+    """The seller's ABN as ABN Lookup reports it, or that they have none."""
+
+    active = "active"
+    cancelled = "cancelled"
+    not_found = "not_found"
+    none = "none"
+
+
 class TaxInvoiceStatus(str, enum.Enum):
     draft = "draft"
     issued = "issued"
@@ -79,6 +106,13 @@ class TaxInvoice(Base):
     # contact details are encrypted like any other individual's.
     supplier_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     supplier_abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    supplier_acn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # What ABN Lookup said about the seller's ABN — an AbnStatus value — and the
+    # entity name it is registered to. On a private sale this decides the
+    # document: only an active, GST-registered ABN earns a *tax* invoice.
+    supplier_abn_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    supplier_abn_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    supplier_abn_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     supplier_address: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     supplier_email: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     supplier_phone: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
@@ -129,6 +163,10 @@ class TaxInvoice(Base):
     # the deal was approved on. The dealer's request sheet names it, and it is
     # what ties the invoice back to the structure that was priced.
     lender_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lenders.id"), index=True, nullable=True)
+    # A FacilityType value, carried over from the lender pricing. Stored as a
+    # plain string, like asset_condition, so a new facility needs no enum
+    # migration on Postgres.
+    facility_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Money. Stored as entered; totals are derived, never trusted from input.
     sale_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
@@ -180,10 +218,39 @@ class TaxInvoice(Base):
     licence_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     registration_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
+    # The seller as named on the payout letter. On a private sale that is the
+    # name the invoice is issued in, company or individual; with no payout
+    # letter the registered owner (registration_name) is used instead.
+    payout_letter_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+
+    # Private-sale paperwork. The yes/no answers decide which documents are
+    # required; None means the broker has not answered yet, which blocks
+    # issuing — an unasked question is not a "no".
+    valuation_needed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    ppsr_charge: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    ppsr_all_pap: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # Set when the payout was above the amount funded and the seller paid it
+    # down to fit — their proof of that payment is then required.
+    payout_reduced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # JSON {document key: received}. Keys are fixed by SELLER_DOCUMENTS in
+    # services/tax_invoice.py.
+    seller_documents: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # The third-party valuation, where one was needed. GST-inclusive, as the
+    # valuer reports it. The market value replaces the cash price as the asset
+    # value in the LVR.
+    valuation_market_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    valuation_forced_sale_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    valuer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    valuation_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     issued_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # When the issued document was last emailed to the broker and the admins,
+    # so the desk can see it went out without checking an inbox.
+    emailed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

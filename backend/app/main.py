@@ -379,6 +379,26 @@ _MIGRATIONS = [
     ("quote_sheets", "shortfall_notes", "TEXT"),
     # The financier on a tax invoice, carried over from that lender pricing.
     ("tax_invoices", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+    # Chattel mortgage vs lease/HP decides whether the client or the lender is
+    # the dealer's "Sold To" party; emailed_at records the send to the desk.
+    ("tax_invoices", "facility_type", "VARCHAR(20)"),
+    ("tax_invoices", "emailed_at", "TIMESTAMP"),
+    # Private sale: seller's ACN and ABN Lookup result, the payout-letter name,
+    # the paperwork checklist and its yes/no prompts, and the valuation.
+    ("tax_invoices", "supplier_acn", "VARCHAR(20)"),
+    ("tax_invoices", "supplier_abn_status", "VARCHAR(20)"),
+    ("tax_invoices", "supplier_abn_name", "VARCHAR(200)"),
+    ("tax_invoices", "supplier_abn_checked_at", "TIMESTAMP"),
+    ("tax_invoices", "payout_letter_name", "VARCHAR(500)"),
+    ("tax_invoices", "valuation_needed", "BOOLEAN"),
+    ("tax_invoices", "ppsr_charge", "BOOLEAN"),
+    ("tax_invoices", "ppsr_all_pap", "BOOLEAN"),
+    ("tax_invoices", "payout_reduced", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("tax_invoices", "seller_documents", "TEXT"),
+    ("tax_invoices", "valuation_market_value", "NUMERIC(12, 2)"),
+    ("tax_invoices", "valuation_forced_sale_value", "NUMERIC(12, 2)"),
+    ("tax_invoices", "valuer_name", "VARCHAR(200)"),
+    ("tax_invoices", "valuation_date", "DATE"),
     # The existing client who referred the deal (tracking only).
     ("loan_applications", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
     ("leads", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),

@@ -11,7 +11,7 @@ from app.database import get_db
 from app.middleware.auth import _is_token_revoked_by_user, get_current_user
 from app.middleware.rate_limit import auth_limiter
 from app.models.referral import Referral, ReferralStatus
-from app.models.user import User
+from app.models.user import SETUP_PLACEHOLDER_HASHES, User
 from app.schemas.user import (
     AccessTokenResponse,
     ChangePasswordRequest,
@@ -297,7 +297,7 @@ def me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-_SETUP_PLACEHOLDER_HASHES = ("!", "!invited")
+_SETUP_PLACEHOLDER_HASHES = SETUP_PLACEHOLDER_HASHES
 
 
 @router.get("/validate-setup-token")

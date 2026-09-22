@@ -70,7 +70,7 @@ export default function ReferrerDetail() {
   const [referrer, setReferrer] = useState<ReferrerDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [busy, setBusy] = useState<'impersonate' | 'reset' | 'active' | 'delete' | null>(null);
+  const [busy, setBusy] = useState<'impersonate' | 'active' | 'delete' | null>(null);
 
   // Account edit — the same three fields the list's Edit modal writes.
   const [editingAccount, setEditingAccount] = useState(false);
@@ -133,19 +133,6 @@ export default function ReferrerDetail() {
       await impersonate(id);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to start view-as session'), 'error');
-      setBusy(null);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (!id) return;
-    setBusy('reset');
-    try {
-      await api.post(`/users/${id}/send-password-reset`);
-      toast('Password reset link sent', 'success');
-    } catch (err) {
-      toast(getErrorMessage(err, 'Failed to send reset link'), 'error');
-    } finally {
       setBusy(null);
     }
   };
@@ -251,8 +238,8 @@ export default function ReferrerDetail() {
                   label={referrer.is_complete ? 'Ready to invoice' : 'Business details incomplete'}
                   className={referrer.is_complete ? 'led-chip-success' : 'led-chip-warning'}
                 />
-                {!referrer.email_verified && (
-                  <Badge type="custom" value="" label="Setup pending" className="led-chip-warning" />
+                {referrer.login_state === 'setup_pending' && (
+                  <Badge type="custom" value="" label="Login not set up" className="led-chip-warning" />
                 )}
               </div>
             </div>
@@ -261,7 +248,6 @@ export default function ReferrerDetail() {
             {isAdmin && referrer.is_active && (
               <Button size="sm" variant="secondary" loading={busy === 'impersonate'} onClick={handleImpersonate}>Login as</Button>
             )}
-            <Button size="sm" variant="secondary" loading={busy === 'reset'} onClick={handleResetPassword}>Reset password</Button>
             {isAdmin && (
               <>
                 <Button size="sm" variant={referrer.is_active ? 'danger' : 'success'} loading={busy === 'active'} onClick={handleToggleActive}>
@@ -274,16 +260,20 @@ export default function ReferrerDetail() {
         </div>
       </Card>
 
-      {/* Their standing no-login progress link — send it whenever they ring
-          asking where a client is up to. */}
+      {/* One way in, whatever they rang about: the access email carries their
+          standing progress link AND a portal login link — setup until they
+          have a password, a reset after. Replaces the separate reset button. */}
       {referrer.is_active && (
         <Card className="mb-6">
-          <h3 className="text-[15px] font-semibold text-foreground">Progress link</h3>
+          <h3 className="text-[15px] font-semibold text-foreground">Access</h3>
           <p className="text-[13px] text-muted-foreground mb-3">
-            One link, no login: it shows {referrer.full_name.split(' ')[0]} every deal they've referred and where each is up to.
-            It stays the same, and it goes out automatically with their stage-update emails.
+            The progress link shows {referrer.full_name.split(' ')[0]} every deal they've referred, no login needed — it stays
+            the same and goes out with their stage-update emails. The access email sends it together with{' '}
+            {referrer.login_state === 'setup_pending'
+              ? <>a link to <strong>set up their portal login</strong> (they haven't yet; valid 7 days).</>
+              : <>a <strong>password reset</strong> link for the portal (valid 24 hours).</>}
           </p>
-          <ProgressLink base={`/tracking-links/referrers/${referrer.id}`} />
+          <ProgressLink base={`/tracking-links/referrers/${referrer.id}`} emailVerb="Email access link to" />
         </Card>
       )}
 

@@ -25,6 +25,12 @@ MAX_NAME_RESULTS = 20
 ABN_STATUS_CODES = {"0000000001": "Active", "0000000002": "Cancelled"}
 
 
+class AbrUnavailable(Exception):
+    """ABR could not be asked — not configured, or the request failed. Distinct
+    from a miss, because callers that decide something from "not found" (a
+    private sale's GST treatment) must not decide it from an outage."""
+
+
 class AbrRecord(TypedDict, total=False):
     abn: str
     acn: Optional[str]
@@ -62,9 +68,14 @@ def _strip_jsonp(text: str) -> Optional[dict]:
         return None
 
 
-def lookup_abn(abn: str) -> Optional[AbrRecord]:
-    """Look up an ABN against the public ABR. Returns None on miss or if ABR isn't configured."""
+def lookup_abn(abn: str, raise_errors: bool = False) -> Optional[AbrRecord]:
+    """Look up an ABN against the public ABR. Returns None on miss or if ABR isn't configured.
+
+    With ``raise_errors`` an unconfigured ABR or a failed request raises
+    AbrUnavailable instead, so None means only "the register has no such ABN"."""
     if not ABR_ENABLED:
+        if raise_errors:
+            raise AbrUnavailable("ABN Lookup is not configured on this server")
         return None
     digits = "".join(ch for ch in (abn or "") if ch.isdigit())
     if len(digits) != 11:
@@ -79,10 +90,14 @@ def lookup_abn(abn: str) -> Optional[AbrRecord]:
         resp.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("ABR lookup failed for %s: %s", digits, exc)
+        if raise_errors:
+            raise AbrUnavailable("ABN Lookup could not be reached") from exc
         return None
 
     payload = _strip_jsonp(resp.text)
     if not payload:
+        if raise_errors:
+            raise AbrUnavailable("ABN Lookup returned an unreadable response")
         return None
 
     # ABR returns an empty record (Abn="") when nothing is found, sometimes with a Message.

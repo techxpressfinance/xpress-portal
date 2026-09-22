@@ -118,6 +118,8 @@ export interface ExternalReferral {
 export interface ReferrerDetail extends ReferrerBusinessProfile {
   is_active: boolean;
   email_verified: boolean;
+  /** Whether they can log in: invited but never set a password, or not. */
+  login_state: 'setup_pending' | 'active' | 'inactive';
   created_at: string | null;
   invited_by_name: string | null;
   stats: {
@@ -1003,6 +1005,9 @@ export interface TaxInvoiceTotals {
   /** Amount financed as a percentage of the cash price, or null with no price.
    *  Over 100% means negative equity or fees rolled into the loan. */
   lvr: number | null;
+  /** What the LVR is measured against: the valuation's market value where one
+   *  was recorded, else the cash price. */
+  lvr_basis: 'valuation' | 'cash_price';
   /** Payout owing on the trade-in beyond what it is worth, carried into the
    *  new loan. Zero when the trade-in covers its own debt. */
   negative_equity: number;
@@ -1023,8 +1028,36 @@ export interface TaxInvoiceAlert {
     | 'name_mismatch'
     | 'settlement_unbalanced'
     | 'payable_negative'
-    | 'finance_variance';
+    | 'finance_variance'
+    | 'price_above_valuation'
+    | 'valuation_expired';
   message: string;
+}
+
+/** The facility on a tax invoice. The pricing editor's three, plus a novated
+ *  lease, which is chosen on the invoice itself. Chattel names the client as
+ *  Sold To; every other facility names the lender. */
+export type InvoiceFacilityType = FacilityType | 'novated_lease';
+
+/** The seller's ABN as ABN Lookup reported it, or that they have none. On a
+ *  private sale only `active` + GST-registered earns a tax invoice. */
+export type AbnStatus = 'active' | 'cancelled' | 'not_found' | 'none';
+
+/** One document on the private-sale checklist. `required` follows the deal's
+ *  own answers (under finance, PPSR charge, ALL PAP, valuation needed). */
+export interface SellerDocument {
+  key: string;
+  label: string;
+  required: boolean;
+  received: boolean;
+}
+
+/** A party block exactly as the document prints it. */
+export interface TaxInvoiceParty {
+  name: string | null;
+  address: string | null;
+  abn: string | null;
+  acn: string | null;
 }
 
 /** Whether every document behind the sale names the same seller. Null when
@@ -1050,6 +1083,12 @@ export interface TaxInvoice {
   reply_to_email: string | null;
   supplier_name: string | null;
   supplier_abn: string | null;
+  supplier_acn: string | null;
+  supplier_abn_status: AbnStatus | null;
+  /** The entity ABN Lookup has the ABN registered to. */
+  supplier_abn_name: string | null;
+  /** Null when the status was recorded by hand rather than looked up. */
+  supplier_abn_checked_at: string | null;
   supplier_address: string | null;
   supplier_email: string | null;
   supplier_phone: string | null;
@@ -1080,6 +1119,10 @@ export interface TaxInvoice {
   /** The financier, carried over from the lender pricing the deal was approved on. */
   lender_id: string | null;
   lender_name: string | null;
+  lender_address: string | null;
+  facility_type: InvoiceFacilityType | null;
+  /** True on a lease or hire purchase: the lender buys, the client takes delivery. */
+  lender_owns_goods: boolean;
   sale_price: number | null;
   buyers_premium: number | null;
   other_charges: number | null;
@@ -1102,13 +1145,39 @@ export interface TaxInvoice {
    *  held so the four-way name match can run before funds go out. */
   licence_name: string | null;
   registration_name: string | null;
+  /** The seller as named on the payout letter — who a financed car's invoice is issued by. */
+  payout_letter_name: string | null;
+  /** Private-sale yes/no prompts. Null = not answered yet, which blocks issuing. */
+  valuation_needed: boolean | null;
+  ppsr_charge: boolean | null;
+  ppsr_all_pap: boolean | null;
+  /** The seller paid their payout down to fit the funding; proof is then required. */
+  payout_reduced: boolean;
+  valuation_market_value: number | null;
+  valuation_forced_sale_value: number | null;
+  valuer_name: string | null;
+  valuation_date: string | null;
   notes: string | null;
   created_by_id: string | null;
   created_by_name: string | null;
   issued_at: string | null;
+  /** When the issued document was last emailed to the broker and admins. */
+  emailed_at: string | null;
   created_at: string | null;
   updated_at: string | null;
   totals: TaxInvoiceTotals;
+  /** Server-derived from the facility: who the goods are sold to and who takes
+   *  delivery. The printed document renders these, never buyer_* directly. */
+  sold_to: TaxInvoiceParty;
+  deliver_to: TaxInvoiceParty;
+  /** What the dealer still has to supply on their invoice. Dealer only. */
+  dealer_to_supply: string[];
+  /** Private sale only — the documents collected from the seller. */
+  seller_checklist: SellerDocument[];
+  /** Private sale only — the payout-letter name, else the registered owner. */
+  expected_seller_name: string | null;
+  /** What the document is called, e.g. "Private sale tax invoice". */
+  document_title: string;
   /** What still has to be filled in before it can be issued. */
   missing: string[];
   /** Sums that contradict each other. Also blocks issuing, and unlike
@@ -1425,6 +1494,11 @@ export interface LenderPricingInputs {
   balloon_percent: number;
   balloon_amount: number | null;       // Dollar override — if set, takes priority over %
   direct_debit_cycle: DirectDebitCycle; // repayment cycle as approved by the lender
+  // The monthly repayment exactly as the lender's approval states it, typed over
+  // the calculated one (rounding, lender-specific fees). One per structure; null
+  // = use the calculation. Fortnightly/weekly and the totals follow from it.
+  monthly_repayment_override: number | null;
+  monthly_repayment_override_balloon: number | null;
   // Asked when a negative-equity / over-110% alert fires
   lender_accepts_shortfall: 'yes' | 'no' | null;
   lender_acceptance_notes: string;
@@ -1874,6 +1948,8 @@ export interface TrackingLinkInfo {
   open_count: number;
   recipient_name: string | null;
   recipient_email: string | null;
+  /** Referrer links only — decides what the access email's login half says. */
+  login_state?: 'setup_pending' | 'active' | 'inactive';
 }
 
 /** One deal on a progress page. */
@@ -1896,7 +1972,8 @@ export interface TrackedDeal {
 export type TrackingPage =
   | {
       kind: 'referrer';
-      referrer: { name: string; organization_name: string | null };
+      /** has_login: whether to offer "log in" or "set up your login". */
+      referrer: { name: string; organization_name: string | null; has_login: boolean };
       deals: TrackedDeal[];
     }
   | {
