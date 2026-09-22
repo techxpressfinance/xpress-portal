@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import logging
 import threading
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -1086,4 +1087,73 @@ def send_tracking_link_email(
         <p style="margin: 0; font-size: 13px; color: #71717a; text-align: center;">This link is personal to you — please don't share it.</p>
     """
     _send_async(to_email, subject, body, _get_base_html(content))
+    return True
+
+
+def _send_with_attachment(
+    to_emails: list[str], subject: str, body: str, filename: str, content: bytes, mime_subtype: str,
+) -> None:
+    """One message to several recipients, with a single file attached."""
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["From"] = f"Xpress Finance <{SES_FROM_EMAIL}>"
+        msg["To"] = ", ".join(_sanitize_header(e) for e in to_emails)
+        msg["Subject"] = _sanitize_header(subject)
+
+        text = MIMEMultipart("alternative")
+        text.attach(MIMEText(body, "plain"))
+        html_body = "".join(
+            f'<p style="margin: 0 0 12px; font-size: 15px; line-height: 1.6; color: #3f3f46;">{_esc(p)}</p>'
+            for p in body.split("\n\n")
+        )
+        text.attach(MIMEText(_get_base_html(html_body), "html"))
+        msg.attach(text)
+
+        part = MIMEApplication(content, _subtype=mime_subtype)
+        part.add_header("Content-Disposition", "attachment", filename=_sanitize_header(filename))
+        msg.attach(part)
+
+        client = boto3.client("ses", region_name=SES_REGION)
+        kwargs: dict = {
+            "Source": SES_FROM_EMAIL,
+            "Destinations": to_emails,
+            "RawMessage": {"Data": msg.as_string()},
+        }
+        if SES_CONFIGURATION_SET:
+            kwargs["ConfigurationSetName"] = SES_CONFIGURATION_SET
+        client.send_raw_email(**kwargs)
+        logger.info("Email with attachment sent to %s: %s", to_emails, subject)
+    except (BotoCoreError, ClientError) as e:
+        logger.warning("Failed to send email to %s: %s", to_emails, e)
+
+
+def send_tax_invoice_document(
+    to_emails: list[str],
+    document_label: str,
+    client_name: str,
+    dealer_name: Optional[str],
+    sent_by: Optional[str],
+    filename: str,
+    pdf: bytes,
+) -> bool:
+    """Send an issued tax invoice (or dealer request) to the broker and the
+    admins on the file. Non-blocking. Returns False when email is not
+    configured, so the caller can tell the broker it did not go."""
+    if not EMAIL_ENABLED:
+        logger.debug("Email not configured, skipping tax invoice email")
+        return False
+    subject = f"{document_label} — {client_name}" + (f" · {dealer_name}" if dealer_name else "")
+    body = (
+        f"The {document_label.lower()} for {client_name} has been issued"
+        + (f" by {sent_by}" if sent_by else "")
+        + " and is attached."
+        + (f"\n\nDealer: {dealer_name}" if dealer_name else "")
+        + "\n\nThe PDF is the document as issued in the portal."
+    )
+    thread = threading.Thread(
+        target=_send_with_attachment,
+        args=(to_emails, subject, body, filename, pdf, "pdf"),
+        daemon=True,
+    )
+    thread.start()
     return True

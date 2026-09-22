@@ -4,10 +4,10 @@ import { useToast } from './Toast';
 import { useConfirm } from '../hooks/useConfirm';
 import { Card, Badge, Button } from './ui';
 import { getErrorMessage, formatDate } from '../lib/utils';
-import { downloadElementPdf } from '../lib/pdfExport';
+import { downloadElementPdf, elementPdfBlob } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
-import type { Lender, SupplierType, TaxInvoice } from '../types';
+import type { AbnStatus, InvoiceFacilityType, Lender, SupplierType, TaxInvoice, TaxInvoiceParty } from '../types';
 
 /**
  * Tax invoices for the asset being financed.
@@ -18,6 +18,11 @@ import type { Lender, SupplierType, TaxInvoice } from '../types';
  * the cost build-up. A private seller (usually charging no GST) and an auction
  * house (which adds a buyer's premium) get the invoice this desk raises itself,
  * following the ATO's tax-invoice requirements.
+ *
+ * The facility decides who the dealer sells to: on a chattel mortgage the client
+ * is both Sold To and Delivery To; on any lease or hire purchase the lender buys
+ * the goods (Sold To) and the client takes delivery. The server derives both
+ * blocks (`sold_to`/`deliver_to`) so the form and the paper agree.
  *
  * An approved asset-finance application already has its dealer request waiting
  * as a draft — see services/tax_invoice.ensure_request_for_approval.
@@ -32,12 +37,32 @@ const SUPPLIER_LABEL: Record<SupplierType, string> = {
   auction: 'Auction house',
 };
 
-/** What the printed document calls itself, which is not the same question as
- *  who the supplier is: a dealer document is a request for their invoice. */
-const DOCUMENT_LABEL: Record<SupplierType, string> = {
-  dealer: 'Tax invoice request',
-  private: 'Invoice',
-  auction: 'Tax invoice',
+/** What each kind of document is, shown before one is created so the broker
+ *  picks deliberately rather than by the first button they see. */
+const SUPPLIER_HELP: Record<SupplierType, string> = {
+  dealer: 'A tax invoice request sent to the dealer, who sends their tax invoice back.',
+  private: 'An invoice issued by a private seller — a tax invoice only if their ABN is GST-registered.',
+  auction: "The auction house's tax invoice, including the buyer's premium.",
+};
+
+const ABN_STATUS_LABEL: Record<AbnStatus, string> = {
+  active: 'Active',
+  cancelled: 'Cancelled',
+  not_found: 'Not found on ABN Lookup',
+  none: 'Seller has no ABN',
+};
+
+/** A yes/no prompt that starts unanswered — null is "not asked yet", which the
+ *  server treats as a gap, never as a no. */
+const YES_NO: [string, string][] = [['', 'Not answered'], ['yes', 'Yes'], ['no', 'No']];
+const yesNoValue = (v: string | number | boolean) => (v === true ? 'yes' : v === false ? 'no' : '');
+const yesNoParse = (v: string) => (v === 'yes' ? true : v === 'no' ? false : null);
+
+const FACILITY_LABEL: Record<InvoiceFacilityType, string> = {
+  chattel: 'Chattel mortgage',
+  hp: 'Hire purchase',
+  lease: 'Lease',
+  novated_lease: 'Novated lease',
 };
 
 /** Verbatim from the desk's request sheet. These are the terms the dealer is
@@ -92,6 +117,8 @@ export default function TaxInvoicePanel({
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({});
+  // Seller-document ticks, saved with the rest of the draft.
+  const [docDraft, setDocDraft] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   // The tenant's lender list, so the financier on the document is a real lender
   // rather than a typed name. Empty after a failure — the field then shows what
@@ -133,23 +160,50 @@ export default function TaxInvoicePanel({
     }
   }, [autoOpen, loading, invoices]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The "New invoice" chooser, and the type picked in it. Creating is a
+  // deliberate two-step so a stray click can't leave a draft behind.
+  const [choosing, setChoosing] = useState(false);
+  const [picked, setPicked] = useState<SupplierType | null>(null);
+  const [creating, setCreating] = useState(false);
+  // Drafts ticked for bulk delete.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const closeChooser = () => { setChoosing(false); setPicked(null); };
+
+  const openInvoice = (id: string) => {
+    setOpenId(id);
+    setDraft({});
+    setDocDraft({});
+  };
+
   const create = async (supplierType: SupplierType) => {
+    // Ignores a second click while the first is still in flight.
+    if (creating) return;
+    setCreating(true);
     try {
       const { data } = await api.post(`/applications/${applicationId}/tax-invoices`, { supplier_type: supplierType });
       await load();
-      setOpenId(data.id);
-      setDraft({});
+      openInvoice(data.id);
+      closeChooser();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to start the invoice'), 'error');
+    } finally {
+      setCreating(false);
     }
   };
 
+  const dirty = Object.keys(draft).length > 0 || Object.keys(docDraft).length > 0;
+
   const save = async (invoice: TaxInvoice) => {
-    if (!Object.keys(draft).length) return;
+    if (!dirty) return;
     setSaving(true);
     try {
-      await api.patch(`/applications/${applicationId}/tax-invoices/${invoice.id}`, draft);
+      await api.patch(`/applications/${applicationId}/tax-invoices/${invoice.id}`, {
+        ...draft,
+        ...(Object.keys(docDraft).length ? { seller_documents: docDraft } : {}),
+      });
       setDraft({});
+      setDocDraft({});
       await load();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to save'), 'error');
@@ -158,13 +212,56 @@ export default function TaxInvoicePanel({
     }
   };
 
+  const [emailing, setEmailing] = useState<string | null>(null);
+
+  /** Send the issued document to the broker on the file and the admins. The
+   *  PDF is rendered here from the same markup Download captures, so what they
+   *  receive is exactly what is on screen. */
+  const email = async (invoice: TaxInvoice) => {
+    setEmailing(invoice.id);
+    try {
+      const pdf = await elementPdfBlob(`tax-invoice-${invoice.id}`);
+      if (!pdf) throw new Error('Could not render the PDF');
+      const form = new FormData();
+      form.append('file', pdf, pdfFilename(invoice));
+      const { data } = await api.post<TaxInvoice & { emailed_to: string[] }>(
+        `/applications/${applicationId}/tax-invoices/${invoice.id}/email`, form,
+      );
+      await load();
+      toast(`Sent to ${data.emailed_to.join(', ')}`, 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to email the document'), 'error');
+    } finally {
+      setEmailing(null);
+    }
+  };
+
   const issue = async (invoice: TaxInvoice) => {
     try {
-      await api.post(`/applications/${applicationId}/tax-invoices/${invoice.id}/issue`);
+      const { data } = await api.post<TaxInvoice>(`/applications/${applicationId}/tax-invoices/${invoice.id}/issue`);
       await load();
       toast('Invoice issued', 'success');
+      // Once issued it goes to the broker and the admins without a second click.
+      await email(data);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to issue'), 'error');
+    }
+  };
+
+  /** Check the seller's ABN on ABN Lookup. The answer decides the document:
+   *  only an active, GST-registered ABN makes a private sale a tax invoice.
+   *  Unsaved edits go first so the check runs on the ABN on screen. */
+  const checkAbn = async (invoice: TaxInvoice) => {
+    setSaving(true);
+    try {
+      if (dirty) await save(invoice);
+      const { data } = await api.post<TaxInvoice>(`/applications/${applicationId}/tax-invoices/${invoice.id}/abn-lookup`);
+      await load();
+      toast(`ABN Lookup: ${ABN_STATUS_LABEL[data.supplier_abn_status as AbnStatus]} — ${data.document_title.toLowerCase()}`, 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'ABN Lookup failed'), 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -202,7 +299,7 @@ export default function TaxInvoicePanel({
       // Drop unsaved edits to the figures the pricing owns — just replaced.
       setDraft((prev) => {
         const next = { ...prev };
-        for (const key of ['sale_price', 'deposit_paid', 'trade_in_value', 'payout_amount', 'lender_id'] as const) {
+        for (const key of ['sale_price', 'deposit_paid', 'trade_in_value', 'payout_amount', 'lender_id', 'facility_type'] as const) {
           delete next[key];
         }
         return next;
@@ -215,6 +312,37 @@ export default function TaxInvoicePanel({
       setSaving(false);
     }
   };
+
+  /** Delete every ticked draft behind one confirmation. Issued documents can't
+   *  be ticked — the server refuses to delete them anyway. */
+  const removeSelected = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const ok = await confirm({
+      title: `Delete ${ids.length} draft${ids.length > 1 ? 's' : ''}?`,
+      message: 'The selected drafts and their figures are removed permanently. Issued documents are not affected.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const results = await Promise.allSettled(
+      ids.map((id) => api.delete(`/applications/${applicationId}/tax-invoices/${id}`)),
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (openId && ids.includes(openId)) setOpenId(null);
+    setSelected(new Set());
+    await load();
+    if (failed) toast(`${failed} could not be deleted`, 'error');
+    else toast(`Deleted ${ids.length} draft${ids.length > 1 ? 's' : ''}`, 'success');
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const remove = async (invoice: TaxInvoice) => {
     if (!(await confirm({ title: 'Delete this tax invoice?', message: 'The request sheet and its figures are removed permanently.', confirmText: 'Delete', variant: 'danger' }))) return;
@@ -246,14 +374,39 @@ export default function TaxInvoicePanel({
     <Card>
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 className="text-[15px] font-semibold text-foreground">Tax Invoices</h2>
-        <div className="flex gap-1.5">
-          {(Object.keys(SUPPLIER_LABEL) as SupplierType[]).map((t) => (
-            <Button key={t} type="button" variant="secondary" onClick={() => create(t)}>
-              + {SUPPLIER_LABEL[t]}
-            </Button>
-          ))}
+        <div className="flex items-center gap-1.5">
+          {selected.size > 0 && (
+            <>
+              <Button type="button" variant="secondary" onClick={() => setSelected(new Set())}>Clear</Button>
+              <Button type="button" variant="danger" onClick={removeSelected}>
+                Delete {selected.size} draft{selected.size > 1 ? 's' : ''}
+              </Button>
+            </>
+          )}
+          {!choosing && (
+            <Button type="button" variant="secondary" onClick={() => setChoosing(true)}>+ New invoice</Button>
+          )}
         </div>
       </div>
+
+      {choosing && (
+        <NewInvoiceChooser
+          invoices={invoices}
+          picked={picked}
+          creating={creating}
+          onPick={setPicked}
+          onCreate={create}
+          onOpen={(id) => { openInvoice(id); closeChooser(); }}
+          onCancel={closeChooser}
+        />
+      )}
+
+      {duplicateDrafts(invoices).length > 0 && (
+        <p className="mb-2 rounded-md bg-secondary px-3 py-2 text-[12.5px] text-foreground">
+          {duplicateDrafts(invoices).map(([type, n]) => `${n} ${SUPPLIER_LABEL[type].toLowerCase()} drafts`).join(' and ')}{' '}
+          on this deal. Unless it is buying more than one asset, tick the extras and delete them.
+        </p>
+      )}
 
       {invoices.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
@@ -268,13 +421,28 @@ export default function TaxInvoicePanel({
             const isRequest = invoice.supplier_type === 'dealer';
             const sameDelivery = Boolean(draft.delivery_same_as_buyer ?? invoice.delivery_same_as_buyer);
             const hasPayout = invoice.totals.asset_payout > 0;
+            // Follows the unsaved choice so the party labels switch as the broker picks.
+            const facility = (field(invoice, 'facility_type') || null) as InvoiceFacilityType | null;
+            const lenderBuys = isRequest && facility != null && facility !== 'chattel';
+            const isPrivate = invoice.supplier_type === 'private';
+            const docReceived = (key: string, fallback: boolean) => docDraft[key] ?? fallback;
             const odometerSuggestion = classifyByOdometer(field(invoice, 'asset_odometer'));
             return (
-              <div key={invoice.id} className="rounded-lg border border-[var(--led-line)]">
+              <div key={invoice.id} className={`rounded-lg border ${selected.has(invoice.id) ? 'border-danger/50' : 'border-[var(--led-line)]'}`}>
+                <div className="flex items-center gap-2 pl-3">
+                {/* Only a draft can be deleted, so only a draft can be ticked. */}
+                <input
+                  type="checkbox"
+                  aria-label="Select this draft"
+                  checked={selected.has(invoice.id)}
+                  onChange={() => toggleSelected(invoice.id)}
+                  disabled={locked}
+                  className={locked ? 'invisible' : ''}
+                />
                 <button
                   type="button"
-                  onClick={() => { setOpenId(open ? null : invoice.id); setDraft({}); }}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                  onClick={() => (open ? setOpenId(null) : openInvoice(invoice.id))}
+                  className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-3 text-left"
                 >
                   <Badge
                     type="custom"
@@ -282,17 +450,27 @@ export default function TaxInvoicePanel({
                     label={locked ? 'Issued' : 'Draft'}
                     className={locked ? 'led-chip-success' : ''}
                   />
-                  <span className="text-[13.5px] font-medium text-foreground">
-                    {DOCUMENT_LABEL[invoice.supplier_type]}
-                  </span>
-                  <span className="text-[12.5px] text-muted-foreground">
-                    {invoice.supplier_name || 'Unnamed supplier'}
-                    {invoice.invoice_number ? ` · ${invoice.invoice_number}` : ''}
+                  <span className="min-w-0">
+                    <span className="block text-[13.5px] font-medium text-foreground">
+                      {invoice.document_title}
+                      <span className="font-normal text-muted-foreground">
+                        {' · '}{invoice.supplier_name || (isRequest ? 'dealer not entered' : 'seller not entered')}
+                        {invoice.invoice_number ? ` · ${invoice.invoice_number}` : ''}
+                      </span>
+                    </span>
+                    {/* Enough to tell two drafts of the same kind apart. */}
+                    <span className="block truncate text-[11.5px] text-muted-foreground">
+                      {invoice.buyer_name ? `For ${invoice.buyer_name} · ` : ''}
+                      Created {invoice.created_at ? formatDate(invoice.created_at) : ''}
+                      {invoice.created_by_name ? ` by ${invoice.created_by_name}` : ' automatically at approval'}
+                    </span>
                   </span>
                   <span className="ml-auto text-[13px] tabular-nums text-foreground">
                     {money(invoice.totals.total)}
                   </span>
+                  <span aria-hidden className="text-[11px] text-muted-foreground">{open ? '▲' : '▼'}</span>
                 </button>
+                </div>
 
                 {open && (
                   <div className="border-t border-[var(--led-line)] px-3 py-3 space-y-4">
@@ -310,10 +488,11 @@ export default function TaxInvoicePanel({
                       </div>
                     )}
 
-                    {!invoice.totals.is_tax_invoice && (
+                    {!invoice.totals.is_tax_invoice && !isRequest && (
                       <p className="rounded-md bg-secondary px-2.5 py-2 text-[12px] text-muted-foreground">
-                        This supplier is not registered for GST, so the document is issued as an
-                        invoice rather than a <em>tax</em> invoice and shows no GST.
+                        {isPrivate
+                          ? 'Only a seller with an active ABN registered for GST can issue a tax invoice. Until ABN Lookup shows that, this is a standard invoice with no GST.'
+                          : 'This supplier is not registered for GST, so the document is issued as an invoice rather than a tax invoice and shows no GST.'}
                       </p>
                     )}
 
@@ -324,24 +503,61 @@ export default function TaxInvoicePanel({
                         <>
                           <Text label="Attention" value={field(invoice, 'attention')} onChange={(v) => set('attention', v)} disabled={locked} />
                           <Text label="Fax number" value={field(invoice, 'fax_number')} onChange={(v) => set('fax_number', v)} disabled={locked} />
-                          <Text label="Dealer emails the invoice back to" value={field(invoice, 'reply_to_email')} onChange={(v) => set('reply_to_email', v)} disabled={locked} />
+                          <Text label="Dealer emails the invoice back to (broker & admin)" value={field(invoice, 'reply_to_email')} onChange={(v) => set('reply_to_email', v)} disabled={locked} />
+                          <Choice
+                            label="Facility"
+                            value={String(field(invoice, 'facility_type'))}
+                            options={[['', '—'], ...(Object.entries(FACILITY_LABEL) as [string, string][])]}
+                            onChange={(v) => set('facility_type', v || null)}
+                            disabled={locked}
+                          />
                         </>
                       )}
                     </Section>
 
-                    <Section title={isRequest ? 'Dealer' : 'Supplier'}>
+                    <Section title={isRequest ? 'Dealer' : isPrivate ? 'Seller — issues the invoice' : 'Supplier'}>
                       <Text label="Name" value={field(invoice, 'supplier_name')} onChange={(v) => set('supplier_name', v)} disabled={locked} />
                       <Text label="ABN" value={field(invoice, 'supplier_abn')} onChange={(v) => set('supplier_abn', v)} disabled={locked} />
+                      {isPrivate && (
+                        <Text label="ACN" value={field(invoice, 'supplier_acn')} onChange={(v) => set('supplier_acn', v)} disabled={locked} />
+                      )}
+                      {/* The seller is whoever the payout letter names, else the
+                          registered owner — offer that name when it differs. */}
+                      {isPrivate && !locked && invoice.expected_seller_name
+                        && invoice.expected_seller_name !== field(invoice, 'supplier_name') && (
+                        <button
+                          type="button"
+                          onClick={() => set('supplier_name', invoice.expected_seller_name)}
+                          className="text-left text-[12px] text-primary hover:underline sm:col-span-2 lg:col-span-3"
+                        >
+                          Use <strong>{invoice.expected_seller_name}</strong> — the name on the{' '}
+                          {invoice.totals.asset_payout > 0 && invoice.payout_letter_name ? 'payout letter' : 'registration certificate'}
+                        </button>
+                      )}
+                      {isPrivate && (
+                        <AbnCheck
+                          invoice={invoice}
+                          status={(field(invoice, 'supplier_abn_status') || null) as AbnStatus | null}
+                          onCheck={() => checkAbn(invoice)}
+                          onStatus={(v) => set('supplier_abn_status', v)}
+                          busy={saving}
+                          disabled={locked}
+                        />
+                      )}
                       <Text label="Address" value={field(invoice, 'supplier_address')} onChange={(v) => set('supplier_address', v)} disabled={locked} />
                       <Text label="Email" value={field(invoice, 'supplier_email')} onChange={(v) => set('supplier_email', v)} disabled={locked} />
                       <Text label="Phone" value={field(invoice, 'supplier_phone')} onChange={(v) => set('supplier_phone', v)} disabled={locked} />
-                      <Check
-                        label="Registered for GST"
-                        checked={Boolean(draft.supplier_gst_registered ?? invoice.supplier_gst_registered)}
-                        onChange={(v) => set('supplier_gst_registered', v)}
-                        disabled={locked}
-                      />
-                      {invoice.supplier_type === 'private' && (
+                      {/* On a private sale GST follows ABN Lookup; the flag is only
+                          the broker's to set when the status was recorded by hand. */}
+                      {(!isPrivate || (field(invoice, 'supplier_abn_status') === 'active' && !invoice.supplier_abn_checked_at)) && (
+                        <Check
+                          label="Registered for GST"
+                          checked={Boolean(draft.supplier_gst_registered ?? invoice.supplier_gst_registered)}
+                          onChange={(v) => set('supplier_gst_registered', v)}
+                          disabled={locked}
+                        />
+                      )}
+                      {isPrivate && (
                         <Check
                           label="No ABN — 'statement by a supplier' held on file"
                           checked={Boolean(draft.abn_withholding_declared ?? invoice.abn_withholding_declared)}
@@ -351,7 +567,27 @@ export default function TaxInvoicePanel({
                       )}
                     </Section>
 
-                    <Section title={`${isRequest ? 'Sold to' : 'Buyer'}${invoice.totals.buyer_identity_required ? ' (required at $1,000 or more)' : ''}`}>
+                    {lenderBuys && (
+                      <Section title="Sold to — the lender">
+                        <p className="text-[12.5px] text-foreground sm:col-span-2 lg:col-span-3">
+                          On a {FACILITY_LABEL[facility!].toLowerCase()} the lender buys the goods, so the dealer
+                          invoices{' '}
+                          <strong>{lenderName(invoice, lenderBook, field(invoice, 'lender_id')) || 'the financier chosen under Amounts'}</strong>
+                          {invoice.lender_address && String(field(invoice, 'lender_id')) === invoice.lender_id
+                            ? <>, {invoice.lender_address.replace(/\n/g, ', ')}</>
+                            : null}
+                          . The address comes from the lender book.
+                        </p>
+                      </Section>
+                    )}
+
+                    <Section title={
+                      lenderBuys
+                        ? 'Delivery to — the client'
+                        : isPrivate
+                          ? 'Addressed to — the client'
+                          : `${isRequest ? 'Sold to — the client' : 'Buyer'}${invoice.totals.buyer_identity_required ? ' (required at $1,000 or more)' : ''}`
+                    }>
                       {!locked && (
                         <button
                           type="button"
@@ -362,16 +598,21 @@ export default function TaxInvoicePanel({
                           Use the application's applicant
                         </button>
                       )}
+                      {isRequest && facility === 'chattel' && (
+                        <p className="text-[12px] text-muted-foreground sm:col-span-2 lg:col-span-3">
+                          Chattel mortgage: the client's name, address, ABN and ACN print on both Sold To and Delivery To.
+                        </p>
+                      )}
                       <Text label="Name" value={field(invoice, 'buyer_name')} onChange={(v) => set('buyer_name', v)} disabled={locked} />
                       <Text label="ABN" value={field(invoice, 'buyer_abn')} onChange={(v) => set('buyer_abn', v)} disabled={locked} />
                       <Text label="ACN" value={field(invoice, 'buyer_acn')} onChange={(v) => set('buyer_acn', v)} disabled={locked} />
                       <Text label="Address" value={field(invoice, 'buyer_address')} onChange={(v) => set('buyer_address', v)} disabled={locked} />
                     </Section>
 
-                    {isRequest && (
-                      <Section title="Delivery to">
+                    {(isRequest || isPrivate) && (
+                      <Section title={lenderBuys ? 'Deliver somewhere else' : 'Delivery to'}>
                         <Check
-                          label="Same as sold to"
+                          label={lenderBuys || isPrivate ? 'Deliver to the client, as above' : 'Same as sold to'}
                           checked={sameDelivery}
                           onChange={(v) => set('delivery_same_as_buyer', v)}
                           disabled={locked}
@@ -387,7 +628,44 @@ export default function TaxInvoicePanel({
                       </Section>
                     )}
 
-                    <Section title="Asset">
+                    {isPrivate && (
+                      <Section title="Seller paperwork">
+                        <Choice label="Is a valuation needed?" value={yesNoValue(field(invoice, 'valuation_needed'))} options={YES_NO} onChange={(v) => set('valuation_needed', yesNoParse(v))} disabled={locked} />
+                        <Choice label="Is there a charge on the PPSR?" value={yesNoValue(field(invoice, 'ppsr_charge'))} options={YES_NO} onChange={(v) => set('ppsr_charge', yesNoParse(v))} disabled={locked} />
+                        {field(invoice, 'ppsr_charge') === true && (
+                          <Choice label="Is it an ALL PAP charge?" value={yesNoValue(field(invoice, 'ppsr_all_pap'))} options={YES_NO} onChange={(v) => set('ppsr_all_pap', yesNoParse(v))} disabled={locked} />
+                        )}
+                        <Text label="Seller's name on the payout letter (if under finance)" value={field(invoice, 'payout_letter_name')} onChange={(v) => set('payout_letter_name', v)} disabled={locked} />
+                        <Text label="Registered owner on the registration certificate" value={field(invoice, 'registration_name')} onChange={(v) => set('registration_name', v)} disabled={locked} />
+                        <div className="sm:col-span-2 lg:col-span-3 rounded-md border border-[var(--led-line)] px-3 py-2">
+                          <p className="text-[11.5px] text-muted-foreground mb-1.5">
+                            Received from the seller. What is required follows the answers above and the payout under Amounts.
+                          </p>
+                          {invoice.seller_checklist.map((doc) => (
+                            <label key={doc.key} className={`flex items-center gap-2 py-0.5 ${doc.required ? '' : 'opacity-50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={docReceived(doc.key, doc.received)}
+                                onChange={(e) => setDocDraft((prev) => ({ ...prev, [doc.key]: e.target.checked }))}
+                                disabled={locked}
+                              />
+                              <span className="text-[13px] text-foreground">{doc.label}</span>
+                              <span className="text-[11.5px] text-muted-foreground">{doc.required ? 'required' : 'not needed'}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {field(invoice, 'valuation_needed') === true && (
+                          <>
+                            <Text label="Valuation — market value (incl. GST)" type="number" value={field(invoice, 'valuation_market_value')} onChange={(v) => set('valuation_market_value', v === '' ? null : Number(v))} disabled={locked} />
+                            <Text label="Valuation — forced sale value" type="number" value={field(invoice, 'valuation_forced_sale_value')} onChange={(v) => set('valuation_forced_sale_value', v === '' ? null : Number(v))} disabled={locked} />
+                            <Text label="Valuer" value={field(invoice, 'valuer_name')} onChange={(v) => set('valuer_name', v)} disabled={locked} />
+                            <Text label="Effective date of valuation" type="date" value={field(invoice, 'valuation_date')} onChange={(v) => set('valuation_date', v || null)} disabled={locked} />
+                          </>
+                        )}
+                      </Section>
+                    )}
+
+                    <Section title={isRequest ? 'Vehicle details — from the contract of sale, or leave blank for the dealer' : 'Asset'}>
                       <Text label="Description" value={field(invoice, 'asset_description')} onChange={(v) => set('asset_description', v)} disabled={locked} />
                       <Text label="Make" value={field(invoice, 'asset_make')} onChange={(v) => set('asset_make', v)} disabled={locked} />
                       <Text label="Model" value={field(invoice, 'asset_model')} onChange={(v) => set('asset_model', v)} disabled={locked} />
@@ -445,7 +723,7 @@ export default function TaxInvoicePanel({
                           disabled={saving}
                           className="text-left text-[12px] text-primary hover:underline disabled:opacity-60"
                         >
-                          Pull the sale price, deposit, trade-in and payout from the latest lender pricing
+                          Pull the facility, sale price, deposit, trade-in and payout from the latest lender pricing
                         </button>
                       )}
                       <Text label="Sale price" type="number" value={field(invoice, 'sale_price')} onChange={(v) => set('sale_price', v === '' ? null : Number(v))} disabled={locked} />
@@ -460,7 +738,15 @@ export default function TaxInvoicePanel({
                           What is owing on the asset being bought is already
                           inside its price and comes out of settlement. */}
                       <Text label="Payout owing on the trade-in" type="number" value={field(invoice, 'payout_amount')} onChange={(v) => set('payout_amount', v === '' ? null : Number(v))} disabled={locked} />
-                      <Text label="Payout owing on the asset being bought" type="number" value={field(invoice, 'asset_payout_amount')} onChange={(v) => set('asset_payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      <Text label={isPrivate ? "Payout owing on the vehicle (paid to the seller's lender)" : 'Payout owing on the asset being bought'} type="number" value={field(invoice, 'asset_payout_amount')} onChange={(v) => set('asset_payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      {isPrivate && hasPayout && (
+                        <Check
+                          label="Seller reduced the payout to fit the funding (proof of payment required)"
+                          checked={Boolean(draft.payout_reduced ?? invoice.payout_reduced)}
+                          onChange={(v) => set('payout_reduced', v)}
+                          disabled={locked}
+                        />
+                      )}
                       <Text label="Less cash deposit" type="number" value={field(invoice, 'deposit_paid')} onChange={(v) => set('deposit_paid', v === '' ? null : Number(v))} disabled={locked} />
                     </Section>
 
@@ -496,19 +782,34 @@ export default function TaxInvoicePanel({
                       {invoice.name_match && <NameMatchTable match={invoice.name_match} />}
                     </Section>
 
+                    {/* What comes back on the dealer's own tax invoice. The request
+                        prints these blank so the dealer fills them in. */}
+                    {isRequest && invoice.dealer_to_supply.length > 0 && (
+                      <div className="rounded-md border border-[var(--led-line)] px-3 py-2">
+                        <p className="text-[12px] font-medium text-foreground mb-1">The dealer supplies on their tax invoice</p>
+                        <p className="text-[12px] text-muted-foreground">{invoice.dealer_to_supply.join(' · ')}</p>
+                      </div>
+                    )}
+
                     <div className="rounded-md bg-secondary px-3 py-2 text-[12.5px] tabular-nums">
                       <Row label={isRequest ? 'Cash price' : 'Subtotal'} value={money(invoice.totals.subtotal)} />
-                      <Row label={invoice.totals.is_tax_invoice ? 'GST included' : 'GST'} value={money(invoice.totals.gst)} />
+                      {/* A dealer shows the GST on their own invoice — not worked out here. */}
+                      {!isRequest && (
+                        <Row label={invoice.totals.is_tax_invoice ? 'GST included' : 'GST'} value={money(invoice.totals.gst)} />
+                      )}
                       {invoice.totals.trade_in > 0 && <Row label="Less trade in" value={money(invoice.totals.trade_in)} />}
                       {invoice.totals.payout > 0 && <Row label="Payout owing on the trade in" value={money(invoice.totals.payout)} />}
                       <Row label={isRequest ? 'Less cash deposit' : 'Deposit paid'} value={money(invoice.totals.deposit_paid)} />
-                      <Row label={isRequest ? 'Total payable for goods' : 'Balance due'} value={money(invoice.totals.balance_due)} strong />
+                      <Row label={isRequest ? 'Total payable for goods' : isPrivate ? 'Amount funded' : 'Balance due'} value={money(invoice.totals.balance_due)} strong />
                       {/* The deposit is already out of the line above, so this is
                           that same figure under the lender's name for it. */}
                       <Row label="Amount financed" value={money(invoice.totals.amount_financed)} />
-                      <Row label="Ex GST" value={money(invoice.totals.ex_gst)} />
+                      {!isRequest && <Row label="Ex GST" value={money(invoice.totals.ex_gst)} />}
                       {invoice.totals.lvr != null && (
-                        <Row label="LVR" value={`${invoice.totals.lvr.toFixed(1)}%`} />
+                        <Row
+                          label={invoice.totals.lvr_basis === 'valuation' ? 'LVR (against valuation)' : 'LVR (against cash price)'}
+                          value={`${invoice.totals.lvr.toFixed(1)}%`}
+                        />
                       )}
                       {invoice.totals.negative_equity > 0 && (
                         <Row label="Negative equity" value={money(invoice.totals.negative_equity)} />
@@ -521,7 +822,7 @@ export default function TaxInvoicePanel({
                       <div className="rounded-md bg-secondary px-3 py-2 text-[12.5px] tabular-nums">
                         <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Settlement</p>
                         <Row
-                          label={`Part payment 1 — ${invoice.payout_creditor_name || 'existing financier'}`}
+                          label={`Part payment 1 — ${invoice.payout_creditor_name || "seller's lender"}`}
                           value={money(invoice.totals.settlement_to_creditor)}
                         />
                         <Row
@@ -557,7 +858,7 @@ export default function TaxInvoicePanel({
                     <div className="flex flex-wrap items-center gap-2">
                       {!locked && (
                         <>
-                          <Button type="button" onClick={() => save(invoice)} disabled={saving || !Object.keys(draft).length}>
+                          <Button type="button" onClick={() => save(invoice)} disabled={saving || !dirty}>
                             Save
                           </Button>
                           <Button type="button" variant="secondary" onClick={() => issue(invoice)} disabled={invoice.missing.length > 0}>
@@ -571,8 +872,16 @@ export default function TaxInvoicePanel({
                       {!locked && (
                         <Button type="button" variant="secondary" onClick={() => remove(invoice)}>Delete</Button>
                       )}
+                      {locked && (
+                        <Button type="button" variant="secondary" onClick={() => email(invoice)} disabled={emailing === invoice.id}>
+                          {emailing === invoice.id ? 'Sending…' : invoice.emailed_at ? 'Resend to broker & admin' : 'Email to broker & admin'}
+                        </Button>
+                      )}
                       {locked && invoice.issued_at && (
-                        <span className="text-[12px] text-muted-foreground">Issued {formatDate(invoice.issued_at)}</span>
+                        <span className="text-[12px] text-muted-foreground">
+                          Issued {formatDate(invoice.issued_at)}
+                          {invoice.emailed_at && ` · emailed ${formatDate(invoice.emailed_at)}`}
+                        </span>
                       )}
                     </div>
 
@@ -628,6 +937,122 @@ function Check({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} />
       <span className="text-[13px] text-foreground">{label}</span>
     </label>
+  );
+}
+
+/** Supplier types with more than one draft — almost always a mis-click. */
+function duplicateDrafts(invoices: TaxInvoice[]): [SupplierType, number][] {
+  const counts = new Map<SupplierType, number>();
+  for (const i of invoices) {
+    if (i.status === 'draft') counts.set(i.supplier_type, (counts.get(i.supplier_type) ?? 0) + 1);
+  }
+  return [...counts].filter(([, n]) => n > 1);
+}
+
+/** Pick a type, then confirm. Where a draft of that type is already on the
+ *  deal, opening it is the default and creating another is the deliberate
+ *  second choice — a deal buying two assets does need two. */
+function NewInvoiceChooser({
+  invoices, picked, creating, onPick, onCreate, onOpen, onCancel,
+}: {
+  invoices: TaxInvoice[];
+  picked: SupplierType | null;
+  creating: boolean;
+  onPick: (t: SupplierType) => void;
+  onCreate: (t: SupplierType) => void;
+  onOpen: (id: string) => void;
+  onCancel: () => void;
+}) {
+  const existing = picked ? invoices.filter((i) => i.supplier_type === picked && i.status === 'draft') : [];
+  return (
+    <div className="mb-3 rounded-lg border border-[var(--led-line)] p-3">
+      <p className="text-[12.5px] font-medium text-foreground mb-2">Who is the asset bought from?</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {(Object.keys(SUPPLIER_LABEL) as SupplierType[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onPick(t)}
+            className={`rounded-md border px-3 py-2 text-left ${picked === t ? 'border-primary bg-primary/5' : 'border-[var(--led-line)] hover:bg-secondary'}`}
+          >
+            <span className="block text-[13px] font-medium text-foreground">{SUPPLIER_LABEL[t]}</span>
+            <span className="block text-[11.5px] text-muted-foreground">{SUPPLIER_HELP[t]}</span>
+          </button>
+        ))}
+      </div>
+      {existing.length > 0 && (
+        <p className="mt-2 text-[12.5px] text-foreground">
+          This deal already has {existing.length === 1 ? 'a' : existing.length} {SUPPLIER_LABEL[picked!].toLowerCase()} draft
+          {existing.length > 1 ? 's' : ''}. Open {existing.length === 1 ? 'it' : 'the latest'} instead of starting another?
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {existing.length > 0 ? (
+          <>
+            <Button type="button" onClick={() => onOpen(existing[0].id)}>Open existing draft</Button>
+            <Button type="button" variant="secondary" onClick={() => onCreate(picked!)} disabled={creating}>
+              {creating ? 'Creating…' : 'Create another (second asset)'}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" onClick={() => picked && onCreate(picked)} disabled={!picked || creating}>
+            {creating ? 'Creating…' : picked ? `Create ${SUPPLIER_LABEL[picked].toLowerCase()} invoice` : 'Choose one above'}
+          </Button>
+        )}
+        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+/** The seller's ABN verdict: the ABN Lookup button, what it found, and a
+ *  hand-set fallback for a seller with no ABN or when ABN Lookup is down. */
+function AbnCheck({
+  invoice, status, onCheck, onStatus, busy, disabled,
+}: {
+  invoice: TaxInvoice;
+  status: AbnStatus | null;
+  onCheck: () => void;
+  onStatus: (v: AbnStatus | null) => void;
+  busy: boolean;
+  disabled: boolean;
+}) {
+  const verdict = !status
+    ? 'Not checked yet'
+    : status === 'active'
+      ? `Active · ${invoice.supplier_gst_registered ? 'registered for GST — tax invoice' : 'not registered for GST — standard invoice'}`
+      : `${ABN_STATUS_LABEL[status]} — GST-free, standard invoice`;
+  return (
+    <div className="sm:col-span-2 lg:col-span-3 flex flex-wrap items-end gap-3 rounded-md bg-secondary px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11.5px] text-muted-foreground">ABN Lookup</p>
+        <p className="text-[13px] text-foreground">
+          {verdict}
+          {invoice.supplier_abn_name && status === invoice.supplier_abn_status && (
+            <span className="text-muted-foreground"> · registered to {invoice.supplier_abn_name}</span>
+          )}
+        </p>
+        {invoice.supplier_abn_checked_at && status === invoice.supplier_abn_status && (
+          <p className="text-[11.5px] text-muted-foreground">Checked {formatDate(invoice.supplier_abn_checked_at)}</p>
+        )}
+      </div>
+      {!disabled && (
+        <>
+          <Button type="button" variant="secondary" onClick={onCheck} disabled={busy}>Check on ABN Lookup</Button>
+          <label className="block">
+            <span className="block text-[11.5px] text-muted-foreground mb-1">Or record by hand</span>
+            <select
+              value={status ?? ''}
+              onChange={(e) => onStatus((e.target.value || null) as AbnStatus | null)}
+              className="rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground"
+            >
+              <option value="">—</option>
+              {(Object.keys(ABN_STATUS_LABEL) as AbnStatus[]).map((k) => <option key={k} value={k}>{ABN_STATUS_LABEL[k]}</option>)}
+            </select>
+          </label>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -693,12 +1118,25 @@ function Choice({
   );
 }
 
-/** Named so a dealer can file the attachment without opening it. */
+/** Named so a dealer can file the attachment without opening it. A private
+ *  sale follows the desk's naming: "Private sale (tax) invoice (Client).pdf". */
 function pdfFilename(invoice: TaxInvoice): string {
+  if (invoice.supplier_type === 'private') {
+    // Strip only what a filesystem refuses; the name stays readable.
+    const client = (invoice.buyer_name || 'client').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    return `${invoice.document_title} (${client}).pdf`;
+  }
   const who = invoice.supplier_name || invoice.buyer_name || 'dealer';
   const stem = invoice.supplier_type === 'dealer' ? 'tax-invoice-request' : 'tax-invoice';
   const ref = invoice.invoice_number || who;
   return `${stem}-${ref}`.replace(/[^a-zA-Z0-9-]+/g, '-').replace(/-+/g, '-').toLowerCase() + '.pdf';
+}
+
+/** The lender currently picked on the form, which may be an unsaved choice. */
+function lenderName(invoice: TaxInvoice, book: Lender[], lenderId: string | number | boolean): string | null {
+  if (!lenderId) return null;
+  return book.find((l) => l.id === lenderId)?.name
+    ?? (lenderId === invoice.lender_id ? invoice.lender_name : null);
 }
 
 /* ---------------------------------------------------------------------------
@@ -765,6 +1203,9 @@ function PrintSection({ title, children }: { title: string; children: React.Reac
   );
 }
 
+/** Spread a server-derived party into PartyBlock's props. */
+const partyProps = (p: TaxInvoiceParty) => ({ name: p.name, abn: p.abn, acn: p.acn, lines: [p.address] });
+
 /** One party — the sold-to / delivery-to / from blocks all print like this. */
 function PartyBlock({
   heading, name, abn, acn, lines,
@@ -815,7 +1256,9 @@ function GoodsTable({ rows }: { rows: [string, string][][] }) {
                   colSpan={pairs.length === 1 ? 3 : 1}
                   style={{ padding: '3px 8px', width: pairs.length === 1 ? undefined : '29%', fontWeight: 600, verticalAlign: 'top' }}
                 >
-                  {v || EMPTY}
+                  {/* A blank is a line for the dealer to write on, not a dash — the
+                      request goes out for them to complete what we don't know. */}
+                  {v || <span style={{ display: 'block', borderBottom: `1px dotted ${MUTED}`, height: 14 }} />}
                 </td>
               </Fragment>
             ))}
@@ -855,7 +1298,6 @@ function PrintableDocument({ invoice }: { invoice: TaxInvoice }) {
  */
 function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
   const t = invoice.totals;
-  const deliverySame = invoice.delivery_same_as_buyer;
   const buildCompliance = [invoice.asset_build_date, invoice.asset_compliance_date].filter(Boolean).join(' and ');
   const rego = [
     invoice.asset_registration,
@@ -868,7 +1310,7 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
   return (
     <DocumentShell
       invoice={invoice}
-      eyebrow="Asset Finance · Dealer"
+      eyebrow={`Asset Finance · Dealer${invoice.facility_type ? ` · ${FACILITY_LABEL[invoice.facility_type]}` : ''}`}
       title="Tax Invoice Request"
       subtitle={invoice.supplier_name || undefined}
     >
@@ -901,20 +1343,8 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
 
       <PrintSection title="Parties">
         <div className="break-inside-avoid" style={{ display: 'flex', gap: 24 }}>
-          <PartyBlock
-            heading="Sold to"
-            name={invoice.buyer_name}
-            abn={invoice.buyer_abn}
-            acn={invoice.buyer_acn}
-            lines={[invoice.buyer_address]}
-          />
-          <PartyBlock
-            heading="Delivery to"
-            name={deliverySame ? invoice.buyer_name : invoice.delivery_name}
-            abn={deliverySame ? invoice.buyer_abn : invoice.delivery_abn}
-            acn={deliverySame ? invoice.buyer_acn : invoice.delivery_acn}
-            lines={[deliverySame ? invoice.buyer_address : invoice.delivery_address]}
-          />
+          <PartyBlock heading="Sold to" {...partyProps(invoice.sold_to)} />
+          <PartyBlock heading="Delivery to" {...partyProps(invoice.deliver_to)} />
         </div>
       </PrintSection>
 
@@ -936,12 +1366,12 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
         <div className="break-inside-avoid" style={{ marginLeft: 'auto', width: 330 }}>
           {/* The dealer releases the goods against a financier's settlement, so
               the sheet names which one is paying. */}
-          {invoice.lender_name && <PrintRow label="Financier" value={invoice.lender_name} />}
-          <PrintRow label="Cash price (GST inclusive)" value={money(invoice.sale_price)} />
-          {/* "Cash Price (please show GST)" on the sheet — the dealer's invoice
-              has to break the same price into these two halves. */}
-          <PrintRow label="GST included in the cash price" value={money(t.gst)} muted />
-          <PrintRow label="Cash price excluding GST" value={money(t.ex_gst)} muted />
+          {/* On a lease the lender is already Sold To; name it here only when
+              the client is buying. */}
+          {invoice.lender_name && !invoice.lender_owns_goods && <PrintRow label="Financier" value={invoice.lender_name} />}
+          {/* The GST split is the dealer's to show on their invoice, not ours
+              to calculate — hence the sheet's own wording. */}
+          <PrintRow label="Cash price (please show GST)" value={money(invoice.sale_price)} />
           {invoice.other_charges != null && (
             <PrintRow label={invoice.other_charges_label || 'Other charges'} value={money(invoice.other_charges)} />
           )}
@@ -1041,7 +1471,7 @@ function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
  */
 function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
   const t = invoice.totals;
-  const heading = t.is_tax_invoice ? 'Tax Invoice' : 'Invoice';
+  const heading = invoice.document_title.replace(/\b\w/g, (c) => c.toUpperCase());
   const asset = [invoice.asset_year, invoice.asset_make, invoice.asset_model].filter(Boolean).join(' ');
   return (
     <DocumentShell
@@ -1058,15 +1488,12 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
           heading="From"
           name={invoice.supplier_name}
           abn={invoice.supplier_abn}
+          acn={invoice.supplier_acn}
           lines={[invoice.supplier_address, invoice.supplier_email, invoice.supplier_phone]}
         />
-        <PartyBlock
-          heading="To"
-          name={invoice.buyer_name}
-          abn={invoice.buyer_abn}
-          acn={invoice.buyer_acn}
-          lines={[invoice.buyer_address]}
-        />
+        <PartyBlock heading="To" {...partyProps(invoice.sold_to)} />
+        {/* A private sale is addressed AND delivered to the client. */}
+        {invoice.supplier_type === 'private' && <PartyBlock heading="Deliver to" {...partyProps(invoice.deliver_to)} />}
       </div>
 
       <PrintSection title="What is being sold">
@@ -1116,7 +1543,7 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
           {t.trade_in > 0 && <PrintRow label="Less trade in" value={money(t.trade_in)} />}
           {t.payout > 0 && <PrintRow label="Payout owing on the trade in" value={money(t.payout)} />}
           {t.deposit_paid > 0 && <PrintRow label="Less deposit paid" value={money(t.deposit_paid)} />}
-          <PrintRow label="Balance due" value={money(t.balance_due)} strong />
+          <PrintRow label={invoice.supplier_type === 'private' ? 'Amount funded' : 'Balance due'} value={money(t.balance_due)} strong />
         </div>
       </PrintSection>
 
