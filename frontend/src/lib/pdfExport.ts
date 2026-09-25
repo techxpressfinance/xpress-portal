@@ -1,4 +1,5 @@
 import html2pdf from 'html2pdf.js';
+import { PRINT_INSET } from './printPage';
 
 /**
  * html2pdf.js ships its own `declare module` (node_modules/html2pdf.js/type.d.ts)
@@ -87,7 +88,17 @@ function installGlobalFallback(): HTMLStyleElement {
   const style = document.createElement('style');
   style.setAttribute('data-pdf-global-fallback', '');
   const vars = Object.entries(PDF_VAR_FALLBACKS).map(([k, v]) => `${k}: ${v} !important;`).join('');
-  style.textContent = `:root, .ledger-theme, .pdf-sanitize, .pdf-sanitize * { ${vars} scrollbar-color: auto !important; }`;
+  // html2canvas finds each font's baseline by laying out a 1x1 <img> inline
+  // beside sample text, in a hidden div it appends to the LIVE document's body
+  // (FontMetrics.parseMetrics — not the clone, so onclone can't reach it).
+  // Tailwind's preflight makes every img display:block, which drops the probe
+  // onto its own line; the measured baseline then comes out a line too deep
+  // and all text paints low — rules strike through the line above them and
+  // row stripes sit offset from their text. Matched narrowly so no real image
+  // on the page reflows while an export runs.
+  const baselineProbe = 'body > div[style*="visibility: hidden"] > img[width="1"][height="1"]';
+  style.textContent = `:root, .ledger-theme, .pdf-sanitize, .pdf-sanitize * { ${vars} scrollbar-color: auto !important; }`
+    + ` ${baselineProbe} { display: inline !important; }`;
   document.head.appendChild(style);
   return style;
 }
@@ -176,7 +187,9 @@ function paintXpressFooter(pdf: PdfDoc): void {
   const totalPages = pdf.internal.getNumberOfPages();
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const sideMargin = 14; // mm
+  // The print blocks' own side inset, in mm at 96dpi, so the band's text lines
+  // up with the masthead and the body above it.
+  const sideMargin = (PRINT_INSET * 25.4) / 96;
   const bandH = 20;      // mm — keep in sync with the reserved bottom margin
   for (let i = 1; i <= totalPages; i++) {
     pdf.setPage(i);

@@ -1187,8 +1187,8 @@ function DocumentShell({
 
 function PrintSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, borderBottom: `1px solid ${LINE}`, paddingBottom: 3, marginBottom: 6 }}>
+    <div style={{ marginTop: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, borderBottom: `1px solid ${LINE}`, paddingBottom: 4, marginBottom: 8 }}>
         <span style={{ width: 5, height: 5, background: GOLD, transform: 'rotate(45deg)', display: 'inline-block', flex: 'none' }} />
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: NAVY }}>
           {title}
@@ -1247,10 +1247,10 @@ function GoodsTable({ rows }: { rows: [string, string][][] }) {
           <tr key={pairs[0][0]} style={{ background: i % 2 ? '#f8fafc' : '#ffffff' }}>
             {pairs.map(([k, v]) => (
               <Fragment key={k}>
-                <td style={{ padding: '3px 8px', width: '21%', color: MUTED, verticalAlign: 'top' }}>{k}</td>
+                <td style={{ padding: '4px 8px', width: '21%', color: MUTED, verticalAlign: 'top' }}>{k}</td>
                 <td
                   colSpan={pairs.length === 1 ? 3 : 1}
-                  style={{ padding: '3px 8px', width: pairs.length === 1 ? undefined : '29%', fontWeight: 600, verticalAlign: 'top' }}
+                  style={{ padding: '4px 8px', width: pairs.length === 1 ? undefined : '29%', fontWeight: 600, verticalAlign: 'top' }}
                 >
                   {/* A blank is a line for the dealer to write on, not a dash — the
                       request goes out for them to complete what we don't know. */}
@@ -1270,6 +1270,8 @@ function PrintRow({ label, value, strong, muted }: { label: string; value: strin
     <div
       style={{
         display: 'flex', justifyContent: 'space-between', padding: strong ? '5px 0 0' : '2px 0',
+        // A total gets clear air above its rule, so the line never crowds the row it closes.
+        marginTop: strong ? 6 : undefined,
         borderTop: strong ? `1px solid ${LINE}` : undefined,
         fontSize: muted ? 10.5 : 12,
         color: muted ? MUTED : undefined,
@@ -1431,7 +1433,7 @@ function SettlementSection({ invoice }: { invoice: TaxInvoice }) {
 
   if (t.asset_payout <= 0) {
     return (
-      <PrintSection title="Nominated seller's account">
+      <PrintSection title={invoice.supplier_type === 'auction' ? "Nominated auction house's account" : "Nominated seller's account"}>
         <div className="break-inside-avoid">
           {invoice.payout_account_name && <div>{invoice.payout_account_name}</div>}
           <div>{account(invoice.payout_bsb, invoice.payout_account_number)}</div>
@@ -1534,7 +1536,7 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
 
         <div className="break-inside-avoid" style={{ marginLeft: 'auto', width: 300, marginTop: 10 }}>
           <PrintRow label="Subtotal" value={money(t.subtotal)} />
-          <PrintRow label={t.is_tax_invoice ? 'GST included in this total' : 'GST'} value={money(t.gst)} muted />
+          {t.is_tax_invoice && <PrintRow label="GST included in this total" value={money(t.gst)} muted />}
           {t.is_tax_invoice && <PrintRow label="Total excluding GST" value={money(t.ex_gst)} muted />}
           {t.trade_in > 0 && <PrintRow label="Less trade in" value={money(t.trade_in)} />}
           {t.payout > 0 && <PrintRow label="Payout owing on the trade in" value={money(t.payout)} />}
