@@ -41,8 +41,88 @@ import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
 import ActivityChanges from '../../components/ActivityChanges';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
-import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BookmarkIcon, BuildingOfficeIcon, ChatBubbleBottomCenterTextIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserGroupIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BookmarkIcon, BuildingOfficeIcon, ChatBubbleBottomCenterTextIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EllipsisHorizontalIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserGroupIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
+
+// The pipeline in order, so the next forward step can be offered as the one
+// primary action; everything else (reject, not proceeding, step back) sits in
+// the overflow menu.
+const PIPELINE_ORDER = ['draft', 'application_received', 'application_assessed', 'submitted', 'approval', 'settled'];
+
+function StatusMoveActions({ current, transitions, onMove }: {
+  current: string;
+  transitions: string[];
+  onMove: (status: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const at = PIPELINE_ORDER.indexOf(current);
+  const next = transitions
+    .filter((t) => PIPELINE_ORDER.indexOf(t) > at)
+    .sort((a, b) => PIPELINE_ORDER.indexOf(a) - PIPELINE_ORDER.indexOf(b))[0];
+  const rest = transitions.filter((t) => t !== next);
+  const label = (t: string) => STATUS_LABEL[t as keyof typeof STATUS_LABEL] || t.replace(/_/g, ' ');
+
+  return (
+    <div ref={ref} className="relative flex items-center gap-2">
+      {next && (
+        <Button size="sm" onClick={() => onMove(next)}>
+          Move to {label(next)}
+          <ChevronRightIcon className="ml-1 h-3.5 w-3.5" strokeWidth={2.2} />
+        </Button>
+      )}
+      {rest.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          title="Other status changes"
+          className="rounded-lg border border-[var(--led-line)] p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <EllipsisHorizontalIcon className="h-4 w-4" strokeWidth={2} />
+        </button>
+      )}
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-20 mt-1.5 min-w-[200px] rounded-xl border border-[var(--led-line)] bg-card p-1 shadow-lg">
+          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Move to</p>
+          {rest.map((t) => (
+            <button
+              key={t}
+              role="menuitem"
+              type="button"
+              onClick={() => { setOpen(false); onMove(t); }}
+              className={`block w-full rounded-lg px-2.5 py-2 text-left text-[13px] font-medium capitalize transition-colors hover:bg-secondary ${
+                t === 'rejected' || t === 'not_proceeding' ? 'text-destructive' : 'text-foreground'
+              }`}
+            >
+              {label(t)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TAB_LABEL = {
+  overview: 'Overview',
+  documents: 'Docs & Analysis',
+  submissions: 'Submissions',
+  quotes: 'Quotes',
+  invoices: 'Tax Invoices',
+  messages: 'Messages',
+  activity: 'Activity',
+} as const;
 
 export default function ReviewApplication() {
   const { id } = useParams<{ id: string }>();
@@ -997,6 +1077,18 @@ export default function ReviewApplication() {
   const missingDocs = RECOMMENDED_DOC_TYPES.filter((t) => !uploadedDocTypes.has(t));
   const allDocsUploaded = missingDocs.length === 0;
 
+  // Tab counts only where they ask for attention — a bare total ("Quotes 3")
+  // says nothing a click wouldn't, so it isn't shown.
+  const unreadMessages = [...clientMessages, ...referrerMessages]
+    .filter((m) => !m.is_read && (m.author_role === 'client' || m.author_role === 'referrer')).length;
+  const awaitingLender = lenderSubmissions.filter((sub) => sub.status === 'pending').length;
+  const preSubmission = ['draft', 'application_received', 'application_assessed'].includes(application?.status ?? '');
+  const tabBadges: Partial<Record<string, { count: number; title: string; tone: 'attention' | 'neutral' }>> = {
+    ...(unreadMessages > 0 && { messages: { count: unreadMessages, title: `${unreadMessages} unread`, tone: 'attention' as const } }),
+    ...(awaitingLender > 0 && { submissions: { count: awaitingLender, title: `${awaitingLender} awaiting a lender response`, tone: 'neutral' as const } }),
+    ...(preSubmission && missingDocs.length > 0 && { documents: { count: missingDocs.length, title: `${missingDocs.length} recommended document${missingDocs.length === 1 ? '' : 's'} missing`, tone: 'neutral' as const } }),
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -1086,11 +1178,202 @@ export default function ReviewApplication() {
         </div>
       </div>
 
-      {/* Status Timeline */}
-      <Card className="mb-6">
-        <h2 className="text-[13px] font-medium text-muted-foreground mb-4">Application Progress</h2>
+      {/* Status Timeline — the deal's header card: where it is, how to move
+          it on, and who is working it. Overflow visible so the status menu
+          isn't clipped at the card edge. */}
+      <Card className="mb-6 led-card-overflow">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-[13px] font-medium text-muted-foreground">Application Progress</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge value={application.status} />
+            {allowedTransitions.length === 0 ? (
+              <span className="text-[12px] text-muted-foreground">Final status</span>
+            ) : (
+              <StatusMoveActions
+                current={application.status}
+                transitions={allowedTransitions}
+                onMove={handleStatusChange}
+              />
+            )}
+          </div>
+        </div>
         <StatusTimeline currentStatus={application.status} />
+
+        {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[var(--led-line)] pt-4">
+            <span className="mr-1 text-[12px] font-medium text-muted-foreground">Assigned brokers</span>
+            {application.assigned_brokers.length === 0 && (
+              <span className="text-[12.5px] text-muted-foreground">None yet</span>
+            )}
+            {application.assigned_brokers.map((ab) => (
+              <span key={ab.id} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 py-0.5 pl-0.5 pr-1.5">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                  {getInitials(ab.full_name)}
+                </span>
+                <span className="text-[12.5px] font-medium text-foreground">{ab.full_name}</span>
+                <button
+                  onClick={() => setRemoveBrokerTarget({ id: ab.id, full_name: ab.full_name })}
+                  className="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-destructive"
+                  title="Remove broker"
+                >
+                  <XMarkIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </span>
+            ))}
+            {brokers.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  if (val.startsWith('group:')) {
+                    handleAssignGroup(val.slice(6));
+                  } else {
+                    handleAssignBroker(val);
+                  }
+                }}
+                aria-label="Assign broker or group"
+                className="led-input !w-auto !py-1 text-[12.5px]"
+              >
+                <option value="">+ Assign…</option>
+                {brokerGroups.length > 0 && (
+                  <optgroup label="Broker Groups">
+                    {brokerGroups.map((g) => (
+                      <option key={`g-${g.id}`} value={`group:${g.id}`}>
+                        {g.name} ({g.members.length} member{g.members.length !== 1 ? 's' : ''})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Individual Brokers">
+                  {brokers
+                    .filter((b) => !application.assigned_brokers.some((ab) => ab.id === b.id))
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>{b.full_name}</option>
+                    ))}
+                </optgroup>
+              </select>
+            )}
+          </div>
+        )}
       </Card>
+
+      {/* Approval Conditions */}
+      {/* Shown from the moment the deal is approved, even with nothing on the
+          list yet, so the first condition can be added here. */}
+      {(!!application.approval_conditions?.length || application.status === 'approval') && (
+        <Card className="mb-6">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
+            {!!application.approval_conditions?.length && (
+              <span className="text-[12px] text-muted-foreground tabular-nums">
+                {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
+              </span>
+            )}
+          </div>
+          {application.approval_lender_name && (
+            <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
+          )}
+          {/* Approval is the point the desk goes back to the dealer, so the
+              request is raised here rather than left to be remembered. The
+              draft is normally already waiting (see the backend's
+              ensure_request_for_approval); this opens it, and raises one for
+              a deal approved before that hook existed. */}
+          {applicationLoanCategory(application) === 'asset_finance' && (
+            <Button
+              variant="secondary"
+              className="mb-3"
+              onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); }}
+            >
+              Generate tax invoice
+            </Button>
+          )}
+          {!!application.approval_conditions?.length && (
+            <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
+              <div
+                className="h-full rounded-full bg-success transition-all"
+                style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
+              />
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {application.approval_conditions?.map((item) => (
+              <div key={item.id} className="group flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => handleToggleApprovalCondition(item.id)}
+                  disabled={togglingConditionId === item.id}
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                    item.is_completed
+                      ? 'border-muted-foreground bg-muted-foreground text-white'
+                      : 'border-border hover:border-primary hover:bg-primary/5'
+                  }`}
+                >
+                  {item.is_completed && (
+                    <CheckIcon className="h-3 w-3" strokeWidth={3} />
+                  )}
+                </button>
+                {editingConditionId === item.id ? (
+                  <input
+                    className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2 py-1 text-[13.5px] text-foreground"
+                    value={editingConditionText}
+                    onChange={(e) => setEditingConditionText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleSaveConditionEdit(); }
+                      if (e.key === 'Escape') { setEditingConditionId(null); setEditingConditionText(''); }
+                    }}
+                    onBlur={handleSaveConditionEdit}
+                    autoFocus
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setEditingConditionId(item.id); setEditingConditionText(item.text); }}
+                    className="flex-1 min-w-0 text-left"
+                    title="Click to edit"
+                  >
+                    <span className={`block text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                      {item.text}
+                    </span>
+                    {item.is_completed && item.completed_by_name && (
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        Ticked by {item.completed_by_name}
+                        {item.completed_at ? ` · ${formatDate(item.completed_at)}` : ''}
+                      </span>
+                    )}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteApprovalCondition(item.id)}
+                  className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  title="Remove condition"
+                >
+                  <XMarkIcon className="h-4 w-4" strokeWidth={2} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
+              placeholder="Add a condition..."
+              value={newConditionText}
+              onChange={(e) => setNewConditionText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddApprovalCondition(); } }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleAddApprovalCondition}
+              disabled={!newConditionText.trim() || addingCondition}
+            >
+              Add
+            </Button>
+          </div>
+        </Card>
+      )}
+
 
       {/* Anything that didn't load. Without this a failed fetch renders as an
           empty tab, which reads as "no quotes" rather than "we couldn't ask". */}
@@ -1167,28 +1450,47 @@ export default function ReviewApplication() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Main Content Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden border-b border-border/60 mb-6 scrollbar-none">
-            {(['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap px-4 py-4 text-[14px] font-semibold transition-all duration-300 relative capitalize ${activeTab === tab
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg'
-                  }`}
-              >
-                {tab === 'overview' ? 'Overview' : tab === 'documents' ? 'Docs & Analysis' : tab === 'submissions' ? `Submissions${lenderSubmissions.length ? ` (${lenderSubmissions.length})` : ''}` : tab === 'quotes' ? `Quotes${quoteSheets.length ? ` (${quoteSheets.length})` : ''}` : tab === 'invoices' ? 'Tax Invoices' : tab === 'messages' ? 'Messages' : 'Activity'}
-                {activeTab === tab && (
-                  <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(currentcolor,0.5)]" />
-                )}
-              </button>
-            ))}
-          </div>
+      {/* Main content tabs — full width, above the two columns, so all seven
+          fit on one line rather than scrolling inside the two-thirds column.
+          They still only switch the left column; the sidebar is constant. */}
+      <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-border/60 mb-6 scrollbar-none">
+        {(['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const).map((tab) => {
+          const active = activeTab === tab;
+          const badge = tabBadges[tab];
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-t-lg px-3 py-3 text-[14px] font-semibold transition-colors ${active
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                }`}
+            >
+              {TAB_LABEL[tab]}
+              {badge && (
+                <span
+                  title={badge.title}
+                  className={`min-w-[18px] rounded-full px-1.5 text-center text-[11px] font-semibold leading-[18px] tabular-nums ${badge.tone === 'attention'
+                    ? 'bg-[var(--led-info-tint)] text-[var(--led-info)]'
+                    : 'bg-secondary text-muted-foreground'
+                    }`}
+                >
+                  {badge.count}
+                </span>
+              )}
+              {active && (
+                <span aria-hidden className="absolute inset-x-0 bottom-[-1px] h-[2px] rounded-full bg-[var(--led-info)]" />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
+      <div>
+        {/* Main Content — full width; status, brokers and approval conditions
+            now sit above the tabs instead of in a sidebar. */}
+        <div className="space-y-6">
           <div className="space-y-6 animate-in fade-in duration-300">
             {activeTab === 'overview' && (
               <>
@@ -4083,227 +4385,6 @@ export default function ReviewApplication() {
           </div>
         </div>
 
-        {/* Sidebar Actions */}
-        <div className="space-y-6 sticky top-6">
-          {/* Status Actions */}
-          <Card>
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-[15px] font-semibold text-foreground">Status</h2>
-              <Badge value={application.status} />
-            </div>
-            {allowedTransitions.length === 0 ? (
-              <div className="rounded-xl bg-secondary p-4 text-center">
-                <p className="text-[13px] font-medium text-foreground">Final status</p>
-                <p className="text-[12px] text-muted-foreground mt-1">No further transitions are available.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Move to</p>
-                {allowedTransitions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => handleStatusChange(s)}
-                    className={`group flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-[13.5px] font-medium transition-all hover:-translate-y-[1px] hover:shadow-sm ${
-                      s === 'settled' || s === 'approval'
-                        ? 'border-success/30 text-success hover:bg-success/10'
-                        : s === 'rejected' || s === 'not_proceeding'
-                          ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
-                          : 'border-[var(--led-line)] text-foreground hover:bg-secondary'
-                    }`}
-                  >
-                    <span className="capitalize">{STATUS_LABEL[s as keyof typeof STATUS_LABEL] || s.replace(/_/g, ' ')}</span>
-                    <ChevronRightIcon className="h-4 w-4 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
-                  </button>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Approval Conditions */}
-          {/* Shown from the moment the deal is approved, even with nothing on the
-              list yet, so the first condition can be added here. */}
-          {(!!application.approval_conditions?.length || application.status === 'approval') && (
-            <Card>
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
-                {!!application.approval_conditions?.length && (
-                  <span className="text-[12px] text-muted-foreground tabular-nums">
-                    {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
-                  </span>
-                )}
-              </div>
-              {application.approval_lender_name && (
-                <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
-              )}
-              {/* Approval is the point the desk goes back to the dealer, so the
-                  request is raised here rather than left to be remembered. The
-                  draft is normally already waiting (see the backend's
-                  ensure_request_for_approval); this opens it, and raises one for
-                  a deal approved before that hook existed. */}
-              {applicationLoanCategory(application) === 'asset_finance' && (
-                <Button
-                  variant="secondary"
-                  className="w-full mb-3"
-                  onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); }}
-                >
-                  Generate tax invoice
-                </Button>
-              )}
-              {!!application.approval_conditions?.length && (
-                <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
-                  <div
-                    className="h-full rounded-full bg-success transition-all"
-                    style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
-                  />
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {application.approval_conditions?.map((item) => (
-                  <div key={item.id} className="group flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleApprovalCondition(item.id)}
-                      disabled={togglingConditionId === item.id}
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                        item.is_completed
-                          ? 'border-muted-foreground bg-muted-foreground text-white'
-                          : 'border-border hover:border-primary hover:bg-primary/5'
-                      }`}
-                    >
-                      {item.is_completed && (
-                        <CheckIcon className="h-3 w-3" strokeWidth={3} />
-                      )}
-                    </button>
-                    {editingConditionId === item.id ? (
-                      <input
-                        className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2 py-1 text-[13.5px] text-foreground"
-                        value={editingConditionText}
-                        onChange={(e) => setEditingConditionText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); handleSaveConditionEdit(); }
-                          if (e.key === 'Escape') { setEditingConditionId(null); setEditingConditionText(''); }
-                        }}
-                        onBlur={handleSaveConditionEdit}
-                        autoFocus
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => { setEditingConditionId(item.id); setEditingConditionText(item.text); }}
-                        className="flex-1 min-w-0 text-left"
-                        title="Click to edit"
-                      >
-                        <span className={`block text-[13.5px] ${item.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                          {item.text}
-                        </span>
-                        {item.is_completed && item.completed_by_name && (
-                          <span className="block text-[11px] text-muted-foreground mt-0.5">
-                            Ticked by {item.completed_by_name}
-                            {item.completed_at ? ` · ${formatDate(item.completed_at)}` : ''}
-                          </span>
-                        )}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteApprovalCondition(item.id)}
-                      className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                      title="Remove condition"
-                    >
-                      <XMarkIcon className="h-4 w-4" strokeWidth={2} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <input
-                  className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
-                  placeholder="Add a condition..."
-                  value={newConditionText}
-                  onChange={(e) => setNewConditionText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddApprovalCondition(); } }}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleAddApprovalCondition}
-                  disabled={!newConditionText.trim() || addingCondition}
-                >
-                  Add
-                </Button>
-              </div>
-            </Card>
-          )}
-
-
-
-          {/* Broker Assignment */}
-          {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
-            <Card>
-              <h2 className="text-[15px] font-semibold text-foreground mb-4">Assigned Brokers</h2>
-              {brokers.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No brokers available</p>
-              ) : (
-                <div>
-                  {application.assigned_brokers.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                      {application.assigned_brokers.map((ab) => (
-                        <div key={ab.id} className="flex items-center gap-3 rounded-xl bg-primary/10 p-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                            <span className="text-[11px] font-semibold text-primary-foreground">
-                              {getInitials(ab.full_name)}
-                            </span>
-                          </div>
-                          <p className="text-[13px] font-semibold text-primary flex-1">{ab.full_name}</p>
-                          <button
-                            onClick={() => setRemoveBrokerTarget({ id: ab.id, full_name: ab.full_name })}
-                            className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                            title="Remove broker"
-                          >
-                            <XMarkIcon className="h-4 w-4" strokeWidth={2} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) return;
-                      if (val.startsWith('group:')) {
-                        handleAssignGroup(val.slice(6));
-                      } else {
-                        handleAssignBroker(val);
-                      }
-                    }}
-                    className="led-input"
-                    style={{ transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' }}
-                  >
-                    <option value="">Assign broker or group...</option>
-                    {brokerGroups.length > 0 && (
-                      <optgroup label="Broker Groups">
-                        {brokerGroups.map((g) => (
-                          <option key={`g-${g.id}`} value={`group:${g.id}`}>
-                            {g.name} ({g.members.length} member{g.members.length !== 1 ? 's' : ''})
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    <optgroup label="Individual Brokers">
-                      {brokers
-                        .filter((b) => !application.assigned_brokers.some((ab) => ab.id === b.id))
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>{b.full_name}</option>
-                        ))}
-                    </optgroup>
-                  </select>
-                </div>
-              )}
-            </Card>
-          )}
-        </div>
       </div>
 
       {/* Off-screen application PDF render */}

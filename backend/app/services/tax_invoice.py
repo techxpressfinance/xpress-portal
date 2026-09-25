@@ -65,11 +65,26 @@ def charges_gst(invoice: TaxInvoice) -> bool:
 
     A private seller only qualifies once ABN Lookup has shown an active ABN
     registered for GST; an ABN that cannot be found, is cancelled, or is active
-    without GST makes the sale GST-free and the document a plain invoice. Other
-    suppliers keep the broker's GST flag."""
+    without GST makes the sale GST-free and the document a plain invoice.
+
+    A dealer or an auction house is always treated as GST-registered — the desk
+    only ever asks the question of a private seller, so the stored flag is
+    ignored for them."""
     if invoice.supplier_type == SupplierType.private:
         return bool(invoice.supplier_gst_registered) and invoice.supplier_abn_status == AbnStatus.active.value
-    return bool(invoice.supplier_gst_registered)
+    return True
+
+
+def asset_payout(invoice: TaxInvoice) -> Decimal:
+    """What is owing on the asset being bought — private sales only.
+
+    A dealer or auction house sells the asset clear of finance, so the desk does
+    not ask; a figure left on one (from before the field was private-only, or a
+    draft whose supplier type changed) is ignored rather than splitting the
+    settlement."""
+    if invoice.supplier_type != SupplierType.private:
+        return Decimal("0")
+    return _money(invoice.asset_payout_amount)
 
 
 def totals(invoice: TaxInvoice) -> dict:
@@ -97,7 +112,7 @@ def totals(invoice: TaxInvoice) -> dict:
     # debt is already inside the price — unlike the trade-in payout above,
     # which is added to it — so the two parts split `payable` rather than
     # enlarging it.
-    to_creditor = _round(_money(invoice.asset_payout_amount))
+    to_creditor = _round(asset_payout(invoice))
     to_seller = payable - to_creditor
 
     # A real test, not a restatement of the line above: the payout can be
@@ -187,7 +202,11 @@ def name_match(invoice: TaxInvoice) -> Optional[dict]:
     The cheapest fraud check there is on a private sale: the person on the
     invoice, on the licence, on the registration and on the account the money
     lands in should all be one person. Returns None when there is nothing to
-    compare — one name on its own agrees with itself and proves nothing."""
+    compare — one name on its own agrees with itself and proves nothing, and
+    also unless the broker has marked the identification check required on a
+    private sale; a dealer or auction house is not identity-checked."""
+    if invoice.supplier_type != SupplierType.private or invoice.identity_check_required is not True:
+        return None
     sources = [
         ("Invoice name", invoice.supplier_name),
         ("Payout letter", invoice.payout_letter_name),
@@ -459,7 +478,7 @@ def seller_checklist(invoice: TaxInvoice) -> list[dict]:
     if invoice.supplier_type != SupplierType.private:
         return []
     received = seller_documents_received(invoice)
-    under_finance = _money(invoice.asset_payout_amount) > 0
+    under_finance = asset_payout(invoice) > 0
     required = {
         "registration": True,
         "payout_letter": under_finance,
@@ -479,7 +498,7 @@ def seller_checklist(invoice: TaxInvoice) -> list[dict]:
 def expected_seller_name(invoice: TaxInvoice) -> Optional[str]:
     """Who a private-sale invoice is issued by: the name on the payout letter
     where the car is under finance, else the registered owner."""
-    if _money(invoice.asset_payout_amount) > 0 and invoice.payout_letter_name:
+    if asset_payout(invoice) > 0 and invoice.payout_letter_name:
         return invoice.payout_letter_name
     return invoice.registration_name or invoice.payout_letter_name
 
@@ -542,7 +561,7 @@ def completeness(invoice: TaxInvoice) -> list[str]:
         if not invoice.reply_to_email:
             missing.append("Email address for the dealer to send the tax invoice back to")
     else:
-        if invoice.supplier_type != SupplierType.private and invoice.supplier_gst_registered and not invoice.supplier_abn:
+        if invoice.supplier_type != SupplierType.private and charges_gst(invoice) and not invoice.supplier_abn:
             missing.append("Supplier ABN (required to charge GST)")
         if invoice.supplier_type == SupplierType.private:
             missing += _private_sale_gaps(invoice)
@@ -554,7 +573,7 @@ def completeness(invoice: TaxInvoice) -> list[str]:
     # Settlement is paid in two parts where the asset carries finance, so the
     # first payee needs an account to be paid into. Without it the payout leg
     # has nowhere to go and the asset does not clear.
-    if _money(invoice.asset_payout_amount) > 0 and not (
+    if asset_payout(invoice) > 0 and not (
         invoice.payout_creditor_name and invoice.payout_creditor_account_number
     ):
         missing.append("Existing financier's name and account for the payout")
@@ -586,8 +605,12 @@ def _private_sale_gaps(invoice: TaxInvoice) -> list[str]:
         gaps.append("Answer: is the PPSR charge an ALL PAP charge?")
     if invoice.valuation_needed and not invoice.valuation_market_value:
         gaps.append("Valuation market value")
-    if _money(invoice.asset_payout_amount) > 0 and not invoice.payout_letter_name:
+    if asset_payout(invoice) > 0 and not invoice.payout_letter_name:
         gaps.append("Seller's name as shown on the payout letter")
+    if invoice.identity_check_required is None:
+        gaps.append("Answer: is an identification check required?")
+    elif invoice.identity_check_required and not invoice.licence_name:
+        gaps.append("Seller's name on their driver licence (identification check)")
     gaps += [f"Received: {item['label']}" for item in seller_checklist(invoice) if item["required"] and not item["received"]]
     if not (invoice.payout_account_name and invoice.payout_account_number):
         gaps.append("Seller's bank account (from their bank statement)")
@@ -1019,6 +1042,7 @@ def serialize(invoice: TaxInvoice, db: Optional[Session] = None) -> dict:
         "payout_creditor_account_number": invoice.payout_creditor_account_number,
         "licence_name": invoice.licence_name,
         "registration_name": invoice.registration_name,
+        "identity_check_required": invoice.identity_check_required,
         "payout_letter_name": invoice.payout_letter_name,
         "valuation_needed": invoice.valuation_needed,
         "ppsr_charge": invoice.ppsr_charge,
