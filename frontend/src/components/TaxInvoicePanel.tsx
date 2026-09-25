@@ -268,27 +268,6 @@ export default function TaxInvoicePanel({
   /** Re-derive the Sold To party from the application. The draft is raised at
    *  approval, so a broker who afterwards corrects who the applicant is needs a
    *  way to pull that through without retyping the block. */
-  const refreshBuyer = async (invoice: TaxInvoice) => {
-    setSaving(true);
-    try {
-      await api.post(`/applications/${applicationId}/tax-invoices/${invoice.id}/refresh-buyer`);
-      // Drop any unsaved edits to the buyer block — they've just been replaced.
-      setDraft((prev) => {
-        const next = { ...prev };
-        for (const key of ['buyer_name', 'buyer_abn', 'buyer_acn', 'buyer_address'] as const) {
-          delete next[key];
-        }
-        return next;
-      });
-      await load();
-      toast('Sold To updated from the application', 'success');
-    } catch (err) {
-      toast(getErrorMessage(err, 'Failed to update the Sold To party'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   /** Re-pull the cost build-up from the latest lender pricing. The draft is
    *  raised at approval, often before the deal is finally priced, and a deal can
    *  be re-priced or move lender afterwards. */
@@ -547,9 +526,11 @@ export default function TaxInvoicePanel({
                       <Text label="Address" value={field(invoice, 'supplier_address')} onChange={(v) => set('supplier_address', v)} disabled={locked} />
                       <Text label="Email" value={field(invoice, 'supplier_email')} onChange={(v) => set('supplier_email', v)} disabled={locked} />
                       <Text label="Phone" value={field(invoice, 'supplier_phone')} onChange={(v) => set('supplier_phone', v)} disabled={locked} />
-                      {/* On a private sale GST follows ABN Lookup; the flag is only
-                          the broker's to set when the status was recorded by hand. */}
-                      {(!isPrivate || (field(invoice, 'supplier_abn_status') === 'active' && !invoice.supplier_abn_checked_at)) && (
+                      {/* Private sales only — a dealer or auction house is always
+                          treated as GST-registered. Even then GST follows ABN
+                          Lookup; the flag is only the broker's to set when the
+                          status was recorded by hand. */}
+                      {isPrivate && field(invoice, 'supplier_abn_status') === 'active' && !invoice.supplier_abn_checked_at && (
                         <Check
                           label="Registered for GST"
                           checked={Boolean(draft.supplier_gst_registered ?? invoice.supplier_gst_registered)}
@@ -588,25 +569,22 @@ export default function TaxInvoicePanel({
                           ? 'Addressed to — the client'
                           : `${isRequest ? 'Sold to — the client' : 'Buyer'}${invoice.totals.buyer_identity_required ? ' (required at $1,000 or more)' : ''}`
                     }>
-                      {!locked && (
-                        <button
-                          type="button"
-                          onClick={() => refreshBuyer(invoice)}
-                          disabled={saving}
-                          className="text-[12px] font-medium text-primary hover:underline disabled:opacity-50"
-                        >
-                          Use the application's applicant
-                        </button>
-                      )}
                       {isRequest && facility === 'chattel' && (
                         <p className="text-[12px] text-muted-foreground sm:col-span-2 lg:col-span-3">
                           Chattel mortgage: the client's name, address, ABN and ACN print on both Sold To and Delivery To.
                         </p>
                       )}
-                      <Text label="Name" value={field(invoice, 'buyer_name')} onChange={(v) => set('buyer_name', v)} disabled={locked} />
-                      <Text label="ABN" value={field(invoice, 'buyer_abn')} onChange={(v) => set('buyer_abn', v)} disabled={locked} />
-                      <Text label="ACN" value={field(invoice, 'buyer_acn')} onChange={(v) => set('buyer_acn', v)} disabled={locked} />
-                      <Text label="Address" value={field(invoice, 'buyer_address')} onChange={(v) => set('buyer_address', v)} disabled={locked} />
+                      {/* Always the application's applicant — the server keeps a
+                          draft in step with it, so these are not edited here. */}
+                      {!locked && (
+                        <p className="text-[12px] text-muted-foreground sm:col-span-2 lg:col-span-3">
+                          The application's applicant. To change who this is, edit the applicant on the application.
+                        </p>
+                      )}
+                      <Text label="Name" value={invoice.buyer_name ?? ''} onChange={() => {}} disabled />
+                      <Text label="ABN" value={invoice.buyer_abn ?? ''} onChange={() => {}} disabled />
+                      <Text label="ACN" value={invoice.buyer_acn ?? ''} onChange={() => {}} disabled />
+                      <Text label="Address" value={invoice.buyer_address ?? ''} onChange={() => {}} disabled />
                     </Section>
 
                     {(isRequest || isPrivate) && (
@@ -738,7 +716,11 @@ export default function TaxInvoicePanel({
                           What is owing on the asset being bought is already
                           inside its price and comes out of settlement. */}
                       <Text label="Payout owing on the trade-in" type="number" value={field(invoice, 'payout_amount')} onChange={(v) => set('payout_amount', v === '' ? null : Number(v))} disabled={locked} />
-                      <Text label={isPrivate ? "Payout owing on the vehicle (paid to the seller's lender)" : 'Payout owing on the asset being bought'} type="number" value={field(invoice, 'asset_payout_amount')} onChange={(v) => set('asset_payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      {/* Private sales only — a dealer or auction house sells the
+                          asset clear of finance. */}
+                      {isPrivate && (
+                        <Text label="Payout owing on the asset being bought (paid to the seller's lender)" type="number" value={field(invoice, 'asset_payout_amount')} onChange={(v) => set('asset_payout_amount', v === '' ? null : Number(v))} disabled={locked} />
+                      )}
                       {isPrivate && hasPayout && (
                         <Check
                           label="Seller reduced the payout to fit the funding (proof of payment required)"
@@ -770,17 +752,31 @@ export default function TaxInvoicePanel({
                       </Section>
                     )}
 
-                    {/* Not printed on the document — these exist only so the four
-                        names can be compared before money moves. */}
-                    <Section title="Identity check">
-                      <p className="text-[12px] text-muted-foreground">
-                        The seller's name as it appears on each document. Not printed — used to
-                        confirm one person owns the asset and is being paid.
-                      </p>
-                      <Text label="Name on driver licence" value={field(invoice, 'licence_name')} onChange={(v) => set('licence_name', v)} disabled={locked} />
-                      <Text label="Name on registration" value={field(invoice, 'registration_name')} onChange={(v) => set('registration_name', v)} disabled={locked} />
-                      {invoice.name_match && <NameMatchTable match={invoice.name_match} />}
-                    </Section>
+                    {/* Private sales only, and only when the broker says the check
+                        is required. Not printed on the document — these exist
+                        only so the names can be compared before money moves. */}
+                    {isPrivate && (
+                      <Section title="Identification check">
+                        <Choice
+                          label="Identification check"
+                          value={yesNoValue(field(invoice, 'identity_check_required'))}
+                          options={[['', 'Not answered'], ['yes', 'Required'], ['no', 'Not required']]}
+                          onChange={(v) => set('identity_check_required', yesNoParse(v))}
+                          disabled={locked}
+                        />
+                        {field(invoice, 'identity_check_required') === true && (
+                          <>
+                            <p className="text-[12px] text-muted-foreground sm:col-span-2 lg:col-span-3">
+                              The seller's name as it appears on each document. Not printed — used to
+                              confirm one person owns the asset and is being paid.
+                            </p>
+                            <Text label="Name on driver licence" value={field(invoice, 'licence_name')} onChange={(v) => set('licence_name', v)} disabled={locked} />
+                            <Text label="Name on registration" value={field(invoice, 'registration_name')} onChange={(v) => set('registration_name', v)} disabled={locked} />
+                            {invoice.name_match && <NameMatchTable match={invoice.name_match} />}
+                          </>
+                        )}
+                      </Section>
+                    )}
 
                     {/* What comes back on the dealer's own tax invoice. The request
                         prints these blank so the dealer fills them in. */}

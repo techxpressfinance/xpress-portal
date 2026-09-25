@@ -404,6 +404,8 @@ _MIGRATIONS = [
     ("leads", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
     # The referrer partner who sent a lead (see Lead.referrer_id).
     ("leads", "referrer_id", "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL"),
+    # Private-sale "identification check: required / not required" answer
+    ("tax_invoices", "identity_check_required", "BOOLEAN"),
     # Australian Business Register snapshot on entities (services/organizations.refresh_from_abr)
     ("organizations", "abr_entity_type_name", "VARCHAR(100)"),
     ("organizations", "abn_status", "VARCHAR(20)"),

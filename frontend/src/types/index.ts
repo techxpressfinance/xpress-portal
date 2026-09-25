@@ -1144,6 +1144,8 @@ export interface TaxInvoice {
   /** The seller's name on their licence and on the registration. Not printed —
    *  held so the four-way name match can run before funds go out. */
   licence_name: string | null;
+  /** Private sales only. Null until the broker answers Required / Not required. */
+  identity_check_required: boolean | null;
   registration_name: string | null;
   /** The seller as named on the payout letter — who a financed car's invoice is issued by. */
   payout_letter_name: string | null;

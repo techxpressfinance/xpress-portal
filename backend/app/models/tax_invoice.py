@@ -217,6 +217,10 @@ class TaxInvoice(Base):
     # sale. Personal names, so encrypted.
     licence_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     registration_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    # Private sales only: whether the desk is running that identification check
+    # on this seller. None = not answered yet, which blocks issuing like the
+    # other private-sale prompts; False skips the name comparison entirely.
+    identity_check_required: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     # The seller as named on the payout letter. On a private sale that is the
     # name the invoice is issued in, company or individual; with no payout

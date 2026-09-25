@@ -67,6 +67,17 @@ def _get_invoice(db: Session, app_id: str, invoice_id: str) -> TaxInvoice:
     return invoice
 
 
+def _sync_buyer(db: Session, application: LoanApplication, invoice: TaxInvoice) -> None:
+    """Keep a draft's client block on the application's applicant.
+
+    The client is always the applicant — change it on the application and every
+    draft follows. An issued document keeps the party it was issued to."""
+    if invoice.status != TaxInvoiceStatus.draft:
+        return
+    for field, value in buyer_from_application(db, application).items():
+        setattr(invoice, field, value)
+
+
 def _require_draft(invoice: TaxInvoice) -> None:
     if invoice.status != TaxInvoiceStatus.draft:
         raise HTTPException(status_code=400, detail="An issued invoice cannot be edited")
@@ -79,13 +90,17 @@ def list_tax_invoices(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    _get_application(db, app_id, tenant_id, current_user)
+    application = _get_application(db, app_id, tenant_id, current_user)
     invoices = (
         db.query(TaxInvoice)
         .filter(TaxInvoice.application_id == app_id, TaxInvoice.tenant_id == tenant_id)
         .order_by(TaxInvoice.created_at.desc())
         .all()
     )
+    for invoice in invoices:
+        _sync_buyer(db, application, invoice)
+    if db.dirty:
+        db.commit()
     return [serialize(i, db) for i in invoices]
 
 
@@ -132,9 +147,10 @@ def update_tax_invoice(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    _get_application(db, app_id, tenant_id, current_user)
+    application = _get_application(db, app_id, tenant_id, current_user)
     invoice = _get_invoice(db, app_id, invoice_id)
     _require_draft(invoice)
+    _sync_buyer(db, application, invoice)
 
     updates = data.model_dump(exclude_unset=True)
     if updates.get("lender_id"):
@@ -196,9 +212,10 @@ def check_supplier_abn(
     treatment: not found, cancelled, or active without GST makes the sale
     GST-free and the document a plain invoice; active and GST-registered makes
     it a tax invoice. An outage is a 503, never a "not found"."""
-    _get_application(db, app_id, tenant_id, current_user)
+    application = _get_application(db, app_id, tenant_id, current_user)
     invoice = _get_invoice(db, app_id, invoice_id)
     _require_draft(invoice)
+    _sync_buyer(db, application, invoice)
 
     digits = "".join(ch for ch in (invoice.supplier_abn or "") if ch.isdigit())
     if len(digits) != 11:
@@ -217,36 +234,6 @@ def check_supplier_abn(
     return serialize(invoice, db)
 
 
-@router.post("/{invoice_id}/refresh-buyer")
-def refresh_tax_invoice_buyer(
-    app_id: str,
-    invoice_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin", "broker")),
-    tenant_id: str = Depends(get_tenant_id),
-):
-    """Re-derive the Sold To block from the application.
-
-    The draft is raised automatically at approval, so a broker who afterwards
-    corrects who the applicant is (the business rather than the director, or the
-    other way round) would otherwise have to retype the party. Only the buyer
-    block is touched — everything the broker has typed into the rest of the
-    document stands.
-    """
-    application = _get_application(db, app_id, tenant_id, current_user)
-    invoice = _get_invoice(db, app_id, invoice_id)
-    _require_draft(invoice)
-
-    for field, value in buyer_from_application(db, application).items():
-        setattr(invoice, field, value)
-
-    log_activity(db, current_user.id, "tax_invoice_buyer_refreshed", "application", app_id,
-                 {"applicant_type": application.applicant_type}, tenant_id=tenant_id)
-    db.commit()
-    db.refresh(invoice)
-    return serialize(invoice, db)
-
-
 @router.post("/{invoice_id}/refresh-pricing")
 def refresh_tax_invoice_pricing(
     app_id: str,
@@ -260,11 +247,12 @@ def refresh_tax_invoice_pricing(
     The draft is raised at approval, which is often before the pricing is
     finalised — and a deal can be re-priced or move lender afterwards. This
     pulls the lender and the four figures the pricing owns; everything else the
-    broker has typed stands, as with refresh-buyer.
+    broker has typed stands.
     """
-    _get_application(db, app_id, tenant_id, current_user)
+    application = _get_application(db, app_id, tenant_id, current_user)
     invoice = _get_invoice(db, app_id, invoice_id)
     _require_draft(invoice)
+    _sync_buyer(db, application, invoice)
 
     pricing = latest_lender_pricing(db, app_id)
     if pricing is None:
@@ -302,9 +290,10 @@ def issue_tax_invoice(
     """Mark the invoice final. Refuses while anything the document legally needs
     is still blank — an invoice missing an ABN or a buyer is not one you want a
     financier to receive."""
-    _get_application(db, app_id, tenant_id, current_user)
+    application = _get_application(db, app_id, tenant_id, current_user)
     invoice = _get_invoice(db, app_id, invoice_id)
     _require_draft(invoice)
+    _sync_buyer(db, application, invoice)
 
     stop = blockers(invoice)
     if stop:

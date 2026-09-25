@@ -32,10 +32,8 @@ class TaxInvoiceUpdate(BaseModel):
     supplier_phone: Optional[str] = None
     supplier_gst_registered: Optional[bool] = None
     abn_withholding_declared: Optional[bool] = None
-    buyer_name: Optional[str] = None
-    buyer_abn: Optional[str] = None
-    buyer_acn: Optional[str] = None
-    buyer_address: Optional[str] = None
+    # No buyer_* fields: the client block always follows the application's
+    # applicant (see _sync_buyer in routers/tax_invoices.py).
     delivery_same_as_buyer: Optional[bool] = None
     delivery_name: Optional[str] = None
     delivery_abn: Optional[str] = None
@@ -78,6 +76,7 @@ class TaxInvoiceUpdate(BaseModel):
     payout_creditor_account_number: Optional[str] = None
     licence_name: Optional[str] = None
     registration_name: Optional[str] = None
+    identity_check_required: Optional[bool] = None
     payout_letter_name: Optional[str] = None
     valuation_needed: Optional[bool] = None
     ppsr_charge: Optional[bool] = None
