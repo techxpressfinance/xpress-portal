@@ -1776,6 +1776,19 @@ export interface Organization {
   trust_type: TrustType | null;
   no_abn_confirmed: boolean;
   no_abn_confirmed_at: string | null;
+  // Australian Business Register snapshot — read-only, refreshed from the ABN.
+  /** The register's own label, e.g. "Australian Private Company". */
+  abr_entity_type_name: string | null;
+  abn_status: string | null;
+  /** ISO date the ABN became active — the register's stand-in for time trading. */
+  abn_active_from: string | null;
+  gst_registered: boolean | null;
+  gst_from: string | null;
+  trading_names: string[];
+  abr_state: string | null;
+  abr_postcode: string | null;
+  /** Null until the ABN has been looked up. */
+  abr_checked_at: string | null;
   contact_count: number;
   application_count: number;
   created_at: string;
@@ -1832,7 +1845,18 @@ export interface OrganizationApplicationLite {
   user_role: string | null;
 }
 
+/** Business facts as stated on the entity's newest application. */
+export interface OrganizationBusinessDetails {
+  application_id: string;
+  time_trading: string | null;
+  business_registration_date: string | null;
+  business_structure: string | null;
+  trading_name: string | null;
+  gst_registered: boolean | null;
+}
+
 export interface OrganizationDetail extends Organization {
+  business_details: OrganizationBusinessDetails | null;
   contacts: OrganizationContactLite[];
   applications: OrganizationApplicationLite[];
   trust_parties: TrustParty[];

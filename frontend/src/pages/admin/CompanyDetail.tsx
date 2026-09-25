@@ -8,7 +8,7 @@ import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameS
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
-import { formatDate, getErrorMessage } from '../../lib/utils';
+import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
 import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
@@ -344,6 +344,7 @@ export default function CompanyDetail() {
   const [linkingContact, setLinkingContact] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [refreshingAbr, setRefreshingAbr] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -375,6 +376,20 @@ export default function CompanyDetail() {
     }
   };
 
+  const handleAbrRefresh = async () => {
+    if (!company) return;
+    setRefreshingAbr(true);
+    try {
+      const { data } = await api.post(`/organizations/${company.id}/abr-refresh`);
+      setCompany(prev => prev ? { ...prev, ...data } : prev);
+      toast('Updated from the Australian Business Register', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'ABN Lookup failed'), 'error');
+    } finally {
+      setRefreshingAbr(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!company) return;
     if (!(await confirm({
@@ -402,6 +417,19 @@ export default function CompanyDetail() {
 
   const excludeIds = new Set(company.contacts.map(c => c.id));
   const isTrust = company.entity_type === 'trust';
+  const biz = company.business_details;
+  // How long the ABN has been held — the register's stand-in for time trading.
+  const abnAge = durationSince(company.abn_active_from);
+  const abnActive = (company.abn_status || '').toLowerCase() === 'active';
+  const tradingNames = company.trading_names.length
+    ? company.trading_names
+    : biz?.trading_name ? [biz.trading_name] : [];
+  const abrLocation = [company.abr_state, company.abr_postcode].filter(Boolean).join(' ');
+  const gstText = company.gst_registered != null
+    ? (company.gst_registered ? `Registered${company.gst_from ? ` since ${formatDate(company.gst_from)}` : ''}` : 'Not registered')
+    : biz?.gst_registered != null
+      ? `${biz.gst_registered ? 'Registered' : 'Not registered'} (per application)`
+      : '—';
 
   return (
     <div className="space-y-6">
@@ -433,10 +461,13 @@ export default function CompanyDetail() {
             <div className="flex justify-between"><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{company.name}</dd></div>
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Entity type</dt>
-              <dd>
+              <dd className="text-right">
                 {company.entity_type
                   ? <Badge type="custom" value={ENTITY_TYPE_CONFIG[company.entity_type].label} className={ENTITY_TYPE_CONFIG[company.entity_type].className} />
-                  : '—'}
+                  : company.abr_entity_type_name || '—'}
+                {company.entity_type && company.abr_entity_type_name && (
+                  <div className="text-[12px] text-muted-foreground">{company.abr_entity_type_name}</div>
+                )}
               </dd>
             </div>
             {isTrust && (
@@ -449,6 +480,9 @@ export default function CompanyDetail() {
               <dt className="text-muted-foreground">ABN</dt>
               <dd className="text-right">
                 {company.abn || '—'}
+                {company.abn && company.abn_status && (
+                  <span className={`ml-2 text-[12px] font-medium ${abnActive ? 'text-success' : 'text-destructive'}`}>{company.abn_status}</span>
+                )}
                 {!company.abn && isTrust && company.no_abn_confirmed && (
                   <div className="text-[12px] text-muted-foreground">
                     No ABN — confirmed with the accountant{company.no_abn_confirmed_at ? ` on ${formatDate(company.no_abn_confirmed_at)}` : ''}
@@ -462,9 +496,53 @@ export default function CompanyDetail() {
                 <dd className="text-right tabular-nums">{company.acn ? formatAcn(company.acn) : '—'}</dd>
               </div>
             )}
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Time trading</dt>
+              <dd className="text-right">
+                {abnAge || biz?.time_trading || '—'}
+                {abnAge && company.abn_active_from && (
+                  <div className="text-[12px] text-muted-foreground tabular-nums">ABN active since {formatDate(company.abn_active_from)}</div>
+                )}
+                {abnAge && biz?.time_trading && (
+                  <div className="text-[12px] text-muted-foreground">Client stated: {biz.time_trading}</div>
+                )}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4"><dt className="text-muted-foreground">GST</dt><dd className="text-right">{gstText}</dd></div>
+            {tradingNames.length > 0 && (
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Trading as</dt><dd className="text-right">{tradingNames.join(', ')}</dd></div>
+            )}
+            {biz?.business_structure && (
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Business structure</dt><dd className="text-right">{biz.business_structure} <span className="text-[12px] text-muted-foreground">(per application)</span></dd></div>
+            )}
             <div className="flex justify-between"><dt className="text-muted-foreground">Industry</dt><dd>{company.industry || '—'}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">Address</dt><dd className="text-right">{company.address || '—'}</dd></div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Address</dt>
+              <dd className="text-right">
+                {company.address || (abrLocation ? `${abrLocation} (registered location)` : '—')}
+                {company.address && abrLocation && (
+                  <div className="text-[12px] text-muted-foreground">Registered in {abrLocation}</div>
+                )}
+              </dd>
+            </div>
           </dl>
+          {company.abn && (
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-3 text-[12px] text-muted-foreground">
+              <span>
+                {company.abr_checked_at
+                  ? `ABN Lookup checked ${formatDate(company.abr_checked_at)}${company.abn_status ? '' : ' · not found on the register'}`
+                  : 'Not yet checked against ABN Lookup'}
+              </span>
+              <button
+                type="button"
+                onClick={handleAbrRefresh}
+                disabled={refreshingAbr}
+                className="font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                {refreshingAbr ? 'Refreshing…' : 'Refresh from ABR'}
+              </button>
+            </div>
+          )}
           {company.notes && (
             <div className="mt-4 pt-4 border-t border-border">
               <p className="text-sm text-muted-foreground">Notes</p>

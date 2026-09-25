@@ -39,6 +39,7 @@ from app.services.dedupe import (
     merge_organizations,
     org_signals,
 )
+from app.services.organizations import clear_abr, parse_trading_names, refresh_from_abr
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
 
@@ -99,6 +100,15 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
         "trust_type": org.trust_type,
         "no_abn_confirmed": org.no_abn_confirmed,
         "no_abn_confirmed_at": org.no_abn_confirmed_at,
+        "abr_entity_type_name": org.abr_entity_type_name,
+        "abn_status": org.abn_status,
+        "abn_active_from": org.abn_active_from,
+        "gst_registered": org.gst_registered,
+        "gst_from": org.gst_from,
+        "trading_names": parse_trading_names(org.trading_names),
+        "abr_state": org.abr_state,
+        "abr_postcode": org.abr_postcode,
+        "abr_checked_at": org.abr_checked_at,
         "contact_count": contact_count,
         "application_count": application_count,
         "created_at": org.created_at,
@@ -381,6 +391,7 @@ def create_organization(
         no_abn_confirmed_at=datetime.now(timezone.utc) if confirmed_no_abn else None,
         no_abn_confirmed_by_id=current_user.id if confirmed_no_abn else None,
     )
+    refresh_from_abr(org)
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -511,6 +522,12 @@ def get_organization(
 ):
     org = _get_org_in_tenant(org_id, tenant_id, db)
 
+    # Entities auto-created from an application carry only a name and ABN; fill
+    # in the register's details the first time one is opened.
+    if org.abn and org.abr_checked_at is None and refresh_from_abr(org):
+        db.commit()
+        db.refresh(org)
+
     contact_rows = (
         db.query(Contact, ContactOrganization.role)
         .join(ContactOrganization, ContactOrganization.contact_id == Contact.id)
@@ -562,8 +579,25 @@ def get_organization(
         for a in apps
     ]
 
+    # What the borrower told us about the business, from the newest application
+    # that says anything. Read through rather than copied onto the entity, so it
+    # stays current as the application is edited.
+    business_details = None
+    for a in apps:
+        stated = {
+            "time_trading": a.time_trading,
+            "business_registration_date": a.business_registration_date,
+            "business_structure": a.business_structure,
+            "trading_name": a.trading_name,
+            "gst_registered": a.gst_registered,
+        }
+        if any(v is not None and v != "" for v in stated.values()):
+            business_details = {"application_id": a.id, **stated}
+            break
+
     return {
         **_org_with_counts(org, db),
+        "business_details": business_details,
         "contacts": contacts,
         "applications": applications,
         "trust_parties": [_trust_party_dict(p) for p in _ordered_parties(org.trust_parties)],
@@ -595,6 +629,7 @@ def update_organization(
         # Trust-only fields don't survive a change of legal structure.
         payload["trust_type"] = None
 
+    abn_changed = "abn" in payload and _normalize_abn(payload["abn"]) != org.abn
     if "abn" in payload:
         new_abn = _normalize_abn(payload["abn"])
         if new_abn and new_abn != org.abn:
@@ -621,6 +656,33 @@ def update_organization(
             payload[key] = payload[key].strip() or None
     for field, value in payload.items():
         setattr(org, field, value)
+    # Re-read the register when the ABN changes, or when this entity has never
+    # been looked up (auto-created from an application with only a name + ABN).
+    # Runs after the broker's edits land, so it only fills what they left blank.
+    if abn_changed and not org.abn:
+        clear_abr(org)
+    elif abn_changed or org.abr_checked_at is None:
+        refresh_from_abr(org)
+    db.commit()
+    db.refresh(org)
+    return _org_with_counts(org, db)
+
+
+@router.post("/{org_id}/abr-refresh", response_model=OrganizationOut)
+def refresh_organization_from_abr(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Re-read this entity's ABN from the Australian Business Register."""
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    if not org.abn:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This entity has no ABN to look up")
+    if not ABR_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="ABN Lookup is not configured on this server")
+    if not refresh_from_abr(org):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="The Australian Business Register could not be reached — try again shortly")
     db.commit()
     db.refresh(org)
     return _org_with_counts(org, db)

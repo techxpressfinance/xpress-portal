@@ -44,6 +44,21 @@ class Organization(Base):
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Snapshot of the Australian Business Register record for ``abn`` (see
+    # services/organizations.refresh_from_abr). Kept apart from the broker-edited
+    # fields above: the register is re-read on demand and overwrites these, but
+    # only ever fills blanks in entity_type/trust_type/acn. Dates are ISO strings.
+    abr_entity_type_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. "Australian Private Company"
+    abn_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "Active" / "Cancelled"
+    abn_active_from: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # the register's stand-in for time trading
+    gst_registered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    gst_from: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    trading_names: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    abr_state: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    abr_postcode: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Null = never asked. Stamped on a found record and on a miss, not on an outage.
+    abr_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Trust-only (entity_type == "trust"). A trust may legitimately have no ABN,
     # so the broker must tick the "checked with the accountant" acknowledgement
     # instead — recorded here rather than only shown as a UI prompt.

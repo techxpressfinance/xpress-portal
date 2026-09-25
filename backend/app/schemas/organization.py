@@ -80,6 +80,16 @@ class OrganizationOut(BaseModel):
     trust_type: Optional[str] = None
     no_abn_confirmed: bool = False
     no_abn_confirmed_at: Optional[datetime] = None
+    # Australian Business Register snapshot (read-only; see refresh_from_abr)
+    abr_entity_type_name: Optional[str] = None
+    abn_status: Optional[str] = None
+    abn_active_from: Optional[str] = None
+    gst_registered: Optional[bool] = None
+    gst_from: Optional[str] = None
+    trading_names: list[str] = []
+    abr_state: Optional[str] = None
+    abr_postcode: Optional[str] = None
+    abr_checked_at: Optional[datetime] = None
     contact_count: int = 0
     application_count: int = 0
     created_at: datetime
@@ -188,7 +198,19 @@ class OrganizationApplicationOut(BaseModel):
     user_name: Optional[str] = None
 
 
+class OrganizationBusinessDetails(BaseModel):
+    """Business facts as stated on the entity's newest application."""
+
+    application_id: str
+    time_trading: Optional[str] = None
+    business_registration_date: Optional[str] = None
+    business_structure: Optional[str] = None
+    trading_name: Optional[str] = None
+    gst_registered: Optional[bool] = None
+
+
 class OrganizationDetailOut(OrganizationOut):
+    business_details: Optional[OrganizationBusinessDetails] = None
     contacts: list[OrganizationContactOut] = []
     applications: list[OrganizationApplicationOut] = []
     trust_parties: list[TrustPartyOut] = []
