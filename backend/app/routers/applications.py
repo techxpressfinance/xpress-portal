@@ -65,7 +65,13 @@ from app.services.email import (
 )
 from app.services.notification_service import create_notification
 from app.services.contacts import enrich_contact, ensure_contact, referring_contact_id
-from app.services.organizations import ensure_contact_organization_link, find_or_create_organization_by_abn, normalize_abn
+from app.services.organizations import (
+    ensure_abr_snapshot,
+    ensure_contact_organization_link,
+    fill_application_from_org,
+    find_or_create_organization_by_abn,
+    normalize_abn,
+)
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
     AddCompanyDirectorsRequest,
@@ -257,8 +263,8 @@ def create_application(
         app.business_organization_id = picked_org.id
         if picked_org.name and picked_org.name != "Unnamed Company":
             app.business_name = picked_org.name
-        if picked_org.abn and not app.business_abn:
-            app.business_abn = picked_org.abn
+        ensure_abr_snapshot(picked_org)
+        fill_application_from_org(app, picked_org)
     elif app.business_abn or app.business_name:
         org = find_or_create_organization_by_abn(db, tenant_id, app.business_abn, app.business_name)
         if org:
@@ -266,6 +272,8 @@ def create_application(
             # Sync denormalized business_name from the Org if it has a real name
             if org.name and org.name != "Unnamed Company":
                 app.business_name = org.name
+            ensure_abr_snapshot(org)
+            fill_application_from_org(app, org)
 
     db.add(app)
     db.flush()
@@ -585,6 +593,8 @@ def clone_application(
             app.business_organization_id = org.id
             if org.name and org.name != "Unnamed Company":
                 app.business_name = org.name
+            ensure_abr_snapshot(org)
+            fill_application_from_org(app, org)
     else:
         app.business_organization_id = None
 
@@ -1090,6 +1100,11 @@ def update_application(
                 application.business_organization_id = org.id
                 if org.name and org.name != "Unnamed Company":
                     application.business_name = org.name
+                # Only on a change of entity — refilling on every save would
+                # undo a broker deliberately clearing one of these fields.
+                if org.id != before_org_id:
+                    ensure_abr_snapshot(org)
+                    fill_application_from_org(application, org)
         else:
             application.business_organization_id = None
 

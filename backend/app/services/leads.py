@@ -28,7 +28,7 @@ from app.services.loan_category import (
     sub_type_extra_data,
     sub_type_to_loan_type,
 )
-from app.services.organizations import find_or_create_organization_by_abn
+from app.services.organizations import ensure_abr_snapshot, fill_application_from_org, find_or_create_organization_by_abn
 from app.services.serialization import referred_by_dict
 
 CATEGORY_LABELS = {"asset_finance": "Asset Finance", "home_loan": "Home Loan", "commercial": "Commercial"}
@@ -154,6 +154,8 @@ def convert_lead(db: Session, lead: Lead, actor: User, tenant_id: str) -> tuple[
             application.business_organization_id = org.id
             if org.name and org.name != "Unnamed Company":
                 application.business_name = org.name
+            ensure_abr_snapshot(org)
+            fill_application_from_org(application, org)
     db.add(application)
     db.flush()
 

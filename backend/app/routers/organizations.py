@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.loan_applicant import ApplicationGuarantor
@@ -38,6 +39,11 @@ from app.services.dedupe import (
     match_candidate_orgs,
     merge_organizations,
     org_signals,
+)
+from app.services.organizations import (
+    clear_abr_snapshot,
+    refresh_from_abr,
+    refresh_tenant_orgs_from_abr,
 )
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
@@ -73,6 +79,14 @@ def _normalize_acn(
     return normalized
 
 
+def _trading_names(org: Organization) -> list[str]:
+    try:
+        names = json.loads(org.trading_names) if org.trading_names else []
+    except ValueError:
+        return []
+    return [n for n in names if isinstance(n, str)]
+
+
 def _org_with_counts(org: Organization, db: Session) -> dict:
     contact_count = (
         db.query(func.count(ContactOrganization.id))
@@ -99,6 +113,15 @@ def _org_with_counts(org: Organization, db: Session) -> dict:
         "trust_type": org.trust_type,
         "no_abn_confirmed": org.no_abn_confirmed,
         "no_abn_confirmed_at": org.no_abn_confirmed_at,
+        "abn_status": org.abn_status,
+        "abn_registered_from": org.abn_registered_from,
+        "abr_entity_type": org.abr_entity_type,
+        "gst_registered": org.gst_registered,
+        "gst_registered_from": org.gst_registered_from,
+        "trading_names": _trading_names(org),
+        "registered_state": org.registered_state,
+        "registered_postcode": org.registered_postcode,
+        "abr_checked_at": org.abr_checked_at,
         "contact_count": contact_count,
         "application_count": application_count,
         "created_at": org.created_at,
@@ -317,6 +340,10 @@ def search_entities(
             acn=o.acn,
             industry=o.industry,
             address=o.address,
+            abn_status=o.abn_status,
+            abn_registered_from=o.abn_registered_from,
+            gst_registered=o.gst_registered,
+            trading_names=_trading_names(o),
             director_count=director_counts.get(o.id, 0),
             application_count=app_counts.get(o.id, 0),
         )
@@ -381,6 +408,7 @@ def create_organization(
         no_abn_confirmed_at=datetime.now(timezone.utc) if confirmed_no_abn else None,
         no_abn_confirmed_by_id=current_user.id if confirmed_no_abn else None,
     )
+    refresh_from_abr(org)
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -502,6 +530,58 @@ def deduplicate_organizations(
     }
 
 
+@router.post("/abr-refresh", status_code=status.HTTP_202_ACCEPTED)
+def refresh_all_from_abr(
+    background_tasks: BackgroundTasks,
+    only_missing: bool = Query(True, description="Skip entities already synced from the ABR"),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Queue an ABR sync for every entity with an ABN in the tenant.
+
+    Runs in the background — the register is called once per entity — so the
+    response only says how many were queued."""
+    if not ABR_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="ABN Lookup is not configured on this server")
+    query = db.query(Organization.id).filter(
+        Organization.tenant_id == tenant_id,
+        Organization.abn.isnot(None),
+        Organization.abn != "",
+    )
+    if only_missing:
+        query = query.filter(Organization.abr_checked_at.is_(None))
+    org_ids = [row[0] for row in query.all()]
+    if org_ids:
+        background_tasks.add_task(
+            refresh_tenant_orgs_from_abr, tenant_id, org_ids, session_factory=SessionLocal
+        )
+    return {"queued": len(org_ids)}
+
+
+@router.post("/{org_id}/abr-refresh", response_model=OrganizationOut)
+def refresh_one_from_abr(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Re-read this entity's ABN from the ABR now."""
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    if not org.abn:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This entity has no ABN to look up")
+    if not ABR_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="ABN Lookup is not configured on this server")
+    if not refresh_from_abr(org):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The ABR returned no record for this ABN (or could not be reached)",
+        )
+    db.commit()
+    db.refresh(org)
+    return _org_with_counts(org, db)
+
+
 @router.get("/{org_id}", response_model=OrganizationDetailOut)
 def get_organization(
     org_id: str,
@@ -612,8 +692,12 @@ def update_organization(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"A company with this ABN already exists: {clash.name}",
                 )
+        abn_changed = new_abn != org.abn
         org.abn = new_abn
         payload.pop("abn")
+        if abn_changed:
+            clear_abr_snapshot(org)
+            refresh_from_abr(org)
     if "acn" in payload:
         payload["acn"] = _normalize_acn(payload["acn"], resulting_abn, entity_type)
     for key in ("name", "industry", "address"):

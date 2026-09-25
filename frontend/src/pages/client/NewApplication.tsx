@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast';
 import { getErrorMessage } from '../../lib/utils';
 import { Card, Button, Input, AbrResultCard, DatePicker, LoanTypeIcon } from '../../components/ui';
 import { useAbrLookup } from '../../hooks/useAbrLookup';
+import { prefillFromAbr } from '../../lib/entityPrefill';
 import {
   AU_STATES, TITLE_OPTIONS, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, DOC_TYPE_LABELS,
   LOAN_CATEGORIES, VEHICLE_MAKES, PROPERTY_TYPES,
@@ -2422,7 +2423,15 @@ export default function NewApplication() {
                         <AbrResultCard
                           record={selfEmployedAbr.record}
                           loading={selfEmployedAbr.loading}
-                          onApply={(r) => setValue('business_name', r.name)}
+                          onApply={(r) => {
+                            setValue('business_name', r.name);
+                            // Blank fields only — never overwrite what the applicant typed.
+                            const p = prefillFromAbr(r);
+                            if (p.trading_name && !getValues('trading_name')) setValue('trading_name', p.trading_name);
+                            if (p.business_structure) setValue('business_structure', p.business_structure);
+                            if (p.time_trading && !getValues('time_trading')) setValue('time_trading', p.time_trading);
+                            if (p.gst_registered != null) setValue('gst_registered', p.gst_registered ? 'yes' : 'no');
+                          }}
                         />
                       )}
                     </div>

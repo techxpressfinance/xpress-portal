@@ -309,6 +309,11 @@ export interface EntitySearchResult {
   acn: string | null;
   industry: string | null;
   address: string | null;
+  // ABR snapshot — lets a pick fill the rest of the business section.
+  abn_status: string | null;
+  abn_registered_from: string | null;
+  gst_registered: boolean | null;
+  trading_names: string[];
   director_count: number;
   application_count: number;
 }
@@ -1776,6 +1781,19 @@ export interface Organization {
   trust_type: TrustType | null;
   no_abn_confirmed: boolean;
   no_abn_confirmed_at: string | null;
+  // Snapshot of the ABR record for the ABN, refreshed server-side. ABR only
+  // publishes state + postcode, never a street address.
+  abn_status: string | null;
+  /** ISO date the ABN became active — time trading is measured from it. */
+  abn_registered_from: string | null;
+  /** ABR's own label, e.g. "Australian Private Company". */
+  abr_entity_type: string | null;
+  gst_registered: boolean | null;
+  gst_registered_from: string | null;
+  trading_names: string[];
+  registered_state: string | null;
+  registered_postcode: string | null;
+  abr_checked_at: string | null;
   contact_count: number;
   application_count: number;
   created_at: string;

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -51,6 +51,22 @@ class Organization(Base):
     no_abn_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     no_abn_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     no_abn_confirmed_by_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+
+    # Snapshot of the public Australian Business Register record for the ABN,
+    # refreshed by services/organizations.refresh_from_abr. Public data, so not
+    # encrypted. ABR publishes only the state + postcode of the main business
+    # location — never a street address — so `address` stays broker-entered.
+    abn_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Date the ABN became active — the "registered / trading since" date that
+    # time trading is measured from. Null unless the ABN is currently active.
+    abn_registered_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    abr_entity_type: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    gst_registered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    gst_registered_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    trading_names: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    registered_state: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    registered_postcode: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    abr_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

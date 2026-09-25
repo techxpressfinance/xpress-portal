@@ -28,6 +28,7 @@ import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
 import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
+import { prefillFromEntity } from '../../lib/entityPrefill';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
@@ -213,7 +214,7 @@ export default function ReviewApplication() {
     signature_name: '',
     emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
   };
-  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
+  const { register: regEdit, reset: resetEdit, handleSubmit: handleEditSubmit, watch: watchEdit, setValue: setValueEdit, getValues: getValuesEdit, formState: { errors: editErrors } } = useForm({ defaultValues: EDIT_DEFAULTS });
 
   // Business details typeahead over the tenant's own entity book: picking a
   // company here fills its ABN and structure rather than leaving the broker to
@@ -231,9 +232,23 @@ export default function ReviewApplication() {
   const showEntityMatches =
     (editBusinessName || '').trim().length >= 2 && (editBusinessName || '').trim() !== entityDismissedFor;
 
+  // Picking an entity fills every business field it (and its ABR record) can
+  // answer — blank fields only, so nothing the broker already typed is lost.
   const useExistingEntity = (e: EntitySearchResult) => {
     setValueEdit('business_name', e.name, { shouldDirty: true });
     if (e.abn) setValueEdit('business_abn', e.abn, { shouldDirty: true });
+    const p = prefillFromEntity(e);
+    const fillBlank = (field: 'trading_name' | 'business_structure' | 'business_registration_date' | 'time_trading' | 'num_directors', value: string) => {
+      if (value && !getValuesEdit(field)) setValueEdit(field, value, { shouldDirty: true });
+    };
+    fillBlank('trading_name', p.trading_name);
+    fillBlank('business_structure', p.business_structure);
+    fillBlank('business_registration_date', p.business_registration_date);
+    fillBlank('time_trading', p.time_trading);
+    fillBlank('num_directors', e.director_count ? String(e.director_count) : '');
+    if (p.gst_registered != null && !getValuesEdit('gst_registered')) {
+      setValueEdit('gst_registered', p.gst_registered ? 'true' : 'false', { shouldDirty: true });
+    }
     setEntityDismissedFor(e.name.trim());
   };
 

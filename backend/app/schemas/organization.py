@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -80,6 +80,16 @@ class OrganizationOut(BaseModel):
     trust_type: Optional[str] = None
     no_abn_confirmed: bool = False
     no_abn_confirmed_at: Optional[datetime] = None
+    # ABR snapshot — see Organization.abn_status.
+    abn_status: Optional[str] = None
+    abn_registered_from: Optional[date] = None
+    abr_entity_type: Optional[str] = None
+    gst_registered: Optional[bool] = None
+    gst_registered_from: Optional[date] = None
+    trading_names: list[str] = []
+    registered_state: Optional[str] = None
+    registered_postcode: Optional[str] = None
+    abr_checked_at: Optional[datetime] = None
     contact_count: int = 0
     application_count: int = 0
     created_at: datetime
@@ -101,6 +111,11 @@ class EntitySearchResult(BaseModel):
     acn: Optional[str] = None
     industry: Optional[str] = None
     address: Optional[str] = None
+    # ABR snapshot, so a pick can fill the rest of the business section.
+    abn_status: Optional[str] = None
+    abn_registered_from: Optional[date] = None
+    gst_registered: Optional[bool] = None
+    trading_names: list[str] = []
     director_count: int = 0
     application_count: int = 0
 

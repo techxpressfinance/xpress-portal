@@ -404,6 +404,16 @@ _MIGRATIONS = [
     ("leads", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
     # The referrer partner who sent a lead (see Lead.referrer_id).
     ("leads", "referrer_id", "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL"),
+    # ABR snapshot on entities (see Organization.abn_status).
+    ("organizations", "abn_status", "VARCHAR(20)"),
+    ("organizations", "abn_registered_from", "DATE"),
+    ("organizations", "abr_entity_type", "VARCHAR(200)"),
+    ("organizations", "gst_registered", "BOOLEAN"),
+    ("organizations", "gst_registered_from", "DATE"),
+    ("organizations", "trading_names", "TEXT"),
+    ("organizations", "registered_state", "VARCHAR(10)"),
+    ("organizations", "registered_postcode", "VARCHAR(10)"),
+    ("organizations", "abr_checked_at", "TIMESTAMP"),
 ]
 
 _logger = logging.getLogger(__name__)

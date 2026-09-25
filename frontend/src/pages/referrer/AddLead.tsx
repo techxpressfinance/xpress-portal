@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { Card, PageHeader, Button, Input, DatePicker, LoanTypeIcon, EntitySearchResults, ClientSearchResults, AbrNameSearchResults, AbrResultCard, ReferrerSearchResults } from '../../components/ui';
-import { durationSince, formatTime, getErrorMessage } from '../../lib/utils';
+import { formatTime, getErrorMessage } from '../../lib/utils';
+import { prefillFromAbr, prefillFromEntity, prefillLabels } from '../../lib/entityPrefill';
 import { VEHICLE_MAKES, PROPERTY_TYPES, LOAN_TERM_OPTIONS, VEHICLE_CONDITION_OPTIONS, LOAN_CATEGORIES, isBusinessSubType, isConsumerSubType, subTypeToLoanType, findLoanSubType } from '../../lib/constants';
 import type { LoanCategory } from '../../lib/constants';
 import { applicantDisplayName } from '../../lib/applicantName';
@@ -15,26 +16,6 @@ import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder, normalizeResidencySt
 import { useReferrerSearch } from '../../hooks/useReferrerSearch';
 import type { AbrRecord, Contact, EntitySearchResult, User } from '../../types';
 import { CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
-// The entity book's structure vocabulary, in the words the business-details
-// section offers. `trustee` is a company in that vocabulary — what it is
-// trustee of is the trust's own record.
-const ENTITY_TYPE_TO_STRUCTURE: Record<string, string> = {
-  sole_trader: 'Sole Trader',
-  partnership: 'Partnership',
-  company: 'Company',
-  trustee: 'Company',
-  trust: 'Trust',
-};
-
-function abrEntityTypeToStructure(entityType: string | null): string {
-  const type = (entityType || '').toLowerCase();
-  if (type.includes('trust')) return 'Trust';
-  if (type.includes('partnership')) return 'Partnership';
-  if (type.includes('company')) return 'Company';
-  if (type.includes('individual') || type.includes('sole trader')) return 'Sole Trader';
-  return '';
-}
 
 /** "date of birth, licence number and address" — the fields a pick filled in. */
 function prefillSummary(fields: string[]): string {
@@ -569,17 +550,20 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   // and leaves the applicant toggle under the broker's explicit control.
   const useExistingEntity = (en: EntitySearchResult) => {
     setPickedEntity(en);
-    const structure = ENTITY_TYPE_TO_STRUCTURE[en.entity_type || ''];
+    const p = prefillFromEntity(en);
     setExtraFields(prev => ({
       ...prev,
       business_name: en.name,
       business_abn: en.abn || '',
-      business_structure: structure || '',
+      business_structure: p.business_structure,
       num_directors: en.director_count ? String(en.director_count) : '',
+      trading_name: prev.trading_name || p.trading_name,
+      gst_registered: p.gst_registered ?? prev.gst_registered,
+      time_trading: prev.time_trading || p.time_trading,
     }));
     setEntityPrefill([
       en.abn ? 'ABN' : null,
-      structure ? 'structure' : null,
+      ...prefillLabels({ ...p, business_registration_date: '' }),
       en.director_count ? 'number of directors' : null,
     ].filter(Boolean) as string[]);
     // The business-name field runs its own entity typeahead; without this it
@@ -588,12 +572,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   const useAbrBusiness = (record: AbrRecord) => {
-    const structure = abrEntityTypeToStructure(record.entity_type);
     // How long the ABN has been held is the closest the register gets to time
     // trading, and it's what a lender reads it as. It's a floor, not the exact
     // figure — the business may have traded under an earlier ABN — so it only
     // seeds an empty field and never overwrites what the broker typed.
-    const abnAge = durationSince(record.status_from);
+    const { business_structure: structure, time_trading: abnAge } = prefillFromAbr(record);
     setPickedEntity(null);
     setExtraFields(prev => ({
       ...prev,

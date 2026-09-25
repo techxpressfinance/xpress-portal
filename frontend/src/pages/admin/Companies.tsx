@@ -9,7 +9,7 @@ import { DuplicateWarning } from '../../components/DuplicateWarning';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import { useOrganizationDuplicateCheck } from '../../hooks/useDuplicateCheck';
 import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameSearchResults, EmptyState, TableSkeleton } from '../../components/ui';
-import { formatDate, getErrorMessage } from '../../lib/utils';
+import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
 import { abnValidationError, acnFromAbn, acnValidationError, formatAcn } from '../../lib/acn';
@@ -264,7 +264,27 @@ export default function Companies() {
   const [total, setTotal] = useState(0);
   const [showNew, setShowNew] = useState(false);
   const [showDedupe, setShowDedupe] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const perPage = 20;
+
+  // Backfill: the register is called once per entity in the background, so
+  // there's nothing to wait on — reload after a pause to pick up early results.
+  const syncFromAbr = async () => {
+    setSyncing(true);
+    try {
+      const { data } = await api.post<{ queued: number }>('/organizations/abr-refresh');
+      if (data.queued === 0) {
+        toast('Every entity with an ABN is already synced from the ABR', 'success');
+      } else {
+        toast(`Syncing ${data.queued} entit${data.queued === 1 ? 'y' : 'ies'} from the ABR — refresh in a minute`, 'success');
+        setTimeout(() => fetchCompanies(), 8000);
+      }
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to start ABR sync'), 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchCompanies = (p = page, q = search) => {
     setLoading(true);
@@ -296,6 +316,7 @@ export default function Companies() {
         subtitle={`${total} entit${total === 1 ? 'y' : 'ies'}`}
         action={
           <div className="flex gap-2">
+            <Button onClick={syncFromAbr} variant="secondary" size="sm" loading={syncing}>Sync from ABR</Button>
             <Button onClick={() => setShowDedupe(true)} variant="secondary" size="sm">Find Duplicates</Button>
             <Button onClick={() => setShowNew(true)} variant="primary" size="sm">New Entity</Button>
           </div>
@@ -317,7 +338,7 @@ export default function Companies() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={8} widths={[160, 90, 110, 100, 40, 40, 90]} />
+                <TableSkeleton rows={8} widths={[160, 90, 110, 110, 70, 100, 40, 40, 90]} />
               </tbody>
             </table>
           </div>
@@ -336,6 +357,8 @@ export default function Companies() {
                     <th className="pb-3 font-medium">Name</th>
                     <th className="pb-3 font-medium">Type</th>
                     <th className="pb-3 font-medium">ABN</th>
+                    <th className="pb-3 font-medium">Registered</th>
+                    <th className="pb-3 font-medium">Location</th>
                     <th className="pb-3 font-medium">Industry</th>
                     <th className="pb-3 font-medium">Contacts</th>
                     <th className="pb-3 font-medium">Applications</th>
@@ -357,6 +380,25 @@ export default function Companies() {
                       </td>
                       <td className="py-3 text-muted-foreground">
                         {c.abn || (c.entity_type === 'trust' && c.no_abn_confirmed ? 'No ABN (confirmed)' : '—')}
+                        {c.abn && (c.abn_status || c.gst_registered != null) && (
+                          <div className="text-[12px]">
+                            {c.abn_status && c.abn_status !== 'Active' && (
+                              <span className="text-red-600 dark:text-red-400">{c.abn_status} · </span>
+                            )}
+                            {c.gst_registered == null ? null : c.gst_registered ? 'GST registered' : 'No GST'}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 text-muted-foreground">
+                        {c.abn_registered_from ? (
+                          <>
+                            <div className="tabular-nums">{formatDate(c.abn_registered_from)}</div>
+                            <div className="text-[12px]">{durationSince(c.abn_registered_from)} trading</div>
+                          </>
+                        ) : '—'}
+                      </td>
+                      <td className="py-3 text-muted-foreground whitespace-nowrap">
+                        {[c.registered_state, c.registered_postcode].filter(Boolean).join(' ') || '—'}
                       </td>
                       <td className="py-3 text-muted-foreground">{c.industry || '—'}</td>
                       <td className="py-3">

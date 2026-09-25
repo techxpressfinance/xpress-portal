@@ -8,12 +8,12 @@ import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameS
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
-import { formatDate, getErrorMessage } from '../../lib/utils';
+import { durationSince, formatDate, formatDateTime, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
 import { useAbrLookup, useAbrNameSearch } from '../../hooks/useAbrLookup';
 import { abnValidationError, acnFromAbn, acnValidationError, formatAcn } from '../../lib/acn';
-import type { EntityType, OrganizationDetail, OrganizationContactLite, TrustType } from '../../types';
+import type { EntityType, Organization, OrganizationDetail, OrganizationContactLite, TrustType } from '../../types';
 
 interface EditForm {
   name: string;
@@ -344,6 +344,7 @@ export default function CompanyDetail() {
   const [linkingContact, setLinkingContact] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [refreshingAbr, setRefreshingAbr] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -391,6 +392,20 @@ export default function CompanyDetail() {
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to delete entity'), 'error');
       setDeleting(false);
+    }
+  };
+
+  const refreshAbr = async () => {
+    if (!company) return;
+    setRefreshingAbr(true);
+    try {
+      const { data } = await api.post<Organization>(`/organizations/${company.id}/abr-refresh`);
+      setCompany(prev => prev ? { ...prev, ...data } : prev);
+      toast('Updated from the ABR', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'ABR lookup failed'), 'error');
+    } finally {
+      setRefreshingAbr(false);
     }
   };
 
@@ -482,6 +497,64 @@ export default function CompanyDetail() {
             <div className="flex justify-between"><dt className="text-muted-foreground">Last updated</dt><dd>{formatDate(company.updated_at)}</dd></div>
           </dl>
         </Card>
+
+        {company.abn && (
+          <Card className="md:col-span-2">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Australian Business Register</h3>
+                <p className="text-[12px] text-muted-foreground">
+                  {company.abr_checked_at ? `Last checked ${formatDateTime(company.abr_checked_at)}` : 'Not yet checked against the ABR'}
+                </p>
+              </div>
+              <Button variant="secondary" size="sm" loading={refreshingAbr} onClick={refreshAbr}>
+                {company.abr_checked_at ? 'Refresh' : 'Look up'}
+              </Button>
+            </div>
+            {company.abr_checked_at && (
+              <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">ABN status</dt>
+                  <dd className={company.abn_status && company.abn_status !== 'Active' ? 'font-medium text-red-600 dark:text-red-400' : ''}>
+                    {company.abn_status || '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Registered</dt>
+                  <dd className="tabular-nums">{company.abn_registered_from ? formatDate(company.abn_registered_from) : '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Time trading</dt>
+                  <dd>{durationSince(company.abn_registered_from) || '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">ABR entity type</dt>
+                  <dd className="text-right">{company.abr_entity_type || '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">GST</dt>
+                  <dd className="text-right">
+                    {company.gst_registered == null
+                      ? '—'
+                      : company.gst_registered
+                        ? `Registered${company.gst_registered_from ? ` since ${formatDate(company.gst_registered_from)}` : ''}`
+                        : 'Not registered'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Registered location</dt>
+                  <dd>{[company.registered_state, company.registered_postcode].filter(Boolean).join(' ') || '—'}</dd>
+                </div>
+                {company.trading_names.length > 0 && (
+                  <div className="flex justify-between gap-4 sm:col-span-2">
+                    <dt className="text-muted-foreground shrink-0">Business names</dt>
+                    <dd className="text-right">{company.trading_names.join(', ')}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </Card>
+        )}
       </div>
 
       {isTrust && (

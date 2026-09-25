@@ -28,6 +28,7 @@ from app.services import acn as acn_service
 from app.services.activity_log import log_activity
 from app.services.lender_pricing import latest_for_application as latest_lender_pricing
 from app.services.loan_category import application_asset_details, application_loan_category
+from app.services.organizations import ensure_abr_snapshot, is_placeholder_name
 
 # GST is 1/11th of a GST-inclusive amount.
 GST_DIVISOR = Decimal("11")
@@ -743,7 +744,15 @@ def buyer_from_application(db: Session, application: LoanApplication) -> dict:
             db.query(Organization).filter(Organization.id == application.business_organization_id).first()
         )
 
-    entity_name = _first(organization.name if organization else None, application.business_name)
+    if organization is not None:
+        # An entity from before the ABR sync has no ACN or legal name recorded
+        # yet — fetch them now rather than print a stub on the invoice.
+        ensure_abr_snapshot(organization)
+
+    entity_name = _first(
+        organization.name if organization and not is_placeholder_name(organization.name) else None,
+        application.business_name,
+    )
     entity_abn = _first(organization.abn if organization else None, application.business_abn)
     entity_address = _text(organization.address if organization else None)
     person = _person_from_application(db, application)

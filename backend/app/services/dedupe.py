@@ -405,6 +405,14 @@ def merge_contacts(db: Session, primary: Contact, duplicates: list[Contact]) -> 
         db.delete(dup)
 
 
+# Organization columns holding the ABR register snapshot for its ABN.
+ORG_ABR_FIELDS = (
+    "abn_status", "abn_registered_from", "abr_entity_type", "gst_registered",
+    "gst_registered_from", "trading_names", "registered_state",
+    "registered_postcode", "abr_checked_at",
+)
+
+
 def merge_organizations(db: Session, primary: Organization, duplicates: list[Organization]) -> None:
     """Merge duplicate companies into primary: fill fields, repoint FKs, delete dups.
 
@@ -421,6 +429,9 @@ def merge_organizations(db: Session, primary: Organization, duplicates: list[Org
             if (dup.abn or "").strip():
                 new_abn = dup.abn
                 dup.abn = None
+                # The ABR snapshot describes that ABN, so it travels with it.
+                for field in ORG_ABR_FIELDS:
+                    setattr(primary, field, getattr(dup, field))
                 break
 
     dup_ids = [d.id for d in duplicates]
