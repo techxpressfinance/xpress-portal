@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { getTenantSlug } from '../api/client';
+import { getErrorMessage } from '../lib/utils';
 import DatePicker from '../components/ui/DatePicker';
 import { VISA_CATEGORIES, isVisaHolder } from '../lib/residency';
 import { CheckCircleIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
@@ -68,28 +69,51 @@ const inputClass =
   'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 sm:py-2 text-[16px] sm:text-[14px] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 const selectClass = inputClass;
 
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+// The label wraps its control so screen readers announce it. `plain` is for
+// custom widgets (DatePicker) where a wrapping <label> would forward clicks.
+function Field({ label, children, required, plain }: { label: string; children: React.ReactNode; required?: boolean; plain?: boolean }) {
+  const text = (
+    <span className={labelClass}>
+      {label}
+      {required && <span className="text-red-500 ml-0.5" aria-hidden="true">*</span>}
+    </span>
+  );
+  if (plain) {
+    return (
+      <div role="group" aria-label={label}>
+        {text}
+        {children}
+      </div>
+    );
+  }
   return (
-    <div>
-      <label className={labelClass}>
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+    <label className="block">
+      {text}
       {children}
-    </div>
+    </label>
   );
 }
+
+// Fields validated before "Continue" leaves each step.
+const STEP_FIELDS: (keyof FormData)[][] = [
+  ['applicant_first_name', 'applicant_last_name', 'applicant_dob', 'applicant_mobile', 'applicant_postcode'],
+  ['gross_income'],
+  ['signature_name'],
+];
+
+type LoadState = 'loading' | 'ready' | 'not_found' | 'expired' | 'error';
 
 export default function PublicApply() {
   const { token } = useParams<{ token: string }>();
   const [appData, setAppData] = useState<AppData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
-  const { register, handleSubmit, formState: { errors, isSubmitting }, setValue, watch } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting }, setValue, watch, trigger } = useForm<FormData>({
     defaultValues: {
       applicant_first_name: '',
       applicant_middle_name: '',
@@ -125,33 +149,62 @@ export default function PublicApply() {
 
   useEffect(() => {
     if (!token) return;
+    setLoadState('loading');
     publicApi.get(`/public/apply/${token}`)
       .then((res) => {
         setAppData(res.data);
         if (res.data.applicant_first_name) setValue('applicant_first_name', res.data.applicant_first_name);
         if (res.data.applicant_last_name) setValue('applicant_last_name', res.data.applicant_last_name);
         if (res.data.applicant_mobile) setValue('applicant_mobile', res.data.applicant_mobile);
-        setLoading(false);
+        setLoadState('ready');
       })
       .catch((err) => {
-        if (err.response?.status === 400) setAlreadySubmitted(true);
-        else setNotFound(true);
-        setLoading(false);
+        const code = err.response?.status;
+        if (code === 400) { setAlreadySubmitted(true); setLoadState('ready'); }
+        else if (code === 404) setLoadState('not_found');
+        else if (code === 410) setLoadState('expired');
+        // Network failures, 5xx and rate limits are retryable, not a dead link.
+        else setLoadState('error');
       });
-  }, [token]);
+  }, [token, loadAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goNext = async () => {
+    // Validate this step only; trigger() focuses the first invalid field.
+    const ok = await trigger(STEP_FIELDS[step], { shouldFocus: true });
+    if (!ok) return;
+    setStep((s) => s + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const onSubmit = async (data: FormData) => {
-    await publicApi.post(`/public/apply/${token}`, {
-      ...data,
-      gross_income: data.gross_income ? parseFloat(data.gross_income) : undefined,
-    });
-    setSubmitted(true);
+    setSubmitError(null);
+    try {
+      await publicApi.post(`/public/apply/${token}`, {
+        ...data,
+        gross_income: data.gross_income ? parseFloat(data.gross_income) : undefined,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      const code = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (code === 400) setAlreadySubmitted(true);
+      else if (code === 410) setLoadState('expired');
+      else if (code === 404) setLoadState('not_found');
+      else if (code === 422) setSubmitError(getErrorMessage(err, 'Some details need correcting. Please check the form and try again.'));
+      else if (code === 429) setSubmitError('Too many attempts. Please wait a minute, then press Try again. Your answers are still here.');
+      else setSubmitError("We couldn't reach our servers, so your application wasn't sent. Check your connection, then press Try again. Your answers are still here.");
+    }
+  };
+
+  // Server- or validation-side errors on an earlier step: send the user there.
+  const onInvalid = (errs: Partial<Record<keyof FormData, unknown>>) => {
+    const firstStep = STEP_FIELDS.findIndex((fields) => fields.some((f) => f in errs));
+    if (firstStep >= 0 && firstStep !== step) setStep(firstStep);
   };
 
   const fmt = (n: number) =>
     n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}K` : `$${n}`;
 
-  if (loading) {
+  if (loadState === 'loading') {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
@@ -159,15 +212,40 @@ export default function PublicApply() {
     );
   }
 
-  if (notFound) {
+  if (loadState === 'error') {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+        <div className="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <div className="h-14 w-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+            <ExclamationTriangleIcon className="h-7 w-7 text-amber-600" strokeWidth={2} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Connection problem</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">We couldn't load your application. Your link is probably fine. Check your connection and try again.</p>
+          <button
+            type="button"
+            onClick={() => setLoadAttempt((n) => n + 1)}
+            className="px-6 py-2.5 rounded-xl text-[14px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadState === 'not_found' || loadState === 'expired') {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="h-14 w-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
             <ExclamationTriangleIcon className="h-7 w-7 text-red-500" strokeWidth={2} />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Link not found</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">This application link is invalid or has expired. Please contact Xpress Finance for a new link.</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{loadState === 'expired' ? 'Link expired' : 'Link not found'}</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            {loadState === 'expired'
+              ? 'This application link has expired. Please contact Xpress Finance for a new link.'
+              : 'This application link is invalid. Check you opened the full link from your email, or contact Xpress Finance for a new one.'}
+          </p>
         </div>
       </div>
     );
@@ -257,7 +335,14 @@ export default function PublicApply() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form
+          noValidate
+          onSubmit={(e) => {
+            // Enter on an earlier step means "Continue", not submit.
+            if (step < STEPS.length - 1) { e.preventDefault(); void goNext(); return; }
+            void handleSubmit(onSubmit, onInvalid)(e);
+          }}
+        >
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
 
             {/* Step 0: Personal Details */}
@@ -281,7 +366,7 @@ export default function PublicApply() {
                 </Field>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Date of Birth">
+                  <Field label="Date of Birth" plain>
                     <DatePicker
                       value={watch('applicant_dob') || ''}
                       onChange={(v) => {
@@ -540,6 +625,13 @@ export default function PublicApply() {
             )}
           </div>
 
+          {submitError && (
+            <div role="alert" className="mt-6 flex gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" strokeWidth={2} />
+              <p className="text-[13px] text-red-700 dark:text-red-300">{submitError}</p>
+            </div>
+          )}
+
           {/* Navigation */}
           <div className="flex justify-between mt-6">
             <button
@@ -553,7 +645,7 @@ export default function PublicApply() {
             {step < STEPS.length - 1 ? (
               <button
                 type="button"
-                onClick={() => setStep(s => s + 1)}
+                onClick={goNext}
                 className="px-6 py-2.5 rounded-xl text-[14px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
               >
                 Continue
@@ -564,7 +656,7 @@ export default function PublicApply() {
                 disabled={isSubmitting}
                 className="px-6 py-2.5 rounded-xl text-[14px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
               >
-                {isSubmitting ? 'Submitting…' : 'Submit Application'}
+                {isSubmitting ? 'Submitting…' : submitError ? 'Try again' : 'Submit Application'}
               </button>
             )}
           </div>

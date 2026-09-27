@@ -1273,7 +1273,7 @@ export default function NewApplication() {
       if (failedUploads > 0) {
         toast(`Application saved, but ${failedUploads} document${failedUploads === 1 ? '' : 's'} failed to upload — you can add them from the Documents tab.`, 'error');
       } else {
-        toast('Application saved! Please upload your supporting documents.', 'success');
+        toast('Draft saved. Upload your documents, then submit for review.', 'success');
       }
       clearLocalDraft();
       navigate(`/applications/${appId}?tab=documents`);
@@ -2800,15 +2800,15 @@ export default function NewApplication() {
                 </div>
               )}
             </div>
-            <p className="text-[13px] text-[var(--led-muted)]">Please review the details above. Once you submit, you can upload supporting documents on the next screen.</p>
+            <p className="text-[13px] text-[var(--led-muted)]">Please review the details above. This saves your application as a draft. You'll upload your documents on the next screen, then submit it to your broker for review.</p>
           </Card>
 
         {/* ── Submit ── */}
         <div className="flex flex-wrap gap-3">
             <Button type="submit" loading={isSubmitting} size="lg">
               {isSubmitting
-                ? (completeId ? 'Saving...' : 'Submitting...')
-                : (completeId ? 'Save Changes' : 'Submit Application')}
+                ? 'Saving...'
+                : (completeId ? 'Save Changes' : 'Save and continue to documents')}
             </Button>
           <Button type="button" variant="secondary" size="lg" onClick={() => completeId ? navigate(`/applications/${completeId}`) : navigate('/dashboard')}>Cancel</Button>
         </div>

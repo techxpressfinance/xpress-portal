@@ -35,6 +35,8 @@ export default function ApplicationDetail() {
   const [deletingApp, setDeletingApp] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  // Shows the "what happens next" receipt for the rest of this visit.
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [submittingApplication, setSubmittingApplication] = useState(false);
   const [quoteSheets, setQuoteSheets] = useState<QuoteSheet[]>([]);
   const [pdfRenderSheet, setPdfRenderSheet] = useState<QuoteSheet | null>(null);
@@ -178,8 +180,9 @@ export default function ApplicationDetail() {
     try {
       const { data } = await api.patch(`/applications/${id}`, { status: 'application_received' });
       setApplication(data);
-      toast('Application submitted for review!', 'success');
+      setJustSubmitted(true);
       setShowSubmitConfirm(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       toast(getErrorMessage(err, 'Failed to submit'), 'error');
     } finally {
@@ -287,6 +290,50 @@ export default function ApplicationDetail() {
           {application.loan_type} loan &middot; ${Number(application.amount).toLocaleString('en-AU')}
         </p>
       </div>
+
+      {application.status === 'draft' && !application.is_locked && (
+        <div className="mb-6 flex flex-col gap-3 rounded-[16px] border border-[var(--led-warning)]/30 bg-[var(--led-warning)]/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <ExclamationCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--led-warning)]" strokeWidth={2} />
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--led-ink)]">Not submitted yet</p>
+              <p className="mt-0.5 text-[13px] leading-5 text-[var(--led-muted)]">
+                Your application is saved as a draft. Upload your documents, then press <strong>Submit for Review</strong> so your broker can start working on it.
+              </p>
+            </div>
+          </div>
+          {activeTab !== 'documents' && (
+            <Button variant="secondary" size="sm" onClick={() => setActiveTab('documents')} className="shrink-0">
+              Go to documents
+            </Button>
+          )}
+        </div>
+      )}
+
+      {justSubmitted && (
+        <Card padding="none" className="mb-6 border-[var(--led-success)]/30">
+          <div className="flex items-start gap-3 px-6 py-5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--led-success)]/15">
+              <CheckIcon className="h-5 w-5 text-[var(--led-success)]" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--led-ink)]">Submitted for review</h2>
+              <p className="mt-1 text-[13px] leading-6 text-[var(--led-muted)]">
+                You're done for now. Here's what happens next:
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] leading-6 text-[var(--led-ink)]">
+                <li>
+                  {application.assigned_brokers?.[0]?.full_name
+                    ? `${application.assigned_brokers[0].full_name} will review your application and documents.`
+                    : 'Your broker will review your application and documents.'}
+                </li>
+                <li>If anything else is needed, we'll email you and it will appear under Documents on this page.</li>
+                <li>You can follow progress here, or message your broker from the Messages tab.</li>
+              </ol>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Status Timeline */}
       <Card padding="none" className="mb-6">

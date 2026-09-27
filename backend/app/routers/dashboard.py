@@ -8,15 +8,25 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
+from app.models.application_broker import ApplicationBroker
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.lender import Lender
 from app.models.referral import Referral
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+# Live pipeline: excludes draft and the closed statuses. Mirrors ACTIVE_STATUSES
+# in frontend/src/pages/admin/Dashboard.tsx.
+ACTIVE_PIPELINE_STATUSES = (
+    ApplicationStatus.application_received,
+    ApplicationStatus.application_assessed,
+    ApplicationStatus.submitted,
+    ApplicationStatus.approval,
+)
 
 
 @router.get("/stats")
@@ -156,6 +166,13 @@ def get_dashboard_stats(
     if current_user.role == UserRole.broker:
         tasks_query = tasks_query.filter(Task.assigned_to_id == current_user.id)
     
+    # Totals come from the full query; action_items below is only a 5-item preview.
+    # due_date is stored naive UTC, so compare against naive UTC midnight.
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    open_tasks_count = tasks_query.count()
+    overdue_tasks_count = tasks_query.filter(Task.due_date < start_of_today).count()
+    urgent_tasks_count = tasks_query.filter(Task.priority == TaskPriority.urgent).count()
+
     action_items = tasks_query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(5).all()
     
     action_items_list = []
@@ -168,6 +185,14 @@ def get_dashboard_stats(
             "due_date": t.due_date.isoformat() if t.due_date else None,
             "application_id": t.application_id
         })
+
+    # ── Live files with no broker assigned ──
+    unassigned_active_count = scoped(
+        db.query(func.count(LoanApplication.id)).filter(
+            LoanApplication.status.in_(ACTIVE_PIPELINE_STATUSES),
+            ~LoanApplication.id.in_(db.query(ApplicationBroker.application_id)),
+        )
+    ).scalar() or 0
 
     # ── Lender Insights ──
     lender_query = db.query(
@@ -200,6 +225,10 @@ def get_dashboard_stats(
         "monthly_trend": [{"month": k, "count": v} for k, v in month_counts.items()],
         "daily_trend": [{"date": k, "count": v} for k, v in day_counts.items()],
         "action_items": action_items_list,
+        "open_tasks_count": open_tasks_count,
+        "overdue_tasks_count": overdue_tasks_count,
+        "urgent_tasks_count": urgent_tasks_count,
+        "unassigned_active_count": unassigned_active_count,
         "top_lenders": top_lenders,
         "top_referrers": top_referrers,
     }

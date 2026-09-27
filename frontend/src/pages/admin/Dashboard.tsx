@@ -18,7 +18,7 @@ import { Card, Button, Skeleton, EmptyState } from '../../components/ui';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { formatShortDate, formatTime } from '../../lib/utils';
-import type { ActivityLog, DashboardStats, LoanApplication } from '../../types';
+import type { ActivityLog, DashboardStats } from '../../types';
 import { describeActivity } from '../../lib/activityLog';
 
 type MetricTone = 'accent' | 'success' | 'warning' | 'neutral';
@@ -121,7 +121,6 @@ function DeskMetricCard({ label, value, detail, loading = false, tone = 'neutral
   );
 }
 
-const TERMINAL_STATUSES = ['draft', 'settled', 'rejected', 'not_proceeding'];
 const ACTIVE_STATUSES = ['application_received', 'application_assessed', 'submitted', 'approval'] as const;
 
 export default function AdminDashboard() {
@@ -129,7 +128,6 @@ export default function AdminDashboard() {
   const isBroker = user?.role === 'broker';
   const { toast } = useToast();
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
-  const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -139,15 +137,12 @@ export default function AdminDashboard() {
     const isAdmin = user?.role === 'admin';
     Promise.allSettled([
       api.get('/dashboard/stats'),
-      api.get('/applications?per_page=100'),
       isAdmin ? api.get('/activity-logs?per_page=15') : Promise.resolve(null),
     ])
-      .then(([statsRes, appRes, logRes]) => {
+      .then(([statsRes, logRes]) => {
         const failed: string[] = [];
         if (statsRes.status === 'fulfilled') setDashStats(statsRes.value.data);
         else failed.push('stats');
-        if (appRes.status === 'fulfilled') setApplications(appRes.value.data.items);
-        else failed.push('applications');
         if (logRes.status === 'fulfilled' && logRes.value) setLogs(logRes.value.data.items);
         if (failed.length) toast(`Failed to load: ${failed.join(', ')}`, 'error');
       })
@@ -169,23 +164,21 @@ export default function AdminDashboard() {
     rejected: dashStats?.status_counts.rejected ?? 0,
   }), [dashStats]);
 
-  const activeApplications = useMemo(
-    () => applications.filter((app) => !TERMINAL_STATUSES.includes(app.status)),
-    [applications],
-  );
+  const activeCount = dashStats
+    ? ACTIVE_STATUSES.reduce((sum, s) => sum + (dashStats.status_counts[s] ?? 0), 0)
+    : 0;
   const totalVolume = dashStats
     ? ACTIVE_STATUSES.reduce((sum, s) => sum + (dashStats.volume_by_status[s] ?? 0), 0)
     : 0;
-  const totalActiveExposure = activeApplications.reduce((sum, app) => sum + Number(app.amount || 0), 0);
   const approvalsInFlight = counts.submitted + counts.approval;
   const rateBase = counts.total - counts.draft - (dashStats?.status_counts.not_proceeding ?? 0);
   const settlementRate = rateBase > 0 ? (counts.settled / rateBase) * 100 : 0;
-  const unassignedActive = activeApplications.filter((app) => !app.assigned_brokers?.length).length;
+  const unassignedActive = dashStats?.unassigned_active_count ?? 0;
 
   const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const overdueActions = dashStats?.action_items?.filter((task) => task.due_date && new Date(task.due_date) < startOfToday).length ?? 0;
-  const urgentActions = dashStats?.action_items?.filter((task) => task.priority === 'urgent').length ?? 0;
+  const overdueActions = dashStats?.overdue_tasks_count ?? 0;
+  const urgentActions = dashStats?.urgent_tasks_count ?? 0;
+  const openActions = dashStats?.open_tasks_count ?? 0;
 
   const weekDelta = dashStats
     ? dashStats.apps_last_week > 0
@@ -310,8 +303,8 @@ export default function AdminDashboard() {
             )}
             <DeskMetricCard
               label="Live Mandates"
-              value={activeApplications.length}
-              detail={`${formatVolume(totalActiveExposure)} currently active across the desk`}
+              value={activeCount}
+              detail={`${formatVolume(totalVolume)} currently active across the desk`}
               loading={loading}
               tone="neutral"
             />
@@ -650,7 +643,7 @@ export default function AdminDashboard() {
                   <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[var(--led-ink)]">Needs Attention</h2>
                 </div>
                 <span className={`led-chip ${overdueActions > 0 ? 'led-chip-warning' : 'led-chip-accent'}`}>
-                  {loading ? '--' : `${dashStats?.action_items?.length ?? 0} open`}
+                  {loading ? '--' : `${openActions} open`}
                 </span>
               </div>
             </div>
@@ -684,6 +677,12 @@ export default function AdminDashboard() {
                   ))}
               {(!dashStats?.action_items || dashStats.action_items.length === 0) && !loading && (
                 <EmptyState title="All clear" description="No open exception items on the desk." />
+              )}
+              {!loading && openActions > (dashStats?.action_items?.length ?? 0) && (
+                <div className="flex items-center justify-between gap-3 px-1 pt-1 text-[12px] text-[var(--led-muted)]">
+                  <span className="led-tnum">Showing {dashStats?.action_items?.length ?? 0} of {openActions}</span>
+                  <Link to="/admin/tasks" className="font-medium text-[var(--led-accent)] hover:underline">View all tasks</Link>
+                </div>
               )}
             </div>
           </Card>

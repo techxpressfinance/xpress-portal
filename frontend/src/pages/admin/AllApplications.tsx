@@ -407,6 +407,9 @@ export default function AllApplications() {
                     <Avatar name={b.full_name} size="sm" />{b.full_name}
                   </button>
                 ))}
+                <p style={{ margin: 0, padding: '6px 10px', fontSize: 11.5, color: 'var(--led-muted)', maxWidth: 220 }}>
+                  Filters the current page only. Use the kanban board for a broker's full pipeline.
+                </p>
               </div>
             )}
           </FilterPill>

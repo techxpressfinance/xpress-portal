@@ -1237,7 +1237,7 @@ export default function ReferrerApplicationDetail() {
                       </div>
                     </div>
                     <Button variant={allDocsUploaded ? 'success' : 'primary'} size="lg" className="w-full" onClick={() => setConfirmBrokerSubmit(true)} disabled={submittingOnBehalf} loading={submittingOnBehalf}>
-                      Submit Application
+                      Submit for Review
                     </Button>
                   </Card>
                 )}
@@ -1548,7 +1548,7 @@ export default function ReferrerApplicationDetail() {
         open={confirmBrokerSubmit}
         title="Submit this application now?"
         message="This will submit the application on behalf of the client. They will be notified by email."
-        confirmText="Submit Application"
+        confirmText="Yes, submit"
         loading={submittingOnBehalf}
         onConfirm={handleBrokerSubmit}
         onCancel={() => { if (!submittingOnBehalf) setConfirmBrokerSubmit(false); }}

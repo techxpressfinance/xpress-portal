@@ -618,6 +618,10 @@ export interface DashboardStats {
     due_date: string | null;
     application_id: string | null;
   }[];
+  open_tasks_count: number;
+  overdue_tasks_count: number;
+  urgent_tasks_count: number;
+  unassigned_active_count: number;
   top_lenders: { name: string; approvals: number }[];
   top_referrers: { name: string; count: number }[];
 }
