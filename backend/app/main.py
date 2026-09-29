@@ -57,6 +57,7 @@ from app.models.client_message import ClientMessage  # noqa: F401 — ensure tab
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
 from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
+from app.models.decline_reason import DeclineReason  # noqa: F401 — ensure table is created
 from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsAttachment,
     ArrearsContactAttempt,
@@ -66,7 +67,7 @@ from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsSnapshot,
 )
 from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, decline_reasons, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, notes_history, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
 
 # Configure logging
 logging.basicConfig(
@@ -416,6 +417,13 @@ _MIGRATIONS = [
     ("organizations", "abr_state", "VARCHAR(10)"),
     ("organizations", "abr_postcode", "VARCHAR(10)"),
     ("organizations", "abr_checked_at", "TIMESTAMP"),
+    # Note categories (compliance / learning / decline / scratchpad) — see
+    # models/application_note.py. Existing notes stay "general" (Deal Notes).
+    ("application_notes", "category", "VARCHAR(20) DEFAULT 'general' NOT NULL"),
+    ("application_notes", "lender_submission_id", "VARCHAR(36) REFERENCES lender_submissions(id) ON DELETE SET NULL"),
+    ("application_notes", "decline_reason_id", "VARCHAR(36) REFERENCES decline_reasons(id) ON DELETE SET NULL"),
+    ("application_notes", "updated_at", "TIMESTAMP"),
+    ("application_notes", "updated_by_id", "VARCHAR(36) REFERENCES users(id)"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -1162,6 +1170,8 @@ app.include_router(invitations.router)
 app.include_router(users.router)
 app.include_router(applications.router)
 app.include_router(application_notes.router)
+app.include_router(decline_reasons.router)
+app.include_router(notes_history.router)
 app.include_router(client_messages.router)
 app.include_router(client_alerts.router)
 app.include_router(documents.router)
