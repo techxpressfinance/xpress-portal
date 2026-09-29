@@ -9,6 +9,7 @@ import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
+import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
@@ -825,6 +826,7 @@ export default function ContactDetail() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [contact, setContact] = useState<ContactDetailType | null>(null);
+  const [showNotesHistory, setShowNotesHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editingApp, setEditingApp] = useState<ContactApplication | null>(null);
@@ -1030,8 +1032,21 @@ export default function ContactDetail() {
               ({contact.lending_history.length + contact.applications.length})
             </span>
           </h3>
-          <Button variant="primary" size="sm" onClick={() => setLendingModal({ entry: null })}>+ Add Entry</Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowNotesHistory(true)}
+              title="Compliance, decline, lender, learnings and scratchpad notes from every loan — as PDF or Word"
+            >
+              Notes history
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setLendingModal({ entry: null })}>+ Add Entry</Button>
+          </div>
         </div>
+        {showNotesHistory && id && (
+          <NotesHistoryModal subject={{ type: 'contact', id }} onClose={() => setShowNotesHistory(false)} />
+        )}
 
         {/* Manual entries */}
         <div className="mb-6">

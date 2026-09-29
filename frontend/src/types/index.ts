@@ -508,7 +508,75 @@ export interface ApplicationNote {
   author_role: string | null;
   content: string;
   visibility: NoteVisibility[];
+  category: NoteCategory;
+  // Decline notes only
+  lender_submission_id: string | null;
+  lender_name: string | null;
+  decline_reason_id: string | null;
+  decline_reason: string | null;
   created_at: string;
+  updated_at: string | null;
+  updated_by_name: string | null;
+}
+
+/** general = Deal Notes (the only kind clients/referrers can see); the rest are
+ *  staff-only and feed the client notes-history export. */
+export type NoteCategory = 'general' | 'compliance' | 'learning' | 'decline' | 'scratchpad';
+
+export interface Scratchpad {
+  content: string;
+  updated_at: string | null;
+  updated_by_name: string | null;
+}
+
+export interface DeclineReason {
+  id: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface NotesHistorySubmission {
+  id: string;
+  lender_name: string | null;
+  status: LenderSubmissionStatus;
+  submitted_at: string;
+  responded_at: string | null;
+  offered_rate: number | null;
+  offered_amount: number | null;
+  conditions: string | null;
+  notes: string | null;
+  submitted_by_name: string | null;
+}
+
+export interface NotesHistoryLoan {
+  id: string;
+  ref: string;
+  loan_type: LoanType;
+  sub_type_label: string | null;
+  amount: number | null;
+  status: ApplicationStatus;
+  created_at: string;
+  settled_at: string | null;
+  applicant_type: string;
+  applicant_name: string | null;
+  business_name: string | null;
+  approval_lender_name: string | null;
+  brokers: string[];
+  /** The subject's part in this loan, e.g. "Main applicant", "ABC Pty Ltd — borrower". */
+  roles: string[];
+  notes: ApplicationNote[];
+  submissions: NotesHistorySubmission[];
+}
+
+export interface NotesHistory {
+  subject: { type: 'contact' | 'organization'; id: string; name: string };
+  generated_at: string;
+  generated_by: string;
+  /** Loans left out because another broker is handling them (brokers only). */
+  hidden_count: number;
+  loans: NotesHistoryLoan[];
+  decline_reasons: { id: string; label: string; is_active: boolean }[];
 }
 
 export interface DirectMessage {

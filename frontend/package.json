@@ -13,6 +13,7 @@
     "@heroicons/react": "^2.2.0",
     "axios": "^1.13.5",
     "date-fns": "^4.4.0",
+    "docx": "^9.8.1",
     "html2pdf.js": "^0.14.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.0",

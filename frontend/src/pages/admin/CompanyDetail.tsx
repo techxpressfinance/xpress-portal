@@ -8,6 +8,7 @@ import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameS
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
+import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
@@ -339,6 +340,7 @@ export default function CompanyDetail() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [company, setCompany] = useState<OrganizationDetail | null>(null);
+  const [showNotesHistory, setShowNotesHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [linkingContact, setLinkingContact] = useState(false);
@@ -615,10 +617,23 @@ export default function CompanyDetail() {
 
       {/* Linked applications */}
       <Card>
-        <h3 className="text-lg font-semibold mb-4">
-          Applications
-          <span className="ml-2 text-sm font-normal text-muted-foreground">({company.applications.length})</span>
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">
+            Applications
+            <span className="ml-2 text-sm font-normal text-muted-foreground">({company.applications.length})</span>
+          </h3>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowNotesHistory(true)}
+            title="Compliance, decline, lender, learnings and scratchpad notes from every loan — as PDF or Word"
+          >
+            Notes history
+          </Button>
+        </div>
+        {showNotesHistory && id && (
+          <NotesHistoryModal subject={{ type: 'organization', id }} onClose={() => setShowNotesHistory(false)} />
+        )}
         {company.applications.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">No applications linked to this entity yet.</p>
         ) : (

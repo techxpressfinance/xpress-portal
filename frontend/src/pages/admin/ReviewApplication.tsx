@@ -27,7 +27,13 @@ import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
-import { getErrorMessage, formatDate, formatDateTime, formatTime, getInitials } from '../../lib/utils';
+import NoteFeed from '../../components/notes/NoteFeed';
+import StickyNote from '../../components/notes/StickyNote';
+import ChatThread from '../../components/notes/ChatThread';
+import DeclineReasonsModal from '../../components/notes/DeclineReasonsModal';
+import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
+import { NOTE_TABS, notesForCategory } from '../../lib/notesHistory';
+import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
@@ -35,14 +41,13 @@ import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, DeclineReason, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
 import ActivityChanges from '../../components/ActivityChanges';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
-import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BookmarkIcon, BuildingOfficeIcon, ChatBubbleBottomCenterTextIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EllipsisHorizontalIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserGroupIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BuildingOfficeIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EllipsisHorizontalIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // The pipeline in order, so the next forward step can be offered as the one
 // primary action; everything else (reject, not proceeding, step back) sits in
@@ -114,6 +119,26 @@ function StatusMoveActions({ current, transitions, onMove }: {
   );
 }
 
+type MsgTab = 'referrer_messages' | 'client_messages' | 'alerts' | 'general' | 'compliance' | 'learning' | 'decline';
+
+// Conversations and the loan's internal feeds are separate top-level tabs;
+// each group is the side rail of its tab.
+const MSG_TAB_GROUPS: { page: 'messages' | 'notes'; label: string; tabs: { key: MsgTab; label: string }[] }[] = [
+  {
+    page: 'messages',
+    label: 'Conversations',
+    tabs: [
+      { key: 'client_messages', label: 'Client' },
+      { key: 'referrer_messages', label: 'Referrer' },
+    ],
+  },
+  {
+    page: 'notes',
+    label: 'Internal',
+    tabs: [...NOTE_TABS.filter(({ category }) => category !== 'scratchpad').map(({ category, label }) => ({ key: category as MsgTab, label })), { key: 'alerts', label: 'Client alerts' }],
+  },
+];
+
 const TAB_LABEL = {
   overview: 'Overview',
   documents: 'Docs & Analysis',
@@ -121,6 +146,7 @@ const TAB_LABEL = {
   quotes: 'Quotes',
   invoices: 'Tax Invoices',
   messages: 'Messages',
+  notes: 'Notes',
   activity: 'Activity',
 } as const;
 
@@ -149,24 +175,22 @@ export default function ReviewApplication() {
   // is never mistaken for "there is nothing here".
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [appNotes, setAppNotes] = useState<ApplicationNote[]>([]);
-  const [msgTab, setMsgTab] = useState<'referrer_messages' | 'client_messages' | 'deal_notes' | 'alerts'>('referrer_messages');
-  const [newNoteContent, setNewNoteContent] = useState('');
-  const [noteVisibility, setNoteVisibility] = useState<'broker' | 'personal'>('broker');
-  const [sendingNote, setSendingNote] = useState(false);
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteContent, setEditingNoteContent] = useState('');
-  const [savingNoteEdit, setSavingNoteEdit] = useState(false);
+  const [convTab, setConvTab] = useState<MsgTab>('client_messages');
+  const [noteTab, setNoteTab] = useState<MsgTab>('general');
+  const [declineReasons, setDeclineReasons] = useState<DeclineReason[]>([]);
+  const [showDeclineReasons, setShowDeclineReasons] = useState(false);
+  // Set when a submission is marked declined: offers a decline note, and the
+  // Decline Notes composer opens with that lender already picked.
+  const [declinePrompt, setDeclinePrompt] = useState<{ submissionId: string; lender: string } | null>(null);
+  const [declinePrefill, setDeclinePrefill] = useState<string | null>(null);
+  const [showNotesHistory, setShowNotesHistory] = useState(false);
   const [pinningMsgId, setPinningMsgId] = useState<string | null>(null);
   const [pinnedMsgIds, setPinnedMsgIds] = useState<Set<string>>(new Set());
   // Maps a pinned deal note's id back to its source message id, so deleting the
   // note un-checks the message it came from.
   const [noteSourceMsg, setNoteSourceMsg] = useState<Record<string, string>>({});
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
-  const [newClientMsgContent, setNewClientMsgContent] = useState('');
-  const [sendingClientMsg, setSendingClientMsg] = useState(false);
   const [referrerMessages, setReferrerMessages] = useState<ClientMessage[]>([]);
-  const [newRefMsgContent, setNewRefMsgContent] = useState('');
-  const [sendingRefMsg, setSendingRefMsg] = useState(false);
   const [alerts, setAlerts] = useState<ClientAlert[]>([]);
   const [newAlertContent, setNewAlertContent] = useState('');
   const [newAlertHighPriority, setNewAlertHighPriority] = useState(false);
@@ -176,7 +200,7 @@ export default function ReviewApplication() {
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
   const [removeBrokerTarget, setRemoveBrokerTarget] = useState<{ id: string; full_name: string } | null>(null);
   const [removingBroker, setRemovingBroker] = useState(false);
-  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const);
+  const [activeTab, setActiveTab] = useTabParam('overview', ['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'notes', 'activity'] as const);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   // Set when the broker got to the tax invoice tab by asking for the document
@@ -249,6 +273,7 @@ export default function ReviewApplication() {
   const [changingStatus, setChangingStatus] = useState(false);
   const [reasonModalStatus, setReasonModalStatus] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState('');
+  const [rejectReasonId, setRejectReasonId] = useState('');
   const [savingWithReason, setSavingWithReason] = useState(false);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvalLenderName, setApprovalLenderName] = useState('');
@@ -344,6 +369,7 @@ export default function ReviewApplication() {
       // Submissions and quotes carry counts on their tab labels, so they load
       // up front; the rest of each tab's data waits until the tab is opened.
       { label: 'Submissions', run: () => api.get(`/applications/${id}/submissions`).then(({ data }) => setLenderSubmissions(data)) },
+      { label: 'Decline reasons', run: () => api.get('/decline-reasons').then(({ data }) => setDeclineReasons(data)) },
       { label: 'Quotes', run: () => api.get(`/applications/${id}/quote-sheets`).then(({ data }) => setQuoteSheets(data)) },
       { label: 'Document requests', run: () => api.get(`/documents/requests/${id}`).then(({ data }) => setDocRequests(data)) },
     ];
@@ -521,36 +547,58 @@ export default function ReviewApplication() {
     }
   };
 
-  const startEditNote = (note: ApplicationNote) => {
-    setEditingNoteId(note.id);
-    setEditingNoteContent(note.content);
+  // A deleted deal note that was pinned from a message un-checks that message.
+  const handleNoteDeleted = (note: ApplicationNote) => {
+    setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
+    const srcMsgId = noteSourceMsg[note.id];
+    if (!srcMsgId) return;
+    setPinnedMsgIds((prev) => {
+      const next = new Set(prev);
+      next.delete(srcMsgId);
+      return next;
+    });
+    setNoteSourceMsg((prev) => {
+      const next = { ...prev };
+      delete next[note.id];
+      return next;
+    });
   };
 
-  const cancelEditNote = () => {
-    setEditingNoteId(null);
-    setEditingNoteContent('');
-  };
-
-  const saveNoteEdit = async () => {
-    if (!id || !editingNoteId || !editingNoteContent.trim()) return;
-    setSavingNoteEdit(true);
-    try {
-      const { data } = await api.patch(`/applications/${id}/notes/${editingNoteId}`, { content: editingNoteContent.trim() });
-      setAppNotes((prev) => prev.map((n) => (n.id === editingNoteId ? data : n)));
-      setEditingNoteId(null);
-      setEditingNoteContent('');
-      toast('Note updated', 'success');
-    } catch (err: unknown) {
-      toast(getErrorMessage(err, 'Failed to update note'), 'error');
-    } finally {
-      setSavingNoteEdit(false);
+  // Conversations flag unread replies; internal feeds show a quiet total
+  // (alerts and decline notes in red).
+  const msgTabBadge = (key: MsgTab): { count: number; tone: 'unread' | 'danger' | 'muted' } | null => {
+    let count = 0;
+    let tone: 'unread' | 'danger' | 'muted' = 'muted';
+    if (key === 'client_messages' || key === 'referrer_messages') {
+      const msgs = key === 'client_messages' ? clientMessages : referrerMessages;
+      count = msgs.filter((m) => !m.is_read && (m.author_role === 'client' || m.author_role === 'referrer')).length;
+      tone = 'unread';
+    } else if (key === 'alerts') {
+      count = alerts.length;
+      tone = 'danger';
+    } else {
+      count = notesForCategory(appNotes, key).length;
+      if (key === 'decline') tone = 'danger';
     }
+    return count > 0 ? { count, tone } : null;
+  };
+
+  // The rail selection for whichever of the Messages / Notes tabs is open.
+  const msgTab = activeTab === 'notes' ? noteTab : convTab;
+  const setMsgTab = activeTab === 'notes' ? setNoteTab : setConvTab;
+
+  const openDeclineNote = (submissionId: string | null) => {
+    setDeclinePrefill(submissionId);
+    setDeclinePrompt(null);
+    setActiveTab('notes');
+    setNoteTab('decline');
   };
 
   const handleStatusChange = (newStatus: string) => {
     if (!id) return;
     if (newStatus === 'rejected' || newStatus === 'not_proceeding') {
       setReasonText('');
+      setRejectReasonId('');
       setReasonModalStatus(newStatus);
     } else if (newStatus === 'approval') {
       setApprovalLenderName(application?.approval_lender_name || '');
@@ -679,9 +727,14 @@ export default function ReviewApplication() {
       const { data } = await api.patch(`/applications/${id}/status?status=${reasonModalStatus}`);
       setApplication(data);
       const label = reasonModalStatus === 'rejected' ? 'Rejected' : 'Not Proceeding';
+      // A rejection is a decline — filed with its reason tag so it counts in the
+      // client's notes history. Not proceeding is the client's call: a deal note.
       const { data: note } = await api.post(`/applications/${id}/notes`, {
         content: `**${label}** — ${reasonText.trim()}`,
         visibility: ['broker'],
+        ...(reasonModalStatus === 'rejected'
+          ? { category: 'decline', decline_reason_id: rejectReasonId || null }
+          : {}),
       });
       setAppNotes(prev => [...prev, note]);
       toast(`Status changed to ${reasonModalStatus}`, 'success');
@@ -1450,11 +1503,11 @@ export default function ReviewApplication() {
         </div>
       )}
 
-      {/* Main content tabs — full width, above the two columns, so all seven
+      {/* Main content tabs — full width, above the two columns, so all eight
           fit on one line rather than scrolling inside the two-thirds column.
           They still only switch the left column; the sidebar is constant. */}
       <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-border/60 mb-6 scrollbar-none">
-        {(['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'activity'] as const).map((tab) => {
+        {(['overview', 'documents', 'submissions', 'quotes', 'invoices', 'messages', 'notes', 'activity'] as const).map((tab) => {
           const active = activeTab === tab;
           const badge = tabBadges[tab];
           return (
@@ -3252,6 +3305,16 @@ export default function ReviewApplication() {
 
             {activeTab === 'submissions' && (
               <>
+                {declinePrompt && (
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3">
+                    <p className="flex-1 text-[13px] text-foreground">
+                      <span className="font-semibold">{declinePrompt.lender} declined.</span>{' '}
+                      Record why in a decline note, so the next broker on this client can see it.
+                    </p>
+                    <Button size="sm" variant="secondary" onClick={() => setDeclinePrompt(null)}>Not now</Button>
+                    <Button size="sm" onClick={() => openDeclineNote(declinePrompt.submissionId)}>Add decline note</Button>
+                  </div>
+                )}
                 <Card>
                   <div className="flex items-center justify-between mb-5">
                     <h2 className="text-[15px] font-semibold text-foreground">Lender Submissions</h2>
@@ -3352,9 +3415,13 @@ export default function ReviewApplication() {
                                 payload.conditions = subForm.conditions || null;
                                 payload.notes = subForm.notes || null;
                                 if (subForm.status !== 'pending') payload.responded_at = new Date().toISOString();
+                                const before = lenderSubmissions.find(s => s.id === editingSubId);
                                 const { data } = await api.patch(`/applications/${id}/submissions/${editingSubId}`, payload);
                                 setLenderSubmissions(prev => prev.map(s => s.id === editingSubId ? data : s));
                                 toast('Submission updated', 'success');
+                                if (data.status === 'declined' && before?.status !== 'declined') {
+                                  setDeclinePrompt({ submissionId: data.id, lender: data.lender_name || 'The lender' });
+                                }
                               } else {
                                 const payload: Record<string, unknown> = { lender_id: subForm.lender_id, status: subForm.status };
                                 if (subForm.offered_rate) payload.offered_rate = parseFloat(subForm.offered_rate);
@@ -3364,6 +3431,9 @@ export default function ReviewApplication() {
                                 const { data } = await api.post(`/applications/${id}/submissions`, payload);
                                 setLenderSubmissions(prev => [data, ...prev]);
                                 toast('Submission created', 'success');
+                                if (data.status === 'declined') {
+                                  setDeclinePrompt({ submissionId: data.id, lender: data.lender_name || 'The lender' });
+                                }
                               }
                               setShowSubForm(false);
                               setEditingSubId(null);
@@ -3461,506 +3531,252 @@ export default function ReviewApplication() {
                 </Card>
               </>
             )}
-            {activeTab === 'messages' && (
+            {(activeTab === 'messages' || activeTab === 'notes') && (
               <>
                 <Card>
-                  {/* Tab bar */}
-                  <div className="flex items-center gap-1 border-b border-border pb-4 mb-4 bg-secondary/50 rounded-xl p-1">
-                    {([
-                      { key: 'referrer_messages' as const, label: 'Message to Ref' },
-                      { key: 'client_messages' as const, label: 'Message to client' },
-                      { key: 'deal_notes' as const, label: 'Deal Notes' },
-                      { key: 'alerts' as const, label: 'Alerts' },
-                    ]).map(({ key, label }) => (
-                      <button
-                        key={key}
-                        onClick={() => setMsgTab(key)}
-                        className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all duration-200 ${msgTab === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
-                      >
-                        {label}
-                        {key === 'alerts' && alerts.length > 0 && (
-                          <span className="ml-1.5 inline-flex items-center justify-center h-4 w-4 rounded-full bg-destructive/20 text-destructive text-[10px] font-bold">{alerts.length}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Message to Ref tab */}
-                  {msgTab === 'referrer_messages' && (
-                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
-                      {!referrer ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                          <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                            <LinkIcon className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                          <p className="text-[13px] font-medium text-muted-foreground">No ref associated with this contact</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
-                            {referrerMessages.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
-                                <ChatBubbleBottomCenterTextIcon className="h-8 w-8 text-muted-foreground" />
-                                <p className="text-[13px] text-muted-foreground">No messages yet</p>
-                              </div>
-                            ) : (
-                              referrerMessages.map((msg) => {
-                                const isOwn = msg.author_id === currentUser?.id;
-                                const isPinned = pinnedMsgIds.has(msg.id);
-                                return (
-                                  <div key={msg.id} className={`group flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
-                                    <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                                      <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || referrer.full_name)}</span>
-                                      <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
-                                      <button
-                                        onClick={() => handlePinMessageToDealNotes(msg, isOwn ? 'your' : (msg.author_name || referrer.full_name))}
-                                        disabled={pinningMsgId === msg.id || isPinned}
-                                        className={`transition-opacity p-0.5 rounded ${isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
-                                        title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
-                                      >
-                                        {isPinned ? (
-                                          <BookmarkSolidIcon className="h-3 w-3" />
-                                        ) : (
-                                          <BookmarkIcon className="h-3 w-3" strokeWidth={2} />
-                                        )}
-                                      </button>
-                                      {!isOwn && (
-                                        <button
-                                          onClick={async () => {
-                                            if (!referrer?.id) return;
-                                            try {
-                                              await api.delete(`/clients/${referrer.id}/messages/${msg.id}`);
-                                              setReferrerMessages((prev) => prev.filter((m) => m.id !== msg.id));
-                                            } catch {}
-                                          }}
-                                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                          title="Delete"
-                                        >
-                                          <TrashIcon className="h-3 w-3" strokeWidth={2} />
-                                        </button>
-                                      )}
-                                    </div>
-                                    <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
-                                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                          <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
-                            <textarea
-                              value={newRefMsgContent}
-                              onChange={(e) => setNewRefMsgContent(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  if (!referrer?.id || referrer.id === currentUser?.id || !newRefMsgContent.trim()) return;
-                                  setSendingRefMsg(true);
-                                  api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id })
-                                    .then(({ data }) => { setReferrerMessages((prev) => [...prev, data]); setNewRefMsgContent(''); toast('Message sent', 'success'); })
-                                    .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
-                                    .finally(() => setSendingRefMsg(false));
-                                }
-                              }}
-                              rows={2}
-                              disabled={referrer.id === currentUser?.id}
-                              className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none disabled:opacity-60"
-                              placeholder={referrer.id === currentUser?.id ? "This is your own application — you can't message yourself." : `Message ${referrer.full_name}…`}
-                            />
-                            <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                              <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
-                              <Button
-                                size="sm"
-                                className="rounded-xl h-8 px-3.5"
-                                loading={sendingRefMsg}
-                                disabled={!newRefMsgContent.trim() || !referrer?.id || referrer.id === currentUser?.id}
-                                onClick={async () => {
-                                  if (!referrer?.id || referrer.id === currentUser?.id || !newRefMsgContent.trim()) return;
-                                  setSendingRefMsg(true);
-                                  try {
-                                    const { data } = await api.post(`/clients/${referrer.id}/messages`, { content: newRefMsgContent.trim(), recipient_id: referrer.id, application_id: id });
-                                    setReferrerMessages((prev) => [...prev, data]);
-                                    setNewRefMsgContent('');
-                                    toast('Message sent', 'success');
-                                  } catch (err: unknown) {
-                                    toast(getErrorMessage(err, 'Failed to send'), 'error');
-                                  } finally {
-                                    setSendingRefMsg(false);
-                                  }
-                                }}
-                              >
-                                <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
-                                Send
-                              </Button>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Client Messages tab */}
-                  {msgTab === 'client_messages' && (
-                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
-                      <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 mb-3">
-                        {clientMessages.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full gap-2 opacity-60">
-                            <ChatBubbleBottomCenterTextIcon className="h-8 w-8 text-muted-foreground" />
-                            <p className="text-[13px] text-muted-foreground">No messages yet</p>
-                          </div>
-                        ) : (
-                          clientMessages.map((msg) => {
-                            const isOwn = msg.author_id === currentUser?.id;
-                            const isPinned = pinnedMsgIds.has(msg.id);
+                  <div className="flex flex-col gap-4 md:flex-row md:gap-5">
+                    {/* Rail: conversations with people, then the loan's internal feeds */}
+                    <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:gap-0 md:overflow-visible md:border-r md:border-border/60 md:px-0 md:pb-0 md:pr-4">
+                      {MSG_TAB_GROUPS.filter((group) => group.page === activeTab).map((group) => (
+                        <div key={group.label} className="contents md:mb-4 md:block">
+                          <p className="hidden md:block px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{group.label}</p>
+                          {group.tabs.map(({ key, label }) => {
+                            const badge = msgTabBadge(key);
+                            const active = msgTab === key;
                             return (
-                              <div key={msg.id} className={`group flex flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
-                                <div className={`flex items-center gap-1.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                                  <span className="text-[12px] font-semibold text-foreground">{isOwn ? 'You' : (msg.author_name || 'Client')}</span>
-                                  <span className="text-[11px] text-muted-foreground">{formatTime(msg.created_at)}</span>
-                                  <button
-                                    onClick={() => handlePinMessageToDealNotes(msg, isOwn ? 'your' : (msg.author_name || 'the client'))}
-                                    disabled={pinningMsgId === msg.id || isPinned}
-                                    className={`transition-opacity p-0.5 rounded ${isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
-                                    title={isPinned ? 'Added to deal notes' : 'Add to deal notes'}
+                              <button
+                                key={key}
+                                onClick={() => setMsgTab(key)}
+                                className={`flex shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] transition-colors md:w-full ${active ? 'bg-secondary font-semibold text-foreground' : 'font-medium text-muted-foreground hover:bg-secondary/50 hover:text-foreground'}`}
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  {badge?.tone === 'unread' && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                                  {label}
+                                </span>
+                                {badge && (
+                                  <span
+                                    className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${badge.tone === 'unread' ? 'bg-primary text-primary-foreground' : badge.tone === 'danger' ? 'bg-destructive/15 text-destructive' : 'text-muted-foreground'}`}
+                                    title={badge.tone === 'unread' ? `${badge.count} unread` : undefined}
                                   >
-                                    {isPinned ? (
-                                      <BookmarkSolidIcon className="h-3 w-3" />
-                                    ) : (
-                                      <BookmarkIcon className="h-3 w-3" strokeWidth={2} />
-                                    )}
-                                  </button>
-                                  {!isOwn && (
-                                    <button
-                                      onClick={async () => {
-                                        if (!client?.id) return;
-                                        try {
-                                          await api.delete(`/clients/${client.id}/messages/${msg.id}`);
-                                          setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
-                                        } catch {}
-                                      }}
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                      title="Delete"
-                                    >
-                                      <TrashIcon className="h-3 w-3" strokeWidth={2} />
-                                    </button>
-                                  )}
-                                </div>
-                                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${isOwn ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
-                                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                                </div>
-                              </div>
+                                    {badge.count}
+                                  </span>
+                                )}
+                              </button>
                             );
-                          })
-                        )}
-                      </div>
-                      <div className="rounded-2xl bg-secondary/50 border border-border/60 focus-within:border-primary/40 transition-colors flex flex-col">
-                        <textarea
-                          value={newClientMsgContent}
-                          onChange={(e) => setNewClientMsgContent(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              if (!client?.id || client.id === currentUser?.id || !newClientMsgContent.trim()) return;
-                              setSendingClientMsg(true);
-                              api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id })
-                                .then(({ data }) => { setClientMessages((prev) => [...prev, data]); setNewClientMsgContent(''); toast('Message sent', 'success'); })
-                                .catch((err: unknown) => toast(getErrorMessage(err, 'Failed to send'), 'error'))
-                                .finally(() => setSendingClientMsg(false));
+                          })}
+                        </div>
+                      ))}
+                      {activeTab === 'notes' && (application?.contact_id || application?.business_organization_id) && (
+                        <button
+                          type="button"
+                          onClick={() => setShowNotesHistory(true)}
+                          className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-primary hover:bg-primary/10 md:mt-auto md:border-t md:border-border/60 md:rounded-none md:pt-3"
+                          title="Download the notes from all of this client's loans as PDF or Word"
+                        >
+                          <ArrowDownTrayIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                          Notes history
+                        </button>
+                      )}
+                    </nav>
+
+                    <div className="min-w-0 flex-1">
+                      {msgTab === 'client_messages' && (
+                        <ChatThread
+                          messages={clientMessages}
+                          currentUserId={currentUser?.id}
+                          counterpartName={client?.full_name || 'the client'}
+                          isSelf={!client || client.id === currentUser?.id}
+                          pinnedIds={pinnedMsgIds}
+                          pinningId={pinningMsgId}
+                          onPin={handlePinMessageToDealNotes}
+                          onDelete={async (msg) => {
+                            if (!client?.id) return;
+                            try {
+                              await api.delete(`/clients/${client.id}/messages/${msg.id}`);
+                              setClientMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                            } catch (err: unknown) {
+                              toast(getErrorMessage(err, 'Failed to delete'), 'error');
                             }
                           }}
-                          rows={2}
-                          disabled={client?.id === currentUser?.id}
-                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none disabled:opacity-60"
-                          placeholder={client?.id === currentUser?.id ? "This is your own application — you can't message yourself." : 'Message the client…'}
+                          onSend={async (content) => {
+                            if (!client?.id) return;
+                            try {
+                              const { data } = await api.post(`/clients/${client.id}/messages`, { content, recipient_id: client.id, application_id: id });
+                              setClientMessages((prev) => [...prev, data]);
+                              toast('Message sent', 'success');
+                            } catch (err: unknown) {
+                              toast(getErrorMessage(err, 'Failed to send'), 'error');
+                              throw err;
+                            }
+                          }}
                         />
-                        <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-                          <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
-                          <Button
-                            size="sm"
-                            className="rounded-xl h-8 px-3.5"
-                            loading={sendingClientMsg}
-                            disabled={!newClientMsgContent.trim() || !client?.id || client?.id === currentUser?.id}
-                            onClick={async () => {
-                              if (!client?.id || client.id === currentUser?.id || !newClientMsgContent.trim()) return;
-                              setSendingClientMsg(true);
+                      )}
+
+                      {msgTab === 'referrer_messages' && (
+                        !referrer ? (
+                          <div className="flex flex-col items-center justify-center h-[500px] text-center space-y-3 opacity-70">
+                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                              <LinkIcon className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <p className="text-[13px] font-medium text-muted-foreground">No ref associated with this contact</p>
+                          </div>
+                        ) : (
+                          <ChatThread
+                            messages={referrerMessages}
+                            currentUserId={currentUser?.id}
+                            counterpartName={referrer.full_name}
+                            isSelf={referrer.id === currentUser?.id}
+                            pinnedIds={pinnedMsgIds}
+                            pinningId={pinningMsgId}
+                            onPin={handlePinMessageToDealNotes}
+                            onDelete={async (msg) => {
                               try {
-                                const { data } = await api.post(`/clients/${client.id}/messages`, { content: newClientMsgContent.trim(), recipient_id: client.id, application_id: id });
-                                setClientMessages((prev) => [...prev, data]);
-                                setNewClientMsgContent('');
+                                await api.delete(`/clients/${referrer.id}/messages/${msg.id}`);
+                                setReferrerMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                              } catch (err: unknown) {
+                                toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                              }
+                            }}
+                            onSend={async (content) => {
+                              try {
+                                const { data } = await api.post(`/clients/${referrer.id}/messages`, { content, recipient_id: referrer.id, application_id: id });
+                                setReferrerMessages((prev) => [...prev, data]);
                                 toast('Message sent', 'success');
                               } catch (err: unknown) {
                                 toast(getErrorMessage(err, 'Failed to send'), 'error');
-                              } finally {
-                                setSendingClientMsg(false);
+                                throw err;
                               }
                             }}
-                          >
-                            <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
-                            Send
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Deal Notes tab */}
-                  {msgTab === 'deal_notes' && (
-                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                        {appNotes.filter((n) => n.visibility.length === 1 && (n.visibility[0] === 'broker' || n.visibility[0] === 'personal')).length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                              <DocumentTextIcon className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                            <p className="text-[13px] font-medium text-muted-foreground">No deal notes yet</p>
-                          </div>
-                        ) : (
-                          appNotes
-                            .filter((n) => n.visibility.length === 1 && (n.visibility[0] === 'broker' || n.visibility[0] === 'personal'))
-                            .map((note) => {
-                              const isPersonal = note.visibility[0] === 'personal';
-                              return (
-                              <div key={note.id} className="flex flex-col gap-1.5 group/note">
-                                <div className="flex items-baseline justify-between px-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[13px] font-semibold text-foreground">{note.author_name || 'Staff'}</span>
-                                    {note.author_role && (
-                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{note.author_role}</span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {(currentUser?.role === 'admin' || note.author_id === currentUser?.id) && (
-                                      <button
-                                        onClick={() => startEditNote(note)}
-                                        className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary"
-                                        title="Edit"
-                                      >
-                                        <PencilSquareIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={async () => {
-                                        if (!id) return;
-                                        try {
-                                          await api.delete(`/applications/${id}/notes/${note.id}`);
-                                          setAppNotes((prev) => prev.filter((n) => n.id !== note.id));
-                                          // If this note was pinned from a message, un-check that message.
-                                          const srcMsgId = noteSourceMsg[note.id];
-                                          if (srcMsgId) {
-                                            setPinnedMsgIds((prev) => {
-                                              const next = new Set(prev);
-                                              next.delete(srcMsgId);
-                                              return next;
-                                            });
-                                            setNoteSourceMsg((prev) => {
-                                              const next = { ...prev };
-                                              delete next[note.id];
-                                              return next;
-                                            });
-                                          }
-                                          toast('Note deleted', 'success');
-                                        } catch (err: unknown) {
-                                          toast(getErrorMessage(err, 'Failed to delete'), 'error');
-                                        }
-                                      }}
-                                      className="opacity-0 group-hover/note:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                      title="Delete"
-                                    >
-                                      <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                                    </button>
-                                    <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(note.created_at)}</span>
-                                  </div>
-                                </div>
-                                <div className={`rounded-2xl p-3.5 text-[14px] leading-relaxed text-foreground border ${isPersonal ? 'bg-amber-500/8 border-amber-500/20' : 'bg-secondary/40 border-transparent'}`}>
-                                  {editingNoteId === note.id ? (
-                                    <div className="space-y-2">
-                                      <textarea
-                                        value={editingNoteContent}
-                                        onChange={(e) => setEditingNoteContent(e.target.value)}
-                                        rows={3}
-                                        autoFocus
-                                        className="w-full rounded-lg bg-background border border-border px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                                      />
-                                      <div className="flex items-center justify-end gap-2">
-                                        <Button size="sm" variant="ghost" onClick={cancelEditNote} disabled={savingNoteEdit}>Cancel</Button>
-                                        <Button size="sm" onClick={saveNoteEdit} loading={savingNoteEdit} disabled={!editingNoteContent.trim()}>Save</Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <p className="whitespace-pre-wrap">{note.content}</p>
-                                  )}
-                                  <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border/30">
-                                    <LockClosedIcon className="h-3.5 w-3.5 opacity-60 shrink-0" strokeWidth={2} />
-                                    <span className="text-[11px] font-medium opacity-60">{isPersonal ? 'Only you' : 'Internal (Brokers only)'}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              );
-                            })
-                        )}
-                      </div>
-                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-primary/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
-                        <textarea
-                          value={newNoteContent}
-                          onChange={(e) => setNewNoteContent(e.target.value)}
-                          rows={2}
-                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                          placeholder="Write an internal note..."
+                          />
+                        )
+                      )}
+                      {/* Note feeds — Deal Notes, Compliance, My Learnings, Decline Notes */}
+                      {id && (msgTab === 'general' || msgTab === 'compliance' || msgTab === 'learning' || msgTab === 'decline') && (
+                        <NoteFeed
+                          key={msgTab}
+                          applicationId={id}
+                          category={msgTab}
+                          notes={appNotes}
+                          currentUser={currentUser}
+                          onCreated={(note) => setAppNotes((prev) => [...prev, note])}
+                          onUpdated={(note) => setAppNotes((prev) => prev.map((n) => (n.id === note.id ? note : n)))}
+                          onDeleted={handleNoteDeleted}
+                          submissions={lenderSubmissions}
+                          declineReasons={declineReasons}
+                          onManageReasons={currentUser?.role === 'admin' ? () => setShowDeclineReasons(true) : undefined}
+                          prefillSubmissionId={msgTab === 'decline' ? declinePrefill : null}
                         />
-                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
-                          <button
-                            type="button"
-                            onClick={() => setNoteVisibility((v) => v === 'broker' ? 'personal' : 'broker')}
-                            className={`flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-lg transition-colors ${noteVisibility === 'personal' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
-                            title={noteVisibility === 'personal' ? 'Only visible to you — click to share with team' : 'Visible to all brokers — click to make private'}
-                          >
-                            {noteVisibility === 'personal' ? (
-                              <>
-                                <UserIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                                Only me
-                              </>
+                      )}
+
+
+                      {/* Alerts tab */}
+                      {msgTab === 'alerts' && (
+                        <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
+                          <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
+                            {alerts.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
+                                <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
+                                  <ExclamationTriangleIcon className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                                <p className="text-[13px] font-medium text-muted-foreground">No alerts for this client</p>
+                              </div>
                             ) : (
-                              <>
-                                <UserGroupIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                                Team
-                              </>
+                              alerts.map((alert) => (
+                                <div key={alert.id} className="flex flex-col gap-1.5 group/alert">
+                                  <div className="flex items-baseline justify-between px-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[13px] font-semibold text-foreground">{alert.author_name || 'Staff'}</span>
+                                      {alert.author_role && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{alert.author_role}</span>
+                                      )}
+                                      {alert.is_high_priority && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive uppercase tracking-wider">High alert</span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={async () => {
+                                          if (!client?.id) return;
+                                          try {
+                                            await api.delete(`/clients/${client.id}/alerts/${alert.id}`);
+                                            setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+                                            toast('Alert deleted', 'success');
+                                          } catch (err: unknown) {
+                                            toast(getErrorMessage(err, 'Failed to delete'), 'error');
+                                          }
+                                        }}
+                                        className="opacity-0 group-hover/alert:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                        title="Delete"
+                                      >
+                                        <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                                      </button>
+                                      <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(alert.created_at)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-destructive/8 text-foreground border border-destructive/20">
+                                    <p className="whitespace-pre-wrap">{alert.content}</p>
+                                  </div>
+                                </div>
+                              ))
                             )}
-                          </button>
-                          <Button
-                            size="sm"
-                            className="rounded-xl px-4 h-9"
-                            loading={sendingNote}
-                            disabled={!newNoteContent.trim()}
-                            onClick={async () => {
-                              if (!id || !newNoteContent.trim()) return;
-                              setSendingNote(true);
-                              try {
-                                const { data } = await api.post(`/applications/${id}/notes`, { content: newNoteContent.trim(), visibility: [noteVisibility] });
-                                setAppNotes((prev) => [...prev, data]);
-                                setNewNoteContent('');
-                                toast('Deal note added', 'success');
-                              } catch (err: unknown) {
-                                toast(getErrorMessage(err, 'Failed to save note'), 'error');
-                              } finally {
-                                setSendingNote(false);
-                              }
-                            }}
-                          >
-                            <PlusIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
-                            Add Note
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Alerts tab */}
-                  {msgTab === 'alerts' && (
-                    <div className="flex flex-col h-[500px] animate-in fade-in duration-200">
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
-                        {alerts.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-70">
-                            <div className="h-12 w-12 rounded-2xl bg-secondary flex items-center justify-center">
-                              <ExclamationTriangleIcon className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                            <p className="text-[13px] font-medium text-muted-foreground">No alerts for this client</p>
                           </div>
-                        ) : (
-                          alerts.map((alert) => (
-                            <div key={alert.id} className="flex flex-col gap-1.5 group/alert">
-                              <div className="flex items-baseline justify-between px-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[13px] font-semibold text-foreground">{alert.author_name || 'Staff'}</span>
-                                  {alert.author_role && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground capitalize uppercase tracking-wider">{alert.author_role}</span>
+                          <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-destructive/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
+                            <textarea
+                              value={newAlertContent}
+                              onChange={(e) => setNewAlertContent(e.target.value)}
+                              rows={2}
+                              className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
+                              placeholder="Add a client alert (internal only)..."
+                            />
+                            <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setNewAlertHighPriority((v) => !v)}
+                                aria-pressed={newAlertHighPriority}
+                                className={`flex items-center gap-2 text-[12px] font-medium pl-1.5 pr-2.5 py-1 rounded-lg border transition-colors ${newAlertHighPriority ? 'bg-destructive/15 text-destructive border-destructive/40' : 'bg-secondary/60 text-muted-foreground border-border/60 border-dashed hover:text-foreground hover:border-destructive/40'}`}
+                                title={newAlertHighPriority ? 'High alert on — shows as a banner on the application page. Click to turn off.' : 'Click to mark as a high alert — it will show as a banner at the top of the application page'}
+                              >
+                                <span className={`flex items-center justify-center h-4 w-4 rounded-[5px] border transition-colors ${newAlertHighPriority ? 'bg-destructive border-destructive text-white' : 'border-border bg-background'}`}>
+                                  {newAlertHighPriority && (
+                                    <CheckIcon className="h-3 w-3" strokeWidth={3} />
                                   )}
-                                  {alert.is_high_priority && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive uppercase tracking-wider">High alert</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={async () => {
-                                      if (!client?.id) return;
-                                      try {
-                                        await api.delete(`/clients/${client.id}/alerts/${alert.id}`);
-                                        setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-                                        toast('Alert deleted', 'success');
-                                      } catch (err: unknown) {
-                                        toast(getErrorMessage(err, 'Failed to delete'), 'error');
-                                      }
-                                    }}
-                                    className="opacity-0 group-hover/alert:opacity-100 transition-opacity duration-200 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                                    title="Delete"
-                                  >
-                                    <TrashIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                                  </button>
-                                  <span className="text-[11px] font-medium text-muted-foreground">{formatDateTime(alert.created_at)}</span>
-                                </div>
-                              </div>
-                              <div className="rounded-2xl p-3.5 text-[14px] leading-relaxed bg-destructive/8 text-foreground border border-destructive/20">
-                                <p className="whitespace-pre-wrap">{alert.content}</p>
-                              </div>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <ExclamationTriangleIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                                  {newAlertHighPriority ? 'High alert' : 'Mark as high alert'}
+                                </span>
+                              </button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                className="rounded-xl px-4 h-9"
+                                loading={sendingAlert}
+                                disabled={!newAlertContent.trim() || !client?.id}
+                                onClick={async () => {
+                                  if (!client?.id || !newAlertContent.trim()) return;
+                                  setSendingAlert(true);
+                                  try {
+                                    const { data } = await api.post(`/clients/${client.id}/alerts`, { content: newAlertContent.trim(), is_high_priority: newAlertHighPriority });
+                                    setAlerts((prev) => [...prev, data]);
+                                    setNewAlertContent('');
+                                    setNewAlertHighPriority(false);
+                                    toast('Alert added', 'success');
+                                  } catch (err: unknown) {
+                                    toast(getErrorMessage(err, 'Failed to add alert'), 'error');
+                                  } finally {
+                                    setSendingAlert(false);
+                                  }
+                                }}
+                              >
+                                <ExclamationCircleIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
+                                Add Alert
+                              </Button>
                             </div>
-                          ))
-                        )}
-                      </div>
-                      <div className="relative rounded-2xl bg-secondary/40 border border-border/50 focus-within:border-destructive/50 focus-within:bg-secondary/60 transition-all duration-300 flex flex-col pt-1">
-                        <textarea
-                          value={newAlertContent}
-                          onChange={(e) => setNewAlertContent(e.target.value)}
-                          rows={2}
-                          className="w-full bg-transparent px-4 py-3 text-[14px] text-foreground focus:outline-none placeholder-muted-foreground resize-none min-h-[60px]"
-                          placeholder="Add a client alert (internal only)..."
-                        />
-                        <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-border/30 mt-1">
-                          <button
-                            type="button"
-                            onClick={() => setNewAlertHighPriority((v) => !v)}
-                            aria-pressed={newAlertHighPriority}
-                            className={`flex items-center gap-2 text-[12px] font-medium pl-1.5 pr-2.5 py-1 rounded-lg border transition-colors ${newAlertHighPriority ? 'bg-destructive/15 text-destructive border-destructive/40' : 'bg-secondary/60 text-muted-foreground border-border/60 border-dashed hover:text-foreground hover:border-destructive/40'}`}
-                            title={newAlertHighPriority ? 'High alert on — shows as a banner on the application page. Click to turn off.' : 'Click to mark as a high alert — it will show as a banner at the top of the application page'}
-                          >
-                            <span className={`flex items-center justify-center h-4 w-4 rounded-[5px] border transition-colors ${newAlertHighPriority ? 'bg-destructive border-destructive text-white' : 'border-border bg-background'}`}>
-                              {newAlertHighPriority && (
-                                <CheckIcon className="h-3 w-3" strokeWidth={3} />
-                              )}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <ExclamationTriangleIcon className="h-3.5 w-3.5" strokeWidth={2} />
-                              {newAlertHighPriority ? 'High alert' : 'Mark as high alert'}
-                            </span>
-                          </button>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            className="rounded-xl px-4 h-9"
-                            loading={sendingAlert}
-                            disabled={!newAlertContent.trim() || !client?.id}
-                            onClick={async () => {
-                              if (!client?.id || !newAlertContent.trim()) return;
-                              setSendingAlert(true);
-                              try {
-                                const { data } = await api.post(`/clients/${client.id}/alerts`, { content: newAlertContent.trim(), is_high_priority: newAlertHighPriority });
-                                setAlerts((prev) => [...prev, data]);
-                                setNewAlertContent('');
-                                setNewAlertHighPriority(false);
-                                toast('Alert added', 'success');
-                              } catch (err: unknown) {
-                                toast(getErrorMessage(err, 'Failed to add alert'), 'error');
-                              } finally {
-                                setSendingAlert(false);
-                              }
-                            }}
-                          >
-                            <ExclamationCircleIcon className="h-4 w-4 mr-1.5" strokeWidth={2} />
-                            Add Alert
-                          </Button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </Card>
               </>
             )}
@@ -4702,6 +4518,24 @@ export default function ReviewApplication() {
         document.body,
       )}
 
+      {showDeclineReasons && (
+        <DeclineReasonsModal
+          reasons={declineReasons}
+          onChange={setDeclineReasons}
+          onClose={() => setShowDeclineReasons(false)}
+        />
+      )}
+
+      {showNotesHistory && application && (application.contact_id || application.business_organization_id) && (
+        <NotesHistoryModal
+          subject={application.contact_id
+            ? { type: 'contact', id: application.contact_id }
+            : { type: 'organization', id: application.business_organization_id as string }}
+          initialLoanId={application.id}
+          onClose={() => setShowNotesHistory(false)}
+        />
+      )}
+
       {reasonModalStatus && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!savingWithReason) { setReasonModalStatus(null); setReasonText(''); } }} />
@@ -4710,8 +4544,23 @@ export default function ReviewApplication() {
               {reasonModalStatus === 'rejected' ? 'Reject Application' : 'Mark as Not Proceeding'}
             </h3>
             <p className="text-[13px] text-muted-foreground mb-4">
-              Record the reason — it will be saved to the application's deal notes.
+              {reasonModalStatus === 'rejected'
+                ? "Record the reason — it will be saved to the application's decline notes."
+                : "Record the reason — it will be saved to the application's deal notes."}
             </p>
+            {reasonModalStatus === 'rejected' && declineReasons.some((r) => r.is_active) && (
+              <select
+                value={rejectReasonId}
+                onChange={(e) => setRejectReasonId(e.target.value)}
+                aria-label="Decline reason"
+                className="led-input !h-10 !text-[14px] w-full mb-3 cursor-pointer"
+              >
+                <option value="">Decline reason (optional)…</option>
+                {declineReasons.filter((r) => r.is_active).map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+              </select>
+            )}
             <textarea
               autoFocus
               rows={4}
@@ -4895,6 +4744,9 @@ export default function ReviewApplication() {
           if (!deletingApp) setConfirmDelete(false);
         }}
       />
+
+      {/* The loan's shared scratchpad — sticky notes docked to the screen edge on every tab */}
+      {id && <StickyNote applicationId={id} />}
     </div>
   );
 }
