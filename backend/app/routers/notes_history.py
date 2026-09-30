@@ -20,10 +20,10 @@ from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.application_broker import ApplicationBroker
 from app.models.application_note import ApplicationNote
-from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.contact import Contact, Organization
 from app.models.decline_reason import DeclineReason
 from app.models.lender_submission import LenderSubmission
-from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
+from app.models.loan_applicant import ApplicationGuarantor
 from app.models.loan_application import LoanApplication
 from app.models.user import User, UserRole
 from app.routers.application_notes import _note_to_out
@@ -58,37 +58,8 @@ def _add(roles: dict[str, list[str]], app_id: str, label: str) -> None:
 
 
 def _contact_loan_roles(db: Session, contact_id: str, tenant_id: str) -> dict[str, list[str]]:
-    roles: dict[str, list[str]] = {}
-    for (app_id,) in db.query(LoanApplication.id).filter(
-        LoanApplication.contact_id == contact_id, LoanApplication.tenant_id == tenant_id
-    ):
-        _add(roles, app_id, "Main applicant")
-
-    # Party and guarantor rows are not tenant-filtered here: _history() keeps
-    # only this tenant's applications.
-    parties = db.query(LoanApplicant).filter(LoanApplicant.contact_id == contact_id).all()
-    guarantor_ids = {p.application_guarantor_id for p in parties if p.application_guarantor_id}
-    guarantor_orgs = {
-        g.id: g.organization_id
-        for g in db.query(ApplicationGuarantor).filter(ApplicationGuarantor.id.in_(guarantor_ids))
-    } if guarantor_ids else {}
-    org_names = _org_names(db, set(guarantor_orgs.values()))
-    for p in parties:
-        if p.application_guarantor_id:
-            org = org_names.get(guarantor_orgs.get(p.application_guarantor_id, ""), "a company")
-            _add(roles, p.application_id, f"Guarantor signatory for {org}")
-        else:
-            _add(roles, p.application_id, _role_label(p.role))
-
-    links = db.query(ContactOrganization).filter(ContactOrganization.contact_id == contact_id).all()
-    if links:
-        link_roles = {link.organization_id: link.role for link in links}
-        org_names = _org_names(db, set(link_roles))
-        for org_id, org_roles in _organization_loan_roles(db, set(link_roles), tenant_id).items():
-            for app_id, label in org_roles:
-                person = f" (as {link_roles[org_id]})" if link_roles.get(org_id) else ""
-                _add(roles, app_id, f"{org_names.get(org_id, 'Company')} — {label.lower()}{person}")
-    return roles
+    from app.services.contact_history import loan_roles
+    return loan_roles(db, contact_id, tenant_id)
 
 
 def _organization_loan_roles(db: Session, org_ids: set[str], tenant_id: str) -> dict[str, list[tuple[str, str]]]:

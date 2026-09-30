@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models.user import UserRole
 from app.schemas.common import normalize_email
+from app.schemas.pagination import PaginatedResponse
 from app.services.loan_category import LOAN_CATEGORIES
 
 
@@ -75,6 +76,7 @@ class UserLogin(BaseModel):
 
 
 class UserOut(BaseModel):
+    contact_id: Optional[str] = None
     id: str
     email: str
     full_name: str
@@ -189,6 +191,7 @@ class RefreshRequest(BaseModel):
 
 
 class InvitationCreate(BaseModel):
+    contact_id: Optional[str] = None
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
@@ -276,7 +279,6 @@ class InvitationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-from app.schemas.pagination import PaginatedResponse
 
 
 class PaginatedInvitations(PaginatedResponse[InvitationOut]):

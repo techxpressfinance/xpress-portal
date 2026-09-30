@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../hooks/useConfirm';
-import { Card, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton, AssetHoverIcon } from '../../components/ui';
+import { Card, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker, DetailSkeleton } from '../../components/ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
+import PortalAccess from '../../components/clients/PortalAccess';
+import ContactLendingHistory from '../../components/clients/ContactLendingHistory';
+import StartContactApplication from '../../components/clients/StartContactApplication';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
-import { loanTypeOptions, LOAN_TYPE_LABELS, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
+import { loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -18,13 +21,6 @@ const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: 
   { value: 'fortnightly', label: 'Fortnightly', short: 'fn' },
   { value: 'monthly', label: 'Monthly', short: 'mo' },
 ];
-
-function formatRepayments(amount: number | null, freq: RepaymentFrequency | null): string {
-  if (amount == null) return '—';
-  const short = REPAYMENT_FREQUENCIES.find(f => f.value === freq)?.short;
-  const amt = `$${Number(amount).toLocaleString('en-AU')}`;
-  return short ? `${amt}/${short}` : amt;
-}
 
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 const LABEL = 'block text-sm font-medium text-foreground mb-1';
@@ -826,6 +822,8 @@ export default function ContactDetail() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [contact, setContact] = useState<ContactDetailType | null>(null);
+  const [startingApplication, setStartingApplication] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [showNotesHistory, setShowNotesHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -873,11 +871,22 @@ export default function ContactDetail() {
     }
   };
 
+  const reload = useCallback(async () => {
+    const { data } = await api.get<ContactDetailType>(`/contacts/${id}`);
+    setContact(data);
+  }, [id]);
+
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setContact(null);
+    setLoadError(false);
+    setStartingApplication(false);
     api.get<ContactDetailType>(`/contacts/${id}`)
-      .then(({ data }) => setContact(data))
-      .catch(() => toast('Failed to load contact', 'error'))
-      .finally(() => setLoading(false));
+      .then(({ data }) => { if (active) setContact(data); })
+      .catch(() => { if (active) setLoadError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [id]);
 
   if (loading) {
@@ -885,27 +894,42 @@ export default function ContactDetail() {
   }
 
   if (!contact) {
-    return <p className="text-center py-20 text-muted-foreground">Contact not found.</p>;
+    return <div className="text-center py-20 space-y-4" role="alert"><p>{loadError ? 'Could not load this profile.' : 'Contact not found.'}</p><Button variant="secondary" onClick={() => reload().catch(() => toast('Could not load this profile', 'error'))}>Retry</Button><Link className="block text-primary" to="/admin/contacts">Back to directory</Link></div>;
   }
 
   return (
     <div className="space-y-6">
       <Breadcrumbs items={[
-        { label: 'Contacts', href: '/admin/contacts' },
+        { label: 'Clients & Contacts', href: '/admin/contacts' },
         { label: `${contact.first_name} ${contact.last_name}` },
       ]} />
       <PageHeader
         title={`${contact.first_name} ${contact.last_name}`}
-        subtitle="Contact Details"
+        subtitle="Client profile"
         action={
-          <div className="flex gap-2">
-            <Button variant="primary" size="sm" onClick={() => setEditing(true)}>Edit Contact</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit details</Button>
+            <Button size="sm" onClick={() => setStartingApplication(!startingApplication)}>Start application</Button>
           </div>
         }
       />
 
+      {contact.needs_identity_review && <Card><p className="text-sm">This account may match another contact. Review possible duplicates before combining their histories.</p><Link to="/admin/contacts" className="text-sm text-primary hover:underline">Open directory and Find Duplicates</Link><Button variant="secondary" size="sm" className="ml-3" onClick={async () => {
+        if (!(await confirm({ title: 'Confirm this is a separate person?', message: 'This clears the review flag without merging any records.' }))) return;
+        try { await api.patch(`/contacts/${contact.id}`, { needs_identity_review: false }); await reload(); }
+        catch (error) { toast(getErrorMessage(error, 'Could not resolve review'), 'error'); }
+      }}>Keep as separate person</Button></Card>}
+      {startingApplication && <StartContactApplication contactId={contact.id} onClose={() => setStartingApplication(false)} />}
+      <nav className="flex flex-wrap gap-5 border-b border-border pb-3 text-sm" aria-label="Profile sections">
+        <a href="#overview" className="hover:text-primary">Overview</a><a href="#lending-history" className="hover:text-primary">Lending history</a><a href="#entities" className="hover:text-primary">Entities</a><a href="#portal-access" className="hover:text-primary">Portal access</a>
+      </nav>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card><p className="text-sm text-muted-foreground">Applications & settlements</p><p className="text-2xl font-semibold mt-1">{contact.applications.length}</p></Card>
+        <Card><p className="text-sm text-muted-foreground">Settled applications</p><p className="text-2xl font-semibold mt-1">{contact.applications.filter(a => a.status === 'settled').length}</p></Card>
+        <Card><p className="text-sm text-muted-foreground">External loan records</p><p className="text-2xl font-semibold mt-1">{contact.lending_history.length}</p></Card>
+      </div>
       {/* Contact Info */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div id="overview" className="grid gap-6 md:grid-cols-2 scroll-mt-6">
         <Card>
           <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
           <dl className="space-y-3 text-sm">
@@ -963,8 +987,12 @@ export default function ContactDetail() {
         </Card>
       </div>
 
+      <section id="lending-history" className="scroll-mt-6">
+        <ContactLendingHistory key={contact.id} contact={contact} onAdd={() => setLendingModal({ entry: null })} onNotes={() => setShowNotesHistory(true)} onEditLoan={entry => setLendingModal({ entry })} onDeleteLoan={handleDeleteLendingEntry} onEditApplication={setEditingApp} deletingId={deletingEntryId} />
+      </section>
+      {showNotesHistory && id && <NotesHistoryModal subject={{ type: 'contact', id }} onClose={() => setShowNotesHistory(false)} />}
       {/* Companies */}
-      <Card>
+      <section id="entities" className="scroll-mt-6"><Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
             Entities
@@ -1021,164 +1049,9 @@ export default function ContactDetail() {
             </table>
           </div>
         )}
-      </Card>
+      </Card></section>
 
-      {/* Lending History */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">
-            Lending History
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({contact.lending_history.length + contact.applications.length})
-            </span>
-          </h3>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowNotesHistory(true)}
-              title="Compliance, decline, lender, learnings and scratchpad notes from every loan — as PDF or Word"
-            >
-              Notes history
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setLendingModal({ entry: null })}>+ Add Entry</Button>
-          </div>
-        </div>
-        {showNotesHistory && id && (
-          <NotesHistoryModal subject={{ type: 'contact', id }} onClose={() => setShowNotesHistory(false)} />
-        )}
-
-        {/* Manual entries */}
-        <div className="mb-6">
-          <h4 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Loans on Record</h4>
-          {contact.lending_history.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">No external loan records yet. Add one to start building this contact's lending history.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-3 font-medium">Lender</th>
-                    <th className="pb-3 font-medium">Amount</th>
-                    <th className="pb-3 font-medium">Balloon</th>
-                    <th className="pb-3 font-medium">Repayments</th>
-                    <th className="pb-3 font-medium">Start Date</th>
-                    <th className="pb-3 font-medium">Identifier</th>
-                    <th className="pb-3 font-medium">Guarantor</th>
-                    <th className="pb-3 font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contact.lending_history.map(e => (
-                    <tr key={e.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
-                          <AssetHoverIcon
-                            heading={e.lender_name}
-                            rows={[
-                              { label: 'Amount', value: `$${Number(e.amount).toLocaleString('en-AU')}` },
-                              { label: 'Balloon', value: e.balloon != null ? `$${Number(e.balloon).toLocaleString('en-AU')}` : null },
-                              { label: 'Repayments', value: formatRepayments(e.repayment_amount, e.repayment_frequency) },
-                              { label: 'Start date', value: e.start_date ? formatDate(e.start_date) : null },
-                              { label: 'Identifier', value: e.identifier },
-                              { label: 'Guarantor', value: e.guaranteed_by_name },
-                              { label: 'Via broker', value: e.other_broker_name },
-                            ]}
-                          />
-                          <div>
-                            <div className="font-medium">{e.lender_name}</div>
-                            {e.other_broker_name && (
-                              <div className="text-[12px] text-muted-foreground">via {e.other_broker_name}</div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3">${Number(e.amount).toLocaleString('en-AU')}</td>
-                      <td className="py-3 text-muted-foreground">{e.balloon != null ? `$${Number(e.balloon).toLocaleString('en-AU')}` : '—'}</td>
-                      <td className="py-3 text-muted-foreground">{formatRepayments(e.repayment_amount, e.repayment_frequency)}</td>
-                      <td className="py-3 text-muted-foreground">{e.start_date ? formatDate(e.start_date) : '—'}</td>
-                      <td className="py-3 text-muted-foreground">{e.identifier || '—'}</td>
-                      <td className="py-3 text-muted-foreground">{e.guaranteed_by_name || '—'}</td>
-                      <td className="py-3">
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => setLendingModal({ entry: e })}>Edit</Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            loading={deletingEntryId === e.id}
-                            onClick={() => handleDeleteLendingEntry(e.id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Portal applications */}
-        <div>
-          <h4 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Portal Applications</h4>
-          {contact.applications.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">No loan applications linked to this contact.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-3 font-medium">Type</th>
-                    <th className="pb-3 font-medium">Amount</th>
-                    <th className="pb-3 font-medium">Status</th>
-                    <th className="pb-3 font-medium">Business</th>
-                    <th className="pb-3 font-medium">Created</th>
-                    <th className="pb-3 font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contact.applications.map(app => (
-                    <tr key={app.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                      <td className="py-3 font-medium">
-                        <div className="flex items-center gap-2">
-                          <AssetHoverIcon
-                            loanType={app.loan_type}
-                            heading={LOAN_TYPE_LABELS[app.loan_type] ?? app.loan_type}
-                            rows={[
-                              { label: 'Amount', value: `$${Number(app.amount).toLocaleString('en-AU')}` },
-                              { label: 'Business', value: app.business_name || app.business_abn },
-                              { label: 'Created', value: formatDate(app.created_at) },
-                            ]}
-                          />
-                          <span className="capitalize">{app.loan_type.replace(/_/g, ' ')}</span>
-                        </div>
-                      </td>
-                      <td className="py-3">${Number(app.amount).toLocaleString('en-AU')}</td>
-                      <td className="py-3">
-                        <Badge value={app.status} />
-                      </td>
-                      <td className="py-3 text-muted-foreground">
-                        {app.business_name || app.business_abn || '—'}
-                      </td>
-                      <td className="py-3 text-muted-foreground">{formatDate(app.created_at)}</td>
-                      <td className="py-3">
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => setEditingApp(app)}>Edit</Button>
-                          <Link to={`/admin/applications/${app.id}`}>
-                            <Button variant="ghost" size="sm">Review</Button>
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </Card>
+      <section id="portal-access" className="scroll-mt-6"><PortalAccess key={contact.id} contact={contact} onChanged={reload} /></section>
 
       {/* The inquiries this contact came from — contacts are only created when a
           lead converts, so this is where the original ask is kept. */}

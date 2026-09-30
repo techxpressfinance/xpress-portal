@@ -104,7 +104,10 @@ export default function GlobalSearch() {
       else if (item.type === 'document') navigateTo(`/admin/applications/${item.appId}`);
       else if (item.type === 'contact') navigateTo(`/admin/contacts/${item.id}`);
       else if (item.type === 'organization') navigateTo(`/admin/companies/${item.id}`);
-      else navigateTo('/admin/users');
+      else {
+        const person = results?.users.find(u => u.id === item.id);
+        navigateTo(person?.contact_id ? `/admin/contacts/${person.contact_id}` : '/admin/contacts');
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
     }
@@ -293,7 +296,7 @@ export default function GlobalSearch() {
                     return (
                       <button
                         key={u.id}
-                        onClick={() => navigateTo('/admin/users')}
+                        onClick={() => navigateTo(u.contact_id ? `/admin/contacts/${u.contact_id}` : '/admin/contacts')}
                         onMouseEnter={() => setSelectedIndex(idx)}
                         className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isSelected ? 'bg-secondary' : 'hover:bg-secondary/50'}`}
                       >

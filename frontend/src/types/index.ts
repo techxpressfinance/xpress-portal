@@ -51,6 +51,7 @@ export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
 export type LoanCategory = 'asset_finance' | 'home_loan' | 'commercial';
 
 export interface User {
+  contact_id?: string | null;
   id: string;
   email: string;
   full_name: string;
@@ -710,6 +711,7 @@ export interface SearchResultApplication {
 }
 
 export interface SearchResultUser {
+  contact_id?: string | null;
   id: string;
   full_name: string;
   email: string;
@@ -1597,6 +1599,11 @@ export interface ContactOrganization {
 }
 
 export interface ContactApplication {
+  roles: string[];
+  source: "application" | "settlement";
+  lender_name: string | null;
+  settled_at: string | null;
+  can_open: boolean;
   id: string;
   loan_type: LoanType;
   amount: number;
@@ -1618,6 +1625,7 @@ export interface ContactOrganizationLite {
 }
 
 export interface Contact {
+  needs_identity_review: boolean;
   id: string;
   first_name: string;
   last_name: string;
@@ -1632,6 +1640,8 @@ export interface Contact {
   postcode: string | null;
   notes: string | null;
   application_count: number;
+  /** Applications this person was party to that settled (incl. purged-app snapshots). */
+  settled_count: number;
   /** Only present when the list was fetched with `include_organizations`. */
   organizations?: ContactOrganizationLite[];
   /**
@@ -1645,6 +1655,10 @@ export interface Contact {
 }
 
 export interface ContactClientAccount {
+  email: string;
+  is_active: boolean;
+  setup_pending: boolean;
+  created_at: string;
   id: string;
   full_name: string | null;
   role: string;

@@ -80,6 +80,9 @@ Base.metadata.create_all(bind=engine)
 
 # Idempotent migrations for columns added after initial create_all
 _MIGRATIONS = [
+    ("users", "contact_id", "VARCHAR(36) REFERENCES contacts(id)"),
+    ("contacts", "needs_identity_review", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("settled_deal_snapshots", "settled_at", "TIMESTAMP"),
     ("organizations", "acn", "VARCHAR(20)"),
     ("arrears_records", "vin", "VARCHAR(50)"),
     ("kanban_columns", "stage_key", "VARCHAR(60)"),
@@ -482,6 +485,7 @@ with engine.begin() as conn:
             _logger.debug("Index %s skipped: %s", _name, _e)
 
 _INDEX_COLUMNS = [
+    ("users", "contact_id"),
     ("loan_applications", "user_id"),
     ("loan_applications", "status"),
     ("loan_applications", "loan_type"),
@@ -494,6 +498,9 @@ _INDEX_COLUMNS = [
 with engine.begin() as conn:
     for _tbl, _col in _INDEX_COLUMNS:
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{_tbl}_{_col} ON {_tbl} ({_col})"))
+
+with engine.begin() as conn:
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_live_user_contact ON users (contact_id) WHERE deleted_at IS NULL AND contact_id IS NOT NULL"))
 
 # ── Field-level encryption: re-encrypt legacy plaintext rows ──────────────────
 # Any EncryptedString column may hold plaintext written before encryption was
@@ -797,6 +804,25 @@ with engine.begin() as conn:
             except Exception:
                 pass  # Table may be empty or not exist yet
         _logger.info("Created default tenant %s and backfilled all data", _default_tenant_id)
+
+# Reconcile existing clients before serving the unified directory. The imported
+# service also registers the transactional hook for every new client workflow.
+from app.services.client_identity import reconcile_clients, reconcile_application_links  # noqa: E402
+from app.database import SessionLocal as _IdentitySession  # noqa: E402
+from app.services.contact_history import snapshot_parties  # noqa: E402
+from app.models.loan_application import LoanApplication as _IdentityApplication  # noqa: E402
+with _IdentitySession() as _identity_db:
+    _identity_report = reconcile_clients(_identity_db)
+    _identity_report.update(reconcile_application_links(_identity_db))
+    for _snapshot, _application in _identity_db.query(SettledDealSnapshot, _IdentityApplication).join(
+        _IdentityApplication, (SettledDealSnapshot.application_id == _IdentityApplication.id)
+        & (SettledDealSnapshot.tenant_id == _IdentityApplication.tenant_id),
+    ):
+        snapshot_parties(_identity_db, _application)
+        if _snapshot.settled_at is None:
+            _snapshot.settled_at = _application.settled_at
+    _identity_db.commit()
+    _logger.info("Client/contact reconciliation: %s", _identity_report)
 
 # Purge expired blacklisted tokens on startup
 with engine.begin() as conn:

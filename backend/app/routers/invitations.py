@@ -12,11 +12,12 @@ from sqlalchemy.orm import Session, aliased
 
 from app.config import FRONTEND_URL
 from app.database import get_db
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import require_role
 from app.models.loan_application import LoanApplication, LoanType
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import InvitationCreate, InvitationOut, InvitedUserOut, InviteToCompleteCreate, PaginatedInvitations, StartApplicationForClient
 from app.models.application_broker import ApplicationBroker
+from app.models.contact import Contact
 from app.schemas.common import normalize_email
 from app.services.email import notify_admins_new_account, send_complete_application_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
@@ -88,7 +89,19 @@ def invite_user(
     if data.email.lower() == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot invite yourself")
 
+    if data.contact_id:
+        contact = db.query(Contact).filter(Contact.id == data.contact_id, Contact.tenant_id == tenant_id).first()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        linked = db.query(User).filter(User.contact_id == contact.id, User.tenant_id == tenant_id,
+                                       User.deleted_at.is_(None)).first()
+        if linked and linked.email.lower() != data.email.lower():
+            raise HTTPException(status_code=409, detail="This contact already has a portal account")
+
     existing = db.query(User).filter(User.email == data.email, User.tenant_id == tenant_id).first()
+    if existing and (existing.role != UserRole.client or (data.contact_id and existing.contact_id != data.contact_id)):
+        raise HTTPException(status_code=409, detail="This email belongs to another account. Review the contact link first.")
+
 
     if existing:
         if not existing.is_active:
@@ -118,6 +131,7 @@ def invite_user(
     # Create new invited user
     token = secrets.token_urlsafe(32)
     user = User(
+        contact_id=data.contact_id,
         email=data.email,
         full_name=data.full_name,
         phone=data.phone,
@@ -217,7 +231,7 @@ def start_application_for_client(
     """Create a draft application on behalf of a client and send them an email to complete it."""
     from app.models.loan_application import LoanType
 
-    client = db.query(User).filter(User.id == data.client_id).first()
+    client = db.query(User).filter(User.id == data.client_id, User.tenant_id == tenant_id).first()
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     if client.role.value != "client":
@@ -233,6 +247,11 @@ def start_application_for_client(
 
     application = LoanApplication(
         user_id=client.id,
+        contact_id=client.contact_id,
+        applicant_first_name=client.full_name.partition(" ")[0],
+        applicant_last_name=client.full_name.partition(" ")[2],
+        applicant_email=client.email,
+        applicant_mobile=client.phone,
         loan_type=loan_type,
         amount=data.amount,
         notes=data.notes,
@@ -307,6 +326,9 @@ def invite_new_client_with_application(
     if existing and not existing.is_active:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This account has been deactivated. Reactivate it first.")
 
+    if existing and existing.role != UserRole.client:
+        raise HTTPException(status_code=409, detail="This email belongs to a non-client account")
+
     is_new_user = existing is None or existing.password_hash in ("!", "!invited")
 
     if existing is None:
@@ -337,6 +359,11 @@ def invite_new_client_with_application(
 
     application = LoanApplication(
         user_id=client.id,
+        contact_id=client.contact_id,
+        applicant_first_name=data.first_name.strip(),
+        applicant_last_name=data.last_name.strip(),
+        applicant_email=client.email,
+        applicant_mobile=data.phone,
         loan_type=loan_type,
         amount=data.amount,
         notes=data.notes,

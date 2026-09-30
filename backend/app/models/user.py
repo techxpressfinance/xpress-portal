@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,10 +26,17 @@ SETUP_PLACEHOLDER_HASHES = ("!", "!invited")
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),)
+    __table_args__ = (
+        UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),
+        Index("uq_live_user_contact", "contact_id", unique=True,
+              sqlite_where=text("deleted_at IS NULL AND contact_id IS NOT NULL"),
+              postgresql_where=text("deleted_at IS NULL AND contact_id IS NOT NULL")),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    # CRM identity survives email changes; account ownership is not loan participation.
+    contact_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("contacts.id"), index=True, nullable=True)
     email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="!invited")
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -98,6 +105,8 @@ class User(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deleted_original_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     deleted_original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    contact = relationship("Contact", foreign_keys=[contact_id])
 
     applications = relationship("LoanApplication", back_populates="user", foreign_keys="LoanApplication.user_id")
     assigned_applications = relationship(

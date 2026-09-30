@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const ALL_TABS = [
-  { label: 'Clients', to: '/admin/users', adminOnly: false },
+  { label: 'Clients & Contacts', to: '/admin/contacts', adminOnly: false },
   { label: 'Brokers', to: '/admin/brokers', adminOnly: true },
   { label: 'Referrers', to: '/admin/referrers', adminOnly: false },
   { label: 'Admins', to: '/admin/admins', adminOnly: true },

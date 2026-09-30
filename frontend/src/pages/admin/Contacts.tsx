@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import DuplicateReviewModal from '../../components/DuplicateReviewModal';
@@ -8,7 +8,6 @@ import { DuplicateWarning } from '../../components/DuplicateWarning';
 import { useContactDuplicateCheck } from '../../hooks/useDuplicateCheck';
 import { Card, PageHeader, Button, Badge, Input, Select, DatePicker, EmptyState, TableSkeleton } from '../../components/ui';
 import { LOAN_CATEGORIES, findLoanSubType, subTypeToLoanType } from '../../lib/constants';
-import { formatDate } from '../../lib/utils';
 import type { Contact, KanbanBoard, KanbanBoardListItem, PaginatedResponse } from '../../types';
 
 interface NewContactForm {
@@ -227,6 +226,9 @@ export default function Contacts() {
   const { toast } = useToast();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('all');
+  const [loadError, setLoadError] = useState(false);
+  const requestVersion = useRef(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -240,16 +242,19 @@ export default function Contacts() {
 
   const fetchContacts = (p = page, q = search) => {
     if (fetchTimerRef.current) { clearTimeout(fetchTimerRef.current); fetchTimerRef.current = null; }
+    const version = ++requestVersion.current;
     setLoading(true);
-    const params = new URLSearchParams({ page: String(p), per_page: String(perPage) });
+    setLoadError(false);
+    const params = new URLSearchParams({ page: String(p), per_page: String(perPage), view, include_organizations: 'true', include_client_account: 'true' });
     if (q.trim()) params.set('search', q.trim());
     api.get<PaginatedResponse<Contact>>(`/contacts?${params}`)
       .then(({ data }) => {
+        if (version !== requestVersion.current) return;
         setContacts(data.items);
         setTotal(data.total);
       })
-      .catch(() => toast('Failed to load contacts', 'error'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (version === requestVersion.current) setLoadError(true); })
+      .finally(() => { if (version === requestVersion.current) setLoading(false); });
   };
 
   // Live debounced search: refetch ~250ms after typing stops so we don't hit
@@ -268,7 +273,7 @@ export default function Contacts() {
     }, 250);
     return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, view]);
 
   const goToPage = (newPage: number) => {
     if (fetchTimerRef.current) { clearTimeout(fetchTimerRef.current); fetchTimerRef.current = null; }
@@ -309,10 +314,11 @@ export default function Contacts() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Contacts"
-        subtitle={`${total} contacts`}
+        title="Clients & Contacts"
+        subtitle={`${total} people · profiles, lending history, and portal access`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link to="/admin/contacts/invitations"><Button variant="secondary" size="sm">Invitations</Button></Link>
             <Button onClick={() => setShowDedupe(true)} variant="secondary" size="sm">
               Find Duplicates
             </Button>
@@ -327,6 +333,12 @@ export default function Contacts() {
       />
 
       <Card>
+        <div className="flex flex-wrap gap-2 mb-5" aria-label="Directory filters">
+          {[
+            ['all', 'All people'], ['applications', 'With applications'], ['settled', 'Settled loans'], ['portal', 'With portal access'],
+            ['no_portal', 'Without portal access'], ['review', 'Needs review'],
+          ].map(([value, label]) => <Button key={value} size="sm" variant={view === value ? 'primary' : 'secondary'} aria-pressed={view === value} onClick={() => setView(value)}>{label}</Button>)}
+        </div>
         <form onSubmit={handleSearch} className="flex items-center gap-3 mb-4">
           <Input
             placeholder="Search name, email, phone, licence, suburb…"
@@ -341,17 +353,19 @@ export default function Contacts() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                <TableSkeleton rows={8} widths={[140, 180, 110, 90, 40, 90, 16]} />
+                <TableSkeleton rows={8} widths={[140, 180, 110, 90, 40, 40, 90, 16]} />
               </tbody>
             </table>
           </div>
+        ) : loadError ? (
+          <div className="py-8 text-center" role="alert"><p>Could not load the directory.</p><Button variant="secondary" onClick={() => fetchContacts()}>Retry</Button></div>
         ) : contacts.length === 0 ? (
           search ? (
             <p className="text-center py-12 text-muted-foreground">No contacts match your search.</p>
           ) : (
             <EmptyState
-              title="No contacts yet"
-              description='Click "Auto-Create from Applications" to generate contacts from existing loan applications.'
+              title="No people in this view"
+              description="Add a contact or choose another filter to get started."
             />
           )
         ) : (
@@ -363,9 +377,10 @@ export default function Contacts() {
                     <th className="pb-3 font-medium">Name</th>
                     <th className="pb-3 font-medium">Email</th>
                     <th className="pb-3 font-medium">Phone</th>
-                    <th className="pb-3 font-medium">DOB</th>
+                    <th className="pb-3 font-medium">Entities</th>
                     <th className="pb-3 font-medium">Applications</th>
-                    <th className="pb-3 font-medium">Created</th>
+                    <th className="pb-3 font-medium">Settled</th>
+                    <th className="pb-3 font-medium">Portal access</th>
                     <th className="pb-3 font-medium"></th>
                   </tr>
                 </thead>
@@ -376,14 +391,19 @@ export default function Contacts() {
                       className="border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer"
                       onClick={() => navigate(`/admin/contacts/${contact.id}`)}
                     >
-                      <td className="py-3 font-medium">{contact.first_name} {contact.last_name}</td>
+                      <td className="py-3 font-medium"><Link className="hover:underline focus-visible:underline" to={`/admin/contacts/${contact.id}`}>{contact.first_name} {contact.last_name}</Link>{contact.needs_identity_review && <span className="block text-xs text-warning">Identity needs review</span>}</td>
                       <td className="py-3 text-muted-foreground">{contact.email || '—'}</td>
                       <td className="py-3 text-muted-foreground">{contact.phone || '—'}</td>
-                      <td className="py-3 text-muted-foreground">{contact.date_of_birth || '—'}</td>
+                      <td className="py-3 text-muted-foreground">{contact.organizations?.map(o => o.name).join(', ') || '—'}</td>
                       <td className="py-3">
                         <Badge type="custom" value={String(contact.application_count)} className="bg-blue-500/10 text-blue-600 dark:text-blue-400" />
                       </td>
-                      <td className="py-3 text-muted-foreground">{formatDate(contact.created_at)}</td>
+                      <td className="py-3">
+                        {contact.settled_count
+                          ? <Badge type="custom" value={String(contact.settled_count)} className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="py-3 text-muted-foreground">{contact.client_account ? (!contact.client_account.is_active ? 'Inactive' : contact.client_account.setup_pending ? 'Pending setup' : 'Active') : 'No account'}</td>
                       <td className="py-3" />
                     </tr>
                   ))}

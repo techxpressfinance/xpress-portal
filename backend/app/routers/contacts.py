@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -31,6 +31,7 @@ from app.schemas.lending_history import (
     LendingHistoryEntryOut,
     LendingHistoryEntryUpdate,
 )
+from app.services.contact_history import contact_applications, participation_rows, settled_participation
 from app.services.dedupe import (
     contact_signals,
     find_contact_duplicates,
@@ -51,17 +52,20 @@ _logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
 
-def _app_counts(db: Session, contact_ids: list[str]) -> dict[str, int]:
-    """One GROUP BY query: {contact_id: application_count} for the given ids."""
+def _app_counts(db: Session, contact_ids: list[str], tenant_id: str) -> dict[str, int]:
     if not contact_ids:
         return {}
-    rows = (
-        db.query(LoanApplication.contact_id, func.count(LoanApplication.id))
-        .filter(LoanApplication.contact_id.in_(contact_ids))
-        .group_by(LoanApplication.contact_id)
-        .all()
-    )
-    return {cid: cnt for cid, cnt in rows if cid}
+    participation = participation_rows(tenant_id)
+    return dict(db.query(participation.c.contact_id, func.count()).filter(
+        participation.c.contact_id.in_(contact_ids)).group_by(participation.c.contact_id).all())
+
+
+def _settled_counts(db: Session, contact_ids: list[str], tenant_id: str) -> dict[str, int]:
+    if not contact_ids:
+        return {}
+    settled = settled_participation(tenant_id)
+    return dict(db.query(settled.c.contact_id, func.count()).filter(
+        settled.c.contact_id.in_(contact_ids)).group_by(settled.c.contact_id).all())
 
 
 def _linked_orgs(db: Session, contact_ids: list[str]) -> dict[str, list[dict]]:
@@ -85,27 +89,15 @@ def _linked_orgs(db: Session, contact_ids: list[str]) -> dict[str, list[dict]]:
 
 
 def _client_accounts(db: Session, contacts: list[Contact], tenant_id: str) -> dict[str, dict]:
-    """{contact_id: {id, full_name, role}} for contacts whose email already has a
-    portal account, in one query.
-
-    The client picker needs it to say whether choosing this person reuses their
-    login or mints a new one — the difference between one client and two.
-    """
-    emails = {(c.email or "").strip().lower() for c in contacts} - {""}
-    if not emails:
-        return {}
-    users = (
-        db.query(User)
-        .filter(User.tenant_id == tenant_id, func.lower(User.email).in_(emails))
-        .all()
-    )
-    by_email = {(u.email or "").lower(): u for u in users}
-    out = {}
-    for c in contacts:
-        user = by_email.get((c.email or "").strip().lower())
-        if user:
-            out[c.id] = {"id": user.id, "full_name": user.full_name, "role": user.role.value}
-    return out
+    users = db.query(User).filter(
+        User.tenant_id == tenant_id, User.contact_id.in_([c.id for c in contacts]),
+        User.role == UserRole.client, User.deleted_at.is_(None),
+    ).all()
+    return {u.contact_id: {
+        "id": u.id, "full_name": u.full_name, "role": u.role.value,
+        "email": u.email, "is_active": u.is_active,
+        "setup_pending": u.password_hash in ("!", "!invited"), "created_at": u.created_at,
+    } for u in users}
 
 
 def _serialize_contact(
@@ -113,11 +105,13 @@ def _serialize_contact(
     app_count: int,
     orgs: list[dict] | None = None,
     client_account: dict | None = None,
+    settled_count: int = 0,
 ) -> dict:
     """Serialize a contact — caller passes the precomputed application count,
     the linked companies, and the portal account when the caller asked for them."""
     return {
         "client_account": client_account,
+        "needs_identity_review": contact.needs_identity_review,
         "id": contact.id,
         "first_name": contact.first_name,
         "last_name": contact.last_name,
@@ -132,6 +126,7 @@ def _serialize_contact(
         "postcode": contact.postcode,
         "notes": contact.notes,
         "application_count": app_count,
+        "settled_count": settled_count,
         "organizations": orgs or [],
         "created_at": contact.created_at,
         "updated_at": contact.updated_at,
@@ -140,10 +135,11 @@ def _serialize_contact(
 
 def _contact_with_count(contact: Contact, db: Session) -> dict:
     """Serialize a single contact with its application count (one extra query)."""
-    app_count = db.query(func.count(LoanApplication.id)).filter(
-        LoanApplication.contact_id == contact.id
-    ).scalar() or 0
-    return _serialize_contact(contact, app_count)
+    app_count = _app_counts(db, [contact.id], contact.tenant_id).get(contact.id, 0)
+    account = _client_accounts(db, [contact], contact.tenant_id).get(contact.id)
+    settled = _settled_counts(db, [contact.id], contact.tenant_id).get(contact.id, 0)
+    return _serialize_contact(contact, app_count, client_account=account, settled_count=settled)
+
 
 
 @router.get("", response_model=PaginatedContacts)
@@ -151,6 +147,7 @@ def list_contacts(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
+    view: Literal["all", "applications", "settled", "portal", "no_portal", "review"] = "all",
     include_organizations: bool = Query(
         False, description="Attach each contact's linked companies (id/name/abn/role)"
     ),
@@ -161,21 +158,34 @@ def list_contacts(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    query = db.query(Contact).filter(Contact.tenant_id == tenant_id)
+    portal = select(User.contact_id).where(User.tenant_id == tenant_id, User.role == UserRole.client,
+                                         User.deleted_at.is_(None), User.contact_id.isnot(None))
+    if view == "portal":
+        query = query.filter(Contact.id.in_(portal))
+    elif view == "no_portal":
+        query = query.filter(Contact.id.notin_(portal))
+    elif view == "applications":
+        participation = participation_rows(tenant_id)
+        query = query.filter(Contact.id.in_(select(participation.c.contact_id)))
+    elif view == "settled":
+        settled = settled_participation(tenant_id)
+        query = query.filter(Contact.id.in_(select(settled.c.contact_id)))
+    elif view == "review":
+        query = query.filter(Contact.needs_identity_review.is_(True))
+
     # No search: straight DB pagination ordered by recency.
     if not search or not search.strip():
-        query = (
-            db.query(Contact)
-            .filter(Contact.tenant_id == tenant_id)
-            .order_by(Contact.created_at.desc())
-        )
+        query = query.order_by(Contact.created_at.desc())
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()
-        counts = _app_counts(db, [c.id for c in items])
+        counts = _app_counts(db, [c.id for c in items], tenant_id)
+        settled_counts = _settled_counts(db, [c.id for c in items], tenant_id)
         orgs = _linked_orgs(db, [c.id for c in items]) if include_organizations else {}
         accounts = _client_accounts(db, items, tenant_id) if include_client_account else {}
         return PaginatedContacts(
             items=[
-                _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id))
+                _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id), settled_counts.get(c.id, 0))
                 for c in items
             ],
             total=total,
@@ -193,7 +203,10 @@ def list_contacts(
 
     contact_fields = get_searchable_contacts(db, tenant_id)
     scored: list[tuple[int, str]] = []
+    allowed_ids = {cid for (cid,) in query.with_entities(Contact.id)}
     for cid, f in contact_fields.items():
+        if cid not in allowed_ids:
+            continue
         s = score(
             tokens,
             [
@@ -218,14 +231,15 @@ def list_contacts(
         return PaginatedContacts(items=[], total=total, page=page, per_page=per_page)
 
     # Fetch the full ORM rows for this page; preserve ranked order from `scored`.
-    by_id = {c.id: c for c in db.query(Contact).filter(Contact.id.in_(page_ids)).all()}
+    by_id = {c.id: c for c in db.query(Contact).filter(Contact.id.in_(page_ids), Contact.tenant_id == tenant_id).all()}
     ordered = [by_id[cid] for cid in page_ids if cid in by_id]
-    counts = _app_counts(db, page_ids)
+    counts = _app_counts(db, page_ids, tenant_id)
+    settled_counts = _settled_counts(db, page_ids, tenant_id)
     orgs = _linked_orgs(db, page_ids) if include_organizations else {}
     accounts = _client_accounts(db, ordered, tenant_id) if include_client_account else {}
     return PaginatedContacts(
         items=[
-            _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id))
+            _serialize_contact(c, counts.get(c.id, 0), orgs.get(c.id), accounts.get(c.id), settled_counts.get(c.id, 0))
             for c in ordered
         ],
         total=total,
@@ -476,23 +490,8 @@ def get_contact(
             "updated_at": org.updated_at,
         })
 
-    # Get lending history
-    apps = db.query(LoanApplication).filter(LoanApplication.contact_id == contact_id, LoanApplication.deleted_at.is_(None)).order_by(LoanApplication.created_at.desc()).all()
-    applications = [
-        {
-            "id": a.id,
-            "loan_type": a.loan_type.value,
-            "amount": float(a.amount),
-            "status": a.status.value,
-            "business_name": a.business_name,
-            "business_abn": a.business_abn,
-            "created_at": a.created_at,
-            "updated_at": a.updated_at,
-        }
-        for a in apps
-    ]
-
-    lending_history = _list_lending_history(contact_id, db)
+    applications = contact_applications(db, contact_id, tenant_id)
+    lending_history = _list_lending_history(contact_id, db, tenant_id)
 
     # The inquiries this contact came from — a contact is only created when a
     # lead converts, so this is where the original ask is kept.
@@ -524,8 +523,17 @@ def update_contact(
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(contact, field, value)
+    for account in db.query(User).filter(User.contact_id == contact.id, User.tenant_id == tenant_id,
+                                        User.role == UserRole.client, User.deleted_at.is_(None)):
+        # Login email remains an explicitly managed credential.
+        if {"first_name", "middle_name", "last_name"} & changes.keys():
+            account.full_name = " ".join(p for p in (contact.first_name, contact.middle_name, contact.last_name) if p)
+        if "phone" in changes:
+            account.phone = contact.phone
+    log_activity(db, _current_user.id, "updated", "contact", contact.id, {"fields": list(changes)}, tenant_id=tenant_id)
     db.commit()
     db.refresh(contact)
     return _contact_with_count(contact, db)
@@ -762,9 +770,16 @@ def deduplicate_contacts(
 
     merged_count = 0
     deleted_count = 0
+    skipped_count = 0
     for group in high_groups:
         primary, duplicates = group[0], group[1:]
-        merge_contacts(db, primary, duplicates)
+        try:
+            merge_contacts(db, primary, duplicates)
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            skipped_count += 1
+            continue
         merged_count += 1
         deleted_count += len(duplicates)
 
@@ -774,6 +789,7 @@ def deduplicate_contacts(
         "groups_merged": merged_count,
         "duplicates_removed": deleted_count,
         "contacts_remaining": remaining,
+        "groups_needing_account_review": skipped_count,
     }
 
 
@@ -800,10 +816,11 @@ def _serialize_lending_entry(entry: LendingHistoryEntry, guarantor_name: Optiona
     }
 
 
-def _list_lending_history(contact_id: str, db: Session) -> list[dict]:
+def _list_lending_history(contact_id: str, db: Session, tenant_id: str) -> list[dict]:
     entries = (
         db.query(LendingHistoryEntry)
-        .filter(LendingHistoryEntry.contact_id == contact_id)
+        .filter(LendingHistoryEntry.tenant_id == tenant_id,
+                (LendingHistoryEntry.contact_id == contact_id) | (LendingHistoryEntry.guaranteed_by_contact_id == contact_id))
         .order_by(LendingHistoryEntry.start_date.desc().nullslast(), LendingHistoryEntry.created_at.desc())
         .all()
     )
@@ -812,7 +829,7 @@ def _list_lending_history(contact_id: str, db: Session) -> list[dict]:
     guarantor_ids = {e.guaranteed_by_contact_id for e in entries if e.guaranteed_by_contact_id}
     guarantor_names: dict[str, str] = {}
     if guarantor_ids:
-        for c in db.query(Contact).filter(Contact.id.in_(guarantor_ids)).all():
+        for c in db.query(Contact).filter(Contact.id.in_(guarantor_ids), Contact.tenant_id == tenant_id).all():
             guarantor_names[c.id] = f"{c.first_name} {c.last_name}".strip()
     return [_serialize_lending_entry(e, guarantor_names.get(e.guaranteed_by_contact_id)) for e in entries]
 

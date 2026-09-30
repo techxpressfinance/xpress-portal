@@ -10,6 +10,7 @@ from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.settled_deal_snapshot import SettledDealSnapshot
 from app.models.user import UserRole
+from app.services.contact_history import snapshot_parties
 from app.services.loan_category import application_loan_category
 from app.services.serialization import referrer_info_map
 
@@ -78,8 +79,6 @@ def archive_settled_deals(session_factory=SessionLocal) -> None:
         query = db.query(LoanApplication).options(joinedload(LoanApplication.user)).filter(
             LoanApplication.status == ApplicationStatus.settled,
         )
-        if already_archived:
-            query = query.filter(LoanApplication.id.notin_(already_archived))
         candidates = query.all()
 
         if not candidates:
@@ -96,11 +95,16 @@ def archive_settled_deals(session_factory=SessionLocal) -> None:
         archived_count = 0
         for app in candidates:
             try:
+                if app.id in already_archived:
+                    snapshot_parties(db, app)
+                    db.commit()
+                    continue
                 basis_dt = app.settled_at or app.updated_at
                 db.add(SettledDealSnapshot(
                     tenant_id=app.tenant_id,
                     application_id=app.id,
                     snapshot_month=_month_start(basis_dt),
+                    settled_at=app.settled_at,
                     loan_category=application_loan_category(app),
                     loan_type=app.loan_type.value,
                     amount=app.amount,
@@ -109,6 +113,7 @@ def archive_settled_deals(session_factory=SessionLocal) -> None:
                     referrer_id=_resolve_referrer_id(app, referrer_map),
                     lender_id=_resolve_lender_id(db, app.id),
                 ))
+                snapshot_parties(db, app)
                 db.commit()
                 archived_count += 1
             except Exception:

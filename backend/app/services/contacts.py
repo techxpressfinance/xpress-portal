@@ -104,7 +104,8 @@ def ensure_contact(
     Referrer-created clients are mirrored into the CRM Contact table so they
     surface for admins and brokers alongside manually created contacts.
 
-    Email is the primary identity. For a person without one (a common early
+    A permanent account link or a unique name-and-email match identifies a person.
+    Shared emails never override a conflicting name. For a person without email (a common early
     business-applicant contact), PII encryption prevents a SQL name lookup, so
     the small tenant-scoped fallback compares decrypted name/phone values in
     Python. It deliberately requires an exact name and, when present, phone.
@@ -113,27 +114,25 @@ def ensure_contact(
     first_key = _text_key(first_name)
     last_key = _text_key(last_name)
     phone_key = _phone_key(phone)
+    email_candidates = []
     if email_norm:
-        existing = (
-            db.query(Contact)
-            .filter(
-                Contact.tenant_id == tenant_id,
-                func.lower(Contact.email) == email_norm,
-            )
-            .first()
-        )
+        from app.models.user import User, UserRole
+        email_candidates = db.query(Contact).filter(
+            Contact.tenant_id == tenant_id, func.lower(Contact.email) == email_norm,
+        ).all()
+        matching_names = [c for c in email_candidates if _text_key(c.first_name) == first_key and _text_key(c.last_name) == last_key]
+        account = db.query(User).filter(User.tenant_id == tenant_id, User.role == UserRole.client,
+                                        User.deleted_at.is_(None), func.lower(User.email) == email_norm).first()
+        linked = db.query(Contact).filter(Contact.id == account.contact_id, Contact.tenant_id == tenant_id).first() if account and account.contact_id else None
+        if linked and _text_key(linked.first_name) == first_key and _text_key(linked.last_name) == last_key:
+            existing = linked
+        else:
+            existing = matching_names[0] if len(matching_names) == 1 else None
         if existing:
             return _fill_missing_contact_fields(
-                existing,
-                middle_name=middle_name,
-                email=email_norm,
-                phone=phone,
-                date_of_birth=date_of_birth,
-                drivers_license_number=drivers_license_number,
-                address=address,
-                suburb=suburb,
-                state=state,
-                postcode=postcode,
+                existing, middle_name=middle_name, email=email_norm, phone=phone,
+                date_of_birth=date_of_birth, drivers_license_number=drivers_license_number,
+                address=address, suburb=suburb, state=state, postcode=postcode,
             )
 
     # Contact names and phone numbers are encrypted, so there is no safe SQL
@@ -160,6 +159,7 @@ def ensure_contact(
             )
 
     contact = Contact(
+        needs_identity_review=bool(email_candidates),
         tenant_id=tenant_id,
         first_name=first_name.strip(),
         last_name=last_name.strip(),
