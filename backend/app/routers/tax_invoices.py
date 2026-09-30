@@ -76,6 +76,11 @@ def _sync_buyer(db: Session, application: LoanApplication, invoice: TaxInvoice) 
         return
     for field, value in buyer_from_application(db, application).items():
         setattr(invoice, field, value)
+    # A draft raised before the deal had a lender (or before Approval recorded
+    # one from the lender book) takes the approving lender. Never overrides a
+    # financier already chosen on the invoice or pulled from the pricing.
+    if not invoice.lender_id and application.approval_lender_id:
+        invoice.lender_id = application.approval_lender_id
 
 
 def _require_draft(invoice: TaxInvoice) -> None:
@@ -261,7 +266,7 @@ def refresh_tax_invoice_pricing(
             detail="This application has no lender pricing to pull from",
         )
 
-    invoice.lender_id = pricing.lender_id
+    invoice.lender_id = pricing.lender_id or invoice.lender_id
     invoice.sale_price = pricing.asset_price
     invoice.deposit_paid = pricing.deposit_amount
     invoice.trade_in_value = pricing.trade_in_amount or None

@@ -889,14 +889,16 @@ def prefill_from_application(
     # The cost build-up comes from the lender pricing where the deal has been
     # priced: those are the figures the lender approved, and the dealer has to
     # invoice to them. The application's own asset block is the fallback for a
-    # file that has not been priced yet.
+    # file that has not been priced yet. The financier falls back to the lender
+    # recorded on entering Approval — the draft is raised at that moment, well
+    # before anyone prices the deal, and a lease's Sold To is that lender.
     pricing = latest_lender_pricing(db, application.id)
     money = {
         "sale_price": _decimal(asset.get("price")),
         "deposit_paid": _decimal(asset.get("deposit")),
         "trade_in_value": None,
         "payout_amount": None,
-        "lender_id": None,
+        "lender_id": application.approval_lender_id,
         "facility_type": None,
     }
     if pricing is not None:
@@ -905,7 +907,7 @@ def prefill_from_application(
             "deposit_paid": pricing.deposit_amount if pricing.deposit_amount is not None else money["deposit_paid"],
             "trade_in_value": pricing.trade_in_amount or None,
             "payout_amount": pricing.payout_amount or None,
-            "lender_id": pricing.lender_id,
+            "lender_id": pricing.lender_id or application.approval_lender_id,
             "facility_type": pricing_facility(pricing),
         }
 
