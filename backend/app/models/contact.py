@@ -91,6 +91,7 @@ class Contact(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
+    needs_identity_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     first_name: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     last_name: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     middle_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)

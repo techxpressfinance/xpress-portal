@@ -40,3 +40,17 @@ class SettledDealSnapshot(Base):
     broker_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     referrer_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     lender_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SettledDealParty(Base):
+    """Durable participation, with no cascading FK to a purged application."""
+
+    __tablename__ = "settled_deal_parties"
+    __table_args__ = (UniqueConstraint("application_id", "contact_id", "role", name="uq_settled_party"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    application_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    contact_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(100), nullable=False)

@@ -34,6 +34,11 @@ class ContactApplicationOut(BaseModel):
     status: str
     business_name: Optional[str]
     business_abn: Optional[str]
+    roles: list[str] = []
+    source: str = "application"
+    lender_name: Optional[str] = None
+    settled_at: Optional[datetime] = None
+    can_open: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -55,6 +60,10 @@ class ContactClientAccount(BaseModel):
     id: str
     full_name: Optional[str] = None
     role: str
+    email: str
+    is_active: bool
+    setup_pending: bool
+    created_at: datetime
 
 
 class ContactOut(BaseModel):
@@ -71,7 +80,9 @@ class ContactOut(BaseModel):
     state: Optional[str]
     postcode: Optional[str]
     notes: Optional[str]
+    needs_identity_review: bool = False
     application_count: int = 0
+    settled_count: int = 0
     # Only populated when the list is asked for it (?include_organizations=1);
     # ContactDetailOut overrides this with the full OrganizationOut rows.
     organizations: list[ContactOrganizationLite] = []
@@ -110,6 +121,7 @@ class ContactCreate(BaseModel):
 
 
 class ContactUpdate(BaseModel):
+    needs_identity_review: Optional[bool] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     middle_name: Optional[str] = None

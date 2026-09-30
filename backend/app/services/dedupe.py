@@ -16,6 +16,9 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from app.models.user import User
+from app.models.settled_deal_snapshot import SettledDealParty
 
 from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.lead import Lead
@@ -359,6 +362,27 @@ def merge_contacts(db: Session, primary: Contact, duplicates: list[Contact]) -> 
 
     Caller commits.
     """
+    ids = [primary.id, *[d.id for d in duplicates]]
+    if any(d.tenant_id != primary.tenant_id for d in duplicates):
+        raise HTTPException(status_code=409, detail="Contacts must belong to the same tenant")
+    accounts = db.query(User).filter(User.contact_id.in_(ids), User.tenant_id == primary.tenant_id,
+                                     User.deleted_at.is_(None)).all()
+    if len(accounts) > 1:
+        raise HTTPException(status_code=409, detail="These contacts have separate portal accounts. Resolve the accounts before merging.")
+    primary.needs_identity_review = False
+    settled_keys = {(p.application_id, p.role) for p in db.query(SettledDealParty).filter(
+        SettledDealParty.contact_id == primary.id, SettledDealParty.tenant_id == primary.tenant_id)}
+    for party in db.query(SettledDealParty).filter(SettledDealParty.contact_id.in_(ids[1:]), SettledDealParty.tenant_id == primary.tenant_id):
+        k = (party.application_id, party.role)
+        if k in settled_keys:
+            db.delete(party)
+        else:
+            party.contact_id = primary.id
+            settled_keys.add(k)
+    for account in db.query(User).filter(User.contact_id.in_(ids[1:]), User.tenant_id == primary.tenant_id):
+        account.contact = primary
+        account.contact_id = primary.id
+
     _fill_missing(primary, duplicates, ("email", "phone", "date_of_birth", "drivers_license_number", "middle_name"))
 
     # Address is taken as a unit from the first duplicate that has one, so the

@@ -212,11 +212,12 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route path="/admin/invite-clients" element={<Navigate to="/admin/users" replace />} />
+              <Route path="/admin/invite-clients" element={<Navigate to="/admin/contacts/invitations" replace />} />
+              <Route path="/admin/users" element={<Navigate to="/admin/contacts" replace />} />
               <Route path="/admin/create-broker" element={<Navigate to="/admin/brokers" replace />} />
               <Route path="/admin/create-referrer" element={<Navigate to="/admin/referrers" replace />} />
               <Route
-                path="/admin/users"
+                path="/admin/contacts/invitations"
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <UserManagement />

@@ -166,6 +166,7 @@ def global_search(
         {
             "id": u.id,
             "full_name": u.full_name,
+            "contact_id": u.contact_id,
             "email": u.email,
             "role": _enum_str(u.role),
             "is_active": u.is_active,
