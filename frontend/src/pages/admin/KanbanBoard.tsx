@@ -16,7 +16,8 @@ import { AbrNameSearchResults, ConfirmDialog, EmptyState } from '../../component
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
-import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanCardKind, KanbanColumn, Lead, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
+import LenderCombobox from '../../components/LenderCombobox';
+import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanCardKind, KanbanColumn, Lead, Lender, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
 
 // ── Design tokens (map column color value → the theme token for the dot) ──
 // These were fixed OKLCH literals, so a stage dot kept its light-mode colour
@@ -900,6 +901,7 @@ export default function KanbanBoardPage() {
   const [dragOverValidity, setDragOverValidity] = useState<DropValidity>(null);
   const dragSourceColumn = useRef<string | null>(null);
   const dragOverlayRef = useRef<HTMLDivElement>(null);
+  const boardScrollerRef = useRef<HTMLDivElement>(null);
   // The filter set the cards on screen were fetched for. A filter clicked while
   // the first load is still in flight has to be honoured, so the refresh effect
   // keys off this rather than an "initial load finished" flag — flipping a ref
@@ -936,6 +938,10 @@ export default function KanbanBoardPage() {
   const [movingApp, setMovingApp] = useState(false);
   // Answers to the target stage's gates, keyed by gate id.
   const [gateAnswers, setGateAnswers] = useState<Record<string, GateAnswer>>({});
+  // The approving lender, picked from the lender book when entering Approval.
+  // The gate answer's `value` carries its name; this carries its id.
+  const [approvalLenderId, setApprovalLenderId] = useState('');
+  const [lenderBook, setLenderBook] = useState<Lender[] | null>(null);
   // Whether to send each of the target stage's messages, keyed by rule id.
   const [notifyChoices, setNotifyChoices] = useState<Record<string, boolean>>({});
 
@@ -1220,6 +1226,40 @@ export default function KanbanBoardPage() {
     };
   }, [isDragging]);
 
+  // Edge auto-scroll: while a card is dragged near the left or right edge of the
+  // board, scroll the columns that way — faster the closer to the edge. The
+  // browser's native drag scroll only reacts in a sliver at the very edge.
+  useEffect(() => {
+    if (!isDragging) return;
+    const EDGE = 120; // px from the board's visible edge where scrolling starts
+    const MAX_SPEED = 14; // px per frame at the very edge
+    let pointerX: number | null = null;
+    let frame = 0;
+    const trackPointer = (e: globalThis.DragEvent) => {
+      // Some browsers report 0,0 on the final dragover; ignore it.
+      if (e.clientX || e.clientY) pointerX = e.clientX;
+    };
+    const step = () => {
+      const scroller = boardScrollerRef.current;
+      if (scroller && pointerX !== null) {
+        const rect = scroller.getBoundingClientRect();
+        const left = Math.max(rect.left, 0);
+        const right = Math.min(rect.right, window.innerWidth);
+        let delta = 0;
+        if (pointerX < left + EDGE) delta = -MAX_SPEED * Math.min(1, (left + EDGE - pointerX) / EDGE);
+        else if (pointerX > right - EDGE) delta = MAX_SPEED * Math.min(1, (pointerX - (right - EDGE)) / EDGE);
+        if (delta) scroller.scrollLeft += delta;
+      }
+      frame = requestAnimationFrame(step);
+    };
+    document.addEventListener('dragover', trackPointer);
+    frame = requestAnimationFrame(step);
+    return () => {
+      document.removeEventListener('dragover', trackPointer);
+      cancelAnimationFrame(frame);
+    };
+  }, [isDragging]);
+
   const handleDragOver = (_e: DragEvent, columnId: string) => {
     if (dragOverColumn !== columnId) {
       setDragOverColumn(columnId);
@@ -1291,6 +1331,7 @@ export default function KanbanBoardPage() {
       };
     }
     setGateAnswers(seeded);
+    setApprovalLenderId(movedApp.approval_lender_id || '');
 
     const notifications = targetCol.notifications || [];
     setNotifyChoices(Object.fromEntries(notifications.map((r) => [r.id, r.default_enabled])));
@@ -1319,6 +1360,7 @@ export default function KanbanBoardPage() {
     }
     const gates = withApprovalGate(targetCol, true);
     setGateAnswers(Object.fromEntries(gates.map((g) => [g.id, { gate_id: g.id, confirmed: false, value: '', items: [''] }])));
+    setApprovalLenderId('');
     const notifications = targetCol.notifications || [];
     setNotifyChoices(Object.fromEntries(notifications.map((r) => [r.id, r.default_enabled])));
     setPendingMove({
@@ -1379,6 +1421,25 @@ export default function KanbanBoardPage() {
   const isConversion = pendingMove?.subject.kind === 'lead';
   const showMoveModal = hasGates || isConversion;
 
+  // The lender book loads the first time a move asks for the approving lender.
+  const needsLender = pendingGates.some((gate) => gate.target === 'approval_conditions');
+  useEffect(() => {
+    if (!needsLender || lenderBook) return;
+    api.get<Lender[]>('/lenders')
+      .then(({ data }) => setLenderBook(data))
+      // An empty book falls back to typing the name, so a failed load can't
+      // trap the move.
+      .catch(() => setLenderBook([]));
+  }, [needsLender, lenderBook]);
+
+  // The approving lender's id: the one picked, or — for an application approved
+  // before lenders were picked from the book — the book entry matching its name.
+  const approvalGateAnswer = pendingGates.find((gate) => gate.target === 'approval_conditions');
+  const approvalLenderName = approvalGateAnswer ? (gateAnswers[approvalGateAnswer.id]?.value ?? '').trim() : '';
+  const effectiveLenderId = approvalLenderId
+    || lenderBook?.find((l) => approvalLenderName && l.name.toLowerCase() === approvalLenderName.toLowerCase())?.id
+    || '';
+
   const answerFor = (gate: StageGate): GateAnswer =>
     gateAnswers[gate.id] ?? { gate_id: gate.id, confirmed: false, value: '', items: [''] };
 
@@ -1396,7 +1457,10 @@ export default function KanbanBoardPage() {
     if (gate.kind === 'confirm') return answer.confirmed;
     const items = answer.items.map((i) => i.trim()).filter(Boolean);
     if (!items.length) return false;
-    return gate.target !== 'approval_conditions' || answer.value.trim().length > 0;
+    if (gate.target !== 'approval_conditions') return true;
+    // With a lender book the lender must be picked from it; typing a name is
+    // only the fallback for a tenant with no book.
+    return lenderBook?.length ? !!effectiveLenderId : answer.value.trim().length > 0;
   });
 
   const confirmMoveApplication = async () => {
@@ -1409,6 +1473,7 @@ export default function KanbanBoardPage() {
     const approvalGate = pendingGates.find((gate) => gate.id === APPROVAL_GATE_ID);
     const approvalAnswer = approvalGate ? answerFor(approvalGate) : null;
     const moveBody = {
+      ...(needsLender && effectiveLenderId ? { lender_id: effectiveLenderId } : {}),
       ...(approvalAnswer ? {
         lender_name: approvalAnswer.value.trim(),
         conditions: approvalAnswer.items.map((i) => i.trim()).filter(Boolean),
@@ -2157,7 +2222,7 @@ export default function KanbanBoardPage() {
         </div>
       ) : activeBoard ? (
         <div style={{ padding: '14px 24px 20px', flex: 1, minHeight: 0 }}>
-          <div className="led-kanban-scroller">
+          <div className="led-kanban-scroller" ref={boardScrollerRef}>
             {phaseGroups.map(renderPhaseGroup)}
             {isAdmin && (
               <button
@@ -2542,13 +2607,28 @@ export default function KanbanBoardPage() {
                   </div>
                 )}
                 {gate.target === 'approval_conditions' && (
-                  <input
-                    className="led-input"
-                    placeholder="Lender name — e.g. ANZ, Pepper Money..."
-                    value={answer.value}
-                    onChange={(e) => updateAnswer(gate.id, { value: e.target.value })}
-                    style={{ marginBottom: 8 }}
-                  />
+                  lenderBook && lenderBook.length === 0 ? (
+                    <input
+                      className="led-input"
+                      placeholder="Lender name — e.g. ANZ, Pepper Money..."
+                      value={answer.value}
+                      onChange={(e) => updateAnswer(gate.id, { value: e.target.value })}
+                      style={{ marginBottom: 8 }}
+                    />
+                  ) : (
+                    <div style={{ marginBottom: 8 }}>
+                      <LenderCombobox
+                        lenders={lenderBook}
+                        value={effectiveLenderId || null}
+                        orphanedName={answer.value || null}
+                        onChange={(lenderId) => {
+                          setApprovalLenderId(lenderId);
+                          updateAnswer(gate.id, { value: lenderBook?.find((l) => l.id === lenderId)?.name ?? '' });
+                        }}
+                        className="led-input"
+                      />
+                    </div>
+                  )
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {answer.items.map((item, i) => (

@@ -180,15 +180,23 @@ interface LenderPricingEditorProps {
   /** Omit for standalone lender pricing (the general Quote Sheets page). */
   applicationId?: string;
   sheet?: QuoteSheet;
+  /** Lender a NEW sheet starts on — the application's approving lender. */
+  defaultLender?: { id: string; name: string } | null;
   onSave: (sheet: QuoteSheet) => void;
   onCancel: () => void;
 }
 
-export default function LenderPricingEditor({ applicationId, sheet, onSave, onCancel }: LenderPricingEditorProps) {
+export default function LenderPricingEditor({ applicationId, sheet, defaultLender, onSave, onCancel }: LenderPricingEditorProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState(sheet?.title || '');
   const [brokerNotes, setBrokerNotes] = useState(sheet?.broker_notes || '');
-  const [inputs, setInputs] = useState<LenderPricingInputs>(() => parseLenderPricingInputs(sheet));
+  const [inputs, setInputs] = useState<LenderPricingInputs>(() => {
+    const parsed = parseLenderPricingInputs(sheet);
+    // A new sheet starts on the lender that approved the deal.
+    return !sheet && defaultLender && !parsed.lender_id
+      ? { ...parsed, lender_id: defaultLender.id, lender_name: defaultLender.name }
+      : parsed;
+  });
   const [saving, setSaving] = useState(false);
   const [shortfallOpen, setShortfallOpen] = useState(false);
   const [lenderBook, setLenderBook] = useState<Lender[] | null>(null);

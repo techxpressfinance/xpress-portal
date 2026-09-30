@@ -54,7 +54,7 @@ from app.schemas.kanban import (
 from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN, STATUS_LABELS
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
-from app.services.application_status import change_application_status
+from app.services.application_status import change_application_status, resolve_approval_lender
 from app.services.date_filter import apply_date_range_filter
 from app.services.leads import convert_lead, lead_name, lead_to_dict
 from app.services.loan_category import (
@@ -1418,6 +1418,12 @@ def move_lead(
     gate_record, gate_lender, gate_conditions = _evaluate_gates(col, payload.gate_responses if payload else [])
     lender_name = gate_lender or (payload.lender_name if payload else None)
     conditions = gate_conditions or (payload.conditions if payload else None)
+    # A lender picked from the book names the approval; resolved up front so an
+    # unknown id is refused before anything is written.
+    lender_id = payload.lender_id if payload else None
+    approval_lender = resolve_approval_lender(db, tenant_id, lender_id)
+    if approval_lender:
+        lender_name = approval_lender.name
     if new_status == ApplicationStatus.approval and not (
         (lender_name or "").strip() and any(c.strip() for c in (conditions or []))
     ):
@@ -1496,6 +1502,7 @@ def move_lead(
     if new_status != ApplicationStatus.draft:
         change_application_status(
             db, application, new_status, current_user.id, tenant_id,
+            lender_id=lender_id,
             lender_name=lender_name,
             conditions=conditions,
             enforce_transitions=False,
@@ -1567,6 +1574,12 @@ def move_card(
     gate_record, gate_lender, gate_conditions = _evaluate_gates(col, payload.gate_responses if payload else [])
     lender_name = gate_lender or (payload.lender_name if payload else None)
     conditions = gate_conditions or (payload.conditions if payload else None)
+    # A lender picked from the book names the approval; resolved up front so an
+    # unknown id is refused before anything is written.
+    lender_id = payload.lender_id if payload else None
+    approval_lender = resolve_approval_lender(db, tenant_id, lender_id)
+    if approval_lender:
+        lender_name = approval_lender.name
 
     from_col = db.query(KanbanColumn).filter(KanbanColumn.id == old_col_id).first() if old_col_id else None
     from_status = application.status.value
@@ -1640,6 +1653,7 @@ def move_card(
     if application.status != new_status:
         change_application_status(
             db, application, new_status, current_user.id, tenant_id,
+            lender_id=lender_id,
             lender_name=lender_name,
             conditions=conditions,
             # A stage view carries several stages per status in its own order,

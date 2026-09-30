@@ -475,6 +475,8 @@ _CLONE_RESET_COLUMNS = frozenset({
     "client_invite_token", "client_invite_email", "client_invite_sent_at",
     # A declaration signed for one loan doesn't carry to another
     "signature_name",
+    # The approval belongs to the source loan; the clone starts as a draft
+    "approval_lender_name", "approval_lender_id",
 })
 
 #: Party columns set explicitly or deliberately dropped when cloning a director /
@@ -1197,6 +1199,7 @@ def change_status(
 
     change_application_status(
         db, application, new_status, current_user.id, tenant_id,
+        lender_id=payload.lender_id if payload else None,
         lender_name=payload.lender_name if payload else None,
         conditions=payload.conditions if payload else None,
     )

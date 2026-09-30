@@ -239,6 +239,10 @@ class LoanApplication(Base):
     # Set when the application (re-)enters the Approval status; see
     # change_application_status() and ApprovalCondition.
     approval_lender_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # The approving lender in the lender book, when picked from it. The name above
+    # is kept alongside so the record reads the same if the lender is later
+    # renamed or retired. Lender pricing prefills its lender from this.
+    approval_lender_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lenders.id"), nullable=True)
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])

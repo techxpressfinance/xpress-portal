@@ -104,6 +104,9 @@ class StageMoveRequest(BaseModel):
 
     gate_responses: list[GateResponse] = Field(default_factory=list)
     notifications: list[NotificationDecision] = Field(default_factory=list)
+    # The approving lender from the lender book; its name wins over lender_name
+    # and over the approval gate's typed value.
+    lender_id: Optional[str] = None
     lender_name: Optional[str] = None
     conditions: Optional[list[str]] = None
 

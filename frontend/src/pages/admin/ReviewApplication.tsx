@@ -277,6 +277,10 @@ export default function ReviewApplication() {
   const [savingWithReason, setSavingWithReason] = useState(false);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvalLenderName, setApprovalLenderName] = useState('');
+  // The approving lender, picked from the lender book (null while it loads; an
+  // empty book falls back to typing the name).
+  const [approvalLenderId, setApprovalLenderId] = useState('');
+  const [approvalLenderBook, setApprovalLenderBook] = useState<Lender[] | null>(null);
   const [approvalConditions, setApprovalConditions] = useState<string[]>(['', '']);
   const [savingApproval, setSavingApproval] = useState(false);
   const [togglingConditionId, setTogglingConditionId] = useState<string | null>(null);
@@ -602,6 +606,12 @@ export default function ReviewApplication() {
       setReasonModalStatus(newStatus);
     } else if (newStatus === 'approval') {
       setApprovalLenderName(application?.approval_lender_name || '');
+      setApprovalLenderId(application?.approval_lender_id || '');
+      if (!approvalLenderBook) {
+        api.get<Lender[]>('/lenders')
+          .then(({ data }) => setApprovalLenderBook(data))
+          .catch(() => setApprovalLenderBook([]));
+      }
       const existing = application?.approval_conditions?.map((c) => c.text) || [];
       setApprovalConditions(existing.length ? existing : ['', '']);
       setApprovalModalOpen(true);
@@ -610,13 +620,21 @@ export default function ReviewApplication() {
     }
   };
 
+  // The picked lender, or — for an application approved before lenders came
+  // from the book — the book entry matching its recorded name.
+  const effectiveApprovalLenderId = approvalLenderId
+    || approvalLenderBook?.find((l) => approvalLenderName.trim() && l.name.toLowerCase() === approvalLenderName.trim().toLowerCase())?.id
+    || '';
+  const approvalLenderChosen = approvalLenderBook?.length ? !!effectiveApprovalLenderId : !!approvalLenderName.trim();
+
   const confirmApprovalStatus = async () => {
     if (!id) return;
     const cleanConditions = approvalConditions.map((c) => c.trim()).filter(Boolean);
-    if (!approvalLenderName.trim() || cleanConditions.length === 0) return;
+    if (!approvalLenderChosen || cleanConditions.length === 0) return;
     setSavingApproval(true);
     try {
       const { data } = await api.patch(`/applications/${id}/status?status=approval`, {
+        ...(effectiveApprovalLenderId ? { lender_id: effectiveApprovalLenderId } : {}),
         lender_name: approvalLenderName.trim(),
         conditions: cleanConditions,
       });
@@ -3823,6 +3841,9 @@ export default function ReviewApplication() {
                     key={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet.id : 'new'}
                     applicationId={id!}
                     sheet={lenderPricingMode.kind === 'edit' ? lenderPricingMode.sheet : undefined}
+                    defaultLender={application?.approval_lender_id
+                      ? { id: application.approval_lender_id, name: application.approval_lender_name || '' }
+                      : null}
                     onSave={(sheet) => {
                       setQuoteSheets(prev => prev.some(s => s.id === sheet.id)
                         ? prev.map(s => s.id === sheet.id ? sheet : s)
@@ -4601,15 +4622,29 @@ export default function ReviewApplication() {
             <p className="text-[13px] text-muted-foreground mb-4">
               Record the lender and the approval conditions — you'll be able to check them off as they're met.
             </p>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1.5 block">Lender name</label>
-            <input
-              autoFocus
-              type="text"
-              placeholder="e.g. ANZ, Pepper Money..."
-              value={approvalLenderName}
-              onChange={e => setApprovalLenderName(e.target.value)}
-              className="w-full rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
-            />
+            <label className="text-[12px] font-medium text-muted-foreground mb-1.5 block">Lender</label>
+            {approvalLenderBook && approvalLenderBook.length === 0 ? (
+              <input
+                autoFocus
+                type="text"
+                placeholder="e.g. ANZ, Pepper Money..."
+                value={approvalLenderName}
+                onChange={e => setApprovalLenderName(e.target.value)}
+                className="w-full rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
+              />
+            ) : (
+              <div className="mb-4">
+                <LenderCombobox
+                  lenders={approvalLenderBook}
+                  value={effectiveApprovalLenderId || null}
+                  onChange={lenderId => {
+                    setApprovalLenderId(lenderId);
+                    setApprovalLenderName(approvalLenderBook?.find(l => l.id === lenderId)?.name ?? '');
+                  }}
+                  className="rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-[14px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            )}
             <label className="text-[12px] font-medium text-muted-foreground mb-1.5 block">Approval conditions</label>
             <div className="space-y-2 mb-2">
               {approvalConditions.map((cond, i) => (
@@ -4652,7 +4687,7 @@ export default function ReviewApplication() {
                 variant="primary"
                 size="md"
                 loading={savingApproval}
-                disabled={!approvalLenderName.trim() || approvalConditions.every(c => !c.trim())}
+                disabled={!approvalLenderChosen || approvalConditions.every(c => !c.trim())}
                 onClick={confirmApprovalStatus}
               >
                 Move to Approval

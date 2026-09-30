@@ -285,6 +285,8 @@ export interface LoanApplication {
   user?: { id: string; full_name: string; email: string } | null;
   // Set when the application (re-)enters the Approval status
   approval_lender_name?: string | null;
+  /** The approving lender in the lender book; lender pricing starts from it. */
+  approval_lender_id?: string | null;
   approval_conditions?: ApprovalCondition[];
 }
 

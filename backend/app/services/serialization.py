@@ -52,6 +52,7 @@ STAFF_ONLY_KEYS = frozenset({
     "analysis_error",
     "analyzed_at",
     "approval_lender_name",
+    "approval_lender_id",
     "approval_conditions",
     "needs_reconciliation",
     "reconciliation_note",

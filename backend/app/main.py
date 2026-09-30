@@ -320,6 +320,8 @@ _MIGRATIONS = [
     ("organizations", "no_abn_confirmed_by_id", "VARCHAR(36) REFERENCES users(id)"),
     # Lender name recorded when the application (re-)enters the Approval status
     ("loan_applications", "approval_lender_name", "VARCHAR(200)"),
+    # The approving lender as a lender-book link; prefills lender pricing
+    ("loan_applications", "approval_lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
     # Marks a Task as auto-generated from an application's approval conditions
     ("tasks", "is_approval_conditions_task", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Links a checklist item back to the ApprovalCondition it mirrors, for

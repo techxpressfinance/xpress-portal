@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import VALID_TRANSITIONS
 from app.models.kanban import ApplicationStagePlacement, KanbanColumn
+from app.models.lender import Lender
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
 from app.services.activity_log import log_activity
@@ -17,6 +18,17 @@ from app.services.notification_service import create_notification
 from app.services.tax_invoice import ensure_request_for_approval
 
 
+def resolve_approval_lender(db: Session, tenant_id: Optional[str], lender_id: Optional[str]) -> Optional[Lender]:
+    """The lender-book entry picked as the approving lender, or None when the
+    approval names its lender as free text. 400 on an id outside the tenant."""
+    if not lender_id:
+        return None
+    lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
+    if not lender:
+        raise HTTPException(status_code=400, detail="That lender isn't in your lender book.")
+    return lender
+
+
 def change_application_status(
     db: Session,
     application: LoanApplication,
@@ -24,6 +36,7 @@ def change_application_status(
     actor_id: str,
     tenant_id: Optional[str],
     *,
+    lender_id: Optional[str] = None,
     lender_name: Optional[str] = None,
     conditions: Optional[list[str]] = None,
     enforce_transitions: bool = True,
@@ -60,6 +73,11 @@ def change_application_status(
         )
 
     if new_status == ApplicationStatus.approval:
+        # A lender picked from the book names the approval; its id is kept so
+        # lender pricing can start from it.
+        lender = resolve_approval_lender(db, tenant_id, lender_id)
+        if lender:
+            lender_name = lender.name
         clean_conditions = [c.strip() for c in (conditions or []) if c.strip()]
         if not lender_name or not lender_name.strip() or not clean_conditions:
             raise HTTPException(
@@ -67,6 +85,7 @@ def change_application_status(
                 detail="Lender name and at least one approval condition are required to move to Approval.",
             )
         application.approval_lender_name = lender_name.strip()
+        application.approval_lender_id = lender.id if lender else None
         # Merge, never replace. An application can enter Approval more than once
         # (a board may carry several stages that roll up to it), and wiping the
         # list would throw away every condition the team had already ticked off

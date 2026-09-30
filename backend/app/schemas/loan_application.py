@@ -304,7 +304,10 @@ class ApprovalDetailsRequest(BaseModel):
     """Lender name + conditions checklist required to move an application into
     the Approval status — see change_application_status()."""
 
-    lender_name: str
+    # Either the lender-book id (preferred — the name is taken from the book) or
+    # a free-text name.
+    lender_id: Optional[str] = None
+    lender_name: Optional[str] = None
     conditions: list[str]
 
 
@@ -444,6 +447,7 @@ class LoanApplicationOut(BaseModel):
     # Set only on the POST response that issues a direct-engagement invite
     invite_url: Optional[str] = None
     approval_lender_name: Optional[str] = None
+    approval_lender_id: Optional[str] = None
     approval_conditions: list[ApprovalConditionOut] = []
     # Referrer viewers only — where the client is up to and whose move it is.
     journey: Optional[JourneyOut] = None
