@@ -3,13 +3,19 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaxInvoiceCreate(BaseModel):
     supplier_type: Literal["dealer", "private", "auction"]
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
+
+
+class BuyerAddressUpdate(BaseModel):
+    """The Sold To company's address, saved to its entity record."""
+
+    address: str = Field(max_length=500)
 
 
 class TaxInvoiceUpdate(BaseModel):

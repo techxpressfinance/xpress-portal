@@ -459,9 +459,9 @@ def _board_to_dict(
         "description": board.description,
         "loan_category": board.loan_category,
         "is_default": board.is_default,
-        # A stage view has its own order and several stages per status, so the
-        # status transition table cannot govern moves within it.
-        "enforce_transitions": board.enforce_transitions and category is None,
+        # Cards move freely between any two stages on every board — the status
+        # transition table only governs the plain status endpoint.
+        "enforce_transitions": False,
         "stage_category": category,
         "created_by_id": board.created_by_id,
         "created_by_name": board.created_by.full_name if board.created_by else None,
@@ -1656,9 +1656,10 @@ def move_card(
             lender_id=lender_id,
             lender_name=lender_name,
             conditions=conditions,
-            # A stage view carries several stages per status in its own order,
-            # so the status transition table cannot govern a move within it.
-            enforce_transitions=board.enforce_transitions and col.loan_category is None,
+            # Any stage to any stage: the board is the broker's own workflow,
+            # so the status transition table does not govern card moves.
+            enforce_transitions=False,
+            clear_approval=payload.clear_approval if payload else False,
         )
     else:
         db.commit()

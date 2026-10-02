@@ -248,6 +248,18 @@ export default function TaxInvoicePanel({
     }
   };
 
+  /** Save the Sold To company's address. It goes on the company's entity
+   *  record, so every invoice for that company fills it in from then on. */
+  const saveCompanyAddress = async (invoice: TaxInvoice, address: string) => {
+    try {
+      await api.put(`/applications/${applicationId}/tax-invoices/${invoice.id}/buyer-address`, { address });
+      await load();
+      toast('Address saved to the company', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save the address'), 'error');
+    }
+  };
+
   /** Check the seller's ABN on ABN Lookup. The answer decides the document:
    *  only an active, GST-registered ABN makes a private sale a tax invoice.
    *  Unsaved edits go first so the check runs on the ABN on screen. */
@@ -584,7 +596,15 @@ export default function TaxInvoicePanel({
                       <Text label="Name" value={invoice.buyer_name ?? ''} onChange={() => {}} disabled />
                       <Text label="ABN" value={invoice.buyer_abn ?? ''} onChange={() => {}} disabled />
                       <Text label="ACN" value={invoice.buyer_acn ?? ''} onChange={() => {}} disabled />
-                      <Text label="Address" value={invoice.buyer_address ?? ''} onChange={() => {}} disabled />
+                      {invoice.buyer_company_id && !locked ? (
+                        <CompanyAddressField
+                          key={`${invoice.id}-${invoice.buyer_company_has_address ? invoice.buyer_address : ''}`}
+                          invoice={invoice}
+                          onSave={(address) => saveCompanyAddress(invoice, address)}
+                        />
+                      ) : (
+                        <Text label="Address" value={invoice.buyer_address ?? ''} onChange={() => {}} disabled />
+                      )}
                     </Section>
 
                     {(isRequest || isPrivate) && (
@@ -898,6 +918,48 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">{title}</p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+    </div>
+  );
+}
+
+/** The Sold To company's address. The buyer block follows the application, so
+ *  this saves to the company's entity record rather than the invoice. Until the
+ *  company has a street address, the invoice prints the ABR state/postcode. */
+function CompanyAddressField({ invoice, onSave }: {
+  invoice: TaxInvoice;
+  onSave: (address: string) => Promise<void>;
+}) {
+  const saved = invoice.buyer_company_has_address ? (invoice.buyer_address ?? '') : '';
+  const [value, setValue] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const changed = value.trim() !== saved.trim();
+  return (
+    <div className="sm:col-span-2 lg:col-span-3">
+      <span className="block text-[11.5px] text-muted-foreground mb-1">Company address</span>
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-start">
+        <textarea
+          rows={2}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={invoice.buyer_address ? `Street address — ABN Lookup has ${invoice.buyer_address}` : 'Street address'}
+          className="w-full rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground resize-y"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!changed || busy}
+          onClick={async () => { setBusy(true); try { await onSave(value); } finally { setBusy(false); } }}
+        >
+          {busy ? 'Saving...' : 'Save to company'}
+        </Button>
+      </div>
+      <p className="mt-1 text-[11.5px] text-muted-foreground">
+        {invoice.buyer_company_has_address
+          ? 'From the company record. A change here updates the company, and every invoice for it.'
+          : invoice.buyer_address
+            ? `No street address on record — the invoice shows ${invoice.buyer_address} from ABN Lookup until you add one. It's saved to the company for next time.`
+            : "No address on record for this company. It's saved to the company for next time."}
+      </p>
     </div>
   );
 }
@@ -1222,9 +1284,8 @@ function PartyBlock({
       {(lines ?? []).filter(Boolean).map((line, i) => (
         <div key={i} style={{ whiteSpace: 'pre-line' }}>{line}</div>
       ))}
-      {(abn || acn) && (
-        <div>{[abn && `ABN ${abn}`, acn && `ACN ${acn}`].filter(Boolean).join('  ·  ')}</div>
-      )}
+      {abn && <div>ABN {abn}</div>}
+      {acn && <div>ACN {acn}</div>}
     </div>
   );
 }

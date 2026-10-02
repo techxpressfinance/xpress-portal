@@ -13,7 +13,7 @@ import PortalAccess from '../../components/clients/PortalAccess';
 import ContactLendingHistory from '../../components/clients/ContactLendingHistory';
 import StartContactApplication from '../../components/clients/StartContactApplication';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
-import { loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
+import { clearsApproval, loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -197,6 +197,7 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
   onSaved: (updated: ContactApplication) => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditLendingForm>({
     loan_type: app.loan_type,
@@ -214,10 +215,20 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Going back from Approval deletes the lender and approval conditions.
+    const clearApproval = form.status !== app.status && clearsApproval(app.status, form.status);
+    if (clearApproval && !(await confirm({
+      title: 'Delete the approval?',
+      message: 'Moving back from Approval permanently deletes the approving lender and every approval condition, including their tick-offs and the brokers\' approval-conditions tasks.',
+      confirmText: 'Delete approval & save',
+      variant: 'danger',
+    }))) return;
     setSaving(true);
     try {
       if (form.status !== app.status) {
-        await api.patch(`/applications/${app.id}/status`, null, { params: { status: form.status } });
+        await api.patch(`/applications/${app.id}/status`, null, {
+          params: { status: form.status, ...(clearApproval ? { clear_approval: true } : {}) },
+        });
       }
       await api.patch(`/applications/${app.id}`, {
         loan_type: form.loan_type,

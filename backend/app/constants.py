@@ -14,6 +14,12 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "not_proceeding": ["draft", "application_received"],
 }
 
+# Statuses before Approval. Going back to one of these from Approval deletes the
+# approving lender and the approval conditions (see change_application_status),
+# so the move must be confirmed with `clear_approval`.
+# NOTE: frontend copy at frontend/src/lib/constants.ts — keep in sync
+PRE_APPROVAL_STATUSES: list[str] = ["draft", "application_received", "application_assessed", "submitted"]
+
 # Legal structure of an Organization. Ordered as presented in the entity picker.
 ENTITY_TYPES: list[str] = [
     "trust",

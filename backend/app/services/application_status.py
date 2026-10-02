@@ -6,13 +6,13 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.constants import VALID_TRANSITIONS
+from app.constants import PRE_APPROVAL_STATUSES, VALID_TRANSITIONS
 from app.models.kanban import ApplicationStagePlacement, KanbanColumn
 from app.models.lender import Lender
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.user import User, UserRole
 from app.services.activity_log import log_activity
-from app.services.approval_conditions import add_conditions, ensure_condition_tasks
+from app.services.approval_conditions import add_conditions, clear_approval as clear_approval_details, ensure_condition_tasks
 from app.services.email import send_status_notification
 from app.services.notification_service import create_notification
 from app.services.tax_invoice import ensure_request_for_approval
@@ -40,6 +40,7 @@ def change_application_status(
     lender_name: Optional[str] = None,
     conditions: Optional[list[str]] = None,
     enforce_transitions: bool = True,
+    clear_approval: bool = False,
 ) -> None:
     """Transition an application to a new status, with the same validation and
     side-effects as the /applications/{id}/status endpoint (transition rules,
@@ -63,6 +64,11 @@ def change_application_status(
     survive a re-entry. Each broker on the application gets (or keeps) an
     approval-conditions task whose checklist mirrors the panel — see
     services/approval_conditions.py.
+
+    Going back from Approval to an earlier status deletes the approving lender
+    and every approval condition (and the brokers' condition tasks). That is
+    destructive, so the caller must pass `clear_approval=True` — the user has
+    confirmed it — or the move is refused with a 409.
     """
     current = application.status.value
     allowed = VALID_TRANSITIONS.get(current, [])
@@ -70,6 +76,15 @@ def change_application_status(
         raise HTTPException(
             status_code=400,
             detail=f"Cannot transition from '{current}' to '{new_status.value}'. Allowed: {allowed}",
+        )
+
+    going_back_from_approval = (
+        application.status == ApplicationStatus.approval and new_status.value in PRE_APPROVAL_STATUSES
+    )
+    if going_back_from_approval and not clear_approval:
+        raise HTTPException(
+            status_code=409,
+            detail="Moving back from Approval deletes the lender and approval conditions. Confirm to continue.",
         )
 
     if new_status == ApplicationStatus.approval:
@@ -96,6 +111,19 @@ def change_application_status(
         # to the dealer, pre-filled from the application — see
         # services/tax_invoice.ensure_request_for_approval.
         ensure_request_for_approval(db, application, actor_id, tenant_id)
+
+    if going_back_from_approval:
+        lender_before = application.approval_lender_name
+        removed = clear_approval_details(db, application)
+        log_activity(
+            db,
+            actor_id,
+            "approval_cleared",
+            "application",
+            application.id,
+            {"lender": lender_before, "conditions_deleted": removed, "to": new_status.value},
+            tenant_id=tenant_id,
+        )
 
     application.status = new_status
     # A status set from outside the board (the application detail page, an

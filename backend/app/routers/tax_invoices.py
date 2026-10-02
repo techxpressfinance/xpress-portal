@@ -12,7 +12,7 @@ from app.middleware.auth import require_role
 from app.models.loan_application import LoanApplication
 from app.models.tax_invoice import AbnStatus, SupplierType, TaxInvoice, TaxInvoiceStatus
 from app.models.user import User
-from app.schemas.tax_invoice import TaxInvoiceCreate, TaxInvoiceUpdate
+from app.schemas.tax_invoice import BuyerAddressUpdate, TaxInvoiceCreate, TaxInvoiceUpdate
 from app.services.access_control import check_application_access
 from app.services.abr import AbrUnavailable, lookup_abn
 from app.services.activity_log import log_activity
@@ -24,6 +24,7 @@ from app.services.tax_invoice import (
     document_title,
     seller_documents_received,
     blockers,
+    buyer_company,
     buyer_from_application,
     pricing_facility,
     classify_condition,
@@ -200,6 +201,36 @@ def update_tax_invoice(
 
     changed = sorted(updates) + (["seller_documents"] if documents is not None else [])
     log_activity(db, current_user.id, "tax_invoice_updated", "application", app_id, {"fields": changed}, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(invoice)
+    return serialize(invoice, db)
+
+
+@router.put("/{invoice_id}/buyer-address")
+def set_buyer_company_address(
+    app_id: str,
+    invoice_id: str,
+    data: BuyerAddressUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Record the Sold To company's address from the invoice.
+
+    The buyer block follows the application, so the address is saved to the
+    company's entity record rather than the invoice — every draft for the
+    company, on this deal and the next, then fills it in."""
+    application = _get_application(db, app_id, tenant_id, current_user)
+    invoice = _get_invoice(db, app_id, invoice_id)
+    _require_draft(invoice)
+    company = buyer_company(db, application)
+    if not company or company.tenant_id != tenant_id:
+        raise HTTPException(status_code=400, detail="The client on this invoice isn't a company on record")
+
+    company.address = data.address.strip() or None
+    _sync_buyer(db, application, invoice)
+    log_activity(db, current_user.id, "organization_address_updated", "organization", company.id,
+                 {"source": "tax_invoice", "application_id": app_id}, tenant_id=tenant_id)
     db.commit()
     db.refresh(invoice)
     return serialize(invoice, db)

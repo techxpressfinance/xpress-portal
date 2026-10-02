@@ -5,7 +5,8 @@ import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince, getErrorMessage } from '../../lib/utils';
-import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL, VALID_TRANSITIONS, findLoanSubType } from '../../lib/constants';
+import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL, VALID_TRANSITIONS, clearsApproval, findLoanSubType } from '../../lib/constants';
+import ApprovalClearWarning from '../../components/ApprovalClearWarning';
 import { applicantCounterpart, applicantDisplayName } from '../../lib/applicantName';
 import { formatAbn, isValidAbn } from '../../lib/acn';
 import { useAbrNameSearch } from '../../hooks/useAbrLookup';
@@ -1167,9 +1168,8 @@ export default function KanbanBoardPage() {
     // stage — which converts it.
     if (draggedLead) return targetCol.card_kind === 'lead' || targetCol.mapped_status ? 'valid' : 'invalid';
     if (!draggedApp || targetCol.card_kind === 'lead' || !targetCol.mapped_status) return 'invalid';
-    // Stage boards carry several stages per status, so the status transition
-    // table has nothing useful to say about a move between them — the backend
-    // relaxes it for these boards too.
+    // Cards move freely between any two stages — the backend always reports
+    // enforce_transitions false and skips the transition table on card moves.
     if (activeBoard && !activeBoard.enforce_transitions) return 'valid';
     const allowed = VALID_TRANSITIONS[draggedApp.status] || [];
     if (!allowed.includes(targetCol.mapped_status)) return 'invalid';
@@ -1420,6 +1420,10 @@ export default function KanbanBoardPage() {
   // a contact, which deserves more than a one-line confirm.
   const isConversion = pendingMove?.subject.kind === 'lead';
   const showMoveModal = hasGates || isConversion;
+  // Going back from Approval deletes the lender and conditions; both move
+  // dialogs warn about it and the move carries the confirmation.
+  const pendingApp = pendingMove?.subject.kind === 'application' ? pendingMove.subject.app : null;
+  const moveClearsApproval = !!pendingApp && clearsApproval(pendingApp.status, pendingMove?.targetColumnStatus);
 
   // The lender book loads the first time a move asks for the approving lender.
   const needsLender = pendingGates.some((gate) => gate.target === 'approval_conditions');
@@ -1491,6 +1495,7 @@ export default function KanbanBoardPage() {
         rule_id: rule.id,
         send: notifyChoices[rule.id] ?? rule.default_enabled,
       })),
+      ...(moveClearsApproval ? { clear_approval: true } : {}),
     };
 
     const { subject } = pendingMove;
@@ -1530,7 +1535,12 @@ export default function KanbanBoardPage() {
       updated[pendingMove.sourceColumnId] = (prev[pendingMove.sourceColumnId] || []).filter((a) => a.id !== movedApp.id);
       updated[pendingMove.targetColumnId] = [
         ...(prev[pendingMove.targetColumnId] || []),
-        { ...movedApp, kanban_column_id: pendingMove.targetColumnId, status: pendingMove.targetColumnStatus ?? movedApp.status },
+        {
+          ...movedApp,
+          kanban_column_id: pendingMove.targetColumnId,
+          status: pendingMove.targetColumnStatus ?? movedApp.status,
+          ...(moveClearsApproval ? { approval_lender_name: null, approval_lender_id: null, approval_conditions: [] } : {}),
+        },
       ];
       return updated;
     });
@@ -2528,11 +2538,17 @@ export default function KanbanBoardPage() {
             Move <span className="font-semibold text-foreground">
               {subjectName(pendingMove.subject)}
             </span> to <span className="font-semibold text-foreground">{pendingMove.targetColumnTitle}</span>?
+            {moveClearsApproval && (
+              <ApprovalClearWarning
+                lenderName={pendingApp?.approval_lender_name}
+                conditionCount={pendingApp?.approval_conditions?.length ?? 0}
+              />
+            )}
           </>
         ) : null}
-        confirmText="Move"
+        confirmText={moveClearsApproval ? 'Delete approval & move' : 'Move'}
         cancelText="Cancel"
-        variant="primary"
+        variant={moveClearsApproval ? 'danger' : 'primary'}
         loading={movingApp}
         onConfirm={confirmMoveApplication}
         onCancel={() => {
@@ -2561,6 +2577,12 @@ export default function KanbanBoardPage() {
               Move <strong style={{ color: 'var(--led-ink)' }}>
                 {pendingMove ? subjectName(pendingMove.subject) : ''}
               </strong> to <strong style={{ color: 'var(--led-ink)' }}>{pendingMove?.targetColumnTitle}</strong>.
+              {moveClearsApproval && (
+                <ApprovalClearWarning
+                  lenderName={pendingApp?.approval_lender_name}
+                  conditionCount={pendingApp?.approval_conditions?.length ?? 0}
+                />
+              )}
             </p>
           )}
 
@@ -2720,7 +2742,7 @@ export default function KanbanBoardPage() {
             >
               {isConversion
                 ? (movingApp ? 'Converting...' : 'Convert & move')
-                : (movingApp ? 'Moving...' : 'Confirm & move')}
+                : (movingApp ? 'Moving...' : moveClearsApproval ? 'Delete approval & move' : 'Confirm & move')}
             </button>
           </div>
         </div>

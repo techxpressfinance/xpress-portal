@@ -109,6 +109,9 @@ class StageMoveRequest(BaseModel):
     lender_id: Optional[str] = None
     lender_name: Optional[str] = None
     conditions: Optional[list[str]] = None
+    # The mover confirmed that going back from Approval deletes the lender and
+    # approval conditions — see change_application_status.
+    clear_approval: bool = False
 
 
 class StageTransitionOut(BaseModel):

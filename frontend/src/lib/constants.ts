@@ -273,6 +273,15 @@ export const VALID_TRANSITIONS: Record<string, string[]> = {
   not_proceeding: ['draft', 'application_received'],
 };
 
+/** Statuses before Approval. Going back to one of these from Approval deletes
+ *  the approving lender and the approval conditions, so the move must be
+ *  confirmed and sent with `clear_approval`. Mirrors backend constants.py. */
+export const PRE_APPROVAL_STATUSES: readonly string[] = ['draft', 'application_received', 'application_assessed', 'submitted'];
+
+/** Whether moving an application from `from` to `to` wipes its approval. */
+export const clearsApproval = (from: string, to: string | null | undefined): boolean =>
+  from === 'approval' && !!to && PRE_APPROVAL_STATUSES.includes(to);
+
 export const COLUMN_COLOR_OPTIONS = [
   { value: 'muted-foreground', label: 'Gray' },
   { value: 'primary', label: 'Blue' },

@@ -34,7 +34,7 @@ import DeclineReasonsModal from '../../components/notes/DeclineReasonsModal';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { NOTE_TABS, notesForCategory } from '../../lib/notesHistory';
 import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
-import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
+import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, clearsApproval, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
@@ -46,6 +46,7 @@ import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
 import ActivityChanges from '../../components/ActivityChanges';
+import ApprovalClearWarning from '../../components/ApprovalClearWarning';
 import { SUBMISSION_STATUS_BADGE } from '../../lib/constants';
 import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars4Icon, BuildingOfficeIcon, CheckCircleIcon, CheckIcon, ChevronRightIcon, ClipboardDocumentListIcon, ClockIcon, DocumentDuplicateIcon, DocumentTextIcon, EllipsisHorizontalIcon, EnvelopeIcon, ExclamationCircleIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, LockOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -206,6 +207,18 @@ export default function ReviewApplication() {
   // Set when the broker got to the tax invoice tab by asking for the document
   // rather than by browsing to it — see TaxInvoicePanel's autoOpen.
   const [openTaxInvoice, setOpenTaxInvoice] = useState(false);
+  // Bumped by "Generate tax invoice" so every click — even one made with the
+  // tab already open — brings the tax invoice section into view.
+  const [taxInvoiceScroll, setTaxInvoiceScroll] = useState(0);
+  const taxInvoiceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!taxInvoiceScroll || activeTab !== 'invoices') return;
+    // Wait a frame for the tab switch to render the section.
+    const frame = requestAnimationFrame(() => {
+      taxInvoiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [taxInvoiceScroll, activeTab]);
 
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingAppPdf, setDownloadingAppPdf] = useState(false);
@@ -708,7 +721,9 @@ export default function ReviewApplication() {
     if (!id || !pendingStatus) return;
     setChangingStatus(true);
     try {
-      const { data } = await api.patch(`/applications/${id}/status?status=${pendingStatus}`);
+      const { data } = await api.patch(`/applications/${id}/status`, null, {
+        params: { status: pendingStatus, ...(pendingClearsApproval ? { clear_approval: true } : {}) },
+      });
       setApplication(data);
       toast(`Status changed to ${pendingStatus}`, 'success');
       setPendingStatus(null);
@@ -1187,6 +1202,9 @@ export default function ReviewApplication() {
   }
 
   const allowedTransitions = VALID_TRANSITIONS[application.status] || [];
+  // Going back from Approval deletes the lender and conditions — the confirm
+  // dialog says so and the request carries the confirmation.
+  const pendingClearsApproval = !!application && !!pendingStatus && clearsApproval(application.status, pendingStatus);
   const pendingStatusLabel = pendingStatus ? (STATUS_LABEL[pendingStatus as keyof typeof STATUS_LABEL] || pendingStatus.replace(/_/g, ' ')) : '';
 
   // The applicant's name as entered on the form. It falls back to the account
@@ -1354,7 +1372,7 @@ export default function ReviewApplication() {
             <Button
               variant="secondary"
               className="mb-3"
-              onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); }}
+              onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); setTaxInvoiceScroll((n) => n + 1); }}
             >
               Generate tax invoice
             </Button>
@@ -4159,7 +4177,9 @@ export default function ReviewApplication() {
                 Full width: the document has ~25 fields and a printable preview,
                 which a sidebar cannot carry. Opening the tab is what loads it. */}
             {activeTab === 'invoices' && id && (
-              <TaxInvoicePanel applicationId={id} autoOpen={openTaxInvoice} />
+              <div ref={taxInvoiceRef} className="scroll-mt-6">
+                <TaxInvoicePanel applicationId={id} autoOpen={openTaxInvoice} />
+              </div>
             )}
 
             {activeTab === 'activity' && (
@@ -4704,11 +4724,17 @@ export default function ReviewApplication() {
         message={pendingStatus ? (
           <>
             This will update the application to <span className="font-semibold text-foreground capitalize">{pendingStatusLabel}</span>.
+            {pendingClearsApproval && (
+              <ApprovalClearWarning
+                lenderName={application?.approval_lender_name}
+                conditionCount={application?.approval_conditions?.length ?? 0}
+              />
+            )}
           </>
         ) : null}
-        confirmText="Change Status"
+        confirmText={pendingClearsApproval ? 'Delete approval & move' : 'Change Status'}
         cancelText="Cancel"
-        variant={pendingStatus === 'rejected' || pendingStatus === 'not_proceeding' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
+        variant={pendingClearsApproval || pendingStatus === 'rejected' || pendingStatus === 'not_proceeding' ? 'danger' : pendingStatus === 'approval' || pendingStatus === 'settled' ? 'success' : 'primary'}
         loading={changingStatus}
         onConfirm={confirmStatusChange}
         onCancel={() => {

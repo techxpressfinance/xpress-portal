@@ -1187,6 +1187,8 @@ def update_application(
 def change_status(
     app_id: str,
     new_status: ApplicationStatus = Query(..., alias="status"),
+    # Confirms that going back from Approval deletes the lender and conditions.
+    clear_approval: bool = Query(False),
     payload: Optional[ApprovalDetailsRequest] = Body(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
@@ -1202,6 +1204,7 @@ def change_status(
         lender_id=payload.lender_id if payload else None,
         lender_name=payload.lender_name if payload else None,
         conditions=payload.conditions if payload else None,
+        clear_approval=clear_approval,
     )
 
     db.refresh(application, attribute_names=["user"])

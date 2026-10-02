@@ -22,9 +22,8 @@ class KanbanBoard(Base):
     loan_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Whether card moves must obey VALID_TRANSITIONS. Boards built from a stage
-    # template have several stages per status, so a move can legitimately jump a
-    # status the transition table forbids — those boards turn the check off.
+    # Legacy: card moves no longer obey VALID_TRANSITIONS on any board (any
+    # stage to any stage), so this is ignored and always reported as False.
     enforce_transitions: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

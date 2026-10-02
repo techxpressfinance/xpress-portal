@@ -1174,6 +1174,10 @@ export interface TaxInvoice {
   buyer_abn: string | null;
   buyer_acn: string | null;
   buyer_address: string | null;
+  /** The Sold To company entity, when the business is the applicant — its
+   *  address can be set from the invoice and is saved to the entity. */
+  buyer_company_id: string | null;
+  buyer_company_has_address: boolean;
   delivery_same_as_buyer: boolean;
   delivery_name: string | null;
   delivery_abn: string | null;

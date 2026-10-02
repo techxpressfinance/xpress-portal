@@ -153,3 +153,20 @@ def delete_condition(db: Session, condition: ApprovalCondition) -> None:
     SET NULL on delete, which would strand the items on the brokers' tasks."""
     db.query(ChecklistItem).filter(ChecklistItem.approval_condition_id == condition.id).delete(synchronize_session=False)
     db.delete(condition)
+
+
+def clear_approval(db: Session, application: LoanApplication) -> int:
+    """Wipe an application's approval: the approving lender, every condition, the
+    checklist items mirroring them and the brokers' approval-conditions tasks.
+
+    Run when an application goes back from Approval to an earlier status, so a
+    later re-approval starts clean instead of merging into a lender's
+    conditions that no longer stand. Returns how many conditions were deleted."""
+    conditions = db.query(ApprovalCondition).filter(ApprovalCondition.application_id == application.id).all()
+    for condition in conditions:
+        delete_condition(db, condition)
+    for task in condition_tasks(db, application.id):
+        db.delete(task)
+    application.approval_lender_name = None
+    application.approval_lender_id = None
+    return len(conditions)

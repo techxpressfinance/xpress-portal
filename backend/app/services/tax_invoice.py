@@ -750,6 +750,15 @@ def _person_from_application(db: Session, application: LoanApplication) -> dict:
     }
 
 
+def buyer_company(db: Session, application: LoanApplication) -> Optional[Organization]:
+    """The company on the Sold To block, when the business is the applicant and
+    is on record as an entity. Its address is the one the invoice prints, and
+    the one the broker can fill in from the invoice (saved back to the entity)."""
+    if application.applicant_type != APPLICANT_TYPE_COMPANY or not application.business_organization_id:
+        return None
+    return db.query(Organization).filter(Organization.id == application.business_organization_id).first()
+
+
 def buyer_from_application(db: Session, application: LoanApplication) -> dict:
     """The Sold To party: name, ABN, ACN and address.
 
@@ -776,7 +785,15 @@ def buyer_from_application(db: Session, application: LoanApplication) -> dict:
     if application.applicant_type == APPLICANT_TYPE_COMPANY:
         buyer_name = entity_name or person_name
         buyer_abn = entity_abn
-        buyer_address = entity_address or person_address
+        if organization is not None:
+            # A company's address is its own, never a director's home. Until the
+            # entity has a street address on record, print the state/postcode
+            # ABN Lookup holds for it — ABR publishes no street address.
+            buyer_address = entity_address or " ".join(
+                p for p in [_text(organization.abr_state), _text(organization.abr_postcode)] if p
+            ) or None
+        else:
+            buyer_address = person_address
     else:
         buyer_name = person_name or entity_name
         # A sole trader's ABN is their own, so it belongs on an invoice made out
@@ -975,6 +992,19 @@ def approved_finance_amount(db: Session, application_id: str) -> Optional[Decima
     return pricing.amount_borrowed if pricing is not None else None
 
 
+def _buyer_company_fields(invoice: TaxInvoice, db: Optional[Session]) -> dict:
+    """Whether the Sold To is a company entity whose address the broker can set
+    from the invoice, and whether that entity has a street address yet."""
+    company = None
+    if db is not None:
+        application = db.query(LoanApplication).filter(LoanApplication.id == invoice.application_id).first()
+        company = buyer_company(db, application) if application else None
+    return {
+        "buyer_company_id": company.id if company else None,
+        "buyer_company_has_address": bool(company and _text(company.address)),
+    }
+
+
 def serialize(invoice: TaxInvoice, db: Optional[Session] = None) -> dict:
     data = {
         "id": invoice.id,
@@ -1003,6 +1033,7 @@ def serialize(invoice: TaxInvoice, db: Optional[Session] = None) -> dict:
         "buyer_abn": invoice.buyer_abn,
         "buyer_acn": invoice.buyer_acn,
         "buyer_address": invoice.buyer_address,
+        **_buyer_company_fields(invoice, db),
         "delivery_same_as_buyer": invoice.delivery_same_as_buyer,
         "delivery_name": invoice.delivery_name,
         "delivery_abn": invoice.delivery_abn,
