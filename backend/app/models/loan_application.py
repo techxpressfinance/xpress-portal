@@ -220,6 +220,12 @@ class LoanApplication(Base):
     # monthly settled-deal archiving sweep (services/settled_deal_archiving.py).
     settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
 
+    # The broker's choices on the direct debit first payment request (JSON:
+    # pricing sheet, structure, settlement date, extra fees, structured
+    # repayments, signatory). The repayment and fees are read from the lender
+    # pricing each time, so they follow it if it is re-priced.
+    direct_debit_request: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Broker lock — prevents client from editing the draft
     is_locked: Mapped[bool] = mapped_column(default=False, nullable=False)
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,9 @@ from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.lender import LenderContactCreate, LenderContactOut, LenderContactUpdate, LenderCreate, LenderOut, LenderUpdate
+from app.services.s3_storage import delete_file, download_file, file_exists, upload_file
 from app.services.tenant_scope import get_tenant_id
+from app.services.upload_validation import safe_filename
 
 router = APIRouter(prefix="/api/lenders", tags=["lenders"])
 
@@ -84,6 +88,105 @@ def deactivate_lender(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
     lender.is_active = False
     db.commit()
+
+
+# --- Logo ---
+#
+# The lender's logo heads letters issued in its name (the direct debit first
+# payment request). Raster images only: an SVG can carry script, and it is
+# served back from our own origin.
+
+_LOGO_TYPES = {
+    ".png": ("image/png", (b"\x89PNG",)),
+    ".jpg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    ".jpeg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    ".gif": ("image/gif", (b"GIF87a", b"GIF89a")),
+    ".webp": ("image/webp", (b"RIFF",)),
+}
+_MAX_LOGO_BYTES = 5 * 1024 * 1024
+
+
+def _tenant_lender(db: Session, lender_id: str, tenant_id: str) -> Lender:
+    lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
+    if not lender:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
+    return lender
+
+
+def _remove_logo_file(path: str) -> None:
+    """Best-effort cleanup — a missing file must not fail the request."""
+    try:
+        delete_file(path)
+    except Exception:  # noqa: BLE001 — storage cleanup is not worth failing on
+        pass
+
+
+@router.post("/{lender_id}/logo", response_model=LenderOut)
+def upload_lender_logo(
+    lender_id: str,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    lender = _tenant_lender(db, lender_id, tenant_id)
+    contents = file.file.read()
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in _LOGO_TYPES:
+        raise HTTPException(status_code=400, detail="Upload a PNG, JPEG, GIF or WebP image")
+    _media, magics = _LOGO_TYPES[ext]
+    is_webp = ext == ".webp" and contents[8:12] == b"WEBP"
+    if not (any(contents.startswith(m) for m in magics) and (ext != ".webp" or is_webp)):
+        raise HTTPException(status_code=400, detail="File content does not match its extension")
+    if len(contents) > _MAX_LOGO_BYTES:
+        raise HTTPException(status_code=400, detail="Logo must be 5MB or smaller")
+
+    previous = lender.logo_path
+    lender.logo_path = upload_file(contents, f"lender-logo-{uuid4()}{ext}")
+    lender.logo_filename = safe_filename(file.filename or f"logo{ext}")
+    db.commit()
+    db.refresh(lender)
+    if previous:
+        _remove_logo_file(previous)
+    return lender
+
+
+@router.delete("/{lender_id}/logo", response_model=LenderOut)
+def delete_lender_logo(
+    lender_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    lender = _tenant_lender(db, lender_id, tenant_id)
+    previous = lender.logo_path
+    lender.logo_path = None
+    lender.logo_filename = None
+    db.commit()
+    db.refresh(lender)
+    if previous:
+        _remove_logo_file(previous)
+    return lender
+
+
+@router.get("/{lender_id}/logo")
+def get_lender_logo(
+    lender_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    # Inactive lenders included: a settled deal's paperwork still carries the
+    # lender it was written with.
+    lender = _tenant_lender(db, lender_id, tenant_id)
+    if not lender.logo_path or not file_exists(lender.logo_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No logo on file")
+    ext = os.path.splitext(lender.logo_path)[1].lower()
+    return Response(
+        content=download_file(lender.logo_path),
+        media_type=_LOGO_TYPES.get(ext, ("application/octet-stream", ()))[0],
+        headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 # --- Contact endpoints ---

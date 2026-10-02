@@ -449,6 +449,9 @@ class LoanApplicationOut(BaseModel):
     approval_lender_name: Optional[str] = None
     approval_lender_id: Optional[str] = None
     approval_conditions: list[ApprovalConditionOut] = []
+    settled_at: Optional[datetime] = None
+    # The broker's choices on the direct debit first payment request (JSON).
+    direct_debit_request: Optional[str] = None
     # Referrer viewers only — where the client is up to and whose move it is.
     journey: Optional[JourneyOut] = None
 

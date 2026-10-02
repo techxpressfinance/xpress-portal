@@ -24,6 +24,7 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import ApplicationStagePill from '../../components/ApplicationStagePill';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
+import DirectDebitPanel from '../../components/DirectDebitPanel';
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
@@ -4096,6 +4097,14 @@ export default function ReviewApplication() {
                       }
                     }}
                   />
+                  {/* Settlement paperwork drawn from the lender pricing above. */}
+                  {lenderPricingSheets.length > 0 && (
+                    <DirectDebitPanel
+                      application={application}
+                      quoteSheets={quoteSheets}
+                      onApplicationChange={(updated) => setApplication((prev) => (prev ? { ...prev, ...updated } : updated))}
+                    />
+                  )}
                   <ApplicationCalculators applicationId={id!} />
                   </>
                 )}

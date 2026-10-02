@@ -9,15 +9,17 @@ import { Card, Badge, Button, Input, Breadcrumbs } from '../../components/ui';
 import { LENDER_MAILBOXES } from '../../lib/constants';
 import type { LenderMailboxKey } from '../../lib/constants';
 import type { Lender, LenderContact } from '../../types';
+import LenderLogo from '../../components/LenderLogo';
+import { formatAbn } from '../../lib/acn';
 
 type ContactDraft = { name: string; designation: string; email: string; phone: string };
 const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: '' };
 
 // Every editable Lender column, held as strings so the inputs stay controlled;
 // blanks are normalised back to null on save.
-type LenderDraft = Record<'name' | 'notes' | 'address' | LenderMailboxKey, string>;
+type LenderDraft = Record<'name' | 'notes' | 'address' | 'abn' | LenderMailboxKey, string>;
 const emptyLenderDraft: LenderDraft = {
-  name: '', notes: '', address: '',
+  name: '', notes: '', address: '', abn: '',
   service_request_email: '', credit_email: '', settlements_email: '',
   payout_letter_email: '', doc_request_email: '', collections_email: '',
 };
@@ -63,6 +65,7 @@ export default function LenderDetail() {
       name: lender.name,
       notes: lender.notes || '',
       address: lender.address || '',
+      abn: lender.abn || '',
       ...Object.fromEntries(
         LENDER_MAILBOXES.map(({ key }) => [key, lender[key] || '']),
       ) as Record<LenderMailboxKey, string>,
@@ -78,7 +81,7 @@ export default function LenderDetail() {
       // updated_at on a lender nobody edited.
       const payload: Record<string, unknown> = {};
       if (draft.name.trim() !== lender.name) payload.name = draft.name.trim();
-      for (const key of ['notes', 'address', ...LENDER_MAILBOXES.map((m) => m.key)] as const) {
+      for (const key of ['notes', 'address', 'abn', ...LENDER_MAILBOXES.map((m) => m.key)] as const) {
         const next = draft[key].trim() || null;
         if (next !== (lender[key] ?? null)) payload[key] = next;
       }
@@ -214,7 +217,19 @@ export default function LenderDetail() {
         {editing ? (
           <div className="space-y-4">
             <Input label="Name *" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-            <Input label="Address" value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} placeholder="Street, suburb, state, postcode" />
+            <Input label="ABN" value={draft.abn} onChange={(e) => setDraft((d) => ({ ...d, abn: e.target.value }))} placeholder="e.g. 38 002 674 982" />
+            {/* Multi-line: it prints as the letterhead address block, one line
+                per line as typed. */}
+            <div>
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Address</label>
+              <textarea
+                value={draft.address}
+                onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
+                rows={3}
+                placeholder={'Level 4, 432 St Kilda Road\nMELBOURNE VIC 3004'}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              />
+            </div>
 
             {/* One mailbox per desk. Blank is the honest answer for most
                 lenders — nobody should be guessing an address to send a payout
@@ -265,9 +280,13 @@ export default function LenderDetail() {
                 className={lender.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}
               />
             </div>
-            {lender.address && (
-              <p className="text-[14px] text-muted-foreground mb-4">{lender.address}</p>
+            {(lender.abn || lender.address) && (
+              <div className="text-[14px] text-muted-foreground mb-4 whitespace-pre-line">
+                {lender.abn && <p>ABN {formatAbn(lender.abn)}</p>}
+                {lender.address && <p>{lender.address}</p>}
+              </div>
             )}
+            <LenderLogo lender={lender} editable={!isReadOnly} onChange={setLender} />
 
             {/* Only the mailboxes this lender actually has. Rendering the empty
                 ones as dashes would fill the card with six rows of nothing. */}

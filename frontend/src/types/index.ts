@@ -288,6 +288,10 @@ export interface LoanApplication {
   /** The approving lender in the lender book; lender pricing starts from it. */
   approval_lender_id?: string | null;
   approval_conditions?: ApprovalCondition[];
+  settled_at?: string | null;
+  /** The broker's choices on the direct debit first payment request (JSON —
+   *  see lib/directDebit.ts). */
+  direct_debit_request?: string | null;
 }
 
 // A lender-approval condition, checked off like a task checklist item. Replaced
@@ -802,6 +806,9 @@ export interface Lender {
   notes: string | null;
   is_active: boolean;
   address: string | null;
+  abn: string | null;
+  /** Set when a logo is on file; the image is served from /lenders/:id/logo. */
+  logo_filename: string | null;
   /** A lender is not one mailbox — each of these reaches a different desk
    *  inside it, named for the job rather than the lender's own team names,
    *  which differ at every one. */

@@ -42,6 +42,7 @@ class LenderCreate(BaseModel):
     name: str
     notes: Optional[str] = None
     address: Optional[str] = None
+    abn: Optional[str] = None
     # One mailbox per desk inside the lender (see models/lender.py).
     service_request_email: Optional[str] = None
     collections_email: Optional[str] = None
@@ -63,6 +64,7 @@ class LenderUpdate(BaseModel):
     notes: Optional[str] = None
     is_active: Optional[bool] = None
     address: Optional[str] = None
+    abn: Optional[str] = None
     # One mailbox per desk inside the lender (see models/lender.py).
     service_request_email: Optional[str] = None
     collections_email: Optional[str] = None
@@ -85,6 +87,9 @@ class LenderOut(BaseModel):
     notes: Optional[str]
     is_active: bool
     address: Optional[str] = None
+    abn: Optional[str] = None
+    # Set when a logo is on file; the image itself is served from /logo.
+    logo_filename: Optional[str] = None
     service_request_email: Optional[str] = None
     collections_email: Optional[str] = None
     payout_letter_email: Optional[str] = None

@@ -200,6 +200,14 @@ _MIGRATIONS = [
     ("lenders", "settlements_email", "VARCHAR(200)"),
     ("lenders", "credit_email", "VARCHAR(200)"),
     ("lenders", "doc_request_email", "VARCHAR(200)"),
+    # Printed on the direct debit first payment request (and any other letter
+    # issued in the lender's name): its ABN and its logo.
+    ("lenders", "abn", "VARCHAR(20)"),
+    ("lenders", "logo_path", "VARCHAR(500)"),
+    ("lenders", "logo_filename", "VARCHAR(255)"),
+    # The broker's choices on the direct debit first payment request (JSON) —
+    # the figures themselves come from the lender pricing.
+    ("loan_applications", "direct_debit_request", "TEXT"),
     ("lender_submissions", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("kanban_boards", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
     ("kanban_columns", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
