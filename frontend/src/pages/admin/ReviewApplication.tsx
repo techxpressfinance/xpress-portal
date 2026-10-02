@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -35,11 +35,12 @@ import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { NOTE_TABS, notesForCategory } from '../../lib/notesHistory';
 import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, clearsApproval, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
-import { applicantEmail, applicantName, isCompanyApplicant } from '../../lib/applicantName';
+import { applicantCounterpart, applicantDisplayName, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
-import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import { downloadElementPdf, downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import ApplicationPrint from '../../components/print/ApplicationPrint';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
 import type { ActivityLog, ApplicationNote, BrokerGroup, DeclineReason, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
@@ -836,8 +837,11 @@ export default function ReviewApplication() {
     setPdfRenderApp(true);
     await new Promise(r => setTimeout(r, 150));
     try {
-      const filename = `application-${application.id.split('-')[0].toUpperCase()}.pdf`;
-      await downloadQuoteSheetPdf('application-pdf-render', filename);
+      // Named for the client and the reference the page shows, so a folder of
+      // exports reads as a list of deals.
+      const ref = `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+      const who = applicantDisplayName(application).replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-');
+      await downloadElementPdf('application-pdf-render', `${[ref, who].filter(Boolean).join('-')}.pdf`);
     } catch {
       toast('Failed to generate PDF', 'error');
     } finally {
@@ -1213,12 +1217,25 @@ export default function ReviewApplication() {
   // it, so the borrowing entity is the meaningful label instead.
   const applicantFormName = applicantName(application, { withTitle: true });
   const displayName = applicantFormName || application.business_name || '—';
+  // Who the deal is for, at a glance: the applicant, the other side of it (the
+  // director behind an entity, or the entity behind a person) and any
+  // corporate guarantors.
+  const counterpart = applicantCounterpart(application);
+  const guarantorNames = (application.corporate_guarantors || [])
+    .map((g) => g.organization_name)
+    .filter(Boolean);
+  const clientParts = [
+    applicantDisplayName(application),
+    counterpart && `${counterpart.kind === 'person' ? 'Director' : 'Entity'}: ${counterpart.name}${counterpart.extra ? ` +${counterpart.extra}` : ''}`,
+    guarantorNames.length > 0 && `Guarantor: ${guarantorNames.join(', ')}`,
+  ].filter(Boolean);
+  const appRef = `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
 
   return (
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs items={[
         { label: 'Applications', href: '/admin/applications' },
-        { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Review' },
+        { label: clientParts.length > 0 ? `${appRef} · ${clientParts.join(' · ')}` : appRef },
       ]} />
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
@@ -4245,263 +4262,13 @@ export default function ReviewApplication() {
       </div>
 
       {/* Off-screen application PDF render */}
-      {pdfRenderApp && (() => {
-        let extraData: Record<string, unknown> = {};
-        try { if (application.lend_extra_data) extraData = JSON.parse(application.lend_extra_data); } catch {}
-        const loanDetails = extraData.loan_type_details as Record<string, unknown> | undefined;
-        const idEntry = Array.isArray(extraData.identification) ? (extraData.identification as Array<Record<string, string>>)[0] : null;
-        const empEntry = Array.isArray(extraData.employments) ? (extraData.employments as Array<Record<string, string>>)[0] : null;
-        const incomes = Array.isArray(extraData.incomes) ? (extraData.incomes as Array<{income_type?: string; amount?: number; frequency?: string}>).filter(i => (i.amount ?? 0) > 0) : [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const realEstateAssets: Array<Record<string, any>> = Array.isArray((extraData.assets as Record<string, unknown> | undefined)?.real_estate) ? (extraData.assets as Record<string, unknown[]>).real_estate as Array<Record<string, any>> : [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const otherAssets: Array<Record<string, any>> = Array.isArray((extraData.assets as Record<string, unknown> | undefined)?.other) ? (extraData.assets as Record<string, unknown[]>).other as Array<Record<string, any>> : [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const liabs: Array<Record<string, any>> = Array.isArray(extraData.liabilities) ? extraData.liabilities as Array<Record<string, any>> : [];
-        const expenses = extraData.expenses as Record<string, number> | undefined;
-
-        const S = { section: { marginBottom: '20px' } as CSSProperties, h2: { fontSize: '13px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '8px', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px' }, grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } as CSSProperties, cell: { background: '#f9fafb', borderRadius: '8px', padding: '8px 10px' } as CSSProperties, label: { fontSize: '11px', color: '#9ca3af', fontWeight: 600 } as CSSProperties, value: { fontSize: '13px', color: '#111827', fontWeight: 500, marginTop: '2px' } as CSSProperties };
-
-        return (
-          <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '794px', background: 'white', padding: '32px', fontFamily: 'system-ui, sans-serif', color: '#111827' }}>
-            <div id="application-pdf-render">
-              {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '2px solid #e5e7eb', paddingBottom: '16px' }}>
-                <div>
-                  <h1 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '4px' }}>{LOAN_TYPE_LABELS[application.loan_type] || application.loan_type.replace(/_/g, ' ')} Application</h1>
-                  {application.lend_ref && <p style={{ fontSize: '12px', color: '#6b7280' }}>Lend Ref: {application.lend_ref}</p>}
-                  <p style={{ fontSize: '12px', color: '#6b7280' }}>Ref: {application.id.split('-')[0].toUpperCase()} · Submitted {formatDate(application.created_at)}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Status</p>
-                  <p style={{ fontSize: '13px', fontWeight: 700, textTransform: 'capitalize', color: '#111827' }}>{application.status.replace(/_/g, ' ')}</p>
-                  <p style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>${Number(application.amount).toLocaleString('en-AU')}</p>
-                </div>
-              </div>
-
-              {/* Personal Details */}
-              {(applicantFormName || application.business_name) && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Applicant Details</h2>
-                  <div style={S.grid}>
-                    {applicantFormName && <div style={S.cell}><p style={S.label}>Full Name</p><p style={S.value}>{applicantFormName}</p></div>}
-                    {application.applicant_dob && <div style={S.cell}><p style={S.label}>Date of Birth</p><p style={S.value}>{application.applicant_dob}</p></div>}
-                    {application.applicant_gender && <div style={S.cell}><p style={S.label}>Gender</p><p style={S.value}>{application.applicant_gender}</p></div>}
-                    {application.applicant_marital_status && <div style={S.cell}><p style={S.label}>Marital Status</p><p style={S.value}>{application.applicant_marital_status}</p></div>}
-                    {application.applicant_mobile && <div style={S.cell}><p style={S.label}>Mobile</p><p style={S.value}>{application.applicant_mobile}</p></div>}
-                    {applicantEmail(application) && <div style={S.cell}><p style={S.label}>Email</p><p style={S.value}>{applicantEmail(application)}</p></div>}
-                    {application.preferred_contact_method && <div style={S.cell}><p style={S.label}>Preferred Contact</p><p style={S.value}>{application.preferred_contact_method}</p></div>}
-                    {application.applicant_residency_status && <div style={S.cell}><p style={S.label}>Residency Status</p><p style={S.value}>{application.applicant_residency_status}</p></div>}
-                    {application.applicant_visa_number && <div style={S.cell}><p style={S.label}>Visa Number</p><p style={S.value}>{application.applicant_visa_number}</p></div>}
-                    {application.applicant_visa_category && <div style={S.cell}><p style={S.label}>Visa Category</p><p style={S.value}>{application.applicant_visa_category}</p></div>}
-                    {idEntry?.type && <div style={S.cell}><p style={S.label}>ID Type</p><p style={S.value}>{idEntry.type}</p></div>}
-                    {idEntry?.number && <div style={S.cell}><p style={S.label}>ID Number</p><p style={S.value}>{idEntry.number}</p></div>}
-                    {(idEntry?.state || idEntry?.country) && <div style={S.cell}><p style={S.label}>{idEntry.state ? 'Issuing State' : 'Issuing Country'}</p><p style={S.value}>{idEntry.state || idEntry.country}</p></div>}
-                    {(idEntry?.expiry_date || application.id_expiry_date) && <div style={S.cell}><p style={S.label}>ID Expiry</p><p style={S.value}>{idEntry?.expiry_date || application.id_expiry_date}</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Address */}
-              {application.applicant_address && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Address & Living Situation</h2>
-                  <div style={S.grid}>
-                    <div style={{ ...S.cell, gridColumn: '1 / -1' }}><p style={S.label}>Address</p><p style={S.value}>{application.applicant_address}, {application.applicant_suburb} {application.applicant_state} {application.applicant_postcode}</p></div>
-                    {application.residential_status && <div style={S.cell}><p style={S.label}>Residential Status</p><p style={S.value}>{application.residential_status}</p></div>}
-                    {application.time_at_address && <div style={S.cell}><p style={S.label}>Time at Address</p><p style={S.value}>{application.time_at_address}</p></div>}
-                    {application.applicant_num_dependants != null && <div style={S.cell}><p style={S.label}>Dependants</p><p style={S.value}>{application.applicant_num_dependants}</p></div>}
-                    {application.has_partner != null && <div style={S.cell}><p style={S.label}>Has Partner</p><p style={S.value}>{application.has_partner ? 'Yes' : 'No'}</p></div>}
-                    {application.partner_working != null && <div style={S.cell}><p style={S.label}>Partner Working</p><p style={S.value}>{application.partner_working ? 'Yes' : 'No'}</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Employment */}
-              {(application.employment_category || empEntry) && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Employment</h2>
-                  <div style={S.grid}>
-                    {application.employment_category && <div style={S.cell}><p style={S.label}>Employment Type</p><p style={S.value}>{application.employment_category === 'self_employed' ? 'Self-Employed' : 'Employed'}</p></div>}
-                    {(application.employer_name || empEntry?.employer_name) && <div style={S.cell}><p style={S.label}>Employer</p><p style={S.value}>{application.employer_name || empEntry?.employer_name}</p></div>}
-                    {(application.job_title || empEntry?.job_title) && <div style={S.cell}><p style={S.label}>Job Title</p><p style={S.value}>{application.job_title || empEntry?.job_title}</p></div>}
-                    {empEntry?.employment_type && <div style={S.cell}><p style={S.label}>Employment Type Detail</p><p style={S.value}>{empEntry.employment_type}</p></div>}
-                    {empEntry?.start_date && <div style={S.cell}><p style={S.label}>Start Date</p><p style={S.value}>{empEntry.start_date}</p></div>}
-                    {(application.employer_industry || empEntry?.industry) && <div style={S.cell}><p style={S.label}>Industry</p><p style={S.value}>{application.employer_industry || empEntry?.industry}</p></div>}
-                    {application.income_frequency && <div style={S.cell}><p style={S.label}>Income Frequency</p><p style={S.value}>{application.income_frequency}</p></div>}
-                    {application.gross_income && <div style={S.cell}><p style={S.label}>Gross Income</p><p style={S.value}>${Number(application.gross_income).toLocaleString('en-AU')}</p></div>}
-                    {empEntry?.contact_details && <div style={S.cell}><p style={S.label}>Employer Contact</p><p style={S.value}>{empEntry.contact_details}</p></div>}
-                    {application.business_name && <div style={S.cell}><p style={S.label}>Business Name</p><p style={S.value}>{application.business_name}</p></div>}
-                    {application.business_abn && <div style={S.cell}><p style={S.label}>ABN</p><p style={S.value}>{application.business_abn}</p></div>}
-                    {application.trading_name && <div style={S.cell}><p style={S.label}>Trading Name</p><p style={S.value}>{application.trading_name}</p></div>}
-                    {application.business_structure && <div style={S.cell}><p style={S.label}>Business Structure</p><p style={S.value}>{application.business_structure}</p></div>}
-                    {application.time_trading && <div style={S.cell}><p style={S.label}>Time Trading</p><p style={S.value}>{application.time_trading}</p></div>}
-                    {application.gst_registered != null && <div style={S.cell}><p style={S.label}>GST Registered</p><p style={S.value}>{application.gst_registered ? 'Yes' : 'No'}</p></div>}
-                    {application.num_directors != null && <div style={S.cell}><p style={S.label}>No. of Directors</p><p style={S.value}>{application.num_directors}</p></div>}
-                    {(extraData.other_directors as string | undefined) && <div style={{ ...S.cell, gridColumn: '1 / -1' }}><p style={S.label}>Other Directors / Partners</p><p style={S.value}>{String(extraData.other_directors)}</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Loan Type Details */}
-              {loanDetails && Object.keys(loanDetails).length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Loan Type Details</h2>
-                  {Object.entries(loanDetails).map(([key, val]) => {
-                    if (!val || typeof val !== 'object') return null;
-                    const entries = Object.entries(val as Record<string, unknown>).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0 && v !== false);
-                    if (entries.length === 0) return null;
-                    return (
-                      <div key={key} style={{ marginBottom: '12px' }}>
-                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</p>
-                        <div style={S.grid}>
-                          {entries.map(([k, v]) => (
-                            <div key={k} style={S.cell}>
-                              <p style={S.label}>{k.replace(/_/g, ' ')}</p>
-                              <p style={S.value}>{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' && k.includes('price') || k.includes('amount') || k.includes('value') || k.includes('cost') || k.includes('deposit') || k.includes('debt') ? `$${Number(v).toLocaleString('en-AU')}` : String(v)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Income */}
-              {incomes.length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Income</h2>
-                  <div style={S.grid}>
-                    {incomes.map((inc, idx) => (
-                      <div key={idx} style={S.cell}>
-                        <p style={S.label}>{idx === 0 ? 'Primary Income' : `Additional Income ${idx}`}</p>
-                        <p style={S.value}>{inc.income_type}{inc.amount ? ` — $${Number(inc.amount).toLocaleString('en-AU')}` : ''}{inc.frequency ? ` / ${inc.frequency}` : ''}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Expenses */}
-              {expenses && (expenses.monthly_living > 0 || expenses.rent_mortgage > 0 || expenses.child_support > 0 || expenses.other_commitments > 0) && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Monthly Expenses</h2>
-                  <div style={S.grid}>
-                    {expenses.monthly_living > 0 && <div style={S.cell}><p style={S.label}>Living Expenses</p><p style={S.value}>${Number(expenses.monthly_living).toLocaleString('en-AU')}/mo</p></div>}
-                    {expenses.rent_mortgage > 0 && <div style={S.cell}><p style={S.label}>Rent / Mortgage</p><p style={S.value}>${Number(expenses.rent_mortgage).toLocaleString('en-AU')}/mo</p></div>}
-                    {expenses.child_support > 0 && <div style={S.cell}><p style={S.label}>Child Support</p><p style={S.value}>${Number(expenses.child_support).toLocaleString('en-AU')}/mo</p></div>}
-                    {expenses.other_commitments > 0 && <div style={S.cell}><p style={S.label}>Other Commitments</p><p style={S.value}>${Number(expenses.other_commitments).toLocaleString('en-AU')}/mo</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Real Estate Assets */}
-              {realEstateAssets.length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Real Estate Assets</h2>
-                  {realEstateAssets.map((asset, idx) => (
-                    <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
-                      <p style={{ ...S.label, marginBottom: '4px' }}>{String(asset.property_type || `Property ${idx + 1}`)}</p>
-                      {asset.address && <p style={S.value}>{String(asset.address)}</p>}
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const, marginTop: '4px' }}>
-                        {(asset.estimated_value as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Value: ${Number(asset.estimated_value).toLocaleString('en-AU')}</span>}
-                        {asset.ownership_type && <span style={{ fontSize: '12px', color: '#374151' }}>Ownership: {String(asset.ownership_type)}</span>}
-                        {asset.is_financed === 'yes' && asset.lender && <span style={{ fontSize: '12px', color: '#374151' }}>Lender: {String(asset.lender)}</span>}
-                        {asset.is_financed === 'yes' && (asset.amount_owing as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Owing: ${Number(asset.amount_owing).toLocaleString('en-AU')}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Other Assets */}
-              {otherAssets.length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Other Assets</h2>
-                  <div style={S.grid}>
-                    {otherAssets.map((asset, idx) => (
-                      <div key={idx} style={S.cell}>
-                        <p style={S.label}>{String(asset.asset_type || `Asset ${idx + 1}`)}</p>
-                        {(asset.value as number) > 0 && <p style={S.value}>${Number(asset.value).toLocaleString('en-AU')}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Liabilities */}
-              {liabs.length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Liabilities</h2>
-                  {liabs.map((lib, idx) => (
-                    <div key={idx} style={{ ...S.cell, marginBottom: '8px' }}>
-                      <p style={{ ...S.label, marginBottom: '4px' }}>{String(lib.liability_type || `Liability ${idx + 1}`)}{lib.lender ? ` — ${lib.lender}` : ''}</p>
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' as const }}>
-                        {(lib.balance as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Balance: ${Number(lib.balance).toLocaleString('en-AU')}</span>}
-                        {(lib.limit as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Limit: ${Number(lib.limit).toLocaleString('en-AU')}</span>}
-                        {(lib.monthly_repayment as number) > 0 && <span style={{ fontSize: '12px', color: '#374151' }}>Monthly: ${Number(lib.monthly_repayment).toLocaleString('en-AU')}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Declarations */}
-              {(application.previously_declined != null || application.change_of_circumstances != null || application.signature_name || application.emergency_contact_name) && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Declarations</h2>
-                  <div style={S.grid}>
-                    {application.previously_declined != null && <div style={S.cell}><p style={S.label}>Previously Declined</p><p style={S.value}>{application.previously_declined ? 'Yes' : 'No'}</p></div>}
-                    {application.change_of_circumstances != null && <div style={S.cell}><p style={S.label}>Change of Circumstances</p><p style={S.value}>{application.change_of_circumstances ? 'Yes' : 'No'}</p></div>}
-                    {application.emergency_contact_name && <div style={S.cell}><p style={S.label}>Emergency Contact</p><p style={S.value}>{application.emergency_contact_name}{application.emergency_contact_relationship ? ` (${application.emergency_contact_relationship})` : ''}{application.emergency_contact_phone ? ` · ${application.emergency_contact_phone}` : ''}</p></div>}
-                    {application.signature_name && <div style={S.cell}><p style={S.label}>Digital Signature</p><p style={S.value}>{application.signature_name}</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
-              {application.notes && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Notes</h2>
-                  <div style={S.cell}><p style={{ fontSize: '13px', color: '#374151' }}>{application.notes}</p></div>
-                </div>
-              )}
-
-              {/* Documents */}
-              {documents.length > 0 && (
-                <div style={S.section}>
-                  <h2 style={S.h2}>Submitted Documents ({documents.length})</h2>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead>
-                      <tr style={{ background: '#f3f4f6' }}>
-                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Document Type</th>
-                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Filename</th>
-                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Uploaded</th>
-                        <th style={{ textAlign: 'left', padding: '6px 10px', color: '#6b7280', fontWeight: 600 }}>Verified</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documents.map((doc, idx) => (
-                        <tr key={doc.id} style={{ background: idx % 2 === 0 ? 'white' : '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                          <td style={{ padding: '6px 10px', color: '#374151', fontWeight: 500 }}>{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}</td>
-                          <td style={{ padding: '6px 10px', color: '#374151', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.original_filename}</td>
-                          <td style={{ padding: '6px 10px', color: '#6b7280' }}>{formatDate(doc.uploaded_at)}</td>
-                          <td style={{ padding: '6px 10px', color: doc.is_verified ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{doc.is_verified ? 'Yes' : 'No'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '24px', borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
-                Generated {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} · Xpress Tech Portal
-              </p>
-            </div>
+      {pdfRenderApp && (
+        <div style={{ position: 'fixed', left: '-10000px', top: 0 }}>
+          <div id="application-pdf-render">
+            <ApplicationPrint application={application} documents={documents} referrer={referrer} />
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {previewDoc && (
         <DocumentPreviewModal
