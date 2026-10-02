@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { installNavigationHooks } from './lib/navProgress'
 
 // Number inputs change value on scroll-wheel when focused — a stray scroll
 // over an amount, ABN or BSB field silently edits it. Blurring on wheel keeps
@@ -15,6 +16,9 @@ document.addEventListener(
   },
   { passive: true },
 );
+
+// Before the router mounts, so its first history writes are seen too.
+installNavigationHooks();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

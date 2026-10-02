@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { requestSettled, requestStarted } from '../lib/navProgress';
 
 const api = axios.create({
   baseURL: '/api',
@@ -89,6 +90,10 @@ export function getTenantSlug(): string | null {
 }
 
 api.interceptors.request.use((config) => {
+  // Counted toward the page-load bar when fired while a page is loading. The
+  // flag rides on the config so a 401 retry of the same request counts once.
+  const tracked = config as typeof config & { _navTracked?: boolean };
+  if (!tracked._navTracked && requestStarted()) tracked._navTracked = true;
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -108,9 +113,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+function settleNavTracking(config: unknown) {
+  const tracked = config as { _navTracked?: boolean } | undefined;
+  if (tracked?._navTracked) {
+    tracked._navTracked = false;
+    requestSettled();
+  }
+}
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    settleNavTracking(response.config);
+    return response;
+  },
   async (error) => {
+    settleNavTracking(error.config);
     const original = error.config;
     // Don't retry auth endpoints to prevent infinite loops
     const isAuthUrl = original.url?.startsWith('/auth/');

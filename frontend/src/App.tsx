@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import DocumentTitle from './components/DocumentTitle';
 import ErrorBoundary from './components/ErrorBoundary';
+import TopProgressBar from './components/TopProgressBar';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -497,6 +498,9 @@ export default function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          {/* After the routes, so its effect runs once the new page's own
+              mount effects have fired their requests. */}
+          <TopProgressBar />
         </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>
