@@ -30,6 +30,8 @@ export default function LenderManagement() {
   // Brokers keep the lender book up to date — they open the accreditations and
   // price the deals. Retiring a lender stays with admins (see LenderDetail).
   const isReadOnly = user?.role !== 'admin' && user?.role !== 'broker';
+  // Panel status and VBI are commercial terms — admins only (the API sends null to brokers).
+  const isAdmin = user?.role === 'admin';
   const [lenders, setLenders] = useState<Lender[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -431,6 +433,8 @@ export default function LenderManagement() {
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Name</th>
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Contacts</th>
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Notes</th>
+                {isAdmin && <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Panel</th>}
+                {isAdmin && <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">VBI %</th>}
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">Created</th>
               </tr>
@@ -438,7 +442,7 @@ export default function LenderManagement() {
             <tbody className="divide-y divide-border/40">
               {lenders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground text-[14px]">
+                  <td colSpan={isAdmin ? 7 : 5} className="px-5 py-10 text-center text-muted-foreground text-[14px]">
                     No lenders yet. Add your first lender to get started.
                   </td>
                 </tr>
@@ -454,6 +458,18 @@ export default function LenderManagement() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-[13px] text-muted-foreground max-w-[200px] truncate">{lender.notes || '-'}</td>
+                    {isAdmin && (
+                      <td className="px-5 py-3">
+                        {lender.on_panel == null ? (
+                          <span className="text-muted-foreground/50">-</span>
+                        ) : (
+                          <Badge type="custom" value={lender.on_panel ? 'On panel' : 'Off panel'} className={lender.on_panel ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'} />
+                        )}
+                      </td>
+                    )}
+                    {isAdmin && (
+                      <td className="px-5 py-3 text-[13px] text-foreground">{lender.vbi_percent == null ? <span className="text-muted-foreground/50">-</span> : `${lender.vbi_percent}%`}</td>
+                    )}
                     <td className="px-5 py-3">
                       <Badge type="custom" value={lender.is_active ? 'Active' : 'Inactive'} className={lender.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'} />
                     </td>

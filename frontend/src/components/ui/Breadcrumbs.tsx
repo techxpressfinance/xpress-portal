@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
 
 interface BreadcrumbItem {
-  label: string;
+  label: ReactNode;
   href?: string;
 }
 

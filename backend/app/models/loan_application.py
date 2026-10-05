@@ -226,6 +226,12 @@ class LoanApplication(Base):
     # pricing each time, so they follow it if it is re-priced.
     direct_debit_request: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # The broker's choices on the early termination and balloon payout
+    # declarations the client signs at settlement (JSON: pricing sheet,
+    # structure, application number, payoff strategy, broker named, signers).
+    # The term and balloon are read from the lender pricing each time.
+    settlement_declarations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Broker lock — prevents client from editing the draft
     is_locked: Mapped[bool] = mapped_column(default=False, nullable=False)
 

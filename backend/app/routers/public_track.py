@@ -15,7 +15,7 @@ from app.database import get_db
 from app.middleware.rate_limit import RateLimiter
 from app.models.user import User, UserRole
 from app.services import tracking_links as links
-from app.services.email import send_referrer_access_email
+from app.services.email import send_password_reset_email, send_referrer_access_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 
 router = APIRouter(prefix="/api/public/track", tags=["public-track"])
@@ -105,3 +105,39 @@ def request_login_link(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="We couldn't send email just now — please contact us.")
     db.commit()
     return {"sent_to": links.mask_email(email), "action": login["action"] if login else None}
+
+
+@router.post("/{token}/client-login-link")
+def request_client_login_link(
+    token: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Email the borrower a way into the portal — a sign-up (setup) link if they
+    have not made a password yet, a reset link otherwise.
+
+    Same rules as the referrer's: the deal link is a bearer credential that
+    gets forwarded, so it never logs anyone in and nothing secret comes back.
+    The link goes only to the address on file and the reply shows it masked."""
+    _login_link_ip_limiter.check(request)
+    response.headers["Cache-Control"] = "no-store"
+    link = links.resolve(db, tenant_id, token)
+    if link is None or link.kind == links.KIND_REFERRER:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_GONE)
+    application, _lead = links.deal_target(db, link)
+    client = links.deal_client(db, application)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_GONE)
+    _login_link_limiter.check_key(f"track-login:{link.id}")
+
+    login = links.issue_login_link(client, staff=False)
+    if login is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_GONE)
+    if login["action"] == "setup":
+        send_setup_account_email(client.email, client.full_name, login["url"], None, role="client")
+    else:
+        send_password_reset_email(client.email, client.full_name, client.password_reset_token)
+    db.commit()
+    return {"sent_to": links.mask_email(client.email), "action": login["action"]}

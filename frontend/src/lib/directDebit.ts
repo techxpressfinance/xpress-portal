@@ -9,9 +9,10 @@
 import type { DirectDebitCycle, LoanApplication, QuoteSheet } from '../types';
 import { fmt2, parseLenderPricingInputs, repaymentFor } from './lenderPricing';
 
-/** A run of structured repayments: `count` payments of `amount` each. */
+/** A structured payment: `amount` is added on top of the normal repayment, on
+ *  that one payment only (payment 4 + 3,000 = the 4th debit is repayment + 3,000). */
 export interface StructuredRow {
-  count: number | null;
+  payment: number | null;
   amount: number | null;
 }
 
@@ -46,7 +47,10 @@ export function parseDirectDebitSettings(application: Pick<LoanApplication, 'dir
   if (!application.direct_debit_request) return { ...DIRECT_DEBIT_DEFAULTS };
   try {
     const saved = JSON.parse(application.direct_debit_request) as Partial<DirectDebitSettings>;
-    return { ...DIRECT_DEBIT_DEFAULTS, ...saved, structured: Array.isArray(saved.structured) ? saved.structured : [] };
+    // Rows saved as runs ({count, amount}) from before extras were one payment
+    // each have no `payment` and mean something else now, so they are dropped.
+    const structured = Array.isArray(saved.structured) ? saved.structured.filter((r) => r && 'payment' in r) : [];
+    return { ...DIRECT_DEBIT_DEFAULTS, ...saved, structured };
   } catch {
     return { ...DIRECT_DEBIT_DEFAULTS };
   }
@@ -97,9 +101,13 @@ export interface DirectDebitStatement {
   advance: boolean;
   hasBalloonOption: boolean;
   withBalloon: boolean;
-  /** The repayment on the debit cycle, from the chosen pricing structure. */
+  /** The first debit: the repayment on the debit cycle, plus any extra on payment 1. */
   repayment: number | null;
+  /** The even repayment from the chosen pricing structure. */
+  normalRepayment: number | null;
   feesFinanced: boolean;
+  /** All fees financed in the loan — nothing but the repayment is debited. */
+  allFeesFinanced: boolean;
   lenderFees: number;
   rows: DebitRow[];
   total: number;
@@ -107,7 +115,8 @@ export interface DirectDebitStatement {
   firstDebitDate: string | null;
   /** The sentence under the table: when the first debit comes out. */
   timing: string;
-  structured: { from: number; to: number; amount: number }[];
+  /** Payments that carry an extra, in order: what is debited and the extra in it. */
+  structured: { payment: number; extra: number; amount: number }[];
   cycleUnit: string;
 }
 
@@ -134,16 +143,20 @@ export function buildDirectDebitStatement(
   const option = withBalloon ? balloonOption : plainOption;
   const priced = option ? repaymentFor(cycle, option) : null;
 
-  // Structured repayments replace the even repayment, so the first debit is
-  // the first run's amount.
-  const structuredRows = settings.structured.filter((r) => (r.count ?? 0) > 0 && r.amount != null);
-  let next = 1;
-  const structured = structuredRows.map((r) => {
-    const row = { from: next, to: next + (r.count as number) - 1, amount: r.amount as number };
-    next = row.to + 1;
-    return row;
-  });
-  const repayment = structured.length > 0 ? structured[0].amount : priced;
+  // A structured payment is an extra on top of the normal repayment, on that one
+  // payment only — every other payment stays the even repayment. Two rows for the
+  // same payment number add together.
+  const extras = new Map<number, number>();
+  for (const r of settings.structured) {
+    if (r.payment == null || r.payment < 1 || r.amount == null || r.amount === 0) continue;
+    const n = Math.floor(r.payment);
+    extras.set(n, fmt2((extras.get(n) ?? 0) + r.amount));
+  }
+  const structured = [...extras.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([payment, extra]) => ({ payment, extra, amount: fmt2((priced ?? 0) + extra) }));
+  // The first debit is payment 1, so an extra on it lands on the first line.
+  const repayment = priced == null && !extras.has(1) ? priced : fmt2((priced ?? 0) + (extras.get(1) ?? 0));
 
   // The lender's fees ride in the loan when financed; otherwise the lender
   // takes them with the first debit.
@@ -155,21 +168,34 @@ export function buildDirectDebitStatement(
     feesFinanced
       ? { label: 'Bank Fee - Financed', amount: null }
       : { label: 'Bank Fee', note: '(not financed)', amount: lenderFees },
-    { label: 'VSR fee', amount: settings.vsr_fee },
-    { label: 'Private sale Fee', amount: settings.private_sale_fee },
-    { label: 'ASIC fee', note: '(312)', amount: settings.asic_fee },
-    { label: 'Stamp Duty', note: '(applicable some States)', amount: settings.stamp_duty },
+    // VSR, private sale, ASIC and stamp duty follow the same rule as the lender's
+    // fees: financed in the loan means nothing extra comes out, otherwise they
+    // are taken once, with the first debit. A financed one that was entered is
+    // still named ("- Financed") but carries no amount, so it stays out of the total.
+    ...([
+      { label: 'VSR fee', amount: settings.vsr_fee },
+      { label: 'Private sale Fee', amount: settings.private_sale_fee },
+      { label: 'ASIC fee', note: '(312)', amount: settings.asic_fee },
+      { label: 'Stamp Duty', note: '(applicable some States)', amount: settings.stamp_duty },
+    ] as DebitRow[]).map((r): DebitRow =>
+      inputs.fees_financed && (r.amount ?? 0) > 0
+        ? { label: `${r.label} - Financed`, amount: null }
+        : r),
   ];
   const total = fmt2(rows.reduce((sum, r) => sum + (r.amount ?? 0), 0));
 
   const settlementDate = settings.settlement_date || application.settled_at?.slice(0, 10) || null;
   const advance = inputs.payment_type === 'advance';
-  const firstDebitDate = !advance && settlementDate ? addCycle(settlementDate, cycle) : null;
+  // In advance the first debit is taken on settlement day; in arrears it falls
+  // one month after settlement, whatever the debit cycle.
+  const firstDebitDate = settlementDate ? (advance ? settlementDate : addCycle(settlementDate, 'monthly')) : null;
   const timing = advance
-    ? 'The first direct debit will be a couple of days after the settlement of the loan.'
+    ? settlementDate
+      ? `The first direct debit will be on the day of settlement of the loan, ${longDate(settlementDate)}.`
+      : 'The first direct debit will be on the day of settlement of the loan.'
     : settlementDate && firstDebitDate
-      ? `The first direct debit will be ${CYCLE_PERIOD[cycle]} after the settlement date of ${longDate(settlementDate)}, on ${longDate(firstDebitDate)}.`
-      : `The first direct debit will be ${CYCLE_PERIOD[cycle]} after the settlement date of ____________.`;
+      ? `The first direct debit will be one month after the settlement of the loan, on ${longDate(firstDebitDate)}.`
+      : 'The first direct debit will be one month after the settlement of the loan.';
 
   return {
     sheet,
@@ -180,7 +206,9 @@ export function buildDirectDebitStatement(
     hasBalloonOption: balloonOption != null,
     withBalloon,
     repayment,
+    normalRepayment: priced,
     feesFinanced,
+    allFeesFinanced: inputs.fees_financed,
     lenderFees,
     rows,
     total,

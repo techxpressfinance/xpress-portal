@@ -399,14 +399,32 @@ def referrer_page(db: Session, tenant_id: str, referrer: User) -> dict:
     }
 
 
+def deal_client(db: Session, application: Optional[LoanApplication]) -> Optional[User]:
+    """The borrower's portal account behind a deal link, if there is one — the
+    application's owner when that is a live client. Staff-made applications are
+    owned by the broker, and a lead has no account yet, so neither has one."""
+    if application is None:
+        return None
+    user = db.query(User).filter(User.id == application.user_id, User.tenant_id == application.tenant_id).first()
+    if user is None or user.role != UserRole.client or user.deleted_at is not None:
+        return None
+    if not user.is_active or not user.email or user.email.endswith("@deleted.invalid"):
+        return None
+    return user
+
+
 def deal_page(db: Session, application: Optional[LoanApplication], lead: Optional[Lead]) -> dict:
     card = application_card(db, application) if application is not None else lead_card(db, lead)
     first_name = application.applicant_first_name if application is not None else lead.first_name
+    client = deal_client(db, application)
     return {
         "kind": KIND_DEAL,
         "first_name": first_name,
         "deal": card,
         "broker": _broker(db, application=application, lead=lead),
+        # Only whether to say "set up" or "log in" — no address, no token. Null
+        # when there is no client account to point at.
+        "client_login": {"has_login": login_state(client) == LOGIN_ACTIVE} if client is not None else None,
     }
 
 

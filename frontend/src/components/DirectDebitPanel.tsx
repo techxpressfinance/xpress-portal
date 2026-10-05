@@ -6,7 +6,6 @@ import DirectDebitPrint, { type DirectDebitLender } from './print/DirectDebitPri
 import { lenderLogoDataUrl } from '../lib/lenderLogo';
 import { applicantCounterpart, applicantDisplayName, applicantName, isCompanyApplicant } from '../lib/applicantName';
 import {
-  CYCLE_PERIOD,
   buildDirectDebitStatement,
   parseDirectDebitSettings,
   pickPricingSheet,
@@ -157,7 +156,7 @@ export default function DirectDebitPanel({
           <h2 className="text-[15px] font-semibold text-foreground">Direct debit first payment request</h2>
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">
             On {statement.lenderName || 'the lender'}&rsquo;s letterhead. {statement.advance ? 'Advance' : 'Arrears'} payments, {cycleLabel} debits
-            {statement.repayment != null && <> — {fmtCurrency(statement.repayment)} per {statement.cycleUnit}</>}.
+            {statement.normalRepayment != null && <> — {fmtCurrency(statement.normalRepayment)} per {statement.cycleUnit}</>}.
           </p>
         </div>
         <div className="flex gap-2">
@@ -206,8 +205,8 @@ export default function DirectDebitPanel({
             />
             <p className="mt-1 text-[12px] text-muted-foreground">
               {statement.advance
-                ? 'Advance: the letter says the first debit comes a couple of days after settlement.'
-                : `Arrears: the first debit is ${CYCLE_PERIOD[statement.cycle]} after settlement${statement.firstDebitDate ? ` — ${statement.firstDebitDate.split('-').reverse().join('/')}` : ''}.`}
+                ? `Advance: the first debit is on the day of settlement${statement.firstDebitDate ? ` — ${statement.firstDebitDate.split('-').reverse().join('/')}` : ''}.`
+                : `Arrears: the first debit is one month after settlement${statement.firstDebitDate ? ` — ${statement.firstDebitDate.split('-').reverse().join('/')}` : ''}.`}
             </p>
           </div>
 
@@ -222,6 +221,11 @@ export default function DirectDebitPanel({
 
           <div>
             <p className="mb-2 text-[13px] font-medium text-[var(--led-ink-2)]">Other amounts on the first debit</p>
+            <p className="-mt-1 mb-2 text-[12.5px] text-muted-foreground">
+              {statement.allFeesFinanced
+                ? 'Fees are financed in the loan — anything entered here is shown as "Financed" and not added to the total.'
+                : 'Fees are not financed — what you enter is added to the first debit only.'}
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {FEES.map(([key, label]) => (
                 <Input
@@ -243,28 +247,28 @@ export default function DirectDebitPanel({
               <button
                 type="button"
                 className="text-[12.5px] font-medium text-primary hover:underline"
-                onClick={() => setStructured([...settings.structured, { count: null, amount: null }])}
+                onClick={() => setStructured([...settings.structured, { payment: null, amount: null }])}
               >
-                + Add a run
+                + Add a payment
               </button>
             </div>
             <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Only for a structured contract. Each run is a number of {cycleLabel} payments at one amount, in order; the first run&rsquo;s amount becomes the first payment.
+              Only for a structured contract. The amount is added to the normal repayment on that one {cycleLabel} payment — e.g. payment 4, 3,000 makes the 4th debit the normal repayment plus 3,000. Every other payment stays normal.
             </p>
             {settings.structured.map((row, i) => (
               <div key={i} className="mt-2 flex items-end gap-2">
                 <div className="w-28">
                   <Input
-                    label={i === 0 ? 'Payments' : undefined}
+                    label={i === 0 ? 'Payment no.' : undefined}
                     type="number"
                     min="1"
-                    value={row.count ?? ''}
-                    onChange={(e) => setStructured(settings.structured.map((r, j) => (j === i ? { ...r, count: toNumber(e.target.value) } : r)))}
+                    value={row.payment ?? ''}
+                    onChange={(e) => setStructured(settings.structured.map((r, j) => (j === i ? { ...r, payment: toNumber(e.target.value) } : r)))}
                   />
                 </div>
                 <div className="flex-1">
                   <Input
-                    label={i === 0 ? 'Amount each' : undefined}
+                    label={i === 0 ? 'Extra amount' : undefined}
                     type="number"
                     step="0.01"
                     min="0"

@@ -292,6 +292,9 @@ export interface LoanApplication {
   /** The broker's choices on the direct debit first payment request (JSON —
    *  see lib/directDebit.ts). */
   direct_debit_request?: string | null;
+  /** The broker's choices on the early termination and balloon payout
+   *  declarations (JSON — see lib/settlementDeclarations.ts). */
+  settlement_declarations?: string | null;
 }
 
 // A lender-approval condition, checked off like a task checklist item. Replaced
@@ -818,6 +821,9 @@ export interface Lender {
   settlements_email: string | null;
   credit_email: string | null;
   doc_request_email: string | null;
+  /** Admin-only — null for everyone else. on_panel null = not recorded yet. */
+  on_panel: boolean | null;
+  vbi_percent: number | null;
   contacts: LenderContact[];
   created_at: string;
   updated_at: string;
@@ -2106,4 +2112,6 @@ export type TrackingPage =
       first_name: string | null;
       deal: TrackedDeal;
       broker: { name: string; email: string | null; phone: string | null } | null;
+      /** The borrower's portal account, if any: has_login picks "log in" vs "sign up". */
+      client_login: { has_login: boolean } | null;
     };

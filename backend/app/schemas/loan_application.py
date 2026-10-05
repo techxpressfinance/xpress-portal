@@ -452,6 +452,8 @@ class LoanApplicationOut(BaseModel):
     settled_at: Optional[datetime] = None
     # The broker's choices on the direct debit first payment request (JSON).
     direct_debit_request: Optional[str] = None
+    # The broker's choices on the settlement declarations (JSON).
+    settlement_declarations: Optional[str] = None
     # Referrer viewers only — where the client is up to and whose move it is.
     journey: Optional[JourneyOut] = None
 

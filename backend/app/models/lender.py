@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -60,6 +60,12 @@ class Lender(Base):
     abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     logo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     logo_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Commercial standing with us — admin-only, never serialized to brokers.
+    # on_panel: whether the lender is on our panel (None = not recorded yet).
+    # vbi_percent: the volume bonus incentive, as a percentage.
+    on_panel: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    vbi_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

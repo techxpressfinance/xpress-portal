@@ -107,7 +107,7 @@ function DealCard({ deal, audience }: { deal: TrackedDeal; audience: 'referrer' 
  * asks for a setup/reset link to be emailed to the referrer's own inbox, and
  * all that comes back is the masked address it went to.
  */
-function PortalLogin({ token, hasLogin }: { token: string; hasLogin: boolean }) {
+function PortalLogin({ token, hasLogin, audience = 'referrer' }: { token: string; hasLogin: boolean; audience?: 'referrer' | 'client' }) {
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,7 @@ function PortalLogin({ token, hasLogin }: { token: string; hasLogin: boolean }) 
     setState('sending');
     setError(null);
     try {
-      const { data } = await api.post<{ sent_to: string }>(`/public/track/${encodeURIComponent(token)}/login-link`);
+      const { data } = await api.post<{ sent_to: string }>(`/public/track/${encodeURIComponent(token)}/${audience === 'client' ? 'client-login-link' : 'login-link'}`);
       setSentTo(data.sent_to);
       setState('sent');
     } catch (err) {
@@ -129,12 +129,16 @@ function PortalLogin({ token, hasLogin }: { token: string; hasLogin: boolean }) 
     <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
       <p className="flex items-center gap-2 text-[15px] font-semibold">
         <ArrowRightOnRectangleIcon className="h-5 w-5 text-muted-foreground" strokeWidth={2} />
-        {hasLogin ? 'Log in to your portal' : 'Set up your portal login'}
+        {hasLogin ? 'Log in to your portal' : audience === 'client' ? 'Sign up to your portal' : 'Set up your portal login'}
       </p>
       <p className="mt-1 text-[14px] text-muted-foreground">
-        {hasLogin
-          ? 'Refer new clients, upload documents and manage your business and payment details.'
-          : "You haven't set a password yet. We'll email you a link to set one up — then you can refer clients and manage your payment details."}
+        {audience === 'client'
+          ? (hasLogin
+            ? 'Upload documents, message your broker and complete your application.'
+            : "You haven't signed up yet. We'll email you a link to create your login — then you can upload documents, message your broker and complete your application.")
+          : hasLogin
+            ? 'Refer new clients, upload documents and manage your business and payment details.'
+            : "You haven't set a password yet. We'll email you a link to set one up — then you can refer clients and manage your payment details."}
       </p>
       {state === 'sent' ? (
         <p className="mt-3 text-[14px] text-foreground">
@@ -151,7 +155,7 @@ function PortalLogin({ token, hasLogin }: { token: string; hasLogin: boolean }) 
             disabled={state === 'sending'}
             className={`led-btn ${hasLogin ? 'led-btn-ghost' : 'led-btn-primary'} led-btn-sm`}
           >
-            {state === 'sending' ? 'Sending…' : hasLogin ? 'Forgot your password? Email me a reset link' : 'Email me a setup link'}
+            {state === 'sending' ? 'Sending…' : hasLogin ? 'Forgot your password? Email me a reset link' : audience === 'client' ? 'Email me a sign-up link' : 'Email me a setup link'}
           </button>
         </div>
       )}
@@ -258,6 +262,7 @@ export default function TrackProgress() {
                 </div>
               </section>
             )}
+            {token && page.client_login && <PortalLogin token={token} hasLogin={page.client_login.has_login} audience="client" />}
           </>
         )}
 

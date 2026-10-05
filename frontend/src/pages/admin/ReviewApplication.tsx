@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -21,10 +21,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBrokerAssignment } from '../../hooks/useBrokerAssignment';
 import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
-import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, InviteLinkBox, EntitySearchResults, ClientSearchResults } from '../../components/ui';
+import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import ApplicationStagePill from '../../components/ApplicationStagePill';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import DirectDebitPanel from '../../components/DirectDebitPanel';
+import SettlementDeclarationsPanel from '../../components/SettlementDeclarationsPanel';
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
@@ -308,7 +309,6 @@ export default function ReviewApplication() {
   const [deletingApp, setDeletingApp] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
   const [invitingClient, setInvitingClient] = useState(false);
-  const [clientInviteLink, setClientInviteLink] = useState<string | null>(null);
   const [showSections, setShowSections] = useState(false);
   const [savingSections, setSavingSections] = useState(false);
   const [sectionDraft, setSectionDraft] = useState<string[]>([]);
@@ -1109,10 +1109,9 @@ export default function ReviewApplication() {
     if (!id) return;
     setInvitingClient(true);
     try {
-      const { data: inviteData } = await api.post('/invitations/complete-application', { application_id: id });
+      await api.post('/invitations/complete-application', { application_id: id });
       const isResend = !!application?.client_invite_sent_at;
       toast(isResend ? 'Invite resent to client' : 'Invite sent to client', 'success');
-      setClientInviteLink(inviteData.invite_url || null);
       // Refresh application so client_invite_sent_at and client_account_pending update
       const { data } = await api.get(`/applications/${id}`);
       setApplication(data);
@@ -1225,10 +1224,13 @@ export default function ReviewApplication() {
   const guarantorNames = (application.corporate_guarantors || [])
     .map((g) => g.organization_name)
     .filter(Boolean);
-  const clientParts = [
-    applicantDisplayName(application),
+  // The applicant and any guarantors are the names that matter, so they are
+  // bolded; the director/entity counterpart stays in regular weight.
+  const applicantLabel = applicantDisplayName(application);
+  const clientParts: ReactNode[] = [
+    applicantLabel && <strong key="applicant" className="font-bold">{applicantLabel}</strong>,
     counterpart && `${counterpart.kind === 'person' ? 'Director' : 'Entity'}: ${counterpart.name}${counterpart.extra ? ` +${counterpart.extra}` : ''}`,
-    guarantorNames.length > 0 && `Guarantor: ${guarantorNames.join(', ')}`,
+    guarantorNames.length > 0 && <span key="guarantors">Guarantor: <strong className="font-bold">{guarantorNames.join(', ')}</strong></span>,
   ].filter(Boolean);
   const appRef = `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
 
@@ -1236,7 +1238,9 @@ export default function ReviewApplication() {
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs items={[
         { label: 'Applications', href: '/admin/applications' },
-        { label: clientParts.length > 0 ? `${appRef} · ${clientParts.join(' · ')}` : appRef },
+        { label: clientParts.length > 0
+          ? <>{appRef}{clientParts.map((part, i) => <span key={i}> · {part}</span>)}</>
+          : appRef },
       ]} />
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
@@ -1544,19 +1548,6 @@ export default function ReviewApplication() {
         </div>
       )}
 
-      {(application.invite_url || clientInviteLink) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
-        <div className="mb-6">
-          <InviteLinkBox
-            url={(application.invite_url || clientInviteLink)!}
-            label="Client invite link"
-            hint={application.client_invite_sent_at
-              ? 'Also emailed to the client. Copy it to share another way (e.g. SMS or WhatsApp).'
-              : 'Share this link directly, or click Invite Client to email it — both use the same link.'}
-            onDismiss={application.invite_url ? undefined : () => setClientInviteLink(null)}
-          />
-        </div>
-      )}
-
       {/* Main content tabs — full width, above the two columns, so all eight
           fit on one line rather than scrolling inside the two-thirds column.
           They still only switch the left column; the sidebar is constant. */}
@@ -1617,7 +1608,10 @@ export default function ReviewApplication() {
                 <Card>
                   <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrals</h2>
                   <div className="space-y-5">
-                    {/* Referrer partner — a referrer account we pay */}
+                    {/* Referrer partner — a referrer account we pay. Only one kind
+                        of referral per deal: once one is set the other is hidden,
+                        and removing it brings both options back. */}
+                    {(referrer || !application.referred_by) && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="text-[13px] font-semibold text-foreground">Referrer partner</h3>
@@ -1679,10 +1673,12 @@ export default function ReviewApplication() {
                         <p className="text-[13px] text-muted-foreground">No referrer is linked to this application.</p>
                       )}
                     </div>
+                    )}
 
                     {/* Client referral — an existing client who sent us this deal.
                         Tracking only; separate from a paid referrer partner above. */}
-                    <div className="border-t border-border pt-5">
+                    {!referrer && (
+                    <div className={!application.referred_by ? 'border-t border-border pt-5' : ''}>
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="text-[13px] font-semibold text-foreground">Referred by a client</h3>
                         {application.referred_by && (
@@ -1701,6 +1697,7 @@ export default function ReviewApplication() {
                         disabled={savingReferredBy}
                       />
                     </div>
+                    )}
                   </div>
                 </Card>
 
@@ -3652,15 +3649,28 @@ export default function ReviewApplication() {
                               toast(getErrorMessage(err, 'Failed to delete'), 'error');
                             }
                           }}
-                          onSend={async (content) => {
+                          alsoSendLabel={referrer && referrer.id !== currentUser?.id ? 'Also send to referrer' : undefined}
+                          onSend={async (content, alsoSend) => {
                             if (!client?.id) return;
                             try {
                               const { data } = await api.post(`/clients/${client.id}/messages`, { content, recipient_id: client.id, application_id: id });
                               setClientMessages((prev) => [...prev, data]);
-                              toast('Message sent', 'success');
                             } catch (err: unknown) {
                               toast(getErrorMessage(err, 'Failed to send'), 'error');
                               throw err;
+                            }
+                            // The copy lives in the referrer's own conversation, so it
+                            // shows in that tab (and their portal) as a message to them.
+                            if (alsoSend && referrer?.id) {
+                              try {
+                                const { data } = await api.post(`/clients/${referrer.id}/messages`, { content, recipient_id: referrer.id, application_id: id });
+                                setReferrerMessages((prev) => [...prev, data]);
+                                toast('Message sent to the client and the referrer', 'success');
+                              } catch (err: unknown) {
+                                toast(getErrorMessage(err, 'Sent to the client, but not to the referrer'), 'error');
+                              }
+                            } else {
+                              toast('Message sent', 'success');
                             }
                           }}
                         />
@@ -3691,14 +3701,26 @@ export default function ReviewApplication() {
                                 toast(getErrorMessage(err, 'Failed to delete'), 'error');
                               }
                             }}
-                            onSend={async (content) => {
+                            alsoSendLabel={client && client.id !== currentUser?.id ? 'Also send to client' : undefined}
+                            alsoSendDisabledReason={application.hidden_from_client ? "This application hasn't been released to the client yet" : undefined}
+                            onSend={async (content, alsoSend) => {
                               try {
                                 const { data } = await api.post(`/clients/${referrer.id}/messages`, { content, recipient_id: referrer.id, application_id: id });
                                 setReferrerMessages((prev) => [...prev, data]);
-                                toast('Message sent', 'success');
                               } catch (err: unknown) {
                                 toast(getErrorMessage(err, 'Failed to send'), 'error');
                                 throw err;
+                              }
+                              if (alsoSend && client?.id) {
+                                try {
+                                  const { data } = await api.post(`/clients/${client.id}/messages`, { content, recipient_id: client.id, application_id: id });
+                                  setClientMessages((prev) => [...prev, data]);
+                                  toast('Message sent to the referrer and the client', 'success');
+                                } catch (err: unknown) {
+                                  toast(getErrorMessage(err, 'Sent to the referrer, but not to the client'), 'error');
+                                }
+                              } else {
+                                toast('Message sent', 'success');
                               }
                             }}
                           />
@@ -4100,6 +4122,13 @@ export default function ReviewApplication() {
                   {/* Settlement paperwork drawn from the lender pricing above. */}
                   {lenderPricingSheets.length > 0 && (
                     <DirectDebitPanel
+                      application={application}
+                      quoteSheets={quoteSheets}
+                      onApplicationChange={(updated) => setApplication((prev) => (prev ? { ...prev, ...updated } : updated))}
+                    />
+                  )}
+                  {lenderPricingSheets.length > 0 && (
+                    <SettlementDeclarationsPanel
                       application={application}
                       quoteSheets={quoteSheets}
                       onApplicationChange={(updated) => setApplication((prev) => (prev ? { ...prev, ...updated } : updated))}

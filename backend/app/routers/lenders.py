@@ -21,6 +21,23 @@ from app.services.upload_validation import safe_filename
 
 router = APIRouter(prefix="/api/lenders", tags=["lenders"])
 
+# Panel status and VBI are commercial terms — admins see and set them; brokers
+# get null on reads and a 403 if they try to write them.
+_ADMIN_ONLY_FIELDS = ("on_panel", "vbi_percent")
+
+
+def _view(lender: Lender, user: User) -> LenderOut:
+    out = LenderOut.model_validate(lender)
+    if user.role.value != "admin":
+        for field in _ADMIN_ONLY_FIELDS:
+            setattr(out, field, None)
+    return out
+
+
+def _require_admin_for(fields: dict, user: User) -> None:
+    if user.role.value != "admin" and any(f in fields for f in _ADMIN_ONLY_FIELDS):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can set panel status or VBI")
+
 
 @router.get("", response_model=list[LenderOut])
 def list_lenders(
@@ -31,16 +48,17 @@ def list_lenders(
     query = db.query(Lender).filter(Lender.tenant_id == tenant_id).order_by(Lender.name)
     if current_user.role.value != "admin":
         query = query.filter(Lender.is_active.is_(True))
-    return query.all()
+    return [_view(lender, current_user) for lender in query.all()]
 
 
 @router.post("", response_model=LenderOut, status_code=status.HTTP_201_CREATED)
 def create_lender(
     data: LenderCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _require_admin_for(data.model_dump(exclude_unset=True), current_user)
     existing = db.query(Lender).filter(Lender.name == data.name, Lender.tenant_id == tenant_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A lender with this name already exists")
@@ -48,7 +66,7 @@ def create_lender(
     db.add(lender)
     db.commit()
     db.refresh(lender)
-    return lender
+    return _view(lender, current_user)
 
 
 @router.patch("/{lender_id}", response_model=LenderOut)
@@ -56,9 +74,10 @@ def update_lender(
     lender_id: str,
     data: LenderUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _require_admin_for(data.model_dump(exclude_unset=True), current_user)
     lender = db.query(Lender).filter(Lender.id == lender_id, Lender.tenant_id == tenant_id).first()
     if not lender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
@@ -70,7 +89,7 @@ def update_lender(
         setattr(lender, field, value)
     db.commit()
     db.refresh(lender)
-    return lender
+    return _view(lender, current_user)
 
 
 # Brokers keep the lender book up to date — they are the ones who open the
@@ -126,7 +145,7 @@ def upload_lender_logo(
     lender_id: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     lender = _tenant_lender(db, lender_id, tenant_id)
@@ -148,14 +167,14 @@ def upload_lender_logo(
     db.refresh(lender)
     if previous:
         _remove_logo_file(previous)
-    return lender
+    return _view(lender, current_user)
 
 
 @router.delete("/{lender_id}/logo", response_model=LenderOut)
 def delete_lender_logo(
     lender_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     lender = _tenant_lender(db, lender_id, tenant_id)
@@ -166,7 +185,7 @@ def delete_lender_logo(
     db.refresh(lender)
     if previous:
         _remove_logo_file(previous)
-    return lender
+    return _view(lender, current_user)
 
 
 @router.get("/{lender_id}/logo")
@@ -379,4 +398,4 @@ def get_lender(
     lender = query.first()
     if not lender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
-    return lender
+    return _view(lender, current_user)

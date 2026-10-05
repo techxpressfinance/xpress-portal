@@ -51,7 +51,14 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
   const d = computeLenderPricing(inputs);
   const alerts = lenderPricingAlerts(inputs);
   const cycle = DIRECT_DEBIT_CYCLE_LABELS[inputs.direct_debit_cycle];
-  const options = [...sheet.options].sort((a, b) => a.sort_order - b.sort_order);
+  // One structure on the page, not the balloon / no-balloon pair: the one that
+  // is written — with the balloon when one is priced (as the direct debit
+  // request does), otherwise the straight loan.
+  const sorted = [...sheet.options].sort((a, b) => a.sort_order - b.sort_order);
+  const written = sorted.find(o => (o.balloon_residual ?? 0) > 0) ?? sorted[0];
+  const options = written ? [written] : [];
+  // Without a balloon there is nothing to label — no Structure/Balloon columns.
+  const hasBalloon = (written?.balloon_residual ?? 0) > 0;
   const answer = inputs.shortfall_bypassed
     ? 'No — bypassed temporarily'
     : inputs.lender_accepts_shortfall === 'yes'
@@ -165,8 +172,8 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th style={head}>Structure</th>
-                  <th style={{ ...head, textAlign: 'right' }}>Balloon</th>
+                  {hasBalloon && <th style={head}>Structure</th>}
+                  {hasBalloon && <th style={{ ...head, textAlign: 'right' }}>Balloon</th>}
                   <th style={{ ...head, textAlign: 'right' }}>{cycle} repayment</th>
                   <th style={{ ...head, textAlign: 'right' }}>Total repayments</th>
                   <th style={{ ...head, textAlign: 'right' }}>Total interest</th>
@@ -179,10 +186,10 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
                   const pct = o.lender_name.match(/([\d.]+)%\s*Balloon/i);
                   return (
                     <tr key={o.id}>
-                      <td style={{ ...cellValue, textAlign: 'left' }}>
-                        {balloon > 0 ? `With balloon${pct ? ` (${pct[1]}%)` : ''}` : 'No balloon'}
-                      </td>
-                      <td style={cellValue}>{balloon > 0 ? money(balloon) : '—'}</td>
+                      {hasBalloon && (
+                        <td style={{ ...cellValue, textAlign: 'left' }}>With balloon{pct ? ` (${pct[1]}%)` : ''}</td>
+                      )}
+                      {hasBalloon && <td style={cellValue}>{money(balloon)}</td>}
                       <td style={{ ...cellValue, color: NAVY, fontWeight: 700 }}>{money(repaymentFor(inputs.direct_debit_cycle, o))}</td>
                       <td style={cellValue}>{money(o.total_repayments)}</td>
                       <td style={cellValue}>{money(o.total_interest)}</td>

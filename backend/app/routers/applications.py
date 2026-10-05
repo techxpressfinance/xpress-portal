@@ -1471,6 +1471,39 @@ def save_direct_debit_request(
     return _app_with_user(application, db, viewer=current_user)
 
 
+class SettlementDeclarationsUpdate(BaseModel):
+    # The panel's own settings blob; term and balloon are re-read from the
+    # lender pricing, so this only holds the broker's choices.
+    settings: dict
+
+
+@router.put("/{app_id}/settlement-declarations", response_model=LoanApplicationOut)
+def save_settlement_declarations(
+    app_id: str,
+    data: SettlementDeclarationsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Save the early termination / balloon payout declarations' settings."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    check_application_access(application, current_user, db=db)
+    encoded = json.dumps(data.settings)
+    if len(encoded) > 20000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Declaration settings are too large")
+    application.settlement_declarations = encoded
+    log_activity(db, current_user.id, "settlement_declarations_saved", "application", app_id, None, tenant_id=tenant_id)
+    db.commit()
+    db.refresh(application, attribute_names=["user"])
+    return _app_with_user(application, db, viewer=current_user)
+
+
 @router.post("/{app_id}/assign", response_model=LoanApplicationOut)
 def assign_broker(
     app_id: str,

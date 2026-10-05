@@ -41,7 +41,7 @@ export default function DirectDebitPrint({
   /** The date it is signed — printed under the signature. */
   today: string;
 }) {
-  const { rows, total, timing, structured, cycleUnit } = statement;
+  const { rows, total, timing, structured, normalRepayment } = statement;
 
   return (
     <div style={{ width: A4_PRINT_WIDTH_PX.portrait, minHeight: 1000, background: '#fff', color: '#111', padding: '32px 64px 32px', boxSizing: 'border-box', overflow: 'hidden' }}>
@@ -85,18 +85,18 @@ export default function DirectDebitPrint({
         </tbody>
       </table>
 
-      {/* A structured contract sets out its runs of repayments here, under the
-          first payment they start with. */}
+      {/* A structured payment is the normal repayment plus an extra, on that
+          payment only — each is listed with what is debited that time. */}
       {structured.length > 0 && (
         <div style={{ marginTop: 22, width: 600 }}>
-          <div style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Structured repayments</div>
+          <div style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Structured payments</div>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <tbody>
               {structured.map((r) => (
-                <tr key={r.from}>
+                <tr key={r.payment}>
                   <td style={{ ...cell, fontSize: 14 }}>
-                    {r.from === r.to ? `Payment ${r.from}` : `Payments ${r.from} – ${r.to}`}
-                    <span style={{ color: '#555' }}> ({r.to - r.from + 1} {cycleUnit}ly payment{r.to === r.from ? '' : 's'})</span>
+                    Payment {r.payment}
+                    <span style={{ color: '#555' }}> (normal repayment{normalRepayment != null ? ` ${money(normalRepayment)}` : ''} + {money(r.extra)})</span>
                   </td>
                   <td style={{ ...cell, fontSize: 14, width: 14, padding: '6px 2px', textAlign: 'center' }}>$</td>
                   <td style={{ ...cell, fontSize: 14, width: 96, textAlign: 'right' }}>{money(r.amount)}</td>

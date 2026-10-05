@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class LenderContactCreate(BaseModel):
@@ -50,6 +50,9 @@ class LenderCreate(BaseModel):
     settlements_email: Optional[str] = None
     credit_email: Optional[str] = None
     doc_request_email: Optional[str] = None
+    # Admin-only (see routers/lenders.py): ignored from brokers, null for them.
+    on_panel: Optional[bool] = None
+    vbi_percent: Optional[float] = Field(default=None, ge=0, le=100)
 
     @field_validator("name")
     @classmethod
@@ -72,6 +75,9 @@ class LenderUpdate(BaseModel):
     settlements_email: Optional[str] = None
     credit_email: Optional[str] = None
     doc_request_email: Optional[str] = None
+    # Admin-only (see routers/lenders.py): ignored from brokers, null for them.
+    on_panel: Optional[bool] = None
+    vbi_percent: Optional[float] = Field(default=None, ge=0, le=100)
 
     @field_validator("name")
     @classmethod
@@ -96,6 +102,9 @@ class LenderOut(BaseModel):
     settlements_email: Optional[str] = None
     credit_email: Optional[str] = None
     doc_request_email: Optional[str] = None
+    # Admin-only — null for everyone else.
+    on_panel: Optional[bool] = None
+    vbi_percent: Optional[float] = None
     contacts: list[LenderContactOut] = []
     created_at: datetime
     updated_at: datetime

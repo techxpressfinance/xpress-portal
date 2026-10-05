@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookmarkIcon, ChatBubbleBottomCenterTextIcon, PaperAirplaneIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon, ChatBubbleBottomCenterTextIcon, EyeIcon, EyeSlashIcon, PaperAirplaneIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { Button } from '../ui';
 import { formatTime } from '../../lib/utils';
@@ -16,22 +16,32 @@ interface Props {
   pinningId: string | null;
   onPin: (msg: ClientMessage, who: string) => void;
   onDelete: (msg: ClientMessage) => void;
-  /** Resolves when sent; rejects to keep the draft. */
-  onSend: (content: string) => Promise<void>;
+  /** Resolves when sent; rejects to keep the draft. `alsoSend` is the per-message
+   *  toggle — copy this message into the other conversation too. */
+  onSend: (content: string, alsoSend: boolean) => Promise<void>;
+  /** Shows the per-message toggle when set, e.g. "Also send to the referrer". */
+  alsoSendLabel?: string;
+  /** Greys the toggle out, saying why. */
+  alsoSendDisabledReason?: string;
 }
 
 /** One application-scoped conversation (client or referrer): bubbles + composer. */
-export default function ChatThread({ messages, currentUserId, counterpartName, isSelf, pinnedIds, pinningId, onPin, onDelete, onSend }: Props) {
+export default function ChatThread({ messages, currentUserId, counterpartName, isSelf, pinnedIds, pinningId, onPin, onDelete, onSend, alsoSendLabel, alsoSendDisabledReason }: Props) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // Per message, not a setting: it switches itself off after each send so a
+  // note meant for one side never goes to both by habit.
+  const [alsoSend, setAlsoSend] = useState(false);
+  const alsoSendOn = alsoSend && !alsoSendDisabledReason;
 
   const send = async () => {
     const content = draft.trim();
     if (!content || isSelf || sending) return;
     setSending(true);
     try {
-      await onSend(content);
+      await onSend(content, alsoSendOn);
       setDraft('');
+      setAlsoSend(false);
     } catch {
       // onSend reports the error; keep the draft so nothing is lost.
     } finally {
@@ -99,7 +109,31 @@ export default function ChatThread({ messages, currentUserId, counterpartName, i
           placeholder={isSelf ? "This is your own application — you can't message yourself." : `Message ${counterpartName}…`}
         />
         <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-          <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for new line</span>
+          <div className="flex items-center gap-3 min-w-0">
+            {alsoSendLabel && !isSelf ? (
+              // A pill switch rather than a bare checkbox: it reads as a choice
+              // about this one message, and lights up when it will go to both.
+              <button
+                type="button"
+                role="switch"
+                aria-checked={alsoSendOn}
+                disabled={!!alsoSendDisabledReason}
+                onClick={() => setAlsoSend((v) => !v)}
+                title={alsoSendDisabledReason ?? (alsoSendOn ? 'This message will also go to them' : 'Click to also send this message to them')}
+                className={`group inline-flex items-center gap-2 rounded-full border py-1 pl-2 pr-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  alsoSendOn
+                    ? 'border-primary/40 bg-primary/10 text-primary'
+                    : 'border-border bg-background/60 text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                }`}
+              >
+                {alsoSendOn
+                  ? <EyeIcon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  : <EyeSlashIcon className="h-4 w-4 shrink-0" strokeWidth={2} />}
+                {alsoSendLabel}
+              </button>
+            ) : null}
+            <span className={`text-[11px] text-muted-foreground ${alsoSendLabel && !isSelf ? 'hidden md:inline' : ''}`}>Enter to send · Shift+Enter for new line</span>
+          </div>
           <Button size="sm" className="rounded-xl h-8 px-3.5" loading={sending} disabled={!draft.trim() || isSelf} onClick={send}>
             <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" strokeWidth={2} />
             Send

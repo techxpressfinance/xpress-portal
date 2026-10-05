@@ -17,9 +17,9 @@ const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: 
 
 // Every editable Lender column, held as strings so the inputs stay controlled;
 // blanks are normalised back to null on save.
-type LenderDraft = Record<'name' | 'notes' | 'address' | 'abn' | LenderMailboxKey, string>;
+type LenderDraft = Record<'name' | 'notes' | 'address' | 'abn' | 'panel' | 'vbi' | LenderMailboxKey, string>;
 const emptyLenderDraft: LenderDraft = {
-  name: '', notes: '', address: '', abn: '',
+  name: '', notes: '', address: '', abn: '', panel: '', vbi: '',
   service_request_email: '', credit_email: '', settlements_email: '',
   payout_letter_email: '', doc_request_email: '', collections_email: '',
 };
@@ -33,6 +33,8 @@ export default function LenderDetail() {
   // retire one, which takes it out of every broker's pricing picker.
   const isReadOnly = user?.role !== 'admin' && user?.role !== 'broker';
   const canDeactivate = user?.role === 'admin';
+  // Panel status and VBI are admin-only commercial terms (the API nulls them for brokers).
+  const isAdmin = user?.role === 'admin';
   const [lender, setLender] = useState<Lender | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -66,6 +68,8 @@ export default function LenderDetail() {
       notes: lender.notes || '',
       address: lender.address || '',
       abn: lender.abn || '',
+      panel: lender.on_panel == null ? '' : lender.on_panel ? 'on' : 'off',
+      vbi: lender.vbi_percent == null ? '' : String(lender.vbi_percent),
       ...Object.fromEntries(
         LENDER_MAILBOXES.map(({ key }) => [key, lender[key] || '']),
       ) as Record<LenderMailboxKey, string>,
@@ -84,6 +88,17 @@ export default function LenderDetail() {
       for (const key of ['notes', 'address', 'abn', ...LENDER_MAILBOXES.map((m) => m.key)] as const) {
         const next = draft[key].trim() || null;
         if (next !== (lender[key] ?? null)) payload[key] = next;
+      }
+      if (isAdmin) {
+        const panel = draft.panel === '' ? null : draft.panel === 'on';
+        if (panel !== (lender.on_panel ?? null)) payload.on_panel = panel;
+        const vbi = draft.vbi.trim() === '' ? null : Number(draft.vbi);
+        if (vbi !== null && (Number.isNaN(vbi) || vbi < 0 || vbi > 100)) {
+          toast('VBI must be a percentage between 0 and 100', 'error');
+          setSaving(false);
+          return;
+        }
+        if (vbi !== (lender.vbi_percent ?? null)) payload.vbi_percent = vbi;
       }
       if (Object.keys(payload).length > 0) {
         const { data } = await api.patch(`/lenders/${id}`, payload);
@@ -231,6 +246,24 @@ export default function LenderDetail() {
               />
             </div>
 
+            {isAdmin && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[13px] font-medium text-muted-foreground mb-1.5">Panel status</label>
+                  <select
+                    value={draft.panel}
+                    onChange={(e) => setDraft((d) => ({ ...d, panel: e.target.value }))}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-[14px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="">Not set</option>
+                    <option value="on">On panel</option>
+                    <option value="off">Off panel</option>
+                  </select>
+                </div>
+                <Input label="VBI %" type="number" min={0} max={100} step="0.01" value={draft.vbi} onChange={(e) => setDraft((d) => ({ ...d, vbi: e.target.value }))} />
+              </div>
+            )}
+
             {/* One mailbox per desk. Blank is the honest answer for most
                 lenders — nobody should be guessing an address to send a payout
                 request to, so an empty field stays empty. */}
@@ -280,6 +313,14 @@ export default function LenderDetail() {
                 className={lender.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'}
               />
             </div>
+            {isAdmin && (lender.on_panel != null || lender.vbi_percent != null) && (
+              <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-[14px]">
+                {lender.on_panel != null && (
+                  <Badge type="custom" value={lender.on_panel ? 'On panel' : 'Off panel'} className={lender.on_panel ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'} />
+                )}
+                {lender.vbi_percent != null && <span className="text-muted-foreground">VBI <span className="font-medium text-foreground">{lender.vbi_percent}%</span></span>}
+              </div>
+            )}
             {(lender.abn || lender.address) && (
               <div className="text-[14px] text-muted-foreground mb-4 whitespace-pre-line">
                 {lender.abn && <p>ABN {formatAbn(lender.abn)}</p>}
