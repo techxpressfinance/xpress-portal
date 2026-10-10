@@ -333,7 +333,7 @@ export default function ReferrerDetail() {
           </div>
           <BusinessDetailsForm
             basePath={`/external-referrers/${referrer.id}`}
-            contactNote="Email and phone are edited from the referrer's account above."
+            contactNote="Email is edited from the referrer's account above."
             onSaved={updated => setReferrer(prev => prev && { ...prev, ...updated })}
           />
         </div>

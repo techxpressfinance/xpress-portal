@@ -17,6 +17,7 @@ import { getErrorMessage, formatDate, formatTime, formatDateTime, getInitials } 
 import { applicantDisplayName, applicantEmail } from '../../lib/applicantName';
 import { DOC_TYPE_LABELS, OCR_STATUS_BADGE, RECOMMENDED_DOC_TYPES, LOAN_TYPE_LABELS, loanTypeOptions } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
+import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder, normalizeResidencyStatus } from '../../lib/residency';
 import type { ClientMessage, DocType, Document, DocumentRequest, LoanApplication, LoanType, User } from '../../types';
 import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpTrayIcon, ChatBubbleBottomCenterTextIcon, ChatBubbleOvalLeftEllipsisIcon, CheckCircleIcon, CheckIcon, DocumentTextIcon, ExclamationCircleIcon, PaperAirplaneIcon, PencilSquareIcon, PlusIcon, TrashIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -75,7 +76,7 @@ export default function ReferrerApplicationDetail() {
     business_name: '', business_abn: '',
     // Extended details
     applicant_email: '', applicant_mobile: '', preferred_contact_method: '',
-    id_expiry_date: '', applicant_residency_status: '',
+    id_expiry_date: '', applicant_residency_status: '', applicant_visa_number: '', applicant_visa_category: '',
     residential_status: '', time_at_address: '', applicant_num_dependants: '',
     has_partner: false, partner_working: false,
     employment_category: '', employer_name: '', employer_industry: '', job_title: '',
@@ -114,7 +115,8 @@ export default function ReferrerApplicationDetail() {
           business_name: d.business_name || '', business_abn: d.business_abn || '',
           applicant_email: d.applicant_email || '', applicant_mobile: d.applicant_mobile || '',
           preferred_contact_method: d.preferred_contact_method || '',
-          id_expiry_date: d.id_expiry_date || '', applicant_residency_status: d.applicant_residency_status || '',
+          id_expiry_date: d.id_expiry_date || '', applicant_residency_status: normalizeResidencyStatus(d.applicant_residency_status || ''),
+          applicant_visa_number: d.applicant_visa_number || '', applicant_visa_category: d.applicant_visa_category || '',
           residential_status: d.residential_status || '', time_at_address: d.time_at_address || '',
           applicant_num_dependants: d.applicant_num_dependants != null ? String(d.applicant_num_dependants) : '',
           has_partner: d.has_partner || false, partner_working: d.partner_working || false,
@@ -222,8 +224,38 @@ export default function ReferrerApplicationDetail() {
         applicant_suburb: fields.applicant_suburb || null,
         applicant_state: fields.applicant_state || null,
         applicant_postcode: fields.applicant_postcode || null,
+        applicant_mobile: fields.applicant_mobile.trim() || null,
+        applicant_email: fields.applicant_email.trim() || null,
         business_name: fields.business_name || null,
         business_abn: fields.business_abn || null,
+        preferred_contact_method: fields.preferred_contact_method || null,
+        id_expiry_date: fields.id_expiry_date || null,
+        applicant_residency_status: fields.applicant_residency_status || null,
+        // Visa details only belong to a visa status — clear them if it changed.
+        applicant_visa_number: isVisaHolder(fields.applicant_residency_status) ? (fields.applicant_visa_number || null) : null,
+        applicant_visa_category: isVisaHolder(fields.applicant_residency_status) ? (fields.applicant_visa_category || null) : null,
+        residential_status: fields.residential_status || null,
+        time_at_address: fields.time_at_address || null,
+        applicant_num_dependants: fields.applicant_num_dependants ? parseInt(fields.applicant_num_dependants) : null,
+        has_partner: fields.has_partner,
+        partner_working: fields.has_partner ? fields.partner_working : false,
+        employment_category: fields.employment_category || null,
+        employer_name: fields.employer_name || null,
+        employer_industry: fields.employer_industry || null,
+        job_title: fields.job_title || null,
+        income_frequency: fields.income_frequency || null,
+        gross_income: fields.gross_income ? parseFloat(fields.gross_income) : null,
+        trading_name: fields.trading_name || null,
+        business_structure: fields.business_structure || null,
+        gst_registered: fields.gst_registered,
+        num_directors: fields.num_directors ? parseInt(fields.num_directors) : null,
+        time_trading: fields.time_trading || null,
+        emergency_contact_name: fields.emergency_contact_name || null,
+        emergency_contact_relationship: fields.emergency_contact_relationship || null,
+        emergency_contact_phone: fields.emergency_contact_phone || null,
+        previously_declined: fields.previously_declined,
+        change_of_circumstances: fields.previously_declined ? (fields.change_of_circumstances || null) : null,
+        signature_name: fields.signature_name || null,
       });
       setApplication(data);
       setEditing(false);
@@ -1073,6 +1105,57 @@ export default function ReferrerApplicationDetail() {
                           </select>
                         </div>
                       </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Mobile</label>
+                          <input type="tel" className="led-input" placeholder="04XX XXX XXX" {...regEdit('applicant_mobile')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Email</label>
+                          <input type="email" className="led-input" {...regEdit('applicant_email')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Preferred Contact</label>
+                          <select {...regEdit('preferred_contact_method')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Phone', 'Email', 'SMS'].map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      </>)}
+
+                      {sectionVisible('identification', 'personal') && (<>
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Identification</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Residency Status</label>
+                          <select {...regEdit('applicant_residency_status')} className="led-input">
+                            <option value="">Select...</option>
+                            {RESIDENCY_STATUSES.map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        {isVisaHolder(watchEdit('applicant_residency_status')) && (<>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Visa Number</label>
+                          <input type="text" className="led-input" {...regEdit('applicant_visa_number')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Visa Category</label>
+                          <select {...regEdit('applicant_visa_category')} className="led-input">
+                            <option value="">Select...</option>
+                            {VISA_CATEGORIES.map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        </>)}
+                        <div>
+                          <DatePicker
+                            label="ID Expiry"
+                            value={watchEdit('id_expiry_date') || ''}
+                            onChange={(v) => setValueEdit('id_expiry_date', v)}
+                            className="led-input"
+                          />
+                        </div>
+                      </div>
                       </>)}
 
                       {sectionVisible('living') && (<>
@@ -1101,6 +1184,34 @@ export default function ReferrerApplicationDetail() {
                         </div>
                       </div>
 
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Residential Status</label>
+                          <select {...regEdit('residential_status')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Owner', 'Renting', 'Living with parents', 'Other'].map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Time at Address</label>
+                          <input type="text" className="led-input" placeholder="e.g. 2 years" {...regEdit('time_at_address')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">No. of Dependants</label>
+                          <input type="number" className="led-input" {...regEdit('applicant_num_dependants')} />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-6">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('has_partner')} />
+                          <span className="text-[13px] font-medium text-foreground">Has a partner</span>
+                        </label>
+                        {watchEdit('has_partner') && (<label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('partner_working')} />
+                          <span className="text-[13px] font-medium text-foreground">Partner is working</span>
+                        </label>)}
+                      </div>
+
                       </>)}
 
                       {sectionVisible('business') && (watchEdit('loan_type') === 'business' || watchEdit('business_name') || watchEdit('business_abn')) && (
@@ -1116,8 +1227,106 @@ export default function ReferrerApplicationDetail() {
                               <input type="text" className="led-input" {...regEdit('business_abn')} />
                             </div>
                           </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2 mt-3">
+                            <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Trading Name</label>
+                          <input type="text" className="led-input" {...regEdit('trading_name')} />
+                        </div>
+                            <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Business Structure</label>
+                          <select {...regEdit('business_structure')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Sole Trader', 'Partnership', 'Company', 'Trust'].map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                            <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Time Trading</label>
+                          <input type="text" className="led-input" placeholder="e.g. 3 years" {...regEdit('time_trading')} />
+                        </div>
+                            <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">No. of Directors</label>
+                          <input type="number" className="led-input" {...regEdit('num_directors')} />
+                        </div>
+                          </div>
+                          <div className="mt-3"><label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('gst_registered')} />
+                          <span className="text-[13px] font-medium text-foreground">GST Registered</span>
+                        </label></div>
                         </>
                       )}
+
+                      {sectionVisible('employment', 'income') && (<>
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Employment &amp; Income</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Employment Category</label>
+                          <select {...regEdit('employment_category')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Full-time', 'Part-time', 'Casual', 'Self-employed', 'Contract', 'Retired', 'Unemployed'].map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Employer Name</label>
+                          <input type="text" className="led-input" {...regEdit('employer_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Industry</label>
+                          <input type="text" className="led-input" {...regEdit('employer_industry')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Job Title</label>
+                          <input type="text" className="led-input" {...regEdit('job_title')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Income Frequency</label>
+                          <select {...regEdit('income_frequency')} className="led-input">
+                            <option value="">Select...</option>
+                            {['Weekly', 'Fortnightly', 'Monthly', 'Annually'].map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Gross Income (AUD)</label>
+                          <input type="number" className="led-input" placeholder="0" {...regEdit('gross_income')} />
+                        </div>
+                      </div>
+                      </>)}
+
+                      {sectionVisible('emergency') && (<>
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Emergency Contact</h3>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Name</label>
+                          <input type="text" className="led-input" {...regEdit('emergency_contact_name')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Relationship</label>
+                          <input type="text" className="led-input" placeholder="e.g. Spouse, Parent" {...regEdit('emergency_contact_relationship')} />
+                        </div>
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Phone</label>
+                          <input type="tel" className="led-input" {...regEdit('emergency_contact_phone')} />
+                        </div>
+                      </div>
+                      </>)}
+
+                      {sectionVisible('declarations') && (<>
+                      <h3 className="text-[13px] font-medium text-muted-foreground">Declarations</h3>
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" className="h-4 w-4 rounded accent-primary" {...regEdit('previously_declined')} />
+                          <span className="text-[13px] font-medium text-foreground">Previously declined for finance</span>
+                        </label>
+                      {watchEdit('previously_declined') && (
+                        <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Change of circumstances</label>
+                          <textarea rows={2} className="led-input" {...regEdit('change_of_circumstances')} />
+                        </div>
+                      )}
+                      <div>
+                          <label className="block text-[12px] text-muted-foreground mb-1">Signature name</label>
+                          <input type="text" className="led-input" placeholder="Full legal name" {...regEdit('signature_name')} />
+                        </div>
+                      </>)}
 
                       <div>
                         <label className="block text-[13px] font-medium text-muted-foreground mb-2">Notes</label>

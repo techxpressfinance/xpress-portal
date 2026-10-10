@@ -19,7 +19,7 @@ export default function BusinessDetails() {
 
       <BusinessDetailsForm
         basePath="/external-referrers/me"
-        contactNote="Email and phone come from your account — ask your broker if either needs changing."
+        contactNote="Your email comes from your account — ask your broker if it needs changing."
         intro={welcome ? (
           <div className="rounded-xl border border-border bg-secondary/60 px-4 py-3.5">
             <p className="text-[14px] font-semibold text-foreground">Welcome aboard — one last step</p>

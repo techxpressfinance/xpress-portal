@@ -24,6 +24,7 @@ interface FormState {
   bank_account_name: string;
   bank_bsb: string;
   bank_account_number: string;
+  phone: string;
 }
 
 const EMPTY: FormState = {
@@ -34,6 +35,7 @@ const EMPTY: FormState = {
   bank_account_name: '',
   bank_bsb: '',
   bank_account_number: '',
+  phone: '',
 };
 
 function toForm(profile: ReferrerBusinessProfile): FormState {
@@ -45,6 +47,7 @@ function toForm(profile: ReferrerBusinessProfile): FormState {
     bank_account_name: profile.bank_account_name ?? '',
     bank_bsb: profile.bank_bsb ?? '',
     bank_account_number: profile.bank_account_number ?? '',
+    phone: profile.phone ?? '',
   };
 }
 
@@ -67,7 +70,7 @@ interface Props {
   onSaved?: (profile: ReferrerBusinessProfile) => void;
   /** Rendered above the form — e.g. the post-signup welcome note. */
   intro?: React.ReactNode;
-  /** Copy shown under the read-only email/phone fields. */
+  /** Copy shown under the email field. */
   contactNote?: string;
 }
 
@@ -148,6 +151,7 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
         bank_account_name: form.bank_account_name.trim() || null,
         bank_bsb: digits(form.bank_bsb) || null,
         bank_account_number: digits(form.bank_account_number) || null,
+        phone: form.phone.trim() || null,
       });
       applyProfile(data);
       toast('Business details saved', 'success');
@@ -254,7 +258,13 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
               onChange={e => update('business_address', e.target.value)}
             />
             <Input label="Email" value={profile?.email ?? ''} readOnly disabled />
-            <Input label="Phone" value={profile?.phone ?? 'Not provided'} readOnly disabled />
+            <Input
+              label="Phone"
+              type="tel"
+              placeholder="0400 000 000"
+              value={form.phone}
+              onChange={e => update('phone', e.target.value)}
+            />
           </div>
           {contactNote && <p className="mt-3 text-[12px] text-muted-foreground">{contactNote}</p>}
         </Card>
