@@ -1222,13 +1222,13 @@ export default function ReviewApplication() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Breadcrumbs items={[
-        { label: 'Applications', href: '/admin/applications' },
-        { label: appRef },
-      ]} />
-      <ApplicationSummaryBar application={application} />
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
+      <ApplicationSummaryBar
+        application={application}
+        breadcrumb={<Breadcrumbs className="!mb-0" items={[
+          { label: 'Applications', href: '/admin/applications' },
+          { label: appRef },
+        ]} />}
+        actions={<>
           <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
             <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
             Download PDF
@@ -1241,7 +1241,7 @@ export default function ReviewApplication() {
           )}
           {isDraft && (
             <Button
-              variant={application.is_locked ? 'secondary' : 'secondary'}
+              variant="secondary"
               size="sm"
               onClick={handleToggleLock}
               loading={togglingLock}
@@ -1271,8 +1271,8 @@ export default function ReviewApplication() {
             <TrashIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
             Delete
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Status Timeline — the deal's header card: where it is, how to move
           it on, and who is working it. Overflow visible so the status menu
@@ -1358,43 +1358,47 @@ export default function ReviewApplication() {
       {/* Shown from the moment the deal is approved, even with nothing on the
           list yet, so the first condition can be added here. */}
       {(!!application.approval_conditions?.length || application.status === 'approval') && (
-        <Card className="mb-6">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <h2 className="text-[15px] font-semibold text-foreground">Approval Conditions</h2>
-            {!!application.approval_conditions?.length && (
-              <span className="text-[12px] text-muted-foreground tabular-nums">
-                {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
-              </span>
+        <Card padding="sm" className="mb-6">
+          {/* One compact header line: title, lender and tally on the left, the
+              tax invoice request on the right. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <h2 className="text-[14px] font-semibold text-foreground">Approval Conditions</h2>
+              {application.approval_lender_name && (
+                <span className="text-[12px] text-muted-foreground">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></span>
+              )}
+              {!!application.approval_conditions?.length && (
+                <span className="text-[12px] text-muted-foreground tabular-nums">
+                  {application.approval_conditions.filter(c => c.is_completed).length}/{application.approval_conditions.length}
+                </span>
+              )}
+            </div>
+            {/* Approval is the point the desk goes back to the dealer, so the
+                request is raised here rather than left to be remembered. The
+                draft is normally already waiting (see the backend's
+                ensure_request_for_approval); this opens it, and raises one for
+                a deal approved before that hook existed. */}
+            {applicationLoanCategory(application) === 'asset_finance' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); setTaxInvoiceScroll((n) => n + 1); }}
+              >
+                Generate tax invoice
+              </Button>
             )}
           </div>
-          {application.approval_lender_name && (
-            <p className="text-[12.5px] text-muted-foreground mb-3">Lender: <span className="font-medium text-foreground">{application.approval_lender_name}</span></p>
-          )}
-          {/* Approval is the point the desk goes back to the dealer, so the
-              request is raised here rather than left to be remembered. The
-              draft is normally already waiting (see the backend's
-              ensure_request_for_approval); this opens it, and raises one for
-              a deal approved before that hook existed. */}
-          {applicationLoanCategory(application) === 'asset_finance' && (
-            <Button
-              variant="secondary"
-              className="mb-3"
-              onClick={() => { setOpenTaxInvoice(true); setActiveTab('invoices'); setTaxInvoiceScroll((n) => n + 1); }}
-            >
-              Generate tax invoice
-            </Button>
-          )}
           {!!application.approval_conditions?.length && (
-            <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden mb-3">
+            <div className="mt-2 h-1 w-full rounded-full bg-secondary overflow-hidden">
               <div
                 className="h-full rounded-full bg-success transition-all"
                 style={{ width: `${(application.approval_conditions.filter(c => c.is_completed).length / application.approval_conditions.length) * 100}%` }}
               />
             </div>
           )}
-          <div className="space-y-0.5">
+          <div className="mt-1.5">
             {application.approval_conditions?.map((item) => (
-              <div key={item.id} className="group flex items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-secondary/60 transition-colors">
+              <div key={item.id} className="group flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-secondary/60 transition-colors">
                 <button
                   type="button"
                   onClick={() => handleToggleApprovalCondition(item.id)}
@@ -1450,9 +1454,9 @@ export default function ReviewApplication() {
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-2 flex gap-2">
             <input
-              className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
+              className="flex-1 rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1 text-[13px] text-foreground placeholder:text-muted-foreground"
               placeholder="Add a condition..."
               value={newConditionText}
               onChange={(e) => setNewConditionText(e.target.value)}
@@ -1461,6 +1465,7 @@ export default function ReviewApplication() {
             <Button
               type="button"
               variant="secondary"
+              size="sm"
               onClick={handleAddApprovalCondition}
               disabled={!newConditionText.trim() || addingCondition}
             >
@@ -1505,7 +1510,7 @@ export default function ReviewApplication() {
 
       {/* Client not yet released / invited — top-level banner so it's always visible */}
       {(application.client_account_pending || application.hidden_from_client) && (currentUser?.role === 'admin' || currentUser?.role === 'broker') && (
-        <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 px-5 py-4 flex items-center justify-between gap-4">
+        <div className="mb-6 flex w-fit max-w-full items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-50/60 px-4 py-2.5 dark:bg-amber-950/20">
           <div className="flex items-center gap-3">
             <EnvelopeIcon className="h-5 w-5 text-amber-500 shrink-0" strokeWidth={2} />
             <div>
@@ -1590,15 +1595,15 @@ export default function ReviewApplication() {
                 {/* Referrals — both kinds in one box: the paid referrer partner
                     and an existing client who passed the deal on. Admin/broker
                     only (this whole page is staff-gated). */}
-                <Card>
-                  <h2 className="text-[15px] font-semibold text-foreground mb-5">Referrals</h2>
-                  <div className="space-y-5">
+                <Card padding="sm">
+                  <h2 className="text-[14px] font-semibold text-foreground mb-2.5">Referrals</h2>
+                  <div className="space-y-3">
                     {/* Referrer partner — a referrer account we pay. Only one kind
                         of referral per deal: once one is set the other is hidden,
                         and removing it brings both options back. */}
                     {(referrer || !application.referred_by) && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1.5">
                         <h3 className="text-[13px] font-semibold text-foreground">Referrer partner</h3>
                         {referrer && client && (
                           <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
@@ -1607,10 +1612,10 @@ export default function ReviewApplication() {
                         )}
                       </div>
                       {referrer ? (
-                        <dl className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl bg-secondary/50 p-3">
-                            <dt className="text-[12px] font-medium text-muted-foreground">Name</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                        <dl className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-lg bg-secondary/50 px-3 py-1.5">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Name</dt>
+                            <dd className="text-[13px] font-medium text-foreground">
                               {referrer.id ? (
                                 // Their full record — business and payment details included.
                                 <Link to={`/admin/referrers/${referrer.id}`} className="text-primary hover:underline">
@@ -1620,20 +1625,20 @@ export default function ReviewApplication() {
                             </dd>
                           </div>
                           {referrer.organization_name && (
-                            <div className="rounded-xl bg-secondary/50 p-3">
-                              <dt className="text-[12px] font-medium text-muted-foreground">Organization</dt>
-                              <dd className="mt-0.5 text-[14px] font-medium text-foreground">{referrer.organization_name}</dd>
+                            <div className="rounded-lg bg-secondary/50 px-3 py-1.5">
+                              <dt className="text-[11px] font-medium text-muted-foreground">Organization</dt>
+                              <dd className="text-[13px] font-medium text-foreground">{referrer.organization_name}</dd>
                             </div>
                           )}
-                          <div className="rounded-xl bg-secondary/50 p-3">
-                            <dt className="text-[12px] font-medium text-muted-foreground">Email</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          <div className="rounded-lg bg-secondary/50 px-3 py-1.5">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Email</dt>
+                            <dd className="text-[13px] font-medium text-foreground">
                               {referrer.email ? <a href={`mailto:${referrer.email}`} className="text-primary hover:underline">{referrer.email}</a> : '—'}
                             </dd>
                           </div>
-                          <div className="rounded-xl bg-secondary/50 p-3">
-                            <dt className="text-[12px] font-medium text-muted-foreground">Phone</dt>
-                            <dd className="mt-0.5 text-[14px] font-medium text-foreground">
+                          <div className="rounded-lg bg-secondary/50 px-3 py-1.5">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Phone</dt>
+                            <dd className="text-[13px] font-medium text-foreground">
                               {referrer.phone ? <a href={`tel:${referrer.phone}`} className="text-primary hover:underline">{referrer.phone}</a> : '—'}
                             </dd>
                           </div>

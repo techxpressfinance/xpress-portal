@@ -268,10 +268,6 @@ export default function ApplicationDetail() {
                 Edit Application
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
-              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
-              Download PDF
-            </Button>
             {application.status === 'draft' && (
               <Button
                 variant={allDocsUploaded ? 'success' : 'primary'}
@@ -288,7 +284,15 @@ export default function ApplicationDetail() {
           </div>
         </div>
       </div>
-      <ApplicationSummaryBar application={application} />
+      <ApplicationSummaryBar
+        application={application}
+        actions={
+          <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
+            <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
+            Download PDF
+          </Button>
+        }
+      />
 
       {application.status === 'draft' && !application.is_locked && (
         <div className="mb-6 flex flex-col gap-3 rounded-[16px] border border-[var(--led-warning)]/30 bg-[var(--led-warning)]/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

@@ -5,10 +5,12 @@ import type { LoanApplication } from '../types';
 
 /**
  * The deal at a glance, pinned to the top of the scrolling page: applicant
- * (the only bold text), guarantors, loan category, amount and email. Render it
+ * (the only bold text), guarantors, loan category, amount and email, plus
+ * an optional line above it with the breadcrumb on the left and page actions
+ * (Download PDF, Clone, Delete…) on the right. Render it
  * as a direct child of the page root — sticky only holds within its parent.
  */
-export default function ApplicationSummaryBar({ application }: { application: LoanApplication }) {
+export default function ApplicationSummaryBar({ application, actions, breadcrumb }: { application: LoanApplication; actions?: ReactNode; breadcrumb?: ReactNode }) {
   const guarantorNames = (application.corporate_guarantors || [])
     .map((g) => g.organization_name)
     .filter(Boolean);
@@ -30,9 +32,17 @@ export default function ApplicationSummaryBar({ application }: { application: Lo
   ].filter(Boolean);
 
   return (
-    // The offsets cancel <main>'s padding so the bar pins 12px from the top of
-    // the scroll area rather than below the padding.
-    <div className="sticky z-30 -top-[4px] sm:-top-3 lg:-top-7 -mx-1 mb-5">
+    <>
+    {(breadcrumb || actions) && (
+      // The breadcrumb and the page actions share one line.
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        {breadcrumb}
+        {actions && <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+    )}
+    {/* The offsets cancel <main>'s padding so the bar pins 12px from the top of
+        the scroll area rather than below the padding. */}
+    <div className="sticky z-30 -top-[4px] sm:-top-3 lg:-top-7 mb-5">
       <div
         className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[22px] border border-white/80 bg-white/60 ring-1 ring-black/[0.04] px-5 py-3 backdrop-blur-2xl backdrop-saturate-[1.8] dark:border-white/15 dark:bg-white/[0.08]"
         style={{
@@ -60,5 +70,6 @@ export default function ApplicationSummaryBar({ application }: { application: Lo
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{details}</div>
       </div>
     </div>
+    </>
   );
 }

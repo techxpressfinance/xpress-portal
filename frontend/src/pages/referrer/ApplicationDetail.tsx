@@ -957,13 +957,28 @@ export default function ReferrerApplicationDetail() {
   const isDraft = application.status === 'draft';
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <Breadcrumbs items={[
-          { label: 'Applications', href: '/referrer/applications' },
-          { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Detail' },
-        ]} />
-      </div>
-      {application && <ApplicationSummaryBar application={application} />}
+      {application ? (
+        <ApplicationSummaryBar
+          application={application}
+          breadcrumb={<Breadcrumbs className="!mb-0" items={[
+            { label: 'Applications', href: '/referrer/applications' },
+            { label: `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` },
+          ]} />}
+          actions={
+            <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>
+              <ArrowDownTrayIcon className="h-3.5 w-3.5 mr-1.5" strokeWidth={2} />
+              Download PDF
+            </Button>
+          }
+        />
+      ) : (
+        <div className="mb-6">
+          <Breadcrumbs items={[
+            { label: 'Applications', href: '/referrer/applications' },
+            { label: 'Detail' },
+          ]} />
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
