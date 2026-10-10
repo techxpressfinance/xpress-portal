@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ApplicationSummaryBar from '../../components/ApplicationSummaryBar';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
@@ -286,10 +287,8 @@ export default function ApplicationDetail() {
             )}
           </div>
         </div>
-        <p className="mt-2 text-[14px] leading-6 text-[var(--led-muted)]">
-          {application.loan_type} loan &middot; ${Number(application.amount).toLocaleString('en-AU')}
-        </p>
       </div>
+      <ApplicationSummaryBar application={application} />
 
       {application.status === 'draft' && !application.is_locked && (
         <div className="mb-6 flex flex-col gap-3 rounded-[16px] border border-[var(--led-warning)]/30 bg-[var(--led-warning)]/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

@@ -23,6 +23,7 @@ import { useFileDownload } from '../../hooks/useFileDownload';
 import { useTabParam } from '../../hooks/useTabParam';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs, DatePicker, EntitySearchResults, ClientSearchResults } from '../../components/ui';
 import ApplicationStagePill from '../../components/ApplicationStagePill';
+import ApplicationSummaryBar from '../../components/ApplicationSummaryBar';
 import TaxInvoicePanel from '../../components/TaxInvoicePanel';
 import DirectDebitPanel from '../../components/DirectDebitPanel';
 import SettlementDeclarationsPanel from '../../components/SettlementDeclarationsPanel';
@@ -37,7 +38,7 @@ import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { NOTE_TABS, notesForCategory } from '../../lib/notesHistory';
 import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, clearsApproval, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
-import { applicantCounterpart, applicantDisplayName, applicantName, isCompanyApplicant } from '../../lib/applicantName';
+import { applicantDisplayName, applicantName, isCompanyApplicant } from '../../lib/applicantName';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -1217,31 +1218,15 @@ export default function ReviewApplication() {
   // it, so the borrowing entity is the meaningful label instead.
   const applicantFormName = applicantName(application, { withTitle: true });
   const displayName = applicantFormName || application.business_name || '—';
-  // Who the deal is for, at a glance: the applicant, the other side of it (the
-  // director behind an entity, or the entity behind a person) and any
-  // corporate guarantors.
-  const counterpart = applicantCounterpart(application);
-  const guarantorNames = (application.corporate_guarantors || [])
-    .map((g) => g.organization_name)
-    .filter(Boolean);
-  // The applicant and any guarantors are the names that matter, so they are
-  // bolded; the director/entity counterpart stays in regular weight.
-  const applicantLabel = applicantDisplayName(application);
-  const clientParts: ReactNode[] = [
-    applicantLabel && <strong key="applicant" className="font-bold">{applicantLabel}</strong>,
-    counterpart && `${counterpart.kind === 'person' ? 'Director' : 'Entity'}: ${counterpart.name}${counterpart.extra ? ` +${counterpart.extra}` : ''}`,
-    guarantorNames.length > 0 && <span key="guarantors">Guarantor: <strong className="font-bold">{guarantorNames.join(', ')}</strong></span>,
-  ].filter(Boolean);
   const appRef = `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
 
   return (
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs items={[
         { label: 'Applications', href: '/admin/applications' },
-        { label: clientParts.length > 0
-          ? <>{appRef}{clientParts.map((part, i) => <span key={i}> · {part}</span>)}</>
-          : appRef },
+        { label: appRef },
       ]} />
+      <ApplicationSummaryBar application={application} />
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={handleDownloadAppPdf} loading={downloadingAppPdf} disabled={downloadingAppPdf}>

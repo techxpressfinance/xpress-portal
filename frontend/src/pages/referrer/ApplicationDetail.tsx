@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/client';
+import ApplicationSummaryBar from '../../components/ApplicationSummaryBar';
 import DirectorsSection from '../../components/DirectorsSection';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import DocumentUploader from '../../components/DocumentUploader';
@@ -962,6 +963,7 @@ export default function ReferrerApplicationDetail() {
           { label: application ? `APP-${application.id.replace(/-/g, '').slice(-6).toUpperCase()}` : 'Detail' },
         ]} />
       </div>
+      {application && <ApplicationSummaryBar application={application} />}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
