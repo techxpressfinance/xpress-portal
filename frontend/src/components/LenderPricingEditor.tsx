@@ -1,3 +1,4 @@
+import { useAutosave } from '../lib/useAutosave';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card } from './ui';
@@ -183,10 +184,12 @@ interface LenderPricingEditorProps {
   /** Lender a NEW sheet starts on — the application's approving lender. */
   defaultLender?: { id: string; name: string } | null;
   onSave: (sheet: QuoteSheet) => void;
+  /** Fired after a silent autosave of an existing sheet; the editor stays open. */
+  onAutosaved?: (sheet: QuoteSheet) => void;
   onCancel: () => void;
 }
 
-export default function LenderPricingEditor({ applicationId, sheet, defaultLender, onSave, onCancel }: LenderPricingEditorProps) {
+export default function LenderPricingEditor({ applicationId, sheet, defaultLender, onSave, onAutosaved, onCancel }: LenderPricingEditorProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState(sheet?.title || '');
   const [brokerNotes, setBrokerNotes] = useState(sheet?.broker_notes || '');
@@ -276,6 +279,49 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
     setShortfallOpen(false);
   };
 
+  // Autosave: an existing sheet saves itself shortly after the last edit. A
+  // sheet that does not exist yet still needs Create. Invalid or blocked
+  // states are skipped silently — the explicit button reports why.
+  const snapshot = JSON.stringify([title, brokerNotes, inputs]);
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
+  const [failedSnapshot, setFailedSnapshot] = useState<string | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoSavedAt, setAutoSavedAt] = useState<number | null>(null);
+  const optionsRef = useRef(sheet?.options ?? []);
+  const autoValid = !!inputs.lender_id && inputs.asset_price > 0 && !blockReason
+    && inputs.term_months != null && inputs.term_months >= MIN_TERM_MONTHS && inputs.term_months <= MAX_TERM_MONTHS;
+  const autoDirty = !!sheet && snapshot !== savedSnapshot;
+
+  const autosave = async () => {
+    if (!sheet || saving || autoSaving || !autoValid || failedSnapshot === snapshot) return;
+    setAutoSaving(true);
+    const baseUrl = applicationId ? `/applications/${applicationId}/quote-sheets` : '/quote-sheets';
+    try {
+      await api.patch(`${baseUrl}/${sheet.id}`, {
+        title: title.trim() || null,
+        broker_notes: brokerNotes.trim() || null,
+        input_parameters: JSON.stringify(inputs),
+        lender_id: inputs.lender_id,
+      });
+      for (const existing of optionsRef.current) {
+        await api.delete(`${baseUrl}/${sheet.id}/options/${existing.id}`);
+      }
+      for (const opt of lenderPricingOptions(inputs, structures)) {
+        await api.post(`${baseUrl}/${sheet.id}/options`, opt);
+      }
+      const { data } = await api.get<QuoteSheet>(`${baseUrl}/${sheet.id}`);
+      optionsRef.current = data.options;
+      onAutosaved?.(data);
+      setSavedSnapshot(snapshot);
+      setAutoSavedAt(Date.now());
+    } catch {
+      setFailedSnapshot(snapshot);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+  useAutosave(autoDirty && !autoSaving && autoValid, snapshot, autosave);
+
   const handleSave = async () => {
     if (!inputs.lender_id) {
       toast('Select the lender this pricing was approved by', 'error');
@@ -309,7 +355,7 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
           input_parameters: inputParamsJson,
           lender_id: inputs.lender_id,
         });
-        for (const existing of sheet.options) {
+        for (const existing of optionsRef.current) {
           await api.delete(`${baseUrl}/${sheet.id}/options/${existing.id}`);
         }
         for (const opt of options) {
@@ -685,12 +731,20 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-1 flex-wrap">
-          <Button onClick={handleSave} loading={saving}>
+          <Button onClick={handleSave} loading={saving} disabled={autoSaving}>
             {sheet ? 'Update Lender Pricing' : 'Create Lender Pricing'}
           </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={saving}>
-            Cancel
+          <Button variant="secondary" onClick={onCancel} disabled={saving || autoSaving}>
+            {sheet ? 'Close' : 'Cancel'}
           </Button>
+          {sheet && (
+            <span className="text-[12px] text-muted-foreground">
+              {autoSaving ? 'Saving…'
+                : failedSnapshot === snapshot ? 'Autosave failed — use Update'
+                : autoDirty ? (autoValid ? 'Unsaved changes' : 'Autosave paused — see required fields')
+                : autoSavedAt ? 'Autosaved ✓' : ''}
+            </span>
+          )}
         </div>
       </div>
     </Card>

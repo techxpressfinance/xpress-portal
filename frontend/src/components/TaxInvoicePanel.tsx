@@ -110,7 +110,10 @@ export default function TaxInvoicePanel({
    *  first if approval never did (an application approved before the hook
    *  existed, or moved through a board that skipped it). */
   autoOpen = false,
-}: { applicationId: string; autoOpen?: boolean }) {
+  /** Called once the auto-opened document is in place, so the page can
+   *  scroll again now the panel has its real height. */
+  onAutoOpened,
+}: { applicationId: string; autoOpen?: boolean; onAutoOpened?: () => void }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
@@ -120,6 +123,8 @@ export default function TaxInvoicePanel({
   // Seller-document ticks, saved with the rest of the draft.
   const [docDraft, setDocDraft] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  // Shown after a save lands, so the broker can see autosave worked.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   // The tenant's lender list, so the financier on the document is a real lender
   // rather than a typed name. Empty after a failure — the field then shows what
   // the lender pricing already recorded and nothing else.
@@ -158,6 +163,7 @@ export default function TaxInvoicePanel({
     } else {
       create('dealer');
     }
+    onAutoOpened?.();
   }, [autoOpen, loading, invoices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The "New invoice" chooser, and the type picked in it. Creating is a
@@ -194,23 +200,38 @@ export default function TaxInvoicePanel({
 
   const dirty = Object.keys(draft).length > 0 || Object.keys(docDraft).length > 0;
 
-  const save = async (invoice: TaxInvoice) => {
+  const save = async (invoice: TaxInvoice, quiet = false) => {
     if (!dirty) return;
+    const sentDraft = draft;
+    const sentDocs = docDraft;
     setSaving(true);
     try {
       await api.patch(`/applications/${applicationId}/tax-invoices/${invoice.id}`, {
-        ...draft,
-        ...(Object.keys(docDraft).length ? { seller_documents: docDraft } : {}),
+        ...sentDraft,
+        ...(Object.keys(sentDocs).length ? { seller_documents: sentDocs } : {}),
       });
-      setDraft({});
-      setDocDraft({});
+      // Keep anything typed while the request was in flight.
+      setDraft((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentDraft[k as EditableField] !== v)) as Draft);
+      setDocDraft((prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentDocs[k] !== v)));
       await load();
+      setSavedAt(Date.now());
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to save'), 'error');
+      if (!quiet) toast(getErrorMessage(err, 'Failed to save'), 'error');
     } finally {
       setSaving(false);
     }
   };
+
+  // Autosave: save shortly after the broker stops typing.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    if (!dirty || !openId) return;
+    const inv = invoices.find((i) => i.id === openId);
+    if (!inv || inv.status !== 'draft') return;
+    const t = setTimeout(() => { saveRef.current(inv, true); }, 1000);
+    return () => clearTimeout(t);
+  }, [draft, docDraft, openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [emailing, setEmailing] = useState<string | null>(null);
 
@@ -238,6 +259,8 @@ export default function TaxInvoicePanel({
 
   const issue = async (invoice: TaxInvoice) => {
     try {
+      // Anything still pending autosave goes first so the issued copy matches the screen.
+      if (dirty) await save(invoice);
       const { data } = await api.post<TaxInvoice>(`/applications/${applicationId}/tax-invoices/${invoice.id}/issue`);
       await load();
       toast('Invoice issued', 'success');
@@ -874,12 +897,12 @@ export default function TaxInvoicePanel({
                     <div className="flex flex-wrap items-center gap-2">
                       {!locked && (
                         <>
-                          <Button type="button" onClick={() => save(invoice)} disabled={saving || !dirty}>
-                            Save
-                          </Button>
-                          <Button type="button" variant="secondary" onClick={() => issue(invoice)} disabled={invoice.missing.length > 0}>
+                          <Button type="button" variant="secondary" onClick={() => issue(invoice)} disabled={invoice.missing.length > 0 || saving}>
                             Issue
                           </Button>
+                          <span className="text-[12px] text-muted-foreground">
+                            {saving ? 'Saving…' : dirty ? 'Unsaved changes' : savedAt ? 'Autosaved ✓' : ''}
+                          </span>
                         </>
                       )}
                       <Button type="button" variant="secondary" onClick={() => downloadElementPdf(`tax-invoice-${invoice.id}`, pdfFilename(invoice))}>

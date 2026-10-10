@@ -126,6 +126,10 @@ export function buildDeclarations(
     balloonPhrase: !withBalloon ? 'NIL' : balloonPercent != null ? `${balloonPercent}% (${dollars})` : dollars,
     payoffStrategy: withBalloon ? (settings.payoff_strategy ?? DEFAULT_PAYOFF_STRATEGY) : 'NA',
     brokerName: (settings.broker_name ?? application.assigned_broker_name ?? '').trim(),
-    signatories: settings.signatories ?? defaultSignatories(application),
+    // A saved list of only blank names (an earlier save before the applicant was
+    // known) must not mask the applicant's name.
+    signatories: settings.signatories?.some((n) => n.trim())
+      ? settings.signatories
+      : defaultSignatories(application),
   };
 }

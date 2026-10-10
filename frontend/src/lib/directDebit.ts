@@ -16,6 +16,22 @@ export interface StructuredRow {
   amount: number | null;
 }
 
+export interface FeeRow {
+  label: string;
+  amount: number | null;
+}
+
+/** The standard fees, each filled from the lender pricing when it carries one. */
+export function defaultFees(inputs: { establishment_fee: number; origination_fee: number; ppsr_fee: number }): FeeRow[] {
+  const from = (n: number) => (n > 0 ? n : null);
+  return [
+    { label: 'Loan Establishment fee', amount: from(inputs.establishment_fee) },
+    { label: 'Origination fee', amount: from(inputs.origination_fee) },
+    { label: 'Vehicle inspection fee', amount: null },
+    { label: 'PPSR', amount: from(inputs.ppsr_fee) },
+  ];
+}
+
 export interface DirectDebitSettings {
   /** The lender pricing it is drawn from; null = the latest. */
   pricing_sheet_id: string | null;
@@ -23,10 +39,8 @@ export interface DirectDebitSettings {
   with_balloon: boolean | null;
   /** YYYY-MM-DD; null = the date the application settled. */
   settlement_date: string | null;
-  vsr_fee: number | null;
-  private_sale_fee: number | null;
-  asic_fee: number | null;
-  stamp_duty: number | null;
+  /** The fees taken with the first debit; null = the standard list, filled from the pricing. */
+  fees: FeeRow[] | null;
   structured: StructuredRow[];
   signatory_name: string | null;
 }
@@ -35,10 +49,7 @@ export const DIRECT_DEBIT_DEFAULTS: DirectDebitSettings = {
   pricing_sheet_id: null,
   with_balloon: null,
   settlement_date: null,
-  vsr_fee: null,
-  private_sale_fee: null,
-  asic_fee: null,
-  stamp_duty: null,
+  fees: null,
   structured: [],
   signatory_name: null,
 };
@@ -105,10 +116,10 @@ export interface DirectDebitStatement {
   repayment: number | null;
   /** The even repayment from the chosen pricing structure. */
   normalRepayment: number | null;
-  feesFinanced: boolean;
   /** All fees financed in the loan — nothing but the repayment is debited. */
   allFeesFinanced: boolean;
-  lenderFees: number;
+  /** The fees as listed on the panel: the saved list, or the standard one. */
+  feeRows: FeeRow[];
   rows: DebitRow[];
   total: number;
   settlementDate: string | null;
@@ -158,29 +169,18 @@ export function buildDirectDebitStatement(
   // The first debit is payment 1, so an extra on it lands on the first line.
   const repayment = priced == null && !extras.has(1) ? priced : fmt2((priced ?? 0) + (extras.get(1) ?? 0));
 
-  // The lender's fees ride in the loan when financed; otherwise the lender
-  // takes them with the first debit.
-  const lenderFees = fmt2(inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee);
-  const feesFinanced = inputs.fees_financed || lenderFees <= 0;
-
+  // Fees follow one rule: financed in the loan means nothing extra comes out
+  // (a fee that was entered is still named "- Financed" but carries no amount,
+  // so it stays out of the total); otherwise they are taken once, with the
+  // first debit. Fees with no amount are left off the document.
+  const feeRows = settings.fees ?? defaultFees(inputs);
   const rows: DebitRow[] = [
     { label: '1st payment/rental', note: '(inclusive Govt charges)', amount: repayment },
-    feesFinanced
-      ? { label: 'Bank Fee - Financed', amount: null }
-      : { label: 'Bank Fee', note: '(not financed)', amount: lenderFees },
-    // VSR, private sale, ASIC and stamp duty follow the same rule as the lender's
-    // fees: financed in the loan means nothing extra comes out, otherwise they
-    // are taken once, with the first debit. A financed one that was entered is
-    // still named ("- Financed") but carries no amount, so it stays out of the total.
-    ...([
-      { label: 'VSR fee', amount: settings.vsr_fee },
-      { label: 'Private sale Fee', amount: settings.private_sale_fee },
-      { label: 'ASIC fee', note: '(312)', amount: settings.asic_fee },
-      { label: 'Stamp Duty', note: '(applicable some States)', amount: settings.stamp_duty },
-    ] as DebitRow[]).map((r): DebitRow =>
-      inputs.fees_financed && (r.amount ?? 0) > 0
-        ? { label: `${r.label} - Financed`, amount: null }
-        : r),
+    ...feeRows
+      .filter((f) => f.label.trim() && (f.amount ?? 0) > 0)
+      .map((f): DebitRow => inputs.fees_financed
+        ? { label: `${f.label.trim()} - Financed`, amount: null }
+        : { label: f.label.trim(), amount: f.amount }),
   ];
   const total = fmt2(rows.reduce((sum, r) => sum + (r.amount ?? 0), 0));
 
@@ -207,9 +207,8 @@ export function buildDirectDebitStatement(
     withBalloon,
     repayment,
     normalRepayment: priced,
-    feesFinanced,
     allFeesFinanced: inputs.fees_financed,
-    lenderFees,
+    feeRows,
     rows,
     total,
     settlementDate,

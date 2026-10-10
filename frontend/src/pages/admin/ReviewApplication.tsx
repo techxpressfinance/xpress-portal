@@ -3908,6 +3908,7 @@ export default function ReviewApplication() {
                         : [...prev, sheet]);
                       setLenderPricingMode({ kind: 'view', sheet });
                     }}
+                    onAutosaved={(sheet) => setQuoteSheets(prev => prev.map(s => s.id === sheet.id ? sheet : s))}
                     onCancel={() => setLenderPricingMode(null)}
                   />
                 ) : (showQuoteForm || editingQuoteSheet) ? (
@@ -3923,6 +3924,7 @@ export default function ReviewApplication() {
                       setShowQuoteForm(false);
                       setEditingQuoteSheet(null);
                     }}
+                    onAutosaved={(sheet) => setQuoteSheets(prev => prev.map(s => s.id === sheet.id ? sheet : s))}
                     onCancel={() => { setShowQuoteForm(false); setEditingQuoteSheet(null); }}
                   />
                 ) : viewingQuoteSheet ? (
@@ -4233,7 +4235,7 @@ export default function ReviewApplication() {
                 which a sidebar cannot carry. Opening the tab is what loads it. */}
             {activeTab === 'invoices' && id && (
               <div ref={taxInvoiceRef} className="scroll-mt-6">
-                <TaxInvoicePanel applicationId={id} autoOpen={openTaxInvoice} />
+                <TaxInvoicePanel applicationId={id} autoOpen={openTaxInvoice} onAutoOpened={() => setTaxInvoiceScroll((n) => n + 1)} />
               </div>
             )}
 

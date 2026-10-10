@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useAutosave } from '../lib/useAutosave';
 import { Button, Card } from './ui';
 import SheetEditorHeader from './SheetEditorHeader';
 import QuoteSheetComparison from './QuoteSheetComparison';
@@ -429,6 +430,8 @@ interface QuoteSheetEditorProps {
    *  maths — the field deltas the desk asked for are still to be specified. */
   sheetType?: QuoteSheetType;
   onSave: (sheet: QuoteSheet) => void;
+  /** Fired after a silent autosave of an existing sheet; the editor stays open. */
+  onAutosaved?: (sheet: QuoteSheet) => void;
   onCancel: () => void;
 }
 
@@ -443,7 +446,7 @@ function parseInputParams(quoteSheet?: QuoteSheet): QuoteInputParameters {
   return { ...DEFAULT_INPUTS, balloon_percentages: { ...DEFAULT_BALLOON_PERCENTAGES } };
 }
 
-export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType, onSave, onCancel }: QuoteSheetEditorProps) {
+export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType, onSave, onAutosaved, onCancel }: QuoteSheetEditorProps) {
   // An existing sheet keeps whatever it was created as.
   const effectiveSheetType: QuoteSheetType = quoteSheet?.sheet_type ?? sheetType ?? 'client_quote';
   const isLenderPricing = effectiveSheetType === 'lender_pricing';
@@ -629,6 +632,45 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
     }
   };
 
+  // Autosave: an existing sheet saves itself shortly after the last edit. A new
+  // sheet still needs Create. Invalid states are skipped silently.
+  const snapshot = JSON.stringify([title, brokerNotes, inputs]);
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
+  const [failedSnapshot, setFailedSnapshot] = useState<string | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoSavedAt, setAutoSavedAt] = useState<number | null>(null);
+  const optionsRef = useRef(quoteSheet?.options ?? []);
+  const autoDirty = !!quoteSheet && snapshot !== savedSnapshot;
+  const autoValid = inputs.asset_price > 0;
+
+  const autosave = async () => {
+    if (!quoteSheet || saving || autoSaving || !autoValid || failedSnapshot === snapshot) return;
+    setAutoSaving(true);
+    try {
+      await api.patch(`${baseUrl}/${quoteSheet.id}`, {
+        title: title.trim() || null,
+        broker_notes: brokerNotes.trim() || null,
+        input_parameters: JSON.stringify(inputs),
+      });
+      for (const existing of optionsRef.current) {
+        await api.delete(`${baseUrl}/${quoteSheet.id}/options/${existing.id}`);
+      }
+      for (const opt of scenariosToOptions(inputs, scenarios)) {
+        await api.post(`${baseUrl}/${quoteSheet.id}/options`, opt);
+      }
+      const { data } = await api.get<QuoteSheet>(`${baseUrl}/${quoteSheet.id}`);
+      optionsRef.current = data.options;
+      onAutosaved?.(data);
+      setSavedSnapshot(snapshot);
+      setAutoSavedAt(Date.now());
+    } catch {
+      setFailedSnapshot(snapshot);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+  useAutosave(autoDirty && !autoSaving && autoValid, snapshot, autosave);
+
   const handleSave = async () => {
     if (inputs.asset_price <= 0) {
       toast('Please enter a valid asset price', 'error');
@@ -649,7 +691,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
         });
 
         // Delete all existing options
-        for (const existing of quoteSheet.options) {
+        for (const existing of optionsRef.current) {
           await api.delete(`${baseUrl}/${quoteSheet.id}/options/${existing.id}`);
         }
 
@@ -1232,12 +1274,20 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-1 flex-wrap">
-          <Button onClick={handleSave} loading={saving}>
+          <Button onClick={handleSave} loading={saving} disabled={autoSaving}>
             {quoteSheet ? 'Update Quote Sheet' : 'Create Quote Sheet'}
           </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={saving}>
-            Cancel
+          <Button variant="secondary" onClick={onCancel} disabled={saving || autoSaving}>
+            {quoteSheet ? 'Close' : 'Cancel'}
           </Button>
+          {quoteSheet && (
+            <span className="text-[12px] text-muted-foreground">
+              {autoSaving ? 'Saving…'
+                : failedSnapshot === snapshot ? 'Autosave failed — use Update'
+                : autoDirty ? (autoValid ? 'Unsaved changes' : 'Autosave paused — enter an asset price')
+                : autoSavedAt ? 'Autosaved ✓' : ''}
+            </span>
+          )}
           {/* Exports what's on screen, including unsaved edits — so a quote can be
               checked as a PDF before it's saved or sent. */}
           <div className="flex items-center gap-2 ml-auto">

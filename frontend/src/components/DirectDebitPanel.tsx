@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAutosave } from '../lib/useAutosave';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { Button, Card, Input } from './ui';
@@ -10,6 +11,7 @@ import {
   parseDirectDebitSettings,
   pickPricingSheet,
   type DirectDebitSettings,
+  type FeeRow,
   type StructuredRow,
 } from '../lib/directDebit';
 import { DIRECT_DEBIT_CYCLE_LABELS, fmtCurrency } from '../lib/lenderPricing';
@@ -19,14 +21,6 @@ import type { Lender, LoanApplication, QuoteSheet } from '../types';
 
 const PREVIEW_SCALE = 0.62;
 const RENDER_ID = 'direct-debit-pdf-render';
-
-type FeeKey = 'vsr_fee' | 'private_sale_fee' | 'asic_fee' | 'stamp_duty';
-const FEES: [FeeKey, string][] = [
-  ['vsr_fee', 'VSR fee'],
-  ['private_sale_fee', 'Private sale fee'],
-  ['asic_fee', 'ASIC fee (312)'],
-  ['stamp_duty', 'Stamp duty'],
-];
 
 const toNumber = (v: string): number | null => (v.trim() === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
@@ -58,6 +52,7 @@ export default function DirectDebitPanel({
   const [settings, setSettings] = useState<DirectDebitSettings>(() => parseDirectDebitSettings(application));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [lender, setLender] = useState<DirectDebitLender | null>(null);
 
@@ -95,21 +90,29 @@ export default function DirectDebitPanel({
     setSettings((s) => ({ ...s, ...patch }));
     setDirty(true);
   };
+  const setFees = (fees: FeeRow[]) => update({ fees });
   const setStructured = (rows: StructuredRow[]) => update({ structured: rows });
 
-  const save = async () => {
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const save = async (quiet = false) => {
+    const sent = settings;
     setSaving(true);
     try {
       const { data } = await api.put<LoanApplication>(`/applications/${application.id}/direct-debit-request`, { settings });
       onApplicationChange(data);
-      setDirty(false);
-      toast('Direct debit request saved', 'success');
+      // Edits made while the request was in flight stay pending.
+      setDirty(settingsRef.current !== sent);
+      setSavedAt(Date.now());
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to save'), 'error');
+      if (!quiet) toast(getErrorMessage(err, 'Failed to save'), 'error');
     } finally {
       setSaving(false);
     }
   };
+
+  useAutosave(dirty, settings, () => save(true));
 
   const download = async () => {
     setDownloading(true);
@@ -160,7 +163,9 @@ export default function DirectDebitPanel({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={save} loading={saving} disabled={!dirty || saving}>Save</Button>
+          <span className="self-center text-[12px] text-muted-foreground">
+            {saving ? 'Saving…' : dirty ? 'Unsaved changes' : savedAt ? 'Autosaved ✓' : ''}
+          </span>
           <Button size="sm" onClick={download} loading={downloading} disabled={downloading || !lender}>Download PDF</Button>
         </div>
       </div>
@@ -211,34 +216,45 @@ export default function DirectDebitPanel({
           </div>
 
           <div>
-            <p className="text-[13px] font-medium text-[var(--led-ink-2)]">Lender&rsquo;s fees</p>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              {statement.feesFinanced
-                ? 'Financed in the loan — shown as "Bank Fee - Financed" with nothing added.'
-                : `Not financed — ${fmtCurrency(statement.lenderFees)} is added to the first debit.`}
-            </p>
-          </div>
-
-          <div>
-            <p className="mb-2 text-[13px] font-medium text-[var(--led-ink-2)]">Other amounts on the first debit</p>
-            <p className="-mt-1 mb-2 text-[12.5px] text-muted-foreground">
-              {statement.allFeesFinanced
-                ? 'Fees are financed in the loan — anything entered here is shown as "Financed" and not added to the total.'
-                : 'Fees are not financed — what you enter is added to the first debit only.'}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {FEES.map(([key, label]) => (
-                <Input
-                  key={key}
-                  label={label}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={settings[key] ?? ''}
-                  onChange={(e) => update({ [key]: toNumber(e.target.value) })}
-                />
-              ))}
+            <div className="flex items-center justify-between">
+              <p className="text-[13px] font-medium text-[var(--led-ink-2)]">Fees on the first debit</p>
+              <button
+                type="button"
+                className="text-[12.5px] font-medium text-primary hover:underline"
+                onClick={() => setFees([...statement.feeRows, { label: '', amount: null }])}
+              >
+                + Add a fee
+              </button>
             </div>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              {statement.allFeesFinanced
+                ? 'Fees are financed in the loan — each one entered is shown as "Financed" and not added to the total.'
+                : 'Fees are not financed — what you enter is added to the first debit only.'}
+              {' '}Fees with no amount are left off the document.
+            </p>
+            {statement.feeRows.map((fee, i) => (
+              <div key={i} className="mt-2 flex items-end gap-2">
+                <div className="flex-1">
+                  <Input
+                    label={i === 0 ? 'Fee' : undefined}
+                    placeholder="Fee name"
+                    value={fee.label}
+                    onChange={(e) => setFees(statement.feeRows.map((f, j) => (j === i ? { ...f, label: e.target.value } : f)))}
+                  />
+                </div>
+                <div className="w-32">
+                  <Input
+                    label={i === 0 ? 'Amount' : undefined}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={fee.amount ?? ''}
+                    onChange={(e) => setFees(statement.feeRows.map((f, j) => (j === i ? { ...f, amount: toNumber(e.target.value) } : f)))}
+                  />
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setFees(statement.feeRows.filter((_, j) => j !== i))}>Remove</Button>
+              </div>
+            ))}
           </div>
 
           <div>

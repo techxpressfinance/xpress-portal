@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useAutosave } from '../lib/useAutosave';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { Button, Card, Input } from './ui';
@@ -42,6 +43,7 @@ export default function SettlementDeclarationsPanel({
   const [settings, setSettings] = useState<DeclarationSettings>(() => parseDeclarationSettings(application));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [viewing, setViewing] = useState<DeclarationKind>('early_termination');
   const [downloading, setDownloading] = useState<DeclarationKind | null>(null);
 
@@ -56,19 +58,26 @@ export default function SettlementDeclarationsPanel({
     setDirty(true);
   };
 
-  const save = async () => {
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const save = async (quiet = false) => {
+    const sent = settings;
     setSaving(true);
     try {
       const { data } = await api.put<LoanApplication>(`/applications/${application.id}/settlement-declarations`, { settings });
       onApplicationChange(data);
-      setDirty(false);
-      toast('Declarations saved', 'success');
+      // Edits made while the request was in flight stay pending.
+      setDirty(settingsRef.current !== sent);
+      setSavedAt(Date.now());
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to save'), 'error');
+      if (!quiet) toast(getErrorMessage(err, 'Failed to save'), 'error');
     } finally {
       setSaving(false);
     }
   };
+
+  useAutosave(dirty, settings, () => save(true));
 
   const download = async (kind: DeclarationKind) => {
     setDownloading(kind);
@@ -114,7 +123,9 @@ export default function SettlementDeclarationsPanel({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={save} loading={saving} disabled={!dirty || saving}>Save</Button>
+          <span className="self-center text-[12px] text-muted-foreground">
+            {saving ? 'Saving…' : dirty ? 'Unsaved changes' : savedAt ? 'Autosaved ✓' : ''}
+          </span>
           {docs.map((d) => (
             <Button key={d.kind} size="sm" onClick={() => download(d.kind)} loading={downloading === d.kind} disabled={downloading != null}>
               {d.label} PDF

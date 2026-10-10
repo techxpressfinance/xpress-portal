@@ -181,6 +181,7 @@ export default function QuoteSheets() {
               : [sheet, ...prev]);
             setLenderPricingMode({ kind: 'view', sheet });
           }}
+          onAutosaved={(sheet) => setQuoteSheets(prev => prev.map(s => s.id === sheet.id ? sheet : s))}
           onCancel={() => setLenderPricingMode(null)}
         />
       ) : null}
@@ -198,6 +199,7 @@ export default function QuoteSheets() {
             setShowForm(false);
             setEditingSheet(null);
           }}
+          onAutosaved={(sheet) => setQuoteSheets(prev => prev.map(s => s.id === sheet.id ? sheet : s))}
           onCancel={() => { setShowForm(false); setEditingSheet(null); }}
         />
       )}
