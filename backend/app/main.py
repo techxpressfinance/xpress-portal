@@ -1138,6 +1138,77 @@ try:
 except Exception as _e:
     _logger.debug("Kanban stage rename/phase backfill skipped: %s", _e)
 
+# The asset-finance desk's list has one stage where the template had two
+# ("Invoice Recd. / Quote Locked In" then "Loan Docs Issued"), and puts Needs
+# More Info after Approved Deals, not before it. ensure_stage_columns only ever
+# adds stages, so boards that already carry the set are brought across here.
+# Cards, gates and message rules move to the surviving stage; titles and the
+# phase band change only where they still show the old default. Each half is
+# keyed on the old shape (the dropped stage existing, the moved stage still
+# reporting Submitted), so it runs once and a desk that later re-orders its
+# board is left alone. Runs before the rule backfill below so the merged stage
+# keeps wording the desk edited rather than getting the template's.
+try:
+    with engine.begin() as conn:
+        _pairs = conn.execute(text(
+            "SELECT d.id, k.id FROM kanban_columns d "
+            "LEFT JOIN kanban_columns k ON k.board_id = d.board_id "
+            "AND k.loan_category = d.loan_category AND k.stage_key = 'af_quote_locked' "
+            "WHERE d.stage_key = 'af_loan_docs_issued' AND d.loan_category = 'asset_finance'"
+        )).fetchall()
+        for _drop, _keep in _pairs:
+            if not _keep:
+                # The desk already deleted the first of the pair: the survivor
+                # simply takes over the merged stage's key.
+                conn.execute(text("UPDATE kanban_columns SET stage_key = 'af_quote_locked' WHERE id = :d"), {"d": _drop})
+                _keep = _drop
+            else:
+                _ids = {"k": _keep, "d": _drop}
+                conn.execute(text("UPDATE application_stage_placements SET column_id = :k WHERE column_id = :d"), _ids)
+                conn.execute(text("UPDATE loan_applications SET kanban_column_id = :k WHERE kanban_column_id = :d"), _ids)
+                conn.execute(text("UPDATE kanban_column_gates SET column_id = :k WHERE column_id = :d"), _ids)
+                conn.execute(text(
+                    "UPDATE stage_notification_rules SET column_id = :k WHERE column_id = :d "
+                    "AND NOT EXISTS (SELECT 1 FROM stage_notification_rules r "
+                    "WHERE r.column_id = :k AND r.audience = stage_notification_rules.audience "
+                    "AND r.channel = stage_notification_rules.channel)"
+                ), _ids)
+                # SQLite does not enforce the cascades, so clear what is left by hand.
+                conn.execute(text("DELETE FROM stage_notification_rules WHERE column_id = :d"), _ids)
+                conn.execute(text("DELETE FROM lead_stage_placements WHERE column_id = :d"), _ids)
+                conn.execute(text("DELETE FROM kanban_columns WHERE id = :d"), _ids)
+            conn.execute(text(
+                "UPDATE kanban_columns SET title = 'Tax Invoice Received / Loan Docs Issued' "
+                "WHERE id = :k AND title IN ('Invoice Recd. / Quote Locked In', 'Loan Docs Issued')"
+            ), {"k": _keep})
+            conn.execute(text("UPDATE kanban_columns SET awaiting = 'client' WHERE id = :k AND awaiting = 'desk'"), {"k": _keep})
+
+        _moves = conn.execute(text(
+            "SELECT m.id, m.board_id FROM kanban_columns m "
+            "WHERE m.stage_key = 'af_credit_more_info' AND m.loan_category = 'asset_finance' "
+            "AND m.mapped_status = 'submitted' "
+            # Never leave Submitted without a stage — its cards would vanish.
+            "AND EXISTS (SELECT 1 FROM kanban_columns o WHERE o.board_id = m.board_id "
+            "AND o.loan_category = m.loan_category AND o.mapped_status = 'submitted' AND o.id <> m.id)"
+        )).fetchall()
+        for _mid, _bid in _moves:
+            conn.execute(text("UPDATE kanban_columns SET mapped_status = 'approval' WHERE id = :m"), {"m": _mid})
+            conn.execute(text("UPDATE kanban_columns SET title = 'Needs More Info' WHERE id = :m AND title = 'Credit Needs More Info'"), {"m": _mid})
+            conn.execute(text("UPDATE kanban_columns SET phase = 'Approved → Settlement' WHERE id = :m AND phase = 'With the Lender'"), {"m": _mid})
+            _set = conn.execute(text(
+                "SELECT id, stage_key FROM kanban_columns "
+                "WHERE board_id = :b AND loan_category = 'asset_finance' ORDER BY position, created_at"
+            ), {"b": _bid}).fetchall()
+            _order = [_cid for _cid, _key in _set if _cid != _mid]
+            _approved = next((_cid for _cid, _key in _set if _key == "af_approved_deals"), None)
+            if _approved is None:
+                continue
+            _order.insert(_order.index(_approved) + 1, _mid)
+            for _pos, _cid in enumerate(_order):
+                conn.execute(text("UPDATE kanban_columns SET position = :p WHERE id = :c"), {"p": _pos, "c": _cid})
+except Exception as _e:
+    _logger.debug("Asset finance stage merge/reorder skipped: %s", _e)
+
 # Notification rules are seeded only for stages a template CREATES, so boards
 # that already had their stage set never received the referrer rules added with
 # the journey view. Add any that are missing, keyed on (column, audience,
