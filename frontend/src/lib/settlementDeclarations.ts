@@ -55,14 +55,29 @@ export function termLabel(months: number | null): string {
   return `${months} months`;
 }
 
-/** Everyone who signs: the applicant (when a person) and the other parties. */
+const personName = (p: { applicant_first_name?: string | null; applicant_last_name?: string | null }) =>
+  [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ');
+
+/**
+ * Everyone who signs. A person applying signs with the other parties. A company
+ * cannot sign for itself, so its guarantors do — the individual guarantors and
+ * the signatories of any corporate guarantor. Where none is recorded as a
+ * guarantor yet, the people behind the company (the primary held inline on the
+ * application, and its directors) stand in rather than leaving the name blank.
+ */
 export function defaultSignatories(application: LoanApplication): string[] {
-  const names = [
-    isCompanyApplicant(application) ? '' : applicantName(application),
-    ...(application.additional_applicants ?? []).map((p) =>
-      [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ')),
-  ].filter(Boolean);
-  const unique = [...new Set(names)];
+  const parties = application.additional_applicants ?? [];
+  let names: string[];
+  if (isCompanyApplicant(application)) {
+    names = [
+      ...parties.filter((p) => p.role === 'guarantor').map(personName),
+      ...(application.corporate_guarantors ?? []).flatMap((g) => g.signatories.map(personName)),
+    ].filter(Boolean);
+    if (names.length === 0) names = [personName(application), ...parties.map(personName)];
+  } else {
+    names = [applicantName(application), ...parties.map(personName)];
+  }
+  const unique = [...new Set(names.filter(Boolean))];
   return unique.length > 0 ? unique : [''];
 }
 
