@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LOAN_CATEGORIES, applicationLoanCategory } from '../lib/constants';
 import { applicantDisplayName, applicantEmail } from '../lib/applicantName';
 import type { LoanApplication } from '../types';
@@ -11,6 +11,17 @@ import type { LoanApplication } from '../types';
  * as a direct child of the page root — sticky only holds within its parent.
  */
 export default function ApplicationSummaryBar({ application, actions, breadcrumb }: { application: LoanApplication; actions?: ReactNode; breadcrumb?: ReactNode }) {
+  // The veil only shows once the bar is pinned (the page has scrolled under
+  // it); at rest it would blur the breadcrumb and action buttons above.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < 0), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const guarantorNames = (application.corporate_guarantors || [])
     .map((g) => g.organization_name)
     .filter(Boolean);
@@ -42,9 +53,21 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
     )}
     {/* The offsets cancel <main>'s padding so the bar pins 12px from the top of
         the scroll area rather than below the padding. */}
+    <div ref={sentinelRef} aria-hidden className="h-px -mb-px" />
     <div className="sticky z-30 -top-[4px] sm:-top-3 lg:-top-7 mb-5">
+      {/* A progressive frosted veil behind the bar: content scrolling up blurs
+          and fades into it instead of being cut off by a hard edge. */}
       <div
-        className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[22px] border border-white/80 bg-white/60 ring-1 ring-black/[0.04] px-5 py-3 backdrop-blur-2xl backdrop-saturate-[1.8] dark:border-white/15 dark:bg-white/[0.08]"
+        aria-hidden
+        className={`pointer-events-none absolute -inset-x-6 -top-8 -bottom-10 backdrop-blur-xl backdrop-saturate-150 transition-opacity duration-200 ${stuck ? 'opacity-100' : 'opacity-0'}`}
+        style={{
+          WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%)',
+          maskImage: 'linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%)',
+          background: 'linear-gradient(to bottom, color-mix(in srgb, var(--background, #fff) 70%, transparent) 0%, color-mix(in srgb, var(--background, #fff) 35%, transparent) 60%, transparent 100%)',
+        }}
+      />
+      <div
+        className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[22px] border border-white/80 bg-white/45 ring-1 ring-black/[0.04] px-5 py-3 backdrop-blur-3xl backdrop-saturate-[1.8] dark:border-white/15 dark:bg-white/[0.06]"
         style={{
           // Depth on every side: zero-offset halos (so the shadow shows above and
           // beside the bar too, not just below), then a lift that grows downward,
@@ -61,7 +84,11 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
             'inset 0 0 18px rgba(255,255,255,0.35)',
           ].join(', '),
           // A faint top-lit sheen over the frost.
-          backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 60%)',
+          backgroundImage: [
+            'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 55%)',
+            'radial-gradient(120% 140% at 0% 0%, rgba(99,102,241,0.10) 0%, transparent 50%)',
+            'radial-gradient(120% 140% at 100% 100%, rgba(236,72,153,0.08) 0%, transparent 55%)',
+          ].join(', '),
         }}
       >
         <strong className="text-[19px] font-bold tracking-[-0.02em] text-foreground">
