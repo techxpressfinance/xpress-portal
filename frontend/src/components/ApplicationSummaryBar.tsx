@@ -22,9 +22,13 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
     io.observe(el);
     return () => io.disconnect();
   }, []);
-  const guarantorNames = (application.corporate_guarantors || [])
-    .map((g) => g.organization_name)
-    .filter(Boolean);
+  // Individual guarantors by name, then any company guaranteeing the loan.
+  const guarantorNames = [
+    ...(application.additional_applicants || [])
+      .filter((p) => p.role === 'guarantor')
+      .map((p) => [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ')),
+    ...(application.corporate_guarantors || []).map((g) => g.organization_name),
+  ].filter(Boolean);
   const category = LOAN_CATEGORIES.find((c) => c.value === applicationLoanCategory(application))?.label;
   const email = applicantEmail(application);
   const chip = 'inline-flex items-center rounded-full px-3 py-1 text-[12.5px] font-medium';
