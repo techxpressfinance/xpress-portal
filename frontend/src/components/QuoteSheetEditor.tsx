@@ -34,6 +34,23 @@ function termsOf(inputs: QuoteInputParameters): number[] {
   return sortTerms([...STANDARD_TERM_MONTHS, ...new Set(custom)]);
 }
 
+type BalloonEntry = { percent: number; amount: number | null };
+
+// Every balloon a term quotes: the first lives in the per-term maps (as it
+// always has), any others in `extra_balloons`.
+function balloonsOf(inputs: QuoteInputParameters, months: number): BalloonEntry[] {
+  const key = String(months);
+  return [
+    { percent: inputs.balloon_percentages[key] ?? 0, amount: inputs.balloon_amounts?.[key] ?? null },
+    ...(inputs.extra_balloons?.[key] ?? []),
+  ];
+}
+
+// How many extra balloon rows the sheet carries (beyond the first).
+function extraBalloonRows(inputs: QuoteInputParameters): number {
+  return Math.max(0, ...Object.values(inputs.extra_balloons ?? {}).map(list => list.length));
+}
+
 const DEFAULT_INPUTS: QuoteInputParameters = {
   facility_type: 'chattel',
   payment_type: 'advance',
@@ -172,6 +189,8 @@ function computeFromInputs(inputs: QuoteInputParameters) {
 type Scenario = {
   termMonths: number;
   hasBalloon: boolean;
+  /** Position among the term's balloon scenarios (0 = first); -1 without one. */
+  balloonIndex: number;
   balloon: number;          // net balloon
   balloonGst: number;       // GST on balloon (lease only)
   balloonTotal: number;     // net + GST
@@ -199,20 +218,18 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
   const scenarios: Scenario[] = [];
 
   for (const months of termsOf(inputs)) {
-    const balloonPct = inputs.balloon_percentages[String(months)] ?? 0;
-    // Balloon: dollar override or calculate from %
-    const balloonOverride = inputs.balloon_amounts?.[String(months)];
-    const balloonNet = balloonOverride != null ? balloonOverride : fmt2(balloonBase * (balloonPct / 100));
-    const balloonGst = isLease ? fmt2(balloonNet * (inputs.gst_percent / 100)) : 0;
-    const balloonTotal = fmt2(balloonNet + balloonGst);
-
-    const buildScenario = (useBalloon: boolean): Scenario | null => {
-      const balloon = useBalloon ? balloonNet : 0;
-      const bGst = useBalloon ? balloonGst : 0;
-      const bTotal = useBalloon ? balloonTotal : 0;
-      const pct = useBalloon ? balloonPct : 0;
-
-      if (useBalloon && balloonNet <= 0) return null;
+    // `entry` null = the no-balloon variant.
+    const buildScenario = (entry: BalloonEntry | null, balloonIndex: number): Scenario | null => {
+      // Balloon: dollar override or calculate from %
+      const balloonNet = entry == null
+        ? 0
+        : entry.amount != null ? entry.amount : fmt2(balloonBase * (entry.percent / 100));
+      if (entry != null && balloonNet <= 0) return null;
+      const balloon = balloonNet;
+      const bGst = isLease ? fmt2(balloonNet * (inputs.gst_percent / 100)) : 0;
+      const bTotal = fmt2(balloonNet + bGst);
+      const pct = entry?.percent ?? 0;
+      const useBalloon = entry != null;
 
       // PMT calculation — matches Excel formula page B36/B37
       let netRental: number;
@@ -253,6 +270,7 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
       return {
         termMonths: months,
         hasBalloon: useBalloon,
+        balloonIndex,
         balloon,
         balloonGst: bGst,
         balloonTotal: bTotal,
@@ -271,12 +289,18 @@ function generateScenarios(inputs: QuoteInputParameters): Scenario[] {
     };
 
     // No balloon variant
-    const noBalloon = buildScenario(false);
+    const noBalloon = buildScenario(null, -1);
     if (noBalloon) scenarios.push(noBalloon);
 
-    // With balloon variant (only if balloon % > 0 or override set)
-    const withBalloon = buildScenario(true);
-    if (withBalloon) scenarios.push(withBalloon);
+    // One variant per balloon entered for the term (only those with a balloon
+    // % > 0 or a $ override set).
+    let balloonIndex = 0;
+    for (const entry of balloonsOf(inputs, months)) {
+      const withBalloon = buildScenario(entry, balloonIndex);
+      if (!withBalloon) continue;
+      scenarios.push(withBalloon);
+      balloonIndex += 1;
+    }
   }
 
   return scenarios;
@@ -461,9 +485,53 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
     setInputs(prev => ({ ...prev, [key]: value }));
   };
 
+  // A sheet can quote more than one balloon per term (5yr at 30% and at 15%).
+  // Each extra balloon is a row across the terms; a term left at 0 on a row
+  // simply isn't quoted at that balloon. The first row stays in the per-term
+  // maps; these edit the rows after it.
+  const updateExtraBalloon = (term: string, extraIndex: number, change: (entry: BalloonEntry, base: number) => BalloonEntry) => {
+    setInputs(prev => {
+      const base = computeFromInputs(prev).balloonBase;
+      const list = [...(prev.extra_balloons?.[term] ?? [])];
+      while (list.length <= extraIndex) list.push({ percent: 0, amount: null });
+      list[extraIndex] = change(list[extraIndex], base);
+      return { ...prev, extra_balloons: { ...prev.extra_balloons, [term]: list } };
+    });
+  };
+
+  const addBalloonRow = () => {
+    setInputs(prev => {
+      const rows = extraBalloonRows(prev) + 1;
+      const extras: NonNullable<QuoteInputParameters['extra_balloons']> = {};
+      for (const m of termsOf(prev)) {
+        const list = [...(prev.extra_balloons?.[String(m)] ?? [])];
+        while (list.length < rows) list.push({ percent: 0, amount: null });
+        extras[String(m)] = list;
+      }
+      return { ...prev, extra_balloons: extras };
+    });
+  };
+
+  const removeBalloonRow = (extraIndex: number) => {
+    setInputs(prev => {
+      const extras: NonNullable<QuoteInputParameters['extra_balloons']> = {};
+      for (const [term, list] of Object.entries(prev.extra_balloons ?? {})) {
+        const next = list.filter((_, i) => i !== extraIndex);
+        if (next.length > 0) extras[term] = next;
+      }
+      // The preferred pick is by position, so it would silently slide onto a
+      // different balloon — fall back to the term's first.
+      return { ...prev, extra_balloons: extras, preferred_balloon_index: 0 };
+    });
+  };
+
   // Editing % makes the percentage the source of truth — drop any $ override
   // so the balloon $ is re-derived live from the balloon base.
-  const updateBalloonPct = (term: string, value: number) => {
+  const updateBalloonPct = (term: string, value: number, index = 0) => {
+    if (index > 0) {
+      updateExtraBalloon(term, index - 1, () => ({ percent: value, amount: null }));
+      return;
+    }
     setInputs(prev => {
       const amounts = { ...(prev.balloon_amounts ?? {}) };
       delete amounts[term];
@@ -477,7 +545,14 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
 
   // Editing $ stores a per-term override and back-computes the % off the base,
   // mirroring the Deposit %/$ pair. Clearing the field reverts to %-driven.
-  const updateBalloonAmount = (term: string, value: number | null) => {
+  const updateBalloonAmount = (term: string, value: number | null, index = 0) => {
+    if (index > 0) {
+      updateExtraBalloon(term, index - 1, (entry, base) => ({
+        percent: value != null && base > 0 ? fmt2((value / base) * 100) : entry.percent,
+        amount: value,
+      }));
+      return;
+    }
     setInputs(prev => {
       const base = computeFromInputs(prev).balloonBase;
       const amounts = { ...(prev.balloon_amounts ?? {}) };
@@ -542,8 +617,11 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
       const amounts = { ...(prev.balloon_amounts ?? {}) };
       delete percentages[String(months)];
       delete amounts[String(months)];
+      const extras = { ...prev.extra_balloons };
+      delete extras[String(months)];
       return {
         ...prev,
+        extra_balloons: extras,
         custom_term_months: (prev.custom_term_months ?? []).filter(m => m !== months),
         balloon_percentages: percentages,
         balloon_amounts: amounts,
@@ -560,6 +638,22 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
     if (inputs.asset_price <= 0) return [];
     return generateScenarios(inputs);
   }, [inputs]);
+
+  // What the preferred-option picker offers for the chosen term: no balloon,
+  // then each balloon that term actually quotes. -1 = no balloon.
+  const preferredTermMonths = inputs.preferred_term ?? (inputs.selected_terms ?? terms)[0];
+  const preferredBalloons = scenarios.filter(s => s.termMonths === preferredTermMonths && s.hasBalloon);
+  const preferredChoices: { index: number; label: string }[] = [
+    { index: -1, label: 'No Balloon' },
+    ...(preferredBalloons.length > 0
+      ? preferredBalloons.map(s => ({ index: s.balloonIndex, label: `${s.balloonPercent}% Balloon` }))
+      : [{ index: 0, label: 'With Balloon' }]),
+  ];
+  const preferredChoice = !(inputs.preferred_balloon ?? false)
+    ? -1
+    : Math.min(inputs.preferred_balloon_index ?? 0, Math.max(preferredBalloons.length - 1, 0));
+
+  const balloonRows = 1 + extraBalloonRows(inputs);
 
   const isStandalone = !applicationId;
   const baseUrl = isStandalone ? '/quote-sheets' : `/applications/${applicationId}/quote-sheets`;
@@ -1001,38 +1095,68 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
                   Auto-fill standard
                 </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-1">
-                {terms.map(t => {
-                  const pct = inputs.balloon_percentages[String(t)] ?? 0;
-                  const computedAmt = fmt2(derived.balloonBase * (pct / 100));
-                  return (
-                    <div key={t} className="space-y-1">
-                      <div className="text-center text-[10px] text-muted-foreground font-semibold mb-1">{termLabelShort(t)}</div>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          value={pct}
-                          onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0)}
-                          className={`${fieldBase} px-2 pr-5 text-center`}
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
-                      </div>
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
-                        <MoneyInput
-                          placeholder={computedAmt > 0 ? formatMoney(Math.round(computedAmt)) : ''}
-                          value={inputs.balloon_amounts?.[String(t)] ?? ''}
-                          allowNull
-                          onChange={amt => updateBalloonAmount(String(t), amt)}
-                          className={`${fieldBase} pl-5 pr-1 text-center text-[11px]`}
-                        />
-                      </div>
+              {Array.from({ length: balloonRows }, (_, row) => (
+                <div key={row} className={row > 0 ? 'mt-3 pt-3 border-t border-border/60' : 'mt-1'}>
+                  {balloonRows > 1 && (
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Balloon option {row + 1}</span>
+                      {row > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBalloonRow(row - 1)}
+                          className="text-[10px] font-semibold text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                    {terms.map(t => {
+                      const b = balloonsOf(inputs, t)[row] ?? { percent: 0, amount: null };
+                      const computedAmt = fmt2(derived.balloonBase * (b.percent / 100));
+                      return (
+                        <div key={t} className="space-y-1">
+                          {/* Term headings sit once above the first row when the
+                              terms fit on one line; otherwise every cell is labelled. */}
+                          <div className={`text-center text-[10px] text-muted-foreground font-semibold mb-1 ${row > 0 && terms.length <= 7 ? 'lg:hidden' : ''}`}>{termLabelShort(t)}</div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={b.percent}
+                              onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0, row)}
+                              className={`${fieldBase} px-2 pr-5 text-center`}
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
+                            <MoneyInput
+                              placeholder={computedAmt > 0 ? formatMoney(Math.round(computedAmt)) : ''}
+                              value={b.amount ?? ''}
+                              allowNull
+                              onChange={amt => updateBalloonAmount(String(t), amt, row)}
+                              className={`${fieldBase} pl-5 pr-1 text-center text-[11px]`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addBalloonRow}
+                className="mt-3 w-full h-8 rounded-lg border border-dashed border-border text-[11px] font-semibold text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+              >
+                + Add another balloon option
+              </button>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Each option is quoted alongside the others, e.g. 5 years at 30% and at 15%. Leave a term at 0 to skip it for that option.
+              </p>
             </div>
           </section>
         </div>
@@ -1199,18 +1323,22 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
                 </div>
                 <div>
                   <label className={`${labelBase} mb-1.5`}>Balloon</label>
-                  <div className="flex gap-2">
-                    {([['No Balloon', false], ['With Balloon', true]] as [string, boolean][]).map(([lbl, val]) => (
+                  <div className="flex flex-wrap gap-2">
+                    {preferredChoices.map(c => (
                       <button
-                        key={String(val)}
+                        key={c.index}
                         type="button"
-                        onClick={() => updateInput('preferred_balloon', val)}
-                        className={`h-8 px-4 rounded-lg text-[12px] font-semibold transition-colors border ${(inputs.preferred_balloon ?? false) === val
+                        onClick={() => setInputs(prev => ({
+                          ...prev,
+                          preferred_balloon: c.index >= 0,
+                          preferred_balloon_index: Math.max(c.index, 0),
+                        }))}
+                        className={`h-8 px-4 rounded-lg text-[12px] font-semibold transition-colors border ${preferredChoice === c.index
                           ? 'bg-primary/10 text-primary border-primary/20'
                           : 'bg-muted text-muted-foreground border-border/40'
                         }`}
                       >
-                        {lbl}
+                        {c.label}
                       </button>
                     ))}
                   </div>

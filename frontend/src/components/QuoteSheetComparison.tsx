@@ -71,24 +71,71 @@ function computeAllUpRate(opt: QuoteOption, paymentType: string): number | null 
 type TermGroup = {
   termMonths: number;
   noBalloon: QuoteOption | null;
-  withBalloon: QuoteOption | null;
+  /** Every balloon quoted for the term, in the order the broker entered them. */
+  balloons: QuoteOption[];
 };
+
+type TermColumn = { key: string; head: string; opt: QuoteOption };
+
+/** "30% Balloon" off the option's name; "With Balloon" for sheets that predate the %. */
+const balloonHead = (opt: QuoteOption): string => {
+  const m = opt.lender_name.match(/([\d.]+)%\s*Balloon/i);
+  return m ? `${m[1]}% Balloon` : 'With Balloon';
+};
+
+/** A term's quotes left to right: no balloon, then each balloon. */
+const termColumns = (g: TermGroup): TermColumn[] => [
+  ...(g.noBalloon ? [{ key: 'nb', head: 'No Balloon', opt: g.noBalloon }] : []),
+  ...g.balloons.map((opt, i) => ({ key: `b${i}`, head: balloonHead(opt), opt })),
+];
+
+// A term card sits two to a row and holds two quotes comfortably. One quoting
+// more balloons than that takes the full row instead.
+const isWide = (g: TermGroup) => termColumns(g).length > 2;
+
+/** Rows of term cards: pairs, with any wide card on a row of its own. */
+function layoutRows(groups: TermGroup[]): TermGroup[][] {
+  const rows: TermGroup[][] = [];
+  let pair: TermGroup[] = [];
+  for (const g of groups) {
+    if (isWide(g)) {
+      if (pair.length) { rows.push(pair); pair = []; }
+      rows.push([g]);
+      continue;
+    }
+    pair.push(g);
+    if (pair.length === 2) { rows.push(pair); pair = []; }
+  }
+  if (pair.length) rows.push(pair);
+  return rows;
+}
+
+// The most quotes one table row can carry across the full page width before
+// the figures crowd; a term with more wraps onto a second table.
+const MAX_COLUMNS_PER_TABLE = 5;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 // Grouped by exact month count — 18- and 24-month terms are distinct quotes.
 // Displayed in increasing term order (shortest term first).
 function groupByTerm(options: QuoteOption[]): TermGroup[] {
-  const sorted = [...options].sort((a, b) => (a.loan_term_months ?? 0) - (b.loan_term_months ?? 0));
+  const sorted = [...options].sort((a, b) =>
+    (a.loan_term_months ?? 0) - (b.loan_term_months ?? 0) || a.sort_order - b.sort_order);
   const termMap = new Map<number, TermGroup>();
 
   for (const opt of sorted) {
     const months = opt.loan_term_months ?? 0;
     if (!termMap.has(months)) {
-      termMap.set(months, { termMonths: months, noBalloon: null, withBalloon: null });
+      termMap.set(months, { termMonths: months, noBalloon: null, balloons: [] });
     }
     const group = termMap.get(months)!;
     const hasBalloon = (opt.balloon_residual ?? 0) > 0;
     if (hasBalloon) {
-      group.withBalloon = opt;
+      group.balloons.push(opt);
     } else {
       group.noBalloon = opt;
     }
@@ -109,8 +156,9 @@ const TERM_ACCENTS = [
 
 // ── On-screen term block ────────────────────────────────────────────
 function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInterest, showWeekly, assetDescription, paymentType }: { group: TermGroup; accent: string; isClientView: boolean; showInterestRate: boolean; showTotalInterest: boolean; showWeekly: boolean; assetDescription: string; paymentType: string }) {
-  const { termMonths, noBalloon, withBalloon } = group;
-  const hasTwo = noBalloon && withBalloon;
+  const { termMonths } = group;
+  const cols = termColumns(group);
+  const wide = cols.length > 2;
 
   const renderColumn = (opt: QuoteOption | null) => {
     if (!opt) return null;
@@ -157,23 +205,19 @@ function TermBlock({ group, accent, isClientView, showInterestRate, showTotalInt
   };
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-card">
+    <div className={`border border-border rounded-lg overflow-hidden bg-card ${wide ? 'lg:col-span-2' : ''}`}>
       <div className="bg-muted/40 px-4 py-2 border-b border-border">
         <h4 className="text-sm font-semibold text-foreground">{termLabel(termMonths)} Term</h4>
       </div>
-      <div className={`grid ${hasTwo ? 'grid-cols-1 divide-y sm:grid-cols-2 sm:divide-y-0 sm:divide-x divide-border' : 'grid-cols-1'}`}>
-        {noBalloon && (
-          <div className="p-4">
-            {hasTwo && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">No Balloon</p>}
-            {renderColumn(noBalloon)}
+      {/* Cells carry their own right/bottom rules (clipped at the card edge by
+          the negative margin) so the grid still reads when balloons wrap. */}
+      <div className={`grid -mr-px -mb-px grid-cols-1 ${cols.length > 1 ? 'sm:grid-cols-2' : ''} ${cols.length === 3 ? 'lg:grid-cols-3' : cols.length > 3 ? 'lg:grid-cols-4' : ''}`}>
+        {cols.map(c => (
+          <div key={c.key} className={`p-4 border-r border-b border-border ${c.key === 'nb' ? '' : 'bg-muted/20'}`}>
+            {cols.length > 1 && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">{c.head}</p>}
+            {renderColumn(c.opt)}
           </div>
-        )}
-        {withBalloon && (
-          <div className="p-4 bg-muted/20">
-            {hasTwo && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3 pb-2 border-b border-border">With Balloon</p>}
-            {renderColumn(withBalloon)}
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );
@@ -216,6 +260,7 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       showPreferredOption: (params.show_preferred_option as boolean | undefined) ?? false,
       preferredTerm: (params.preferred_term as number | undefined) ?? null,
       preferredBalloon: (params.preferred_balloon as boolean | undefined) ?? false,
+      preferredBalloonIndex: (params.preferred_balloon_index as number | undefined) ?? 0,
     };
   } catch {
     return null;
@@ -248,17 +293,15 @@ export default function QuoteSheetComparison({
   const showPreferredOption = parsedParams?.showPreferredOption ?? false;
   const preferredTerm = parsedParams?.preferredTerm ?? null;
   const preferredBalloon = parsedParams?.preferredBalloon ?? false;
+  const preferredBalloonIndex = parsedParams?.preferredBalloonIndex ?? 0;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
     ? allTermGroups.filter(g => selectedTerms.includes(g.termMonths))
     : allTermGroups;
 
-  // Split into rows of 2 for the grid
-  const rows: TermGroup[][] = [];
-  for (let i = 0; i < termGroups.length; i += 2) {
-    rows.push(termGroups.slice(i, i + 2));
-  }
+  // Rows of 2 for the grid; a term quoting several balloons gets its own row.
+  const rows = layoutRows(termGroups);
 
   // ── PDF Export Layout (Professional Finance Styling) ────────────────
   if (isPdfExport) {
@@ -282,7 +325,7 @@ export default function QuoteSheetComparison({
       + (first.establishment_fee ?? 0) + (first.application_fee ?? 0);
 
     // Primary option per group: no-balloon preferred
-    const prim = (g: TermGroup): QuoteOption => (g.noBalloon ?? g.withBalloon)!;
+    const prim = (g: TermGroup): QuoteOption => (g.noBalloon ?? g.balloons[0])!;
 
     // Client interest rate or computed all-up rate
     const rate = (opt: QuoteOption) => opt.client_interest_rate ?? computeAllUpRate(opt, paymentType);
@@ -295,8 +338,8 @@ export default function QuoteSheetComparison({
       : null;
     const preferredOpt: QuoteOption | null = preferredGroup
       ? (preferredBalloon
-          ? (preferredGroup.withBalloon ?? preferredGroup.noBalloon)
-          : (preferredGroup.noBalloon ?? preferredGroup.withBalloon))
+          ? (preferredGroup.balloons[preferredBalloonIndex] ?? preferredGroup.balloons[0] ?? preferredGroup.noBalloon)
+          : (preferredGroup.noBalloon ?? preferredGroup.balloons[0] ?? null))
       : null;
 
     // The preferred term takes precedence over any is_recommended flag.
@@ -322,7 +365,7 @@ export default function QuoteSheetComparison({
     // Scenario count must match the terms actually shown (client/PDF views can
     // filter to the broker-selected terms) — not the sheet's full option list.
     const shownOptionCount = termGroups.reduce(
-      (n, g) => n + (g.noBalloon ? 1 : 0) + (g.withBalloon ? 1 : 0), 0,
+      (n, g) => n + termColumns(g).length, 0,
     );
     // Hero summary strip cells (CLIENT shown only when a recipient name exists)
     const summaryCells: { label: string; value: ReactNode; gold?: boolean; wide?: boolean }[] = [
@@ -549,13 +592,14 @@ export default function QuoteSheetComparison({
             }}
           >
           {row.map(g => {
-            const cols: { key: string; head: string | null; opt: QuoteOption }[] = [];
-            if (g.noBalloon) cols.push({ key: 'nb', head: g.withBalloon ? 'No Balloon' : null, opt: g.noBalloon });
-            if (g.withBalloon) {
-              const m = g.withBalloon.lender_name.match(/([\d.]+)%\s*Balloon/i);
-              cols.push({ key: 'wb', head: g.noBalloon ? (m ? `${m[1]}% Balloon` : 'With Balloon') : null, opt: g.withBalloon });
-            }
-            const dual = cols.length === 2;
+            const cols = termColumns(g);
+            const dual = cols.length > 1;
+            const wide = isWide(g);
+            // A wide card's tables all share one column count, so a second
+            // table's figures line up under the first's.
+            const tables = chunk(cols, MAX_COLUMNS_PER_TABLE);
+            const perTable = Math.min(cols.length, MAX_COLUMNS_PER_TABLE);
+            const labelWidth = !dual ? 50 : wide ? 22 : 34;
             const recommended = g.termMonths === recommendedMonths;
             const { accent } = TERM_ACCENTS[termGroups.indexOf(g) % TERM_ACCENTS.length];
             const clientAmt = (o: QuoteOption) =>
@@ -606,6 +650,7 @@ export default function QuoteSheetComparison({
                   border: `1px solid ${hairline}`,
                   background: recommended ? subtleBg : paper,
                   boxSizing: 'border-box',
+                  ...(wide ? { gridColumn: '1 / -1' } : {}),
                 }}
               >
                 <div style={{
@@ -629,10 +674,11 @@ export default function QuoteSheetComparison({
                     </span>
                   )}
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums' }}>
+                {tables.map((cols, ti) => (
+                <table key={ti} style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontVariantNumeric: 'tabular-nums', ...(ti > 0 ? { borderTop: `1px solid ${hairline}` } : {}) }}>
                   <colgroup>
-                    <col style={{ width: dual ? '34%' : '50%' }} />
-                    {cols.map(c => <col key={c.key} />)}
+                    <col style={{ width: `${labelWidth}%` }} />
+                    {Array.from({ length: perTable }, (_, i) => <col key={i} style={{ width: `${(100 - labelWidth) / perTable}%` }} />)}
                   </colgroup>
                   {dual && (
                     <thead>
@@ -684,6 +730,7 @@ export default function QuoteSheetComparison({
                     })}
                   </tbody>
                 </table>
+                ))}
               </div>
             );
           })}
@@ -694,8 +741,7 @@ export default function QuoteSheetComparison({
         {preferredOpt && preferredGroup && (() => {
           const o = preferredOpt;
           const balloonAmt = o.balloon_residual ?? 0;
-          const m = o.lender_name.match(/([\d.]+)%\s*Balloon/i);
-          const balloonLabel = balloonAmt > 0 ? (m ? `${m[1]}% Balloon` : 'With Balloon') : 'No Balloon';
+          const balloonLabel = balloonAmt > 0 ? balloonHead(o) : 'No Balloon';
           const amtFin = isClientView
             ? (o.purchase_price ?? 0) - (o.deposit ?? 0) + (o.establishment_fee ?? 0) + (o.application_fee ?? 0)
             : o.loan_amount;

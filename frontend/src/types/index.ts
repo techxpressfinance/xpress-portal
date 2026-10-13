@@ -1504,6 +1504,9 @@ export interface QuoteInputParameters {
   // before custom terms used years and are migrated on read.
   balloon_percentages: Record<string, number>; // e.g. { "24": 62, "36": 55, "60": 35 }
   balloon_amounts: Record<string, number | null>; // Dollar overrides per term
+  // Further balloons quoted for the same term (5yr at 30% AND 5yr at 15%), in
+  // the order entered. The first balloon of a term stays in the two maps above.
+  extra_balloons?: Record<string, { percent: number; amount: number | null }[]>;
   monthly_account_fee: number;         // Ongoing monthly fee added to repayment
   non_taxable_charges: number;         // Lease only — non-taxable on-road charges
   luxury_car_tax: number;              // Lease only — luxury car tax
@@ -1518,6 +1521,7 @@ export interface QuoteInputParameters {
   show_preferred_option?: boolean;     // show a highlighted "recommended for you" callout
   preferred_term?: number;             // term (months) of the preferred option, e.g. 60
   preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
+  preferred_balloon_index?: number;    // which of the term's balloons, when it quotes several (0 = first)
 }
 
 export const QUOTE_SHEET_TYPES = ['client_quote', 'lender_pricing'] as const;

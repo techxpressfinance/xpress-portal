@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LOAN_CATEGORIES, applicationLoanCategory } from '../lib/constants';
-import { applicantDisplayName, applicantEmail } from '../lib/applicantName';
+import { applicantCounterpart, applicantDisplayName, applicantEmail, isCompanyApplicant } from '../lib/applicantName';
 import type { LoanApplication } from '../types';
 
 /**
  * The deal at a glance, pinned to the top of the scrolling page: applicant
- * (the only bold text), guarantors, loan category, amount and email, plus
+ * (the only bold text), the entity behind them, guarantors (or the directors
+ * standing in), loan category, amount and email, plus
  * an optional line above it with the breadcrumb on the left and page actions
  * (Download PDF, Clone, Delete…) on the right. Render it
  * as a direct child of the page root — sticky only holds within its parent.
@@ -22,20 +23,37 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  const personName = (p: { applicant_first_name?: string | null; applicant_last_name?: string | null }) =>
+    [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ');
+  const headline = applicantDisplayName(application);
+  const parties = application.additional_applicants || [];
   // Individual guarantors by name, then any company guaranteeing the loan.
   const guarantorNames = [
-    ...(application.additional_applicants || [])
-      .filter((p) => p.role === 'guarantor')
-      .map((p) => [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ')),
+    ...parties.filter((p) => p.role === 'guarantor').map(personName),
     ...(application.corporate_guarantors || []).map((g) => g.organization_name),
   ].filter(Boolean);
+  // Where nobody is recorded as a guarantor yet, the directors stand in — the
+  // primary held inline on a company application, then the other parties —
+  // labelled as directors, since that is all the application says they are.
+  const directorNames = guarantorNames.length > 0 ? [] : [...new Set([
+    isCompanyApplicant(application) ? personName(application) : '',
+    ...parties.map(personName),
+  ].filter((n) => n && n !== headline))];
+  // The business a person is applying for. A company applicant is already the
+  // headline name, so there is nothing further to name here.
+  const counterpart = applicantCounterpart(application);
+  const entityName = counterpart?.kind === 'entity' ? counterpart.name : '';
   const category = LOAN_CATEGORIES.find((c) => c.value === applicationLoanCategory(application))?.label;
   const email = applicantEmail(application);
   const chip = 'inline-flex items-center rounded-full px-3 py-1 text-[12.5px] font-medium';
   const glassChip = `${chip} bg-black/[0.045] text-[var(--led-ink-2,inherit)] ring-1 ring-inset ring-black/[0.06] dark:bg-white/10 dark:ring-white/10`;
   const details: ReactNode[] = [
+    entityName && <span key="entity" className={glassChip}>Entity · {entityName}</span>,
     guarantorNames.length > 0 && (
       <span key="guarantor" className={glassChip}>Guarantor · {guarantorNames.join(', ')}</span>
+    ),
+    directorNames.length > 0 && (
+      <span key="director" className={glassChip}>Director · {directorNames.join(', ')}</span>
     ),
     category && <span key="category" className={glassChip}>{category}</span>,
     application.amount != null && (
@@ -96,7 +114,7 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
         }}
       >
         <strong className="text-[19px] font-bold tracking-[-0.02em] text-foreground">
-          {applicantDisplayName(application) || '—'}
+          {headline || '—'}
         </strong>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{details}</div>
       </div>
