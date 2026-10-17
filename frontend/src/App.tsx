@@ -28,6 +28,7 @@ const LenderManagement = lazy(() => import('./pages/admin/LenderManagement'));
 const LenderDetail = lazy(() => import('./pages/admin/LenderDetail'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const ArrearsBook = lazy(() => import('./pages/admin/ArrearsBook'));
+const PrivateLedger = lazy(() => import('./pages/admin/PrivateLedger'));
 const Tasks = lazy(() => import('./pages/admin/Tasks'));
 const TaskDetail = lazy(() => import('./pages/admin/TaskDetail'));
 const Contacts = lazy(() => import('./pages/admin/Contacts'));
@@ -281,6 +282,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin', 'broker']}>
                     <ArrearsBook />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/ledger"
+                element={
+                  <ProtectedRoute roles={['admin', 'broker']}>
+                    <PrivateLedger />
                   </ProtectedRoute>
                 }
               />

@@ -15,6 +15,10 @@ from app.services.activity_log import log_activity
 from app.services.approval_conditions import add_conditions, clear_approval as clear_approval_details, ensure_condition_tasks
 from app.services.email import send_status_notification
 from app.services.notification_service import create_notification
+from app.services.settlement_checklist import (
+    create_follow_up_tasks as create_settlement_follow_ups,
+    require_complete as require_settlement_checklist,
+)
 from app.services.tax_invoice import ensure_request_for_approval
 
 
@@ -77,6 +81,12 @@ def change_application_status(
             status_code=400,
             detail=f"Cannot transition from '{current}' to '{new_status.value}'. Allowed: {allowed}",
         )
+
+    # Nothing settles until its loan settled checklist is ticked off — see
+    # services/settlement_checklist.py.
+    entering_settled = new_status == ApplicationStatus.settled and application.status != ApplicationStatus.settled
+    if entering_settled:
+        require_settlement_checklist(db, application, "loan_settled")
 
     going_back_from_approval = (
         application.status == ApplicationStatus.approval and new_status.value in PRE_APPROVAL_STATUSES
@@ -147,6 +157,10 @@ def change_application_status(
         db.delete(placement)
     if new_status == ApplicationStatus.settled and application.settled_at is None:
         application.settled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    # The settled checklist's later paperwork (amortisation schedule, contract
+    # number, accountant pack) becomes tasks due a few days out.
+    if entering_settled:
+        create_settlement_follow_ups(db, application, "loan_settled", actor_id, tenant_id)
     log_activity(
         db,
         actor_id,

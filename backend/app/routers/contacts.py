@@ -820,6 +820,9 @@ def _list_lending_history(contact_id: str, db: Session, tenant_id: str) -> list[
     entries = (
         db.query(LendingHistoryEntry)
         .filter(LendingHistoryEntry.tenant_id == tenant_id,
+                # Lines made from our own settled deals are already listed as
+                # applications — see services/commitment_schedule.py.
+                LendingHistoryEntry.application_id.is_(None),
                 (LendingHistoryEntry.contact_id == contact_id) | (LendingHistoryEntry.guaranteed_by_contact_id == contact_id))
         .order_by(LendingHistoryEntry.start_date.desc().nullslast(), LendingHistoryEntry.created_at.desc())
         .all()

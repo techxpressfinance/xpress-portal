@@ -269,3 +269,13 @@ BOARD_STAGE_TEMPLATES: dict[str, list[dict]] = {
     "home_loan": HOME_LOAN_STAGES,
     "commercial": COMMERCIAL_STAGES,
 }
+
+
+# Stages that ask for checklists before a card may enter them, by stage_key →
+# the checklists' purposes, in the order they are asked (see
+# services/settlement_checklist.py). Entering Settled asks for the loan settled
+# checklist on every board; that one goes by status, not stage, and is not
+# listed here.
+STAGE_ENTRY_CHECKLISTS = {
+    "af_settlement_docs": ("settlement_pack", "lender_submission"),
+}

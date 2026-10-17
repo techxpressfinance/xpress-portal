@@ -454,6 +454,10 @@ def merge_organizations(db: Session, primary: Organization, duplicates: list[Org
     db.query(ApplicationGuarantor).filter(ApplicationGuarantor.organization_id.in_(dup_ids)).update(
         {"organization_id": primary.id}, synchronize_session="fetch"
     )
+    # Commitment schedule lines belong to the surviving entity.
+    db.query(LendingHistoryEntry).filter(LendingHistoryEntry.organization_id.in_(dup_ids)).update(
+        {"organization_id": primary.id}, synchronize_session="fetch"
+    )
     # Trust structure: the duplicate's own parties come across, and any role it
     # held in someone else's trust now points at the primary.
     db.query(TrustParty).filter(TrustParty.organization_id.in_(dup_ids)).update(

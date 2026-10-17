@@ -166,6 +166,9 @@ class KanbanColumnOut(BaseModel):
     team: Optional[str] = None
     phase: Optional[str] = None
     awaiting: Optional[str] = None
+    # Checklist purposes a card must complete to enter, in order
+    # (KanbanColumn.entry_checklists).
+    entry_checklists: list[str] = Field(default_factory=list)
     gates: list[StageGateOut] = Field(default_factory=list)
     notifications: list[StageNotificationOut] = Field(default_factory=list)
     # Cards in the stage — applications, or leads on a lead stage.

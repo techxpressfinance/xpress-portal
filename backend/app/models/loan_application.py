@@ -255,6 +255,11 @@ class LoanApplication(Base):
     # is kept alongside so the record reads the same if the lender is later
     # renamed or retired. Lender pricing prefills its lender from this.
     approval_lender_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lenders.id"), nullable=True)
+    # Who the asset is bought from — "dealer", "private" or "auction" (the
+    # tax invoice's SupplierType values). Set by staff on the Tax Invoices tab;
+    # when unset, readers fall back to the latest tax invoice's supplier type
+    # (see services/tax_invoice.effective_sale_type).
+    sale_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])

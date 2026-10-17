@@ -57,6 +57,8 @@ from app.models.client_message import ClientMessage  # noqa: F401 — ensure tab
 from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table is created
 from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
 from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
+from app.models.settlement_checklist import SettlementChecklist  # noqa: F401 — ensure table is created
+from app.models.ledger import LedgerAuditEvent, LedgerDeal, LedgerGrant, LedgerInvoice, LedgerSettings  # noqa: F401 — ensure tables are created
 from app.models.decline_reason import DeclineReason  # noqa: F401 — ensure table is created
 from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsAttachment,
@@ -67,7 +69,7 @@ from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsSnapshot,
 )
 from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, contacts, dashboard, decline_reasons, documents, external_referrers, invitations, kanban, leads, lenders, lender_submissions, messages, notes_history, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, commitment_schedules, contacts, dashboard, decline_reasons, documents, external_referrers, invitations, kanban, leads, ledger, lenders, lender_submissions, messages, notes_history, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, settlement_checklists, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
 
 # Configure logging
 logging.basicConfig(
@@ -335,6 +337,8 @@ _MIGRATIONS = [
     ("loan_applications", "approval_lender_name", "VARCHAR(200)"),
     # The approving lender as a lender-book link; prefills lender pricing
     ("loan_applications", "approval_lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+    # Dealer / private / auction sale, set on the Tax Invoices tab
+    ("loan_applications", "sale_type", "VARCHAR(20)"),
     # Marks a Task as auto-generated from an application's approval conditions
     ("tasks", "is_approval_conditions_task", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Links a checklist item back to the ApprovalCondition it mirrors, for
@@ -442,6 +446,20 @@ _MIGRATIONS = [
     ("application_notes", "decline_reason_id", "VARCHAR(36) REFERENCES decline_reasons(id) ON DELETE SET NULL"),
     ("application_notes", "updated_at", "TIMESTAMP"),
     ("application_notes", "updated_by_id", "VARCHAR(36) REFERENCES users(id)"),
+    # Business commitment schedule — see models/lending_history_entry.py.
+    ("lending_history_entries", "organization_id", "VARCHAR(36) REFERENCES organizations(id)"),
+    ("lending_history_entries", "application_id", "VARCHAR(36)"),
+    ("lending_history_entries", "interest_rate", "FLOAT"),
+    ("lending_history_entries", "term_months", "INTEGER"),
+    ("lending_history_entries", "end_date", "DATE"),
+    ("lending_history_entries", "asset_description", "TEXT"),
+    ("lending_history_entries", "vin", "TEXT"),
+    ("lending_history_entries", "ppsr_charge_number", "VARCHAR(60)"),
+    ("lending_history_entries", "ppsr_change_number", "VARCHAR(60)"),
+    ("lending_history_entries", "ppsr_organisation_identifier", "VARCHAR(60)"),
+    ("lending_history_entries", "asset_price_ex_gst", "FLOAT"),
+    ("lending_history_entries", "gst_claimed", "FLOAT"),
+    ("lending_history_entries", "tax_invoice_date", "DATE"),
 ]
 
 _logger = logging.getLogger(__name__)
@@ -455,6 +473,28 @@ with engine.begin() as conn:
         if col not in _column_cache[table]:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
             _logger.info("Added column %s.%s", table, col)
+
+# An entity can hold commitments now, so a lending history line's contact_id
+# became optional. Postgres drops the constraint in place; SQLite can't, so the
+# table is rebuilt from the model and the rows copied across.
+_lhe_cols = {c["name"]: c for c in inspect(engine).get_columns("lending_history_entries")}
+if _lhe_cols.get("contact_id", {}).get("nullable") is False:
+    with engine.begin() as conn:
+        if _dialect == "sqlite":
+            from app.models.lending_history_entry import LendingHistoryEntry as _LHE
+
+            for _ix in inspect(engine).get_indexes("lending_history_entries"):
+                conn.execute(text(f'DROP INDEX IF EXISTS "{_ix["name"]}"'))
+            conn.execute(text("ALTER TABLE lending_history_entries RENAME TO lending_history_entries_old"))
+            _LHE.__table__.create(conn)
+            _copy = ", ".join(c for c in _lhe_cols if c in _LHE.__table__.c)
+            conn.execute(text(
+                f"INSERT INTO lending_history_entries ({_copy}) SELECT {_copy} FROM lending_history_entries_old"
+            ))
+            conn.execute(text("DROP TABLE lending_history_entries_old"))
+        else:
+            conn.execute(text("ALTER TABLE lending_history_entries ALTER COLUMN contact_id DROP NOT NULL"))
+        _logger.info("Made lending_history_entries.contact_id nullable")
 
 # Contact↔company links were created without a tenant for most of their life, and
 # anything that reads them tenant-scoped (seeding an application's directors from
@@ -1305,7 +1345,11 @@ app.include_router(tasks.router)
 app.include_router(quote_sheets.router)
 app.include_router(standalone_quote_sheets.router)
 app.include_router(tax_invoices.router)
+app.include_router(tax_invoices.sale_type_router)
+app.include_router(settlement_checklists.router)
+app.include_router(ledger.router)
 app.include_router(contacts.router)
+app.include_router(commitment_schedules.router)
 app.include_router(organizations.router)
 app.include_router(service_requests.router)
 app.include_router(application_calculators.router)

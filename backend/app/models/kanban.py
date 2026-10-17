@@ -87,6 +87,18 @@ class KanbanColumn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     board = relationship("KanbanBoard", back_populates="columns")
+
+    @property
+    def entry_checklists(self) -> list[str]:
+        """Checklist purposes a card must complete to enter this stage, in order.
+        A stage rolling up to Settled asks for the loan settled checklist."""
+        from app.constants import STAGE_ENTRY_CHECKLISTS
+
+        purposes = list(STAGE_ENTRY_CHECKLISTS.get(self.stage_key or "", ()))
+        if self.mapped_status == "settled":
+            purposes.append("loan_settled")
+        return purposes
+
     gates = relationship(
         "KanbanColumnGate",
         back_populates="column",

@@ -54,6 +54,7 @@ STAFF_ONLY_KEYS = frozenset({
     "approval_lender_name",
     "approval_lender_id",
     "approval_conditions",
+    "sale_type",
     "needs_reconciliation",
     "reconciliation_note",
     "kanban_column_id",

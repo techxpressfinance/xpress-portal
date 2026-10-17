@@ -6,6 +6,7 @@ import api from '../../api/client';
 import AnalysisPanel from '../../components/AnalysisPanel';
 import ApplicationCalculators from '../../components/ApplicationCalculators';
 import DirectorsSection from '../../components/DirectorsSection';
+import SettlementChecklistDialog from '../../components/SettlementChecklistDialog';
 import DocumentPreviewModal from '../../components/DocumentPreviewModal';
 import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import QuoteSheetEditor from '../../components/QuoteSheetEditor';
@@ -287,6 +288,7 @@ export default function ReviewApplication() {
   const [savingEditFields, setSavingEditFields] = useState(false);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [settlementChecklistOpen, setSettlementChecklistOpen] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [reasonModalStatus, setReasonModalStatus] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState('');
@@ -631,6 +633,9 @@ export default function ReviewApplication() {
       const existing = application?.approval_conditions?.map((c) => c.text) || [];
       setApprovalConditions(existing.length ? existing : ['', '']);
       setApprovalModalOpen(true);
+    } else if (newStatus === 'settled' && application?.status !== 'settled') {
+      // The loan settled checklist comes first; the status confirm follows it.
+      setSettlementChecklistOpen(true);
     } else {
       setPendingStatus(newStatus);
     }
@@ -4514,6 +4519,19 @@ export default function ReviewApplication() {
         </div>,
         document.body,
       )}
+
+      <SettlementChecklistDialog
+        open={settlementChecklistOpen}
+        applicationId={id ?? null}
+        purpose="loan_settled"
+        subtitle={application ? applicantDisplayName(application) : undefined}
+        continueLabel="Save & continue"
+        onCancel={() => setSettlementChecklistOpen(false)}
+        onComplete={() => {
+          setSettlementChecklistOpen(false);
+          setPendingStatus('settled');
+        }}
+      />
 
       <ConfirmDialog
         open={!!pendingStatus}

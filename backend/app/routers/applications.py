@@ -477,6 +477,8 @@ _CLONE_RESET_COLUMNS = frozenset({
     "signature_name",
     # The approval belongs to the source loan; the clone starts as a draft
     "approval_lender_name", "approval_lender_id",
+    # Who the asset is bought from is this deal's, not the clone's
+    "sale_type",
 })
 
 #: Party columns set explicitly or deliberately dropped when cloning a director /

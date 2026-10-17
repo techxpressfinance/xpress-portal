@@ -945,6 +945,25 @@ def prefill_from_application(
     }
 
 
+def effective_sale_type(db: Session, application: LoanApplication) -> tuple[Optional[str], Optional[str]]:
+    """Who the asset is bought from, and where that answer came from.
+
+    The broker's choice on the application wins; until one is made, the latest
+    tax invoice's supplier type stands in. Returns ``(sale_type, source)`` with
+    source "application" or "tax_invoice", or ``(None, None)`` with neither."""
+    if application.sale_type:
+        return application.sale_type, "application"
+    invoice = (
+        db.query(TaxInvoice)
+        .filter(TaxInvoice.application_id == application.id)
+        .order_by(TaxInvoice.created_at.desc())
+        .first()
+    )
+    if invoice:
+        return invoice.supplier_type.value, "tax_invoice"
+    return None, None
+
+
 def ensure_request_for_approval(
     db: Session,
     application: LoanApplication,
@@ -963,12 +982,15 @@ def ensure_request_for_approval(
     if db.query(TaxInvoice).filter(TaxInvoice.application_id == application.id).first():
         return None
 
+    # A sale already marked private or auction gets that seller's invoice; a
+    # dealer request otherwise.
+    supplier_type = SupplierType(application.sale_type) if application.sale_type else SupplierType.dealer
     invoice = TaxInvoice(
         application_id=application.id,
         tenant_id=tenant_id,
-        supplier_type=SupplierType.dealer,
+        supplier_type=supplier_type,
         created_by_id=actor_id,
-        **prefill_from_application(db, application, SupplierType.dealer, actor_id=actor_id),
+        **prefill_from_application(db, application, supplier_type, actor_id=actor_id),
     )
     db.add(invoice)
     db.flush()
@@ -979,7 +1001,7 @@ def ensure_request_for_approval(
             "tax_invoice_created",
             "application",
             application.id,
-            {"supplier_type": SupplierType.dealer.value, "auto": "approval"},
+            {"supplier_type": supplier_type.value, "auto": "approval"},
             tenant_id=tenant_id,
         )
     return invoice
