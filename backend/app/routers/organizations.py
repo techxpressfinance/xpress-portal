@@ -11,6 +11,7 @@ from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
 from app.models.loan_applicant import ApplicationGuarantor
+from app.models.lending_history_entry import LendingHistoryEntry
 from app.models.loan_application import LoanApplication
 from app.models.trust_party import TrustParty
 from app.models.user import User
@@ -725,8 +726,15 @@ def delete_organization(
         .filter(TrustParty.linked_organization_id == org_id)
         .scalar() or 0
     )
-    if linked_apps or linked_contacts or linked_guarantees or linked_trust_roles:
+    linked_commitments = (
+        db.query(func.count(LendingHistoryEntry.id))
+        .filter(LendingHistoryEntry.organization_id == org_id)
+        .scalar() or 0
+    )
+    if linked_apps or linked_contacts or linked_guarantees or linked_trust_roles or linked_commitments:
         bits = []
+        if linked_commitments:
+            bits.append(f"{linked_commitments} commitment schedule line{'s' if linked_commitments != 1 else ''}")
         if linked_contacts:
             bits.append(f"{linked_contacts} contact{'s' if linked_contacts != 1 else ''}")
         if linked_apps:

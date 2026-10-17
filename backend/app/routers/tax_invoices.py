@@ -12,7 +12,7 @@ from app.middleware.auth import require_role
 from app.models.loan_application import LoanApplication
 from app.models.tax_invoice import AbnStatus, SupplierType, TaxInvoice, TaxInvoiceStatus
 from app.models.user import User
-from app.schemas.tax_invoice import BuyerAddressUpdate, TaxInvoiceCreate, TaxInvoiceUpdate
+from app.schemas.tax_invoice import BuyerAddressUpdate, SaleTypeUpdate, TaxInvoiceCreate, TaxInvoiceUpdate
 from app.services.access_control import check_application_access
 from app.services.abr import AbrUnavailable, lookup_abn
 from app.services.activity_log import log_activity
@@ -30,6 +30,7 @@ from app.services.tax_invoice import (
     classify_condition,
     completeness,
     desk_recipients,
+    effective_sale_type,
     prefill_from_application,
     serialize,
 )
@@ -37,6 +38,9 @@ from app.services.tenant_scope import get_tenant_id
 from app.services.upload_validation import validate_attachment
 
 router = APIRouter(prefix="/api/applications/{app_id}/tax-invoices", tags=["tax-invoices"])
+# Dealer / private / auction sale on the application itself — set beside the
+# invoices, read by the settlement pack's suggestion.
+sale_type_router = APIRouter(prefix="/api/applications/{app_id}/sale-type", tags=["tax-invoices"])
 
 # Amounts arrive as floats from JSON; store them as Decimal so the totals never
 # inherit binary-float error.
@@ -411,3 +415,38 @@ def delete_tax_invoice(
     log_activity(db, current_user.id, "tax_invoice_deleted", "application", app_id, {"invoice_number": invoice.invoice_number}, tenant_id=tenant_id)
     db.delete(invoice)
     db.commit()
+
+
+def _sale_type_out(db: Session, application: LoanApplication) -> dict:
+    sale_type, source = effective_sale_type(db, application)
+    return {"sale_type": sale_type, "source": source}
+
+
+@sale_type_router.get("")
+def get_sale_type(
+    app_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = _get_application(db, app_id, tenant_id, current_user)
+    return _sale_type_out(db, application)
+
+
+@sale_type_router.put("")
+def set_sale_type(
+    app_id: str,
+    data: SaleTypeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    application = _get_application(db, app_id, tenant_id, current_user)
+    if application.sale_type != data.sale_type:
+        log_activity(
+            db, current_user.id, "sale_type_changed", "application", app_id,
+            {"from": application.sale_type, "to": data.sale_type}, tenant_id=tenant_id,
+        )
+        application.sale_type = data.sale_type
+        db.commit()
+    return _sale_type_out(db, application)

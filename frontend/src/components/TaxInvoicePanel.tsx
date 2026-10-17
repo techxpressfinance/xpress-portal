@@ -7,7 +7,8 @@ import { getErrorMessage, formatDate } from '../lib/utils';
 import { downloadElementPdf, elementPdfBlob } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
-import type { AbnStatus, InvoiceFacilityType, Lender, SupplierType, TaxInvoice, TaxInvoiceParty } from '../types';
+import type { AbnStatus, InvoiceFacilityType, Lender, SaleTypeInfo, SupplierType, TaxInvoice, TaxInvoiceParty } from '../types';
+import { SUPPLIER_LABEL } from '../types';
 
 /**
  * Tax invoices for the asset being financed.
@@ -30,12 +31,6 @@ import type { AbnStatus, InvoiceFacilityType, Lender, SupplierType, TaxInvoice, 
  * Totals are never computed here — the server derives them, so the printed
  * document can't disagree with the record.
  */
-
-const SUPPLIER_LABEL: Record<SupplierType, string> = {
-  dealer: 'Dealer',
-  private: 'Private seller',
-  auction: 'Auction house',
-};
 
 /** What each kind of document is, shown before one is created so the broker
  *  picks deliberately rather than by the first button they see. */
@@ -129,6 +124,10 @@ export default function TaxInvoicePanel({
   // rather than a typed name. Empty after a failure — the field then shows what
   // the lender pricing already recorded and nothing else.
   const [lenderBook, setLenderBook] = useState<Lender[]>([]);
+  // Dealer / private / auction sale for the whole deal. Unmarked, it reads
+  // through to the latest invoice's seller; the settlement pack suggests from it.
+  const [saleType, setSaleType] = useState<SaleTypeInfo>({ sale_type: null, source: null });
+  const [savingSaleType, setSavingSaleType] = useState(false);
 
   useEffect(() => {
     api.get<Lender[]>('/lenders')
@@ -138,8 +137,12 @@ export default function TaxInvoicePanel({
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/applications/${applicationId}/tax-invoices`);
+      const [{ data }, { data: sale }] = await Promise.all([
+        api.get(`/applications/${applicationId}/tax-invoices`),
+        api.get<SaleTypeInfo>(`/applications/${applicationId}/sale-type`),
+      ]);
       setInvoices(data);
+      setSaleType(sale);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to load tax invoices'), 'error');
     } finally {
@@ -156,12 +159,15 @@ export default function TaxInvoicePanel({
   useEffect(() => {
     if (!autoOpen || loading || autoOpened.current) return;
     autoOpened.current = true;
-    const dealer = invoices.find((i) => i.supplier_type === 'dealer');
-    if (dealer) {
-      setOpenId(dealer.id);
+    // A sale marked private or auction wants that seller's invoice, not a
+    // dealer request.
+    const wanted: SupplierType = saleType.source === 'application' && saleType.sale_type ? saleType.sale_type : 'dealer';
+    const existing = invoices.find((i) => i.supplier_type === wanted);
+    if (existing) {
+      setOpenId(existing.id);
       setDraft({});
     } else {
-      create('dealer');
+      create(wanted);
     }
     onAutoOpened?.();
   }, [autoOpen, loading, invoices]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -195,6 +201,18 @@ export default function TaxInvoicePanel({
       toast(getErrorMessage(err, 'Failed to start the invoice'), 'error');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const markSaleType = async (next: SupplierType | null) => {
+    setSavingSaleType(true);
+    try {
+      const { data } = await api.put<SaleTypeInfo>(`/applications/${applicationId}/sale-type`, { sale_type: next });
+      setSaleType(data);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save the sale type'), 'error');
+    } finally {
+      setSavingSaleType(false);
     }
   };
 
@@ -398,10 +416,12 @@ export default function TaxInvoicePanel({
             </>
           )}
           {!choosing && (
-            <Button type="button" variant="secondary" onClick={() => setChoosing(true)}>+ New invoice</Button>
+            <Button type="button" variant="secondary" onClick={() => { setPicked(saleType.sale_type); setChoosing(true); }}>+ New invoice</Button>
           )}
         </div>
       </div>
+
+      <SaleTypePicker info={saleType} saving={savingSaleType} onChange={markSaleType} />
 
       {choosing && (
         <NewInvoiceChooser
@@ -1018,6 +1038,50 @@ function Check({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} />
       <span className="text-[13px] text-foreground">{label}</span>
     </label>
+  );
+}
+
+/** Who the asset is bought from, for the whole deal. Marking it here is what
+ *  the settlement pack suggests from; left unmarked, the latest invoice's
+ *  seller stands in and is shown as such. */
+function SaleTypePicker({
+  info, saving, onChange,
+}: {
+  info: SaleTypeInfo;
+  saving: boolean;
+  onChange: (t: SupplierType | null) => void;
+}) {
+  const marked = info.source === 'application' ? info.sale_type : null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md bg-secondary px-3 py-2">
+      <span className="text-[12.5px] font-medium text-foreground">Sale type</span>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Sale type">
+        {(Object.keys(SUPPLIER_LABEL) as SupplierType[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="radio"
+            aria-checked={marked === t}
+            disabled={saving}
+            onClick={() => onChange(marked === t ? null : t)}
+            className={`rounded-md border px-2.5 py-1 text-[12.5px] ${
+              marked === t
+                ? 'border-primary bg-primary/10 font-medium text-foreground'
+                : 'border-[var(--led-line)] bg-card text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {SUPPLIER_LABEL[t]}
+          </button>
+        ))}
+      </div>
+      <span className="text-[11.5px] text-muted-foreground">
+        {info.source === 'tax_invoice' && info.sale_type
+          ? `Not marked — using the latest invoice: ${SUPPLIER_LABEL[info.sale_type].toLowerCase()}`
+          : info.source === 'application'
+            ? 'Click again to clear'
+            : 'Not marked yet'}
+      </span>
+    </div>
   );
 }
 

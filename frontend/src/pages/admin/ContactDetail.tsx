@@ -8,7 +8,9 @@ import { Card, PageHeader, Button, Badge, Input, Select, Breadcrumbs, DatePicker
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import { APPLICATION_STATUSES } from '../../types';
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
+import SettlementChecklistDialog from '../../components/SettlementChecklistDialog';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
+import CommitmentScheduleSection from '../../components/CommitmentScheduleSection';
 import PortalAccess from '../../components/clients/PortalAccess';
 import ContactLendingHistory from '../../components/clients/ContactLendingHistory';
 import StartContactApplication from '../../components/clients/StartContactApplication';
@@ -207,14 +209,26 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
     business_abn: app.business_abn ?? '',
   });
 
+  // Moving to Settled needs the deal's loan settled checklist first.
+  const [checklistOpen, setChecklistOpen] = useState(false);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // The checklist on top handles its own Escape.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !checklistOpen) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, checklistOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.status === 'settled' && app.status !== 'settled') {
+      setChecklistOpen(true);
+      return;
+    }
+    void save();
+  };
+
+  const save = async () => {
     // Going back from Approval deletes the lender and approval conditions.
     const clearApproval = form.status !== app.status && clearsApproval(app.status, form.status);
     if (clearApproval && !(await confirm({
@@ -317,6 +331,17 @@ function EditLendingEntryModal({ app, onClose, onSaved }: {
           </div>
         </form>
       </div>
+      <SettlementChecklistDialog
+        open={checklistOpen}
+        applicationId={app.id}
+        purpose="loan_settled"
+        continueLabel="Save & settle"
+        onCancel={() => setChecklistOpen(false)}
+        onComplete={() => {
+          setChecklistOpen(false);
+          void save();
+        }}
+      />
     </div>,
     document.body,
   );
@@ -1001,6 +1026,7 @@ export default function ContactDetail() {
       <section id="lending-history" className="scroll-mt-6">
         <ContactLendingHistory key={contact.id} contact={contact} onAdd={() => setLendingModal({ entry: null })} onNotes={() => setShowNotesHistory(true)} onEditLoan={entry => setLendingModal({ entry })} onDeleteLoan={handleDeleteLendingEntry} onEditApplication={setEditingApp} deletingId={deletingEntryId} />
       </section>
+      <CommitmentScheduleSection key={`cs-${contact.id}`} holderType="contact" holderId={contact.id} />
       {showNotesHistory && id && <NotesHistoryModal subject={{ type: 'contact', id }} onClose={() => setShowNotesHistory(false)} />}
       {/* Companies */}
       <section id="entities" className="scroll-mt-6"><Card>

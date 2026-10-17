@@ -12,6 +12,13 @@ class TaxInvoiceCreate(BaseModel):
     invoice_date: Optional[date] = None
 
 
+class SaleTypeUpdate(BaseModel):
+    """Who the asset is bought from, marked on the application. None clears it,
+    so the latest tax invoice's supplier type stands in again."""
+
+    sale_type: Optional[Literal["dealer", "private", "auction"]] = None
+
+
 class BuyerAddressUpdate(BaseModel):
     """The Sold To company's address, saved to its entity record."""
 

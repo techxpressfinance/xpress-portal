@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getInitials, relativeTime, fmtMoneyK, avatarColor, daysSince, getErrorMessage } from '../../lib/utils';
 import { COLUMN_COLOR_OPTIONS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, STATUS_LABEL, VALID_TRANSITIONS, clearsApproval, findLoanSubType } from '../../lib/constants';
 import ApprovalClearWarning from '../../components/ApprovalClearWarning';
+import SettlementChecklistDialog from '../../components/SettlementChecklistDialog';
 import { applicantCounterpart, applicantDisplayName } from '../../lib/applicantName';
 import { formatAbn, isValidAbn } from '../../lib/acn';
 import { useAbrNameSearch } from '../../hooks/useAbrLookup';
@@ -18,7 +19,7 @@ import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ProgressLink from '../../components/ProgressLink';
 import LenderCombobox from '../../components/LenderCombobox';
-import type { ApplicationStatus, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanCardKind, KanbanColumn, Lead, Lender, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
+import type { ApplicationStatus, ChecklistPurpose, GateAnswer, KanbanBoard as KanbanBoardType, KanbanBoardListItem, KanbanCardKind, KanbanColumn, Lead, Lender, LoanApplication, LoanCategory, NotificationAudience, NotificationChannel, StageGate, StageNotificationRule, User } from '../../types';
 
 // ── Design tokens (map column color value → the theme token for the dot) ──
 // These were fixed OKLCH literals, so a stage dot kept its light-mode colour
@@ -937,6 +938,9 @@ export default function KanbanBoardPage() {
     notifications: StageNotificationRule[];
   } | null>(null);
   const [movingApp, setMovingApp] = useState(false);
+  // A move into Settled waiting on the deal's settlement checklist.
+  // Checklists still to be done, first one on screen.
+  const [settlementMove, setSettlementMove] = useState<{ app: LoanApplication; sourceColId: string; targetColumnId: string; purposes: ChecklistPurpose[] } | null>(null);
   // Answers to the target stage's gates, keyed by gate id.
   const [gateAnswers, setGateAnswers] = useState<Record<string, GateAnswer>>({});
   // The approving lender, picked from the lender book when entering Approval.
@@ -1314,6 +1318,21 @@ export default function KanbanBoardPage() {
       toast("An application can't go back to being a lead — move it to Not Proceeding instead", 'error');
       return;
     }
+    // Some stages ask for checklists on entry — the settlement pack and lender
+    // checks before Submitted to Lender, the loan settled checklist before
+    // Settled. They come one after another; the move's own confirmation
+    // follows. A deal already settled isn't asked to settle again.
+    const purposes = (targetCol.entry_checklists ?? [])
+      .filter((p) => !(p === 'loan_settled' && movedApp.status === 'settled'));
+    if (purposes.length) {
+      setSettlementMove({ app: movedApp, sourceColId, targetColumnId, purposes });
+      return;
+    }
+    openMoveConfirmation(movedApp, sourceColId, targetCol);
+  };
+
+  const openMoveConfirmation = (movedApp: LoanApplication, sourceColId: string, targetCol: KanbanColumn) => {
+    const targetColumnId = targetCol.id;
 
     // Seed each gate's answer. An approval-conditions gate starts from whatever
     // the application already carries, so a re-entry doesn't retype the list.
@@ -1356,6 +1375,10 @@ export default function KanbanBoardPage() {
     if (!targetCol) return;
     if (targetCol.card_kind === 'lead') {
       void moveLeadBetweenLeadStages(lead, sourceColId, targetCol);
+      return;
+    }
+    if (targetCol.entry_checklists?.length) {
+      toast(`A lead can't go straight to "${targetCol.title}" — convert it first, then complete its checklist`, 'error');
       return;
     }
     const gates = withApprovalGate(targetCol, true);
@@ -2478,6 +2501,25 @@ export default function KanbanBoardPage() {
           </button>
         </div>
       </Modal>
+
+      <SettlementChecklistDialog
+        open={!!settlementMove}
+        applicationId={settlementMove?.app.id ?? null}
+        purpose={settlementMove?.purposes[0] ?? 'loan_settled'}
+        subtitle={settlementMove ? applicantDisplayName(settlementMove.app) : undefined}
+        continueLabel="Save & continue"
+        onCancel={() => setSettlementMove(null)}
+        onComplete={() => {
+          const move = settlementMove;
+          if (move && move.purposes.length > 1) {
+            setSettlementMove({ ...move, purposes: move.purposes.slice(1) });
+            return;
+          }
+          setSettlementMove(null);
+          const targetCol = move && activeBoard?.columns.find((c) => c.id === move.targetColumnId);
+          if (move && targetCol) openMoveConfirmation(move.app, move.sourceColId, targetCol);
+        }}
+      />
 
       <ConfirmDialog
         open={!!deletingColumn}

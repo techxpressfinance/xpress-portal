@@ -287,6 +287,8 @@ export interface LoanApplication {
   approval_lender_name?: string | null;
   /** The approving lender in the lender book; lender pricing starts from it. */
   approval_lender_id?: string | null;
+  /** Staff only — who the asset is bought from, marked on the Tax Invoices tab. */
+  sale_type?: SupplierType | null;
   approval_conditions?: ApprovalCondition[];
   settled_at?: string | null;
   /** The broker's choices on the direct debit first payment request (JSON —
@@ -295,6 +297,48 @@ export interface LoanApplication {
   /** The broker's choices on the early termination and balloon payout
    *  declarations (JSON — see lib/settlementDeclarations.ts). */
   settlement_declarations?: string | null;
+}
+
+// Checklists a broker ticks off before a deal may move on (see backend
+// services/settlement_checklist.py). settlement_pack — the pack sent to the
+// lender, one of three kinds by deal; lender_submission — the desk's checks
+// before it goes; loan_settled — what must be done when the loan settles.
+export type SettlementChecklistKind = 'consumer' | 'dealer_sale' | 'private_sale' | 'lender_submission' | 'loan_settled';
+export type ChecklistPurpose = 'settlement_pack' | 'lender_submission' | 'loan_settled';
+
+export interface SettlementChecklistItem {
+  key: string;
+  label: string;
+  note: string | null;
+  // May be marked N/A instead of ticked (insurance over $100k, a payout letter "if any").
+  optional: boolean;
+  subs: { key: string; label: string; optional: boolean }[];
+}
+
+export interface SettlementChecklistTemplate {
+  kind: SettlementChecklistKind;
+  title: string;
+  items: SettlementChecklistItem[];
+  // Raised as tasks when the deal enters the stage, due `days_after` it.
+  follow_ups?: { key: string; title: string; note: string | null; days_after: number }[];
+}
+
+export interface SettlementChecklistAnswer {
+  state: 'done' | 'na' | null;
+  subs: string[];
+}
+
+export interface SettlementChecklist {
+  purpose: ChecklistPurpose;
+  kind: SettlementChecklistKind;
+  suggested_kind: SettlementChecklistKind;
+  sale_type: SaleTypeInfo;
+  answers: Record<string, SettlementChecklistAnswer>;
+  outstanding: string[];
+  completed_at: string | null;
+  prepared_by_name: string | null;
+  updated_at: string | null;
+  templates: SettlementChecklistTemplate[];
 }
 
 // A lender-approval condition, checked off like a task checklist item. Replaced
@@ -1061,6 +1105,19 @@ export interface StageTransition {
 export const SUPPLIER_TYPES = ['dealer', 'private', 'auction'] as const;
 export type SupplierType = (typeof SUPPLIER_TYPES)[number];
 
+export const SUPPLIER_LABEL: Record<SupplierType, string> = {
+  dealer: 'Dealer',
+  private: 'Private seller',
+  auction: 'Auction house',
+};
+
+/** The deal's sale type: marked on the application (`source: 'application'`),
+ *  else the latest tax invoice's supplier type (`'tax_invoice'`), else neither. */
+export interface SaleTypeInfo {
+  sale_type: SupplierType | null;
+  source: 'application' | 'tax_invoice' | null;
+}
+
 export interface TaxInvoiceTotals {
   subtotal: number;
   gst: number;
@@ -1297,6 +1354,8 @@ export interface KanbanColumn {
   color: string | null;
   // Set when the stage came from a board template (see BOARD_STAGE_TEMPLATES).
   stage_key: string | null;
+  // Checklists a card must complete to enter this stage, in order.
+  entry_checklists?: ChecklistPurpose[];
   team: string | null;
   /** Band over consecutive stages on the board, e.g. "Application Started". */
   phase: string | null;
@@ -2119,3 +2178,246 @@ export type TrackingPage =
       /** The borrower's portal account, if any: has_login picks "log in" vs "sign up". */
       client_login: { has_login: boolean } | null;
     };
+
+// Business commitment schedule — every loan a person or entity holds, ours
+// first, then those held elsewhere (see backend services/commitment_schedule.py).
+export type CommitmentHolderType = 'contact' | 'organization';
+export type CommitmentColumnKind = 'int' | 'date' | 'text' | 'money' | 'term' | 'percent' | 'multiline';
+
+export interface CommitmentColumn {
+  key: string;
+  label: string;
+  kind: CommitmentColumnKind;
+  default: boolean;
+}
+
+export interface CommitmentRow {
+  id: string;
+  application_id: string | null;
+  sr: number;
+  settled_date: string | null;
+  lender_name: string;
+  amount: number;
+  monthly_repayment: number | null;
+  term_months: number | null;
+  balloon: number | null;
+  interest_rate: number | null;
+  asset_description: string | null;
+  vin: string | null;
+  end_date: string | null;
+  ppsr_charge_number: string | null;
+  ppsr_change_number: string | null;
+  ppsr_organisation_identifier: string | null;
+  asset_price_ex_gst: number | null;
+  gst_claimed: number | null;
+  tax_invoice_date: string | null;
+  // Editing only — never on an export.
+  edit: {
+    repayment_amount: number | null;
+    repayment_frequency: RepaymentFrequency | null;
+    notes: string | null;
+    other_broker_name: string | null;
+  };
+  missing: string[];
+}
+
+export interface CommitmentTotals {
+  amount: number;
+  monthly_repayment: number;
+  balloon: number;
+  annual_repayment: number;
+}
+
+export interface CommitmentSchedule {
+  holder: { type: CommitmentHolderType; id: string; name: string; abn: string | null };
+  arranger: string;
+  generated_at: string;
+  columns: CommitmentColumn[];
+  sections: { key: 'ours' | 'other'; title: string; rows: CommitmentRow[]; totals: CommitmentTotals }[];
+  totals: CommitmentTotals;
+}
+
+// ── Private commission ledger (owner-controlled; see backend services/ledger.py) ──
+
+export type LedgerScope = 'summary' | 'deals' | 'income' | 'referrers' | 'invoices' | 'export' | 'payments';
+export type LedgerCategory = 'asset_finance' | 'consumer' | 'home_loan' | 'commercial';
+export type LedgerShareBase = 'brokerage' | 'total_income' | 'finance_amount';
+
+export interface LedgerColumn {
+  key: string;
+  label: string;
+  kind: 'date' | 'bool' | 'text' | 'money';
+  scope: LedgerScope;
+}
+
+export interface LedgerAccessInfo {
+  access: boolean;
+  is_owner?: boolean;
+  scopes?: LedgerScope[];
+  columns?: LedgerColumn[];
+  scope_labels?: Record<string, string>;
+  categories?: Record<LedgerCategory, string>;
+}
+
+/** One settled deal. Fields outside the viewer's scopes are absent, not null. */
+export interface LedgerDealRow {
+  application_id: string;
+  settled_on: string;
+  month: string;
+  customer_name: string;
+  entity_name: string | null;
+  category: LedgerCategory | null;
+  loan_type: string;
+  new_lead: boolean;
+  repeat_customer: boolean;
+  finance_amount: number;
+  brokerage?: number;
+  brokerage_gst?: number;
+  doc_fee?: number;
+  doc_fee_gst?: number;
+  origination_fee?: number;
+  origination_gst?: number;
+  vir?: number;
+  vir_gst?: number;
+  income_ex_gst?: number;
+  income_inc_gst?: number;
+  income_gst?: boolean;
+  lender_name: string | null;
+  referrer_id: string | null;
+  referrer_name: string | null;
+  referrer_organization: string | null;
+  share_percent?: number | null;
+  share_base?: LedgerShareBase;
+  share_amount?: number | null;
+  share_gst?: boolean;
+  referrer_comms_ex_gst?: number;
+  referrer_comms_gst?: number;
+  referrer_comms_inc_gst?: number;
+  volume_bonus?: number;
+  net_profit?: number;
+  is_clawback: boolean;
+  paid_on?: string | null;
+  payment_method?: string | null;
+  payment_notes?: string | null;
+  has_entry?: boolean;
+  /** Owner only — fields still showing the application's figure, not one entered. */
+  prefilled?: string[];
+}
+
+export type LedgerTotals = { count: number } & Partial<Record<string, number>>;
+
+export interface LedgerDealsResponse {
+  date_from: string | null;
+  date_to: string | null;
+  totals?: LedgerTotals;
+  months?: { month: string; totals: LedgerTotals }[];
+  deals?: LedgerDealRow[];
+}
+
+export interface LedgerReferrerSummary {
+  referrer_id: string;
+  referrer_name: string | null;
+  referrer_organization: string | null;
+  deals: number;
+  finance_amount: number;
+  referrer_comms_ex_gst: number;
+  referrer_comms_gst: number;
+  referrer_comms_inc_gst: number;
+  unpaid_deals?: number;
+  unpaid_comms_inc_gst?: number;
+}
+
+export interface LedgerReferrerOption {
+  id: string;
+  full_name: string;
+  organization_name: string | null;
+  gst_registered: boolean | null;
+}
+
+export interface LedgerInvoiceLine {
+  application_id?: string;
+  settled_on?: string;
+  customer_name?: string;
+  entity_name?: string | null;
+  lender_name?: string | null;
+  finance_amount?: number;
+  description: string;
+  amount_ex_gst: number;
+  gst: number;
+  amount_inc_gst: number;
+}
+
+export interface LedgerInvoice {
+  id: string;
+  number: string;
+  referrer_id: string;
+  issue_date: string;
+  period_from: string | null;
+  period_to: string | null;
+  period_label: string;
+  layout: 'breakdown' | 'single';
+  total_ex_gst: number;
+  total_gst: number;
+  total_inc_gst: number;
+  created_at: string;
+  deal_count: number;
+  /** Every deal on the invoice, including a single-figure one. */
+  application_ids: string[];
+  supplier: {
+    id: string;
+    name: string;
+    contact_name: string | null;
+    abn: string | null;
+    address: string | null;
+    email: string | null;
+    gst_registered: boolean | null;
+    bank_account_name?: string | null;
+    bank_bsb?: string | null;
+    bank_account_number?: string | null;
+  };
+  recipient: {
+    business_name: string | null;
+    business_abn: string | null;
+    business_address: string | null;
+    business_email: string | null;
+  };
+  lines: LedgerInvoiceLine[];
+}
+
+export interface LedgerSettings {
+  owner_name: string | null;
+  business_name: string | null;
+  business_abn: string | null;
+  business_address: string | null;
+  business_email: string | null;
+  invoice_prefix: string;
+  next_invoice_number: number;
+}
+
+export interface LedgerGrant {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string | null;
+  user_role: string | null;
+  scopes: LedgerScope[];
+  created_at: string;
+  active_from: string;
+  revoked_at: string | null;
+  state: 'waiting' | 'active' | 'revoked';
+}
+
+export interface LedgerTeamMember {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
+export interface LedgerAuditEntry {
+  id: string;
+  action: string;
+  actor_name: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}

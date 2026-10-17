@@ -448,6 +448,7 @@ class LoanApplicationOut(BaseModel):
     invite_url: Optional[str] = None
     approval_lender_name: Optional[str] = None
     approval_lender_id: Optional[str] = None
+    sale_type: Optional[str] = None
     approval_conditions: list[ApprovalConditionOut] = []
     settled_at: Optional[datetime] = None
     # The broker's choices on the direct debit first payment request (JSON).

@@ -14,7 +14,7 @@ import {
   isTourCompleted,
   markTourCompleted,
 } from '../lib/tourSteps';
-import { ArrowRightStartOnRectangleIcon, Bars3Icon, BuildingLibraryIcon, BuildingOfficeIcon, CalculatorIcon, ChartBarIcon, CheckCircleIcon, ClipboardDocumentListIcon, ClockIcon, CreditCardIcon, DocumentTextIcon, EnvelopeIcon, ExclamationTriangleIcon, LinkIcon, MagnifyingGlassIcon, MoonIcon, QuestionMarkCircleIcon, SunIcon, TrashIcon, UserCircleIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import { ArrowRightStartOnRectangleIcon, Bars3Icon, BuildingLibraryIcon, BuildingOfficeIcon, CalculatorIcon, ChartBarIcon, CheckCircleIcon, ClipboardDocumentListIcon, ClockIcon, CreditCardIcon, DocumentTextIcon, EnvelopeIcon, ExclamationTriangleIcon, LinkIcon, LockClosedIcon, MagnifyingGlassIcon, MoonIcon, QuestionMarkCircleIcon, SunIcon, TrashIcon, UserCircleIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 
 const navLinkClass = (isActive: boolean, collapsed: boolean) =>
   `relative flex h-8 items-center ${collapsed ? 'justify-center' : 'gap-2.5'} rounded-[7px] px-2 text-[13px] transition-colors duration-150 ${isActive
@@ -34,6 +34,8 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   const [unreadCount, setUnreadCount] = useState(0);
   const [tourOpen, setTourOpen] = useState(false);
+  // The private ledger is only listed for its owner and whoever they share it with.
+  const [ledgerAccess, setLedgerAccess] = useState(false);
   const unreadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tourSteps = getTourSteps(user?.role);
@@ -68,6 +70,13 @@ export default function Layout() {
   useEffect(() => {
     if (tourOpen) setSidebarOpen(true);
   }, [tourOpen]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' && user?.role !== 'broker') return;
+    api.get<{ access: boolean }>('/ledger/access')
+      .then(({ data }) => setLedgerAccess(data.access))
+      .catch(() => setLedgerAccess(false));
+  }, [user?.id, user?.role]);
 
   const fetchUnreadCount = useCallback(() => {
     if (user && user.role !== 'super_admin') {
@@ -330,6 +339,12 @@ export default function Layout() {
                   <ChartBarIcon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed && 'Analytics'}
                 </NavLink>
+                {ledgerAccess && (
+                  <NavLink to="/admin/ledger" className={linkClass} title="Private Ledger">
+                    <LockClosedIcon className="h-[18px] w-[18px] shrink-0" />
+                    {!collapsed && 'Private Ledger'}
+                  </NavLink>
+                )}
               </div>
 
               {user?.role === 'admin' && (

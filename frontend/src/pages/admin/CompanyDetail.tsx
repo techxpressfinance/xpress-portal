@@ -8,6 +8,7 @@ import { Card, PageHeader, Button, Badge, Input, Select, AbrResultCard, AbrNameS
 import TrustNoAbnDialog from '../../components/TrustNoAbnDialog';
 import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
+import CommitmentScheduleSection from '../../components/CommitmentScheduleSection';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
@@ -683,6 +684,7 @@ export default function CompanyDetail() {
         )}
       </Card>
 
+      <CommitmentScheduleSection key={`cs-${company.id}`} holderType="organization" holderId={company.id} />
       <ArrearsSection organization={{ id: company.id, name: company.name }} />
 
       {editing && (

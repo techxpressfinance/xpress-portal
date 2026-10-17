@@ -55,6 +55,7 @@ from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT
 from app.services.access_control import check_application_access
 from app.services.activity_log import log_activity
 from app.services.application_status import change_application_status, resolve_approval_lender
+from app.services.settlement_checklist import require_complete as require_settlement_checklist
 from app.services.date_filter import apply_date_range_filter
 from app.services.leads import convert_lead, lead_name, lead_to_dict
 from app.services.loan_category import (
@@ -435,6 +436,7 @@ def _column_to_dict(col: KanbanColumn, count: int = 0) -> dict:
         "team": col.team,
         "phase": col.phase or None,
         "awaiting": col.awaiting or None,
+        "entry_checklists": col.entry_checklists,
         "gates": [_gate_to_dict(g) for g in sorted(col.gates, key=lambda g: (g.sort_order, g.created_at))],
         "notifications": [
             _rule_to_dict(r) for r in sorted(col.notification_rules, key=lambda r: (r.sort_order, r.created_at))
@@ -1413,6 +1415,12 @@ def move_lead(
     if not col.mapped_status:
         raise HTTPException(status_code=400, detail="This column is not mapped to an application status")
     new_status = ApplicationStatus(col.mapped_status)
+    # A settlement checklist belongs to an application, which a lead isn't yet.
+    if col.entry_checklists:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A lead can't go straight to {col.title} — convert it first, then complete its checklist.",
+        )
 
     # Everything that can refuse the move is checked before anything is written.
     gate_record, gate_lender, gate_conditions = _evaluate_gates(col, payload.gate_responses if payload else [])
@@ -1570,7 +1578,14 @@ def move_card(
         return {"status": "ok", "column_id": column_id, "column_title": col.title, "application_status": application.status.value}
 
     # The stage's gates are checked before anything is written, so a refused move
-    # leaves no trace of a half-transition.
+    # leaves no trace of a half-transition. The settlement checklist is too —
+    # change_application_status checks it again, but only after the placement,
+    # transition and stage messages are already pending.
+    # A deal already settled isn't asked to settle again.
+    for purpose in col.entry_checklists:
+        if purpose == "loan_settled" and application.status == ApplicationStatus.settled:
+            continue
+        require_settlement_checklist(db, application, purpose)
     gate_record, gate_lender, gate_conditions = _evaluate_gates(col, payload.gate_responses if payload else [])
     lender_name = gate_lender or (payload.lender_name if payload else None)
     conditions = gate_conditions or (payload.conditions if payload else None)

@@ -39,6 +39,7 @@ const TITLES: Array<[string, string]> = [
   ['/admin/broker-analytics', 'Broker analytics'],
   ['/admin/settled-deals', 'Settled deals'],
   ['/admin/arrears', 'Arrears book'],
+  ['/admin/ledger', 'Private ledger'],
   ['/admin/lenders/:id', 'Lender'],
   ['/admin/lenders', 'Lenders'],
   ['/admin/tasks/:id', 'Task'],
