@@ -37,25 +37,29 @@ from app.models.tenant import Tenant
 from app.services.lender_pricing import latest_for_application
 from app.services.loan_category import application_asset_details
 
-# key, label, kind, shown by default. Kind drives formatting in both exports.
+# key, label, kind, picker group, shown by default. Kind drives formatting in
+# both exports.
 COLUMNS: list[dict] = [
-    {"key": "sr", "label": "Sr no.", "kind": "int", "default": True},
-    {"key": "settled_date", "label": "Settled date", "kind": "date", "default": True},
-    {"key": "lender_name", "label": "Lender", "kind": "text", "default": True},
-    {"key": "amount", "label": "Amount financed", "kind": "money", "default": True},
-    {"key": "monthly_repayment", "label": "Monthly repayment", "kind": "money", "default": True},
-    {"key": "term_months", "label": "Loan term", "kind": "term", "default": True},
-    {"key": "balloon", "label": "Balloon", "kind": "money", "default": True},
-    {"key": "interest_rate", "label": "Rate", "kind": "percent", "default": True},
-    {"key": "asset_description", "label": "Asset details", "kind": "multiline", "default": True},
-    {"key": "vin", "label": "VIN", "kind": "multiline", "default": True},
-    {"key": "end_date", "label": "End date", "kind": "date", "default": True},
-    {"key": "ppsr_charge_number", "label": "PPSR charge no.", "kind": "text", "default": False},
-    {"key": "ppsr_change_number", "label": "PPSR change no.", "kind": "text", "default": False},
-    {"key": "ppsr_organisation_identifier", "label": "Organisation identifier", "kind": "text", "default": False},
-    {"key": "asset_price_ex_gst", "label": "Asset price ex GST", "kind": "money", "default": False},
-    {"key": "gst_claimed", "label": "GST claimed", "kind": "money", "default": False},
-    {"key": "tax_invoice_date", "label": "Tax invoice date", "kind": "date", "default": False},
+    {"key": "sr", "label": "Sr no.", "kind": "int", "group": "loan", "default": True},
+    {"key": "settled_date", "label": "Settled date", "kind": "date", "group": "loan", "default": True},
+    {"key": "lender_name", "label": "Lender", "kind": "text", "group": "loan", "default": True},
+    {"key": "contract_number", "label": "Application id / Contract no.", "kind": "text", "group": "loan", "default": True},
+    {"key": "amount", "label": "Amount financed", "kind": "money", "group": "loan", "default": True},
+    {"key": "monthly_repayment", "label": "Monthly repayment", "kind": "money", "group": "loan", "default": True},
+    {"key": "term_months", "label": "Loan term", "kind": "term", "group": "loan", "default": True},
+    {"key": "balloon", "label": "Balloon", "kind": "money", "group": "loan", "default": True},
+    {"key": "interest_rate", "label": "Rate", "kind": "percent", "group": "loan", "default": True},
+    # Commercially sensitive on a schedule that goes to a lender — opt in.
+    {"key": "brokerage_amount", "label": "Brokerage amount", "kind": "money", "group": "loan", "default": False},
+    {"key": "asset_description", "label": "Asset details", "kind": "multiline", "group": "loan", "default": True},
+    {"key": "vin", "label": "VIN", "kind": "multiline", "group": "loan", "default": True},
+    {"key": "end_date", "label": "End date", "kind": "date", "group": "loan", "default": True},
+    {"key": "ppsr_charge_number", "label": "PPSR charge no.", "kind": "text", "group": "ppsr", "default": False},
+    {"key": "ppsr_change_number", "label": "PPSR change no.", "kind": "text", "group": "ppsr", "default": False},
+    {"key": "ppsr_organisation_identifier", "label": "Organisation identifier", "kind": "text", "group": "ppsr", "default": False},
+    {"key": "asset_price_ex_gst", "label": "Asset price ex GST", "kind": "money", "group": "ppsr", "default": False},
+    {"key": "gst_claimed", "label": "GST claimed", "kind": "money", "group": "ppsr", "default": False},
+    {"key": "tax_invoice_date", "label": "Tax invoice date", "kind": "date", "group": "ppsr", "default": False},
 ]
 COLUMN_KEYS = [c["key"] for c in COLUMNS]
 _TOTALLED = ("amount", "monthly_repayment", "balloon")
@@ -65,7 +69,8 @@ EDITABLE_FIELDS = (
     "lender_name", "amount", "balloon", "repayment_amount", "repayment_frequency", "start_date",
     "interest_rate", "term_months", "end_date", "asset_description", "vin",
     "ppsr_charge_number", "ppsr_change_number", "ppsr_organisation_identifier",
-    "asset_price_ex_gst", "gst_claimed", "tax_invoice_date", "notes", "other_broker_name",
+    "asset_price_ex_gst", "gst_claimed", "tax_invoice_date", "identifier", "brokerage_amount",
+    "notes", "other_broker_name",
 )
 
 
@@ -141,6 +146,9 @@ def prefill_from_application(db: Session, app: LoanApplication) -> dict:
         balloon = round((_num(params.get("asset_price")) or 0) * _num(params["balloon_percent"]) / 100, 2)
     rate = _num(params.get("interest_rate"))
     monthly = _num(params.get("monthly_repayment_override_balloon") if balloon else params.get("monthly_repayment_override"))
+    brokerage = _num(params.get("brokerage_amount"))
+    if brokerage and params.get("gst_on_brokerage"):
+        brokerage = round(brokerage * 1.1, 2)
     settled = app.settled_at.date() if app.settled_at else None
     asset = application_asset_details(app)
     return {
@@ -151,6 +159,7 @@ def prefill_from_application(db: Session, app: LoanApplication) -> dict:
         "repayment_frequency": RepaymentFrequency.monthly if monthly and monthly > 0 else None,
         "start_date": settled,
         "interest_rate": rate if rate and rate > 0 else None,
+        "brokerage_amount": brokerage if brokerage and brokerage > 0 else None,
         "term_months": term,
         "end_date": _add_months(settled, term) if settled and term else None,
         "asset_description": _asset_text(asset) or params.get("asset_description") or None,
@@ -240,11 +249,13 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
         "sr": sr,
         "settled_date": entry.start_date,
         "lender_name": entry.lender_name,
+        "contract_number": entry.identifier,
         "amount": entry.amount,
         "monthly_repayment": monthly_repayment(entry),
         "term_months": entry.term_months,
         "balloon": entry.balloon,
         "interest_rate": entry.interest_rate,
+        "brokerage_amount": entry.brokerage_amount,
         "asset_description": entry.asset_description,
         "vin": entry.vin,
         "end_date": entry.end_date,
@@ -286,7 +297,9 @@ def build(db: Session, holder, tenant_id: str) -> dict:
     ours = [e for e in entries if e.application_id]
     other = [e for e in entries if not e.application_id]
     sections = []
-    for key, title, group in (("ours", f"Arranged by {arranger}", ours), ("other", "Other commitments", other)):
+    # The split is the point of the schedule: what we arranged against what
+    # someone else did (another broker, or the lender direct — never named).
+    for key, title, group in (("ours", f"Loans by {arranger}", ours), ("other", "Loans by other brokers / direct", other)):
         rows = [_row(e, i + 1) for i, e in enumerate(group)]
         sections.append({"key": key, "title": title, "rows": rows, "totals": _totals(rows)})
     all_rows = [r for s in sections for r in s["rows"]]
@@ -328,7 +341,9 @@ def to_xlsx(schedule: dict, columns: list[str]) -> bytes:
     ws = wb.active
     ws.title = "Commitment schedule"
     bold = Font(bold=True)
-    head_fill = PatternFill("solid", fgColor="1F2A44")
+    # Ours in navy, elsewhere in amber, so the two never read as one list.
+    section_fill = {"ours": PatternFill("solid", fgColor="1F2A44"), "other": PatternFill("solid", fgColor="7A5A12")}
+    section_tint = {"ours": PatternFill("solid", fgColor="E3E8F2"), "other": PatternFill("solid", fgColor="F6EEDC")}
     band_fill = PatternFill("solid", fgColor="EEF1F6")
     thin = Side(style="thin", color="C9CED8")
     box = Border(top=thin, bottom=thin, left=thin, right=thin)
@@ -354,12 +369,16 @@ def to_xlsx(schedule: dict, columns: list[str]) -> bytes:
                 ws.cell(row=row, column=i).fill = band_fill
 
     for section in schedule["sections"]:
-        ws.cell(row=r, column=1, value=section["title"]).font = Font(bold=True, size=12)
+        head_fill = section_fill[section["key"]]
+        for i in range(1, len(cols) + 1):
+            ws.cell(row=r, column=i).fill = head_fill
+        ws.cell(row=r, column=1, value=section["title"].upper()).font = Font(bold=True, size=12, color="FFFFFF")
+        ws.row_dimensions[r].height = 22
         r += 1
         for i, c in enumerate(cols, start=1):
             cell = ws.cell(row=r, column=i, value=c["label"])
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = head_fill
+            cell.font = Font(bold=True)
+            cell.fill = section_tint[section["key"]]
             cell.alignment = Alignment(wrap_text=True, vertical="center")
             cell.border = box
         r += 1

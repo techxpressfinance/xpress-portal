@@ -62,6 +62,8 @@ class LendingHistoryEntry(Base):
     interest_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # % p.a.
     term_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Brokerage the lender paid on the loan (GST-inclusive where GST applies).
+    brokerage_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Several assets can sit under one loan (a truck and its trailer): one per line.
     asset_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     vin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

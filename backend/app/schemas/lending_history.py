@@ -76,6 +76,8 @@ class CommitmentLineUpdate(BaseModel):
     asset_price_ex_gst: Optional[float] = Field(default=None, ge=0)
     gst_claimed: Optional[float] = Field(default=None, ge=0)
     tax_invoice_date: Optional[date] = None
+    identifier: Optional[str] = Field(default=None, max_length=200)
+    brokerage_amount: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
     # Internal only — never printed on the schedule.
     other_broker_name: Optional[str] = Field(default=None, max_length=200)

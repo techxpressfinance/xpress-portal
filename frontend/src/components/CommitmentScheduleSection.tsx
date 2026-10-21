@@ -20,6 +20,12 @@ import type {
 } from '../types';
 
 type Format = 'xlsx' | 'pdf';
+type SectionKey = 'ours' | 'other';
+// Ours in navy, elsewhere in amber — the two must never read as one list.
+const SECTION_TONE: Record<SectionKey, { band: string; tint: string; screen: string }> = {
+  ours: { band: '#1f2a44', tint: '#e3e8f2', screen: 'border-l-[#1f2a44] bg-[#1f2a44]/[0.04]' },
+  other: { band: '#7a5a12', tint: '#f6eedc', screen: 'border-l-[#b8860b] bg-[#b8860b]/[0.06]' },
+};
 const TOTALLED = new Set(['amount', 'monthly_repayment', 'balloon']);
 // One column choice and format for the desk, remembered across holders.
 const COLUMNS_KEY = 'commitment-schedule-columns';
@@ -69,7 +75,7 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
   const [format, setFormat] = useState<Format>(() => readStored<Format>(FORMAT_KEY) === 'pdf' ? 'pdf' : 'xlsx');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [editing, setEditing] = useState<{ row: CommitmentRow | null; section: 'ours' | 'other' } | null>(null);
+  const [editing, setEditing] = useState<{ row: CommitmentRow | null; section: SectionKey } | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const base = `/commitment-schedules/${holderType}/${holderId}`;
   const printId = `commitment-schedule-${holderId}`;
@@ -172,10 +178,10 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
               </Button>
               {pickerOpen && (
                 <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-background p-3 shadow-lg">
-                  {([['Loan details', true], ['PPSR & tax', false]] as const).map(([group, isDefault]) => (
+                  {([['Loan details', 'loan'], ['PPSR & tax', 'ppsr']] as const).map(([title, group]) => (
                     <div key={group} className="mb-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{group}</div>
-                      {allColumns.filter((c) => c.default === isDefault).map((c) => (
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{title}</div>
+                      {allColumns.filter((c) => c.group === group).map((c) => (
                         <label key={c.key} className="flex items-center gap-2 py-0.5 text-[13px] cursor-pointer">
                           <input
                             type="checkbox"
@@ -217,9 +223,9 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
         ) : (
           <>
             {data.sections.map((section) => (
-              <div key={section.key} className="mb-6">
+              <div key={section.key} className={`mb-6 rounded-r-lg border-l-4 py-3 pl-4 pr-2 ${SECTION_TONE[section.key].screen}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-[14px] font-semibold">{section.title}</h4>
+                  <h4 className="text-[13px] font-bold uppercase tracking-wider">{section.title}</h4>
                   {section.key === 'other' && (
                     <Button variant="secondary" size="sm" onClick={() => setEditing({ row: null, section: 'other' })}>+ Add commitment</Button>
                   )}
@@ -315,7 +321,7 @@ function TotalsRow({ label, totals, visible, trailing = false }: {
 /** Off-screen A4 landscape layout that the PDF is drawn from — the chosen
  *  columns only, nothing the desk uses internally. */
 function PrintableSchedule({ id, data, visible }: { id: string; data: CommitmentSchedule; visible: CommitmentColumn[] }) {
-  const th: React.CSSProperties = { background: '#0d1f3c', color: '#fff', padding: '5px 6px', textAlign: 'left', fontWeight: 600, fontSize: 9 };
+  const th: React.CSSProperties = { color: '#111827', padding: '5px 6px', textAlign: 'left', fontWeight: 700, fontSize: 9 };
   const td: React.CSSProperties = { borderBottom: '1px solid #d9dde5', padding: '4px 6px', fontSize: 9, verticalAlign: 'top', whiteSpace: 'pre-line', wordBreak: 'break-word' };
   const labelAt = visible.findIndex((c) => !TOTALLED.has(c.key));
   const totalsCells = (totals: CommitmentTotals, label: string) => visible.map((c, i) => (
@@ -334,13 +340,13 @@ function PrintableSchedule({ id, data, visible }: { id: string; data: Commitment
         <div style={{ padding: `0 ${PRINT_INSET}px 16px` }}>
           {data.sections.map((section) => (
             <div key={section.key} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, margin: '4px 0 6px', color: '#0d1f3c' }}>{section.title}</div>
+              <div style={{ background: SECTION_TONE[section.key].band, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', padding: '6px 8px', margin: '4px 0 0' }}>{section.title}</div>
               {!section.rows.length ? (
                 <div style={{ fontSize: 9, color: '#6b7280', fontStyle: 'italic' }}>None recorded.</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr>{visible.map((c) => <th key={c.key} style={{ ...th, textAlign: c.kind === 'money' ? 'right' : 'left' }}>{c.label}</th>)}</tr>
+                    <tr>{visible.map((c) => <th key={c.key} style={{ ...th, background: SECTION_TONE[section.key].tint, textAlign: c.kind === 'money' ? 'right' : 'left' }}>{c.label}</th>)}</tr>
                   </thead>
                   <tbody>
                     {section.rows.map((row) => (
@@ -378,12 +384,14 @@ type FormState = Record<string, string>;
 const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?: 'number' | 'date' | 'textarea' }[] }[] = [
   { title: 'Loan', fields: [
     { key: 'lender_name', label: 'Lender' },
+    { key: 'identifier', label: 'Application id / Contract no.' },
     { key: 'amount', label: 'Amount financed ($)', type: 'number' },
     { key: 'start_date', label: 'Settled date', type: 'date' },
     { key: 'term_months', label: 'Term (months)', type: 'number' },
     { key: 'end_date', label: 'End date', type: 'date' },
     { key: 'balloon', label: 'Balloon ($)', type: 'number' },
     { key: 'interest_rate', label: 'Rate (% p.a.)', type: 'number' },
+    { key: 'brokerage_amount', label: 'Brokerage amount ($)', type: 'number' },
   ] },
   { title: 'Asset', fields: [
     { key: 'asset_description', label: 'Asset details (one per line)', type: 'textarea' },
@@ -398,16 +406,16 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?
     { key: 'tax_invoice_date', label: 'Tax invoice date', type: 'date' },
   ] },
 ];
-const NUMERIC = new Set(['amount', 'term_months', 'balloon', 'interest_rate', 'asset_price_ex_gst', 'gst_claimed', 'repayment_amount']);
+const NUMERIC = new Set(['amount', 'brokerage_amount', 'term_months', 'balloon', 'interest_rate', 'asset_price_ex_gst', 'gst_claimed', 'repayment_amount']);
 const LABEL = 'block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1';
 
 function initialForm(row: CommitmentRow | null): FormState {
   const s = (v: unknown) => (v == null ? '' : String(v));
   if (!row) return { repayment_frequency: 'monthly' };
   return {
-    lender_name: s(row.lender_name), amount: s(row.amount), start_date: s(row.settled_date),
+    lender_name: s(row.lender_name), identifier: s(row.contract_number), amount: s(row.amount), start_date: s(row.settled_date),
     term_months: s(row.term_months), end_date: s(row.end_date), balloon: s(row.balloon),
-    interest_rate: s(row.interest_rate), asset_description: s(row.asset_description), vin: s(row.vin),
+    interest_rate: s(row.interest_rate), brokerage_amount: s(row.brokerage_amount), asset_description: s(row.asset_description), vin: s(row.vin),
     ppsr_charge_number: s(row.ppsr_charge_number), ppsr_change_number: s(row.ppsr_change_number),
     ppsr_organisation_identifier: s(row.ppsr_organisation_identifier), asset_price_ex_gst: s(row.asset_price_ex_gst),
     gst_claimed: s(row.gst_claimed), tax_invoice_date: s(row.tax_invoice_date),

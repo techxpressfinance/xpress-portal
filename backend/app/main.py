@@ -460,6 +460,7 @@ _MIGRATIONS = [
     ("lending_history_entries", "asset_price_ex_gst", "FLOAT"),
     ("lending_history_entries", "gst_claimed", "FLOAT"),
     ("lending_history_entries", "tax_invoice_date", "DATE"),
+    ("lending_history_entries", "brokerage_amount", "FLOAT"),
 ]
 
 _logger = logging.getLogger(__name__)

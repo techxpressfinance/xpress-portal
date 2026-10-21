@@ -2188,6 +2188,7 @@ export interface CommitmentColumn {
   key: string;
   label: string;
   kind: CommitmentColumnKind;
+  group: 'loan' | 'ppsr';
   default: boolean;
 }
 
@@ -2197,11 +2198,13 @@ export interface CommitmentRow {
   sr: number;
   settled_date: string | null;
   lender_name: string;
+  contract_number: string | null;
   amount: number;
   monthly_repayment: number | null;
   term_months: number | null;
   balloon: number | null;
   interest_rate: number | null;
+  brokerage_amount: number | null;
   asset_description: string | null;
   vin: string | null;
   end_date: string | null;
