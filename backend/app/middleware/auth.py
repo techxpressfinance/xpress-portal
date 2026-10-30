@@ -7,7 +7,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.user import User
+from app.models.tenant_scoped import SKIP_TENANT_FILTER
+from app.models.user import User, UserRole
 from app.services.auth import decode_token, is_token_blacklisted
 
 bearer_scheme = HTTPBearer()
@@ -41,20 +42,30 @@ def get_current_user(
     if jti and is_token_blacklisted(jti, db):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
-    # Validate tenant context: JWT tenant must match request tenant (super_admin bypasses)
-    token_role = payload.get("role", "")
-    token_tenant = payload.get("tenant_id", "")
-    request_tenant = getattr(request.state, "tenant_id", None)
-    if token_role != "super_admin" and request_tenant and token_tenant and token_tenant != request_tenant:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token does not match tenant")
-
     # Impersonation tokens (admin viewing as another user) are strictly read-only
     if payload.get("imp") and request.method not in ("GET", "HEAD", "OPTIONS"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Impersonation sessions are view-only")
 
-    user = db.query(User).filter(User.id == payload["sub"]).first()
+    # Unfiltered: the tenant wall below checks this user's tenant itself, and a
+    # super admin (no tenant) must still resolve on a tenant-bound session.
+    user = (
+        db.query(User)
+        .execution_options(**{SKIP_TENANT_FILTER: True})
+        .filter(User.id == payload["sub"])
+        .first()
+    )
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Tenant wall, fail-closed. The super-admin bypass is decided by the stored
+    # role, not the token's claim, so a demoted super admin's old token can't
+    # skip it. Every other token must name the user's own tenant and, when the
+    # request resolved one (auth paths don't), that tenant too.
+    if user.role != UserRole.super_admin:
+        token_tenant = payload.get("tenant_id") or ""
+        request_tenant = getattr(request.state, "tenant_id", None)
+        if not token_tenant or token_tenant != user.tenant_id or (request_tenant and token_tenant != request_tenant):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token does not match tenant")
 
     # Check bulk token revocation (e.g. after password change)
     if _is_token_revoked_by_user(user, payload):

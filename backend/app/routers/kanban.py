@@ -670,9 +670,7 @@ def update_column(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    col = db.query(KanbanColumn).filter(KanbanColumn.id == column_id, KanbanColumn.board_id == board_id).first()
-    if not col:
-        raise HTTPException(status_code=404, detail="Column not found")
+    col = _get_column_for_gate(board_id, column_id, tenant_id, db)
     updates = data.model_dump(exclude_unset=True)
     # A stage's kind is fixed: turning a lead stage into an application stage
     # would strand the leads in it, and the reverse the applications.

@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 from app.models.encrypted_type import EncryptedString
 
 
@@ -28,7 +29,7 @@ class OcrStatus(str, enum.Enum):
     failed = "failed"
 
 
-class Document(Base):
+class Document(TenantScoped, Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

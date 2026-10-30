@@ -8,9 +8,10 @@ from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
-class DocumentRequest(Base):
+class DocumentRequest(TenantScoped, Base):
     __tablename__ = "document_requests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
 class TaskStatus(str, enum.Enum):
@@ -24,7 +25,7 @@ class TaskPriority(str, enum.Enum):
     urgent = "urgent"
 
 
-class Task(Base):
+class Task(TenantScoped, Base):
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -67,7 +68,7 @@ class Task(Base):
     )
 
 
-class ChecklistItem(Base):
+class ChecklistItem(TenantScoped, Base):
     __tablename__ = "checklist_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -12,9 +12,13 @@ from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import LoanApplication
 from app.models.user import User
 from app.schemas.lender_submission import LenderSubmissionCreate, LenderSubmissionOut, LenderSubmissionUpdate
-from app.services.tenant_scope import get_tenant_id
+from app.services.tenant_scope import get_in_tenant, get_tenant_id
 
 router = APIRouter(prefix="/api/applications/{app_id}/submissions", tags=["lender-submissions"])
+
+
+def _get_application(db: Session, app_id: str, tenant_id: str) -> LoanApplication:
+    return get_in_tenant(db, LoanApplication, app_id, tenant_id, LoanApplication.deleted_at.is_(None), detail="Application not found")
 
 
 def _serialize(sub: LenderSubmission) -> dict:
@@ -44,9 +48,7 @@ def list_submissions(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
-    if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    _get_application(db, app_id, tenant_id)
     subs = (
         db.query(LenderSubmission)
         .filter(LenderSubmission.application_id == app_id)
@@ -64,13 +66,9 @@ def create_submission(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    app = db.query(LoanApplication).filter(LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).first()
-    if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    _get_application(db, app_id, tenant_id)
 
-    lender = db.query(Lender).filter(Lender.id == data.lender_id, Lender.is_active.is_(True)).first()
-    if not lender:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lender not found")
+    lender = get_in_tenant(db, Lender, data.lender_id, tenant_id, Lender.is_active.is_(True), detail="Lender not found")
 
     existing = (
         db.query(LenderSubmission)
@@ -112,6 +110,7 @@ def update_submission(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_application(db, app_id, tenant_id)
     sub = (
         db.query(LenderSubmission)
         .filter(LenderSubmission.id == sub_id, LenderSubmission.application_id == app_id)
@@ -142,6 +141,7 @@ def delete_submission(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_application(db, app_id, tenant_id)
     sub = (
         db.query(LenderSubmission)
         .filter(LenderSubmission.id == sub_id, LenderSubmission.application_id == app_id)

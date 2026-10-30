@@ -11,7 +11,8 @@ from app.database import get_db
 from app.middleware.auth import _is_token_revoked_by_user, get_current_user
 from app.middleware.rate_limit import auth_limiter
 from app.models.referral import Referral, ReferralStatus
-from app.models.user import SETUP_PLACEHOLDER_HASHES, User
+from app.models.tenant_scoped import SKIP_TENANT_FILTER
+from app.models.user import SETUP_PLACEHOLDER_HASHES, User, UserRole
 from app.schemas.user import (
     AccessTokenResponse,
     ChangePasswordRequest,
@@ -133,7 +134,8 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     _MAX_FAILED = 5
     _LOCKOUT_MINUTES = 15
 
-    user = db.query(User).filter(
+    # Unfiltered so a tenant-less super admin can sign in on a tenant host.
+    user = db.query(User).execution_options(**{SKIP_TENANT_FILTER: True}).filter(
         User.email == data.email,
         or_(
             User.tenant_id == tenant_id,
@@ -227,7 +229,11 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     blacklist_token(refresh_token, db)
     db.commit()
 
-    _tenant_id = payload.get("tenant_id", user.tenant_id or "")
+    # Same fail-closed wall as get_current_user: the new pair carries the tenant
+    # the refresh token was issued for, which must still be the user's.
+    _tenant_id = payload.get("tenant_id") or ""
+    if user.role != UserRole.super_admin and (not _tenant_id or _tenant_id != user.tenant_id):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token does not match tenant")
     _set_refresh_cookie(response, create_refresh_token(user.id, _tenant_id))
     return AccessTokenResponse(access_token=create_access_token(user.id, user.role.value, _tenant_id))
 

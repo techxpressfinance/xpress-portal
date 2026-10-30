@@ -8,9 +8,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
-class ClientAlert(Base):
+class ClientAlert(TenantScoped, Base):
     __tablename__ = "client_alerts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

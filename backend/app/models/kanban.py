@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
-class KanbanBoard(Base):
+class KanbanBoard(TenantScoped, Base):
     __tablename__ = "kanban_boards"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -37,7 +38,7 @@ class KanbanBoard(Base):
     created_by = relationship("User", foreign_keys=[created_by_id])
 
 
-class KanbanColumn(Base):
+class KanbanColumn(TenantScoped, Base):
     """A stage on a board. Stages are *not* application statuses: several stages
     can roll up to the same `mapped_status`, which stays the coarse, client-facing
     lifecycle value. `stage_key` identifies a stage from a template (see

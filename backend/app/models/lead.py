@@ -10,6 +10,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 from app.models.encrypted_type import EncryptedString
 
 
@@ -23,7 +24,7 @@ class LeadStatus(str, enum.Enum):
     lost = "lost"
 
 
-class Lead(Base):
+class Lead(TenantScoped, Base):
     """A deal inquiry — someone asked about a loan, before there is anything to
     apply with. It sits in a board's lead column and becomes a LoanApplication
     (plus a CRM contact) when the desk drags it into an application stage."""

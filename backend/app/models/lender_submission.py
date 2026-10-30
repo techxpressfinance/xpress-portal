@@ -10,6 +10,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
 class SubmissionStatus(str, enum.Enum):
@@ -20,7 +21,7 @@ class SubmissionStatus(str, enum.Enum):
     withdrawn = "withdrawn"
 
 
-class LenderSubmission(Base):
+class LenderSubmission(TenantScoped, Base):
     __tablename__ = "lender_submissions"
     __table_args__ = (
         UniqueConstraint("application_id", "lender_id", name="uq_app_lender"),

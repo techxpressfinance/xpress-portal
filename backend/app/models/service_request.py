@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
 class ServiceRequestStatus(str, enum.Enum):
@@ -17,7 +18,7 @@ class ServiceRequestStatus(str, enum.Enum):
     closed = "closed"
 
 
-class ServiceRequest(Base):
+class ServiceRequest(TenantScoped, Base):
     __tablename__ = "service_requests"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

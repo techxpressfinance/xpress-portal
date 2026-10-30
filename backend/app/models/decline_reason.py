@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 # Seeded into a tenant's list the first time it is read. Admins can rename,
 # reorder, retire and add to it from there.
@@ -22,7 +23,7 @@ DEFAULT_DECLINE_REASONS = (
 )
 
 
-class DeclineReason(Base):
+class DeclineReason(TenantScoped, Base):
     """A tenant's decline-reason tag, picked on decline notes.
 
     Retired rather than deleted: old decline notes keep pointing at the tag they

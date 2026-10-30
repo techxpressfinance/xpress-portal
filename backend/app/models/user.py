@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 from app.models.encrypted_type import EncryptedString
 
 
@@ -24,7 +25,7 @@ class UserRole(str, enum.Enum):
 # one of these can only get in through its setup link.
 SETUP_PLACEHOLDER_HASHES = ("!", "!invited")
 
-class User(Base):
+class User(TenantScoped, Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("email", "tenant_id", name="uq_user_email_tenant"),
