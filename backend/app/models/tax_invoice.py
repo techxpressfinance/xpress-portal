@@ -34,6 +34,7 @@ from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 from app.models.encrypted_type import EncryptedString
 
 # Sales at or above this (GST-inclusive) must show the buyer's identity or ABN.
@@ -78,7 +79,7 @@ class TaxInvoiceStatus(str, enum.Enum):
     issued = "issued"
 
 
-class TaxInvoice(Base):
+class TaxInvoice(TenantScoped, Base):
     __tablename__ = "tax_invoices"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -820,19 +820,13 @@ if "service_request_notes" in {t for t in _inspector.get_table_names()}:
             + _conflict
         ))
 
-# Backfill: migrate is_internal → visibility for application_notes
-if "application_notes" in {t for t in _inspector.get_table_names()}:
-    _an_cols = {c["name"] for c in _inspector.get_columns("application_notes")}
-    if "is_internal" in _an_cols and "visibility" in _an_cols:
-        with engine.begin() as conn:
-            # is_internal=true (broker-only) → "broker", is_internal=false (client-facing) → "broker,client,referrer"
-            conn.execute(text(
-                "UPDATE application_notes SET visibility = 'broker' WHERE is_internal = TRUE AND visibility = 'broker'"
-            ))
-            conn.execute(text(
-                "UPDATE application_notes SET visibility = 'broker,client,referrer' WHERE is_internal = FALSE AND visibility = 'broker'"
-            ))
-            _logger.info("Backfilled application_notes.visibility from is_internal")
+# application_notes.is_internal → visibility was backfilled here (is_internal=false
+# → "broker,client,referrer") until it was found to run on every boot. Nothing
+# writes is_internal any more, but legacy client-facing notes keep
+# is_internal=false — so when staff later made one staff-only ("broker"), the
+# next restart silently exposed it to clients and referrers again. Every legacy
+# row was converted by the first boot after the visibility column shipped, so
+# the backfill could only ever undo deliberate edits; it is gone.
 
 # Backfill: create default tenant and assign all existing data
 with engine.begin() as conn:

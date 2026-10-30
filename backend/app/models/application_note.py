@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 # Valid visibility targets
 VALID_VISIBILITY = {"broker", "client", "referrer", "personal"}
@@ -20,7 +21,7 @@ NOTE_CATEGORIES = ("general", "compliance", "learning", "decline", "scratchpad")
 STAFF_ONLY_CATEGORIES = frozenset({"compliance", "learning", "decline", "scratchpad"})
 
 
-class ApplicationNote(Base):
+class ApplicationNote(TenantScoped, Base):
     __tablename__ = "application_notes"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

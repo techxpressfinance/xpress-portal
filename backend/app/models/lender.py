@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, Uniqu
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 
 
 class LenderContact(Base):
@@ -25,7 +26,7 @@ class LenderContact(Base):
     lender: Mapped[Lender] = relationship("Lender", back_populates="contacts")
 
 
-class Lender(Base):
+class Lender(TenantScoped, Base):
     __tablename__ = "lenders"
     __table_args__ = (UniqueConstraint("name", "tenant_id", name="uq_lender_name_tenant"),)
 

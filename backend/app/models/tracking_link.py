@@ -8,10 +8,11 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.tenant_scoped import TenantScoped
 from app.models.encrypted_type import EncryptedString
 
 
-class TrackingLink(Base):
+class TrackingLink(TenantScoped, Base):
     """A no-login link to a read-only progress page.
 
     Two kinds. A `referrer` link is one per referrer partner and lists every
