@@ -419,6 +419,7 @@ def update_checklist_item(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_task(db, task_id, tenant_id)
     item = (
         db.query(ChecklistItem)
         .filter(ChecklistItem.id == item_id, ChecklistItem.task_id == task_id)
@@ -455,6 +456,7 @@ def toggle_checklist_item(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_task(db, task_id, tenant_id)
     item = (
         db.query(ChecklistItem)
         .filter(ChecklistItem.id == item_id, ChecklistItem.task_id == task_id)
@@ -486,6 +488,7 @@ def delete_checklist_item(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_task(db, task_id, tenant_id)
     item = (
         db.query(ChecklistItem)
         .filter(ChecklistItem.id == item_id, ChecklistItem.task_id == task_id)

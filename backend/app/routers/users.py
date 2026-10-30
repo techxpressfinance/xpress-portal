@@ -20,7 +20,7 @@ from app.services.auth import blacklist_all_user_tokens, create_access_token
 from app.services.email import send_email_changed_email, send_password_reset_email, send_setup_account_email
 from app.services.loan_category import serialize_categories
 from app.services.query_utils import escape_like
-from app.services.tenant_scope import get_tenant_id
+from app.services.tenant_scope import get_in_tenant, get_tenant_id
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -266,10 +266,11 @@ def send_password_reset(
 def get_user_referrer(
     user_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     """Get the referrer of a user, if any."""
+    get_in_tenant(db, User, user_id, tenant_id, detail="User not found")
     ext_ref = db.query(ExternalReferral).filter(
         ExternalReferral.referred_client_id == user_id,
     ).first()

@@ -45,7 +45,7 @@ from app.services.loan_category import sub_type_extra_data
 from app.services.scoring import score, tokenize
 from app.services.search_cache import get_searchable_contacts
 from app.services.serialization import app_with_user
-from app.services.tenant_scope import get_tenant_id
+from app.services.tenant_scope import get_in_tenant, get_tenant_id
 
 _logger = logging.getLogger(__name__)
 
@@ -547,13 +547,8 @@ def link_organization(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
-    if not contact:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
-
-    org = db.query(Organization).filter(Organization.id == data.organization_id).first()
-    if not org:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    _get_contact_in_tenant(contact_id, tenant_id, db)
+    get_in_tenant(db, Organization, data.organization_id, tenant_id, detail="Organization not found")
 
     existing = db.query(ContactOrganization).filter(
         ContactOrganization.contact_id == contact_id,
@@ -581,6 +576,7 @@ def unlink_organization(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _get_contact_in_tenant(contact_id, tenant_id, db)
     link = db.query(ContactOrganization).filter(
         ContactOrganization.contact_id == contact_id,
         ContactOrganization.organization_id == org_id,

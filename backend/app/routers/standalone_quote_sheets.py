@@ -22,20 +22,13 @@ from app.schemas.quote_sheet import (
 from app.services.email import send_quote_sheet_email
 from app.services.lender_pricing import apply_lender_pricing
 from app.services.quote_serializers import serialize_quote_option as _serialize_option, serialize_quote_sheet as _serialize
-from app.services.tenant_scope import get_tenant_id
+from app.services.tenant_scope import get_in_tenant, get_tenant_id
 
 router = APIRouter(prefix="/api/quote-sheets", tags=["standalone-quote-sheets"])
 
 
-def _get_sheet(db: Session, sheet_id: str) -> QuoteSheet:
-    sheet = (
-        db.query(QuoteSheet)
-        .filter(QuoteSheet.id == sheet_id, QuoteSheet.application_id.is_(None))
-        .first()
-    )
-    if not sheet:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote sheet not found")
-    return sheet
+def _get_sheet(db: Session, sheet_id: str, tenant_id: str) -> QuoteSheet:
+    return get_in_tenant(db, QuoteSheet, sheet_id, tenant_id, QuoteSheet.application_id.is_(None), detail="Quote sheet not found")
 
 
 def _require_draft(sheet: QuoteSheet) -> None:
@@ -133,7 +126,7 @@ def get_standalone_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     return _serialize(sheet)
 
 
@@ -147,7 +140,7 @@ def update_standalone_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     _require_draft(sheet)
 
     update_data = data.model_dump(exclude_unset=True)
@@ -186,7 +179,7 @@ def delete_standalone_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     _require_draft(sheet)
     db.delete(sheet)
     db.commit()
@@ -201,7 +194,7 @@ def duplicate_standalone_quote_sheet(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    source = _get_sheet(db, sheet_id)
+    source = _get_sheet(db, sheet_id, tenant_id)
 
     new_sheet = QuoteSheet(
         application_id=None,
@@ -273,7 +266,7 @@ def add_standalone_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     _require_draft(sheet)
 
     opt = QuoteOption(quote_sheet_id=sheet.id, **data.model_dump())
@@ -292,7 +285,7 @@ def update_standalone_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     _require_draft(sheet)
 
     opt = db.query(QuoteOption).filter(QuoteOption.id == opt_id, QuoteOption.quote_sheet_id == sheet.id).first()
@@ -315,7 +308,7 @@ def delete_standalone_option(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
     _require_draft(sheet)
 
     opt = db.query(QuoteOption).filter(QuoteOption.id == opt_id, QuoteOption.quote_sheet_id == sheet.id).first()
@@ -336,7 +329,7 @@ def send_standalone_quote_email(
     current_user: User = Depends(require_role("admin", "broker", "referrer")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    sheet = _get_sheet(db, sheet_id)
+    sheet = _get_sheet(db, sheet_id, tenant_id)
 
     # Lender pricing is internal — it never goes to a client.
     if sheet.sheet_type == QuoteSheetType.lender_pricing:

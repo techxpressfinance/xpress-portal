@@ -9,7 +9,7 @@ from app.middleware.auth import require_role
 from app.models.client_alert import ClientAlert
 from app.models.user import User
 from app.services.activity_log import log_activity
-from app.services.tenant_scope import get_tenant_id
+from app.services.tenant_scope import get_in_tenant, get_tenant_id
 
 router = APIRouter(prefix="/api/clients", tags=["client-alerts"])
 
@@ -58,6 +58,7 @@ def create_client_alert(
 ):
     if not data.content.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Content required")
+    get_in_tenant(db, User, client_id, tenant_id, detail="Client not found")
     alert = ClientAlert(
         client_id=client_id,
         author_id=current_user.id,
