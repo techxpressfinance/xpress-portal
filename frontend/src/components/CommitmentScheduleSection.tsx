@@ -106,6 +106,11 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
   const [closingBusy, setClosingBusy] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerMenuRef = useRef<HTMLDivElement>(null);
+  // The card clips overflow, so the column list floats in a portal pinned to
+  // the button, opening up or down to whichever side has room, and scrolls
+  // within the window height rather than running off the page.
+  const [pickerPos, setPickerPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
   const base = `/commitment-schedules/${holderType}/${holderId}`;
   const printId = `commitment-schedule-${holderId}`;
 
@@ -123,11 +128,35 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
 
   useEffect(() => {
     if (!pickerOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    const place = () => {
+      const rect = pickerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const gap = 4, margin = 12;
+      const below = window.innerHeight - rect.bottom - gap - margin;
+      const above = rect.top - gap - margin;
+      const right = Math.max(margin, window.innerWidth - rect.right);
+      setPickerPos(below >= 320 || below >= above
+        ? { top: rect.bottom + gap, right, maxHeight: below }
+        : { bottom: window.innerHeight - rect.top + gap, right, maxHeight: above });
     };
+    place();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (pickerRef.current?.contains(t) || pickerMenuRef.current?.contains(t)) return;
+      setPickerOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPickerOpen(false); };
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', place);
+    // Capture: the page scrolls inside <main>, not the window.
+    window.addEventListener('scroll', place, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
   }, [pickerOpen]);
 
   const allColumns = useMemo(() => data?.columns ?? [], [data]);
@@ -269,8 +298,14 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
               <Button variant="secondary" size="sm" onClick={() => setPickerOpen((o) => !o)} aria-expanded={pickerOpen}>
                 Columns ({visible.length})
               </Button>
-              {pickerOpen && (
-                <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-background p-3 shadow-lg">
+              {pickerOpen && pickerPos && createPortal(
+                <div
+                  ref={pickerMenuRef}
+                  role="dialog"
+                  aria-label="Choose columns"
+                  className="fixed w-64 overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-3 shadow-lg"
+                  style={{ top: pickerPos.top, bottom: pickerPos.bottom, right: pickerPos.right, maxHeight: pickerPos.maxHeight, zIndex: 'var(--z-modal)' }}
+                >
                   {([['Loan details', 'loan'], ['PPSR & tax', 'ppsr']] as const).map(([title, group]) => (
                     <div key={group} className="mb-2">
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{title}</div>
@@ -290,7 +325,8 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
                   <button type="button" onClick={resetColumns} className="text-[12px] text-muted-foreground hover:text-foreground underline">
                     Reset to default
                   </button>
-                </div>
+                </div>,
+                document.body,
               )}
             </div>
             <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Download format">
