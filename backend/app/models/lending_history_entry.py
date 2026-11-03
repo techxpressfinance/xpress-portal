@@ -75,6 +75,17 @@ class LendingHistoryEntry(Base):
     gst_claimed: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     tax_invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
+    # ── Contract closure ──────────────────────────────────────────────
+    # A VIN or PPSR charge belongs to one live contract. When it turns up on a
+    # new one, the desk marks the old one paid off / sold / refinanced (see
+    # services/contract_registry.py). None = still active.
+    closure_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    closure_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    closed_by_user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    # The contract that took over this one's VIN/PPSR, when closed for that reason.
+    superseded_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

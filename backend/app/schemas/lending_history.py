@@ -57,6 +57,20 @@ class LendingHistoryEntryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+ClosureStatusLiteral = Literal["paid_off", "sold", "refinanced"]
+
+
+class ContractClosure(BaseModel):
+    """Mark a contract paid off / sold / refinanced, with the desk's notes."""
+
+    status: ClosureStatusLiteral
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PreviousContractClosure(ContractClosure):
+    line_id: str = Field(min_length=1, max_length=36)
+
+
 class CommitmentLineUpdate(BaseModel):
     """A business commitment schedule line, ours or held elsewhere — see
     services/commitment_schedule.py. Rates are % p.a."""
@@ -83,6 +97,10 @@ class CommitmentLineUpdate(BaseModel):
     notes: Optional[str] = None
     # Internal only — never printed on the schedule.
     other_broker_name: Optional[str] = Field(default=None, max_length=200)
+    # Answers to the duplicate VIN/PPSR warning (see services/contract_registry.py):
+    # close the earlier contract(s), or keep them active alongside this one.
+    close_previous: Optional[list[PreviousContractClosure]] = Field(default=None, max_length=50)
+    keep_duplicates: bool = False
 
     @field_validator("vin")
     @classmethod

@@ -2192,6 +2192,31 @@ export interface CommitmentColumn {
   default: boolean;
 }
 
+export type ContractClosureStatus = 'paid_off' | 'sold' | 'refinanced';
+
+/** Another contract, as the duplicate VIN/PPSR warning and the closed list name it. */
+export interface CommitmentContractRef {
+  id: string;
+  holder_type: CommitmentHolderType;
+  holder_id: string | null;
+  holder_name: string;
+  lender_name: string;
+  contract_number: string | null;
+  settled_date: string | null;
+  amount: number;
+  ours: boolean;
+  /** What it shares with this contract, e.g. "VIN …", "PPSR charge …". */
+  matched: string[];
+}
+
+export interface CommitmentClosure {
+  status: ContractClosureStatus;
+  label: string;
+  closed_at: string | null;
+  notes: string | null;
+  superseded_by: CommitmentContractRef | null;
+}
+
 export interface CommitmentRow {
   id: string;
   application_id: string | null;
@@ -2222,6 +2247,10 @@ export interface CommitmentRow {
     other_broker_name: string | null;
   };
   missing: string[];
+  /** Other active contracts sharing this one's VIN or PPSR charge. */
+  duplicates: CommitmentContractRef[];
+  /** Set on a paid off / sold / refinanced contract (the `closed` list). */
+  closure: CommitmentClosure | null;
 }
 
 export interface CommitmentTotals {
@@ -2249,6 +2278,9 @@ export interface CommitmentSchedule {
   columns: CommitmentColumn[];
   views: CommitmentViewSpec[];
   sections: { key: 'ours' | 'other'; title: string; rows: CommitmentRow[]; totals: CommitmentTotals }[];
+  /** Paid off / sold / refinanced — off the sections, totals and exports. */
+  closed: CommitmentRow[];
+  closure_statuses: { value: ContractClosureStatus; label: string }[];
   totals: CommitmentTotals;
 }
 

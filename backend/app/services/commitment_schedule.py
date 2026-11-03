@@ -36,6 +36,7 @@ from app.models.settled_deal_snapshot import SettledDealParty, SettledDealSnapsh
 from app.models.tenant import Tenant
 from app.services.lender_pricing import latest_for_application
 from app.services.loan_category import application_asset_details
+from app.services import contract_registry as registry
 from app.services.vin import valid_vin_or_none
 
 # key, label, kind, picker group, shown by default. Kind drives formatting in
@@ -301,6 +302,7 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
             "other_broker_name": entry.other_broker_name,
         },
         "missing": missing,
+        "closure": None,
     }
 
 
@@ -322,15 +324,43 @@ def build(db: Session, holder, tenant_id: str) -> dict:
     )
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     arranger = tenant.name if tenant else "Us"
-    ours = [e for e in entries if e.application_id]
-    other = [e for e in entries if not e.application_id]
+    # Paid off / sold / refinanced contracts are no longer commitments: they
+    # leave the sections, totals and exports, and list separately on screen.
+    active = [e for e in entries if not e.closure_status]
+    closed_entries = [e for e in entries if e.closure_status]
+    ours = [e for e in active if e.application_id]
+    other = [e for e in active if not e.application_id]
+    duplicates = registry.duplicate_index(db, tenant_id)
     sections = []
     # The split is the point of the schedule: what we arranged against what
     # someone else did (another broker, or the lender direct — never named).
     for key, title, group in (("ours", f"Loans by {arranger}", ours), ("other", "Loans by other brokers / direct", other)):
-        rows = [_row(e, i + 1) for i, e in enumerate(group)]
+        rows = []
+        for i, e in enumerate(group):
+            row = _row(e, i + 1)
+            row["duplicates"] = [registry.describe(o, m) for o, m in duplicates.get(e.id, [])]
+            rows.append(row)
         sections.append({"key": key, "title": title, "rows": rows, "totals": _totals(rows)})
     all_rows = [r for s in sections for r in s["rows"]]
+    successor_ids = {e.superseded_by_id for e in closed_entries if e.superseded_by_id}
+    successors = {
+        e.id: e for e in db.query(LendingHistoryEntry).filter(
+            LendingHistoryEntry.tenant_id == tenant_id, LendingHistoryEntry.id.in_(successor_ids),
+        )
+    } if successor_ids else {}
+    closed = []
+    for i, e in enumerate(sorted(closed_entries, key=lambda x: x.closed_at or x.created_at, reverse=True)):
+        row = _row(e, i + 1)
+        row["duplicates"] = []
+        successor = successors.get(e.superseded_by_id) if e.superseded_by_id else None
+        row["closure"] = {
+            "status": e.closure_status,
+            "label": registry.CLOSURE_STATUSES.get(e.closure_status, e.closure_status),
+            "closed_at": e.closed_at,
+            "notes": e.closure_notes,
+            "superseded_by": registry.describe(successor) if successor else None,
+        }
+        closed.append(row)
     return {
         "holder": {
             "type": "contact" if isinstance(holder, Contact) else "organization",
@@ -343,6 +373,8 @@ def build(db: Session, holder, tenant_id: str) -> dict:
         "columns": COLUMNS,
         "views": [{"key": k, "label": v["label"], "title": v["title"], "columns": v["columns"]} for k, v in VIEWS.items()],
         "sections": sections,
+        "closed": closed,
+        "closure_statuses": [{"value": k, "label": v} for k, v in registry.CLOSURE_STATUSES.items()],
         "totals": _totals(all_rows),
     }
 

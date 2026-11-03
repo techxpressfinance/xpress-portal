@@ -461,6 +461,11 @@ _MIGRATIONS = [
     ("lending_history_entries", "gst_claimed", "FLOAT"),
     ("lending_history_entries", "tax_invoice_date", "DATE"),
     ("lending_history_entries", "brokerage_amount", "FLOAT"),
+    ("lending_history_entries", "closure_status", "VARCHAR(20)"),
+    ("lending_history_entries", "closed_at", "TIMESTAMP"),
+    ("lending_history_entries", "closure_notes", "TEXT"),
+    ("lending_history_entries", "closed_by_user_id", "VARCHAR(36)"),
+    ("lending_history_entries", "superseded_by_id", "VARCHAR(36)"),
 ]
 
 _logger = logging.getLogger(__name__)
