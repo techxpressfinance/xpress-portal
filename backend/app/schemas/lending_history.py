@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.services.vin import normalise_vin_lines
 
 
 RepaymentFrequencyLiteral = Literal["weekly", "fortnightly", "monthly"]
@@ -81,6 +83,11 @@ class CommitmentLineUpdate(BaseModel):
     notes: Optional[str] = None
     # Internal only — never printed on the schedule.
     other_broker_name: Optional[str] = Field(default=None, max_length=200)
+
+    @field_validator("vin")
+    @classmethod
+    def _vin(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_vin_lines(v)
 
 
 class CommitmentLineCreate(CommitmentLineUpdate):

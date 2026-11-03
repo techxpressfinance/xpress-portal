@@ -13,6 +13,8 @@ from datetime import date, datetime, timedelta, timezone
 from app.database import SessionLocal
 from app.models.arrears import ArrearsRecord, ArrearsSnapshot
 from app.services.loan_category import LOAN_CATEGORIES
+# ISO 3779 VIN length — arrears records must carry a full one (re-exported for schemas/arrears.py).
+from app.services.vin import VIN_LENGTH  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,6 @@ logger = logging.getLogger(__name__)
 ARREARS_FILE_TYPES = (*LOAN_CATEGORIES, "other")
 
 REPAYMENT_FREQUENCIES = ("weekly", "fortnightly", "monthly", "quarterly")
-
-# Standard ISO 3779 VIN/chassis length — arrears records must carry a full one.
-VIN_LENGTH = 17
 
 # Age buckets, in order. `delinquent` is not an age band — it's the manual flag,
 # and it takes precedence over whichever band a record's day count falls in.

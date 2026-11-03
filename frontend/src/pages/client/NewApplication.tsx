@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { VIN_LENGTH, normaliseVin } from '../../lib/vin';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
@@ -1648,7 +1649,14 @@ export default function NewApplication() {
                           </div>
                           <div>
                             <label className={LABEL_CLS}>VIN <span className="font-normal">(optional)</span></label>
-                            <Input placeholder="1HGCM82633A123456" {...register('vehicle_vin')} />
+                            <Input
+                              placeholder="1HGCM82633A123456"
+                              maxLength={VIN_LENGTH}
+                              {...register('vehicle_vin', {
+                                onChange: (e) => { e.target.value = normaliseVin(e.target.value); },
+                                setValueAs: (v: string) => normaliseVin(v ?? ''),
+                              })}
+                            />
                           </div>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">

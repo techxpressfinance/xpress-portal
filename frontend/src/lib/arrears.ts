@@ -82,7 +82,7 @@ export const isEmailAttachment = (a: { kind: string; original_filename: string }
   a.kind === 'email' || /\.(eml|msg)$/i.test(a.original_filename);
 
 /** ISO 3779 VIN length — the backend rejects anything else on an arrears record. */
-export const VIN_LENGTH = 17;
+export { VIN_LENGTH } from './vin';
 
 export const ARREARS_FREQUENCIES: { value: ArrearsRepaymentFrequency; label: string }[] = [
   { value: 'weekly', label: 'Weekly' },

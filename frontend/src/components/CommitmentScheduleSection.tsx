@@ -7,6 +7,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { Button, Card, Input, Select } from './ui';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { saveBlob } from '../lib/arrears';
+import { normaliseVinLines } from '../lib/vin';
 import { downloadElementPdf } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
@@ -445,7 +446,7 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?
   ] },
   { title: 'Asset', fields: [
     { key: 'asset_description', label: 'Asset details (one per line)', type: 'textarea' },
-    { key: 'vin', label: 'VIN (one per line)', type: 'textarea' },
+    { key: 'vin', label: 'VIN (one per line, 17 characters each)', type: 'textarea' },
   ] },
   { title: 'PPSR & tax', fields: [
     { key: 'ppsr_charge_number', label: 'PPSR charge no.' },
@@ -544,7 +545,7 @@ function CommitmentLineModal({ base, row, isOurs, onClose, onSaved }: {
                 <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-3' : ''}>
                   <label className={LABEL} htmlFor={`cl-${f.key}`}>{f.label}</label>
                   {f.type === 'textarea' ? (
-                    <textarea id={`cl-${f.key}`} className="led-input w-full min-h-[60px] resize-y text-sm" value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
+                    <textarea id={`cl-${f.key}`} className="led-input w-full min-h-[60px] resize-y text-sm" value={form[f.key] ?? ''} onChange={(e) => set(f.key, f.key === 'vin' ? normaliseVinLines(e.target.value) : e.target.value)} />
                   ) : (
                     <Input id={`cl-${f.key}`} type={f.type ?? 'text'} step={f.type === 'number' ? 'any' : undefined} min={f.type === 'number' ? 0 : undefined} value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
                   )}

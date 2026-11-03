@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { normaliseVin } from '../../lib/vin';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../Toast';
@@ -596,7 +597,7 @@ export default function ArrearsRecordModal({
                 <Input
                   label="VIN number *"
                   value={form.vin}
-                  onChange={(e) => set('vin', e.target.value.toUpperCase().slice(0, VIN_LENGTH))}
+                  onChange={(e) => set('vin', normaliseVin(e.target.value))}
                   maxLength={VIN_LENGTH}
                   placeholder="JALC4W88767001234"
                   error={errorFor('vin')}

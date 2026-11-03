@@ -36,6 +36,7 @@ from app.models.settled_deal_snapshot import SettledDealParty, SettledDealSnapsh
 from app.models.tenant import Tenant
 from app.services.lender_pricing import latest_for_application
 from app.services.loan_category import application_asset_details
+from app.services.vin import valid_vin_or_none
 
 # key, label, kind, picker group, shown by default. Kind drives formatting in
 # both exports.
@@ -185,7 +186,9 @@ def prefill_from_application(db: Session, app: LoanApplication) -> dict:
         "term_months": term,
         "end_date": _add_months(settled, term) if settled and term else None,
         "asset_description": _asset_text(asset) or params.get("asset_description") or None,
-        "vin": asset.get("vin") or None,
+        # Only a VIN that passes the 17-character rule; a malformed one (rego
+        # stuck on, two VINs in one) is left blank and flagged as missing.
+        "vin": valid_vin_or_none(asset.get("vin")),
         "asset_price_ex_gst": round(float(pricing.asset_price) / 1.1, 2) if pricing and pricing.asset_price else None,
     }
 
@@ -265,6 +268,9 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
     missing = [label for label, value in (
         ("monthly repayment", entry.repayment_amount), ("term", entry.term_months), ("rate", entry.interest_rate),
     ) if value is None]
+    # A line with an asset on it should carry its VIN.
+    if entry.asset_description and not entry.vin:
+        missing.append("VIN")
     return {
         "id": entry.id,
         "application_id": entry.application_id,
