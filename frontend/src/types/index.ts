@@ -1581,6 +1581,9 @@ export interface QuoteInputParameters {
   preferred_term?: number;             // term (months) of the preferred option, e.g. 60
   preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
   preferred_balloon_index?: number;    // which of the term's balloons, when it quotes several (0 = first)
+  show_lender?: boolean;               // name the lender on the client quote (default: hidden)
+  quote_lender_id?: string | null;     // lender book entry, when chosen from it
+  quote_lender_name?: string | null;   // the name as printed — kept so clients never need the lender book
 }
 
 export const QUOTE_SHEET_TYPES = ['client_quote', 'lender_pricing'] as const;
@@ -2192,6 +2195,31 @@ export interface CommitmentColumn {
   default: boolean;
 }
 
+export type ContractClosureStatus = 'paid_off' | 'sold' | 'refinanced';
+
+/** Another contract, as the duplicate VIN/PPSR warning and the closed list name it. */
+export interface CommitmentContractRef {
+  id: string;
+  holder_type: CommitmentHolderType;
+  holder_id: string | null;
+  holder_name: string;
+  lender_name: string;
+  contract_number: string | null;
+  settled_date: string | null;
+  amount: number;
+  ours: boolean;
+  /** What it shares with this contract, e.g. "VIN …", "PPSR charge …". */
+  matched: string[];
+}
+
+export interface CommitmentClosure {
+  status: ContractClosureStatus;
+  label: string;
+  closed_at: string | null;
+  notes: string | null;
+  superseded_by: CommitmentContractRef | null;
+}
+
 export interface CommitmentRow {
   id: string;
   application_id: string | null;
@@ -2222,6 +2250,10 @@ export interface CommitmentRow {
     other_broker_name: string | null;
   };
   missing: string[];
+  /** Other active contracts sharing this one's VIN or PPSR charge. */
+  duplicates: CommitmentContractRef[];
+  /** Set on a paid off / sold / refinanced contract (the `closed` list). */
+  closure: CommitmentClosure | null;
 }
 
 export interface CommitmentTotals {
@@ -2231,12 +2263,27 @@ export interface CommitmentTotals {
   annual_repayment: number;
 }
 
+/** The two readings of the same lines: the loan-by-loan schedule, or the PPSR sheet. */
+export type CommitmentView = 'schedule' | 'ppsr';
+
+export interface CommitmentViewSpec {
+  key: CommitmentView;
+  label: string;
+  title: string;
+  /** Default columns for this view, in display order. */
+  columns: string[];
+}
+
 export interface CommitmentSchedule {
   holder: { type: CommitmentHolderType; id: string; name: string; abn: string | null };
   arranger: string;
   generated_at: string;
   columns: CommitmentColumn[];
+  views: CommitmentViewSpec[];
   sections: { key: 'ours' | 'other'; title: string; rows: CommitmentRow[]; totals: CommitmentTotals }[];
+  /** Paid off / sold / refinanced — off the sections, totals and exports. */
+  closed: CommitmentRow[];
+  closure_statuses: { value: ContractClosureStatus; label: string }[];
   totals: CommitmentTotals;
 }
 

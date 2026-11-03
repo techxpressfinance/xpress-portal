@@ -7,15 +7,19 @@ import { useConfirm } from '../hooks/useConfirm';
 import { Button, Card, Input, Select } from './ui';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { saveBlob } from '../lib/arrears';
+import { normaliseVinLines } from '../lib/vin';
 import { downloadElementPdf } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
 import type {
   CommitmentColumn,
+  CommitmentContractRef,
   CommitmentHolderType,
   CommitmentRow,
   CommitmentSchedule,
   CommitmentTotals,
+  CommitmentView,
+  ContractClosureStatus,
   RepaymentFrequency,
 } from '../types';
 
@@ -27,9 +31,25 @@ const SECTION_TONE: Record<SectionKey, { band: string; tint: string; screen: str
   other: { band: '#7a5a12', tint: '#f6eedc', screen: 'border-l-[#b8860b] bg-[#b8860b]/[0.06]' },
 };
 const TOTALLED = new Set(['amount', 'monthly_repayment', 'balloon']);
-// One column choice and format for the desk, remembered across holders.
-const COLUMNS_KEY = 'commitment-schedule-columns';
+// One view, column choice (per view) and format for the desk, remembered across holders.
+const COLUMNS_KEY: Record<CommitmentView, string> = {
+  schedule: 'commitment-schedule-columns',
+  ppsr: 'commitment-schedule-columns-ppsr',
+};
+const VIEW_KEY = 'commitment-schedule-view';
 const FORMAT_KEY = 'commitment-schedule-format';
+const VIEW_COPY: Record<CommitmentView, { heading: string; blurb: string; file: string }> = {
+  schedule: {
+    heading: 'Business commitment schedule',
+    blurb: 'Loans we arranged, then commitments held elsewhere. Who arranged an outside loan never prints.',
+    file: 'Commitment-Schedule',
+  },
+  ppsr: {
+    heading: 'PPSR schedule',
+    blurb: 'The same lines as PPSR registrations — charge and change numbers, assets, tax invoice and GST claimed.',
+    file: 'PPSR-Schedule',
+  },
+};
 const SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 const money = (n: number | null | undefined) =>
@@ -71,12 +91,26 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
   const confirm = useConfirm();
   const [data, setData] = useState<CommitmentSchedule | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chosen, setChosen] = useState<string[] | null>(() => readStored<string[]>(COLUMNS_KEY));
+  const [view, setView] = useState<CommitmentView>(() => readStored<CommitmentView>(VIEW_KEY) === 'ppsr' ? 'ppsr' : 'schedule');
+  const [chosenByView, setChosenByView] = useState<Record<CommitmentView, string[] | null>>(() => ({
+    schedule: readStored<string[]>(COLUMNS_KEY.schedule),
+    ppsr: readStored<string[]>(COLUMNS_KEY.ppsr),
+  }));
+  const chosen = chosenByView[view];
   const [format, setFormat] = useState<Format>(() => readStored<Format>(FORMAT_KEY) === 'pdf' ? 'pdf' : 'xlsx');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [editing, setEditing] = useState<{ row: CommitmentRow | null; section: SectionKey } | null>(null);
+  // Closing contracts outside the edit form: resolving a flagged duplicate, or by hand.
+  const [closing, setClosing] = useState<{ mode: 'resolve' | 'close'; contracts: CommitmentContractRef[] } | null>(null);
+  const [closingBusy, setClosingBusy] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerMenuRef = useRef<HTMLDivElement>(null);
+  // The card clips overflow, so the column list floats in a portal pinned to
+  // the button, opening up or down to whichever side has room, and scrolls
+  // within the window height rather than running off the page.
+  const [pickerPos, setPickerPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
   const base = `/commitment-schedules/${holderType}/${holderId}`;
   const printId = `commitment-schedule-${holderId}`;
 
@@ -94,31 +128,69 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
 
   useEffect(() => {
     if (!pickerOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    const place = () => {
+      const rect = pickerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const gap = 4, margin = 12;
+      const below = window.innerHeight - rect.bottom - gap - margin;
+      const above = rect.top - gap - margin;
+      const right = Math.max(margin, window.innerWidth - rect.right);
+      setPickerPos(below >= 320 || below >= above
+        ? { top: rect.bottom + gap, right, maxHeight: below }
+        : { bottom: window.innerHeight - rect.top + gap, right, maxHeight: above });
     };
+    place();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (pickerRef.current?.contains(t) || pickerMenuRef.current?.contains(t)) return;
+      setPickerOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPickerOpen(false); };
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', place);
+    // Capture: the page scrolls inside <main>, not the window.
+    window.addEventListener('scroll', place, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
   }, [pickerOpen]);
 
   const allColumns = useMemo(() => data?.columns ?? [], [data]);
+  const viewSpec = data?.views?.find((v) => v.key === view);
+  const viewDefaults = useMemo(
+    () => viewSpec?.columns ?? allColumns.filter((c) => c.default).map((c) => c.key),
+    [viewSpec, allColumns],
+  );
+  // Display order: the view's own columns in its order, then any extras the
+  // desk ticks, in the schedule's natural order.
+  const ordered = useMemo(() => {
+    const byKey = new Map(allColumns.map((c) => [c.key, c]));
+    const lead = viewDefaults.map((k) => byKey.get(k)).filter((c): c is CommitmentColumn => !!c);
+    return [...lead, ...allColumns.filter((c) => !viewDefaults.includes(c.key))];
+  }, [allColumns, viewDefaults]);
   const visibleKeys = useMemo(() => {
     const known = new Set(allColumns.map((c) => c.key));
     const picked = chosen?.filter((k) => known.has(k));
-    return picked?.length ? picked : allColumns.filter((c) => c.default).map((c) => c.key);
-  }, [allColumns, chosen]);
-  const visible = allColumns.filter((c) => visibleKeys.includes(c.key));
+    return picked?.length ? picked : viewDefaults;
+  }, [allColumns, chosen, viewDefaults]);
+  const visible = ordered.filter((c) => visibleKeys.includes(c.key));
 
   const toggleColumn = (key: string) => {
     const next = visibleKeys.includes(key) ? visibleKeys.filter((k) => k !== key) : [...visibleKeys, key];
     if (!next.length) return;
-    setChosen(next);
-    writeStored(COLUMNS_KEY, next);
+    setChosenByView((prev) => ({ ...prev, [view]: next }));
+    writeStored(COLUMNS_KEY[view], next);
   };
   const resetColumns = () => {
-    setChosen(null);
-    try { localStorage.removeItem(COLUMNS_KEY); } catch { /* ignore */ }
+    setChosenByView((prev) => ({ ...prev, [view]: null }));
+    try { localStorage.removeItem(COLUMNS_KEY[view]); } catch { /* ignore */ }
   };
+  const pickView = (v: CommitmentView) => { setView(v); writeStored(VIEW_KEY, v); };
+  const copy = VIEW_COPY[view];
   const pickFormat = (f: Format) => { setFormat(f); writeStored(FORMAT_KEY, f); };
 
   const download = async () => {
@@ -128,12 +200,12 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
     try {
       if (format === 'xlsx') {
         const { data: blob } = await api.get<Blob>(`${base}/xlsx`, {
-          params: { columns: visibleKeys.join(',') },
+          params: { view, columns: visible.map((c) => c.key).join(',') },
           responseType: 'blob',
         });
-        saveBlob(blob, `Commitment-Schedule-${safeName}.xlsx`);
+        saveBlob(blob, `${copy.file}-${safeName}.xlsx`);
       } else {
-        await downloadElementPdf(printId, `Commitment-Schedule-${safeName}.pdf`, 'landscape');
+        await downloadElementPdf(printId, `${copy.file}-${safeName}.pdf`, 'landscape');
       }
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to download the schedule'), 'error');
@@ -159,25 +231,81 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
 
   const lineCount = data?.sections.reduce((n, s) => n + s.rows.length, 0) ?? 0;
 
+  const asRef = (row: CommitmentRow): CommitmentContractRef => ({
+    id: row.id, holder_type: holderType, holder_id: holderId, holder_name: data?.holder.name ?? '',
+    lender_name: row.lender_name, contract_number: row.contract_number, settled_date: row.settled_date,
+    amount: row.amount, ours: !!row.application_id, matched: [],
+  });
+
+  const closeContracts = async (answers: ContractClosureAnswer[]) => {
+    setClosingBusy(true);
+    try {
+      for (const a of answers) {
+        await api.post(`/commitment-schedules/contracts/${a.line_id}/close`, { status: a.status, notes: a.notes || null });
+      }
+      toast(answers.length === 1 ? 'Contract closed' : `${answers.length} contracts closed`, 'success');
+      setClosing(null);
+      await load();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to close the contract'), 'error');
+    } finally {
+      setClosingBusy(false);
+    }
+  };
+
+  const reopenContract = async (row: CommitmentRow) => {
+    if (!(await confirm({
+      title: 'Reopen this contract?',
+      message: `${row.lender_name} — ${money(row.amount)} goes back on the schedule as an active commitment.`,
+      confirmText: 'Reopen',
+    }))) return;
+    try {
+      await api.post(`/commitment-schedules/contracts/${row.id}/reopen`);
+      await load();
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to reopen the contract'), 'error');
+    }
+  };
+
   return (
     <section id="commitment-schedule" className="scroll-mt-6">
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-lg font-semibold">
-              Business commitment schedule <span className="text-sm font-normal text-muted-foreground">({lineCount})</span>
-            </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Loans we arranged, then commitments held elsewhere. Who arranged an outside loan never prints.
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-lg font-semibold">
+                {copy.heading} <span className="text-sm font-normal text-muted-foreground">({lineCount})</span>
+              </h3>
+              <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Schedule view">
+                {(['schedule', 'ppsr'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="radio"
+                    aria-checked={view === v}
+                    onClick={() => pickView(v)}
+                    className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${view === v ? 'bg-[var(--led-ink)] text-[var(--led-surface)]' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {data?.views?.find((s) => s.key === v)?.label ?? (v === 'ppsr' ? 'PPSR' : 'Commitment schedule')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">{copy.blurb}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative" ref={pickerRef}>
               <Button variant="secondary" size="sm" onClick={() => setPickerOpen((o) => !o)} aria-expanded={pickerOpen}>
                 Columns ({visible.length})
               </Button>
-              {pickerOpen && (
-                <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-background p-3 shadow-lg">
+              {pickerOpen && pickerPos && createPortal(
+                <div
+                  ref={pickerMenuRef}
+                  role="dialog"
+                  aria-label="Choose columns"
+                  className="fixed w-64 overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-3 shadow-lg"
+                  style={{ top: pickerPos.top, bottom: pickerPos.bottom, right: pickerPos.right, maxHeight: pickerPos.maxHeight, zIndex: 'var(--z-modal)' }}
+                >
                   {([['Loan details', 'loan'], ['PPSR & tax', 'ppsr']] as const).map(([title, group]) => (
                     <div key={group} className="mb-2">
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{title}</div>
@@ -197,7 +325,8 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
                   <button type="button" onClick={resetColumns} className="text-[12px] text-muted-foreground hover:text-foreground underline">
                     Reset to default
                   </button>
-                </div>
+                </div>,
+                document.body,
               )}
             </div>
             <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Download format">
@@ -256,12 +385,23 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
                               </td>
                             ))}
                             <td className="py-2 whitespace-nowrap text-right">
+                              {row.duplicates.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setClosing({ mode: 'resolve', contracts: row.duplicates })}
+                                  className="mr-2 rounded bg-[var(--led-danger-tint,#fde8e8)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--led-danger,#b42318)] hover:underline"
+                                  title={row.duplicates.map((d) => `${d.matched.join(', ')} — ${d.holder_name} · ${d.lender_name}`).join('\n')}
+                                >
+                                  Duplicate {row.duplicates.flatMap((d) => d.matched).some((m) => m.startsWith('PPSR')) ? (row.duplicates.flatMap((d) => d.matched).some((m) => m.startsWith('VIN')) ? 'VIN & PPSR' : 'PPSR') : 'VIN'}
+                                </button>
+                              )}
                               {row.missing.length > 0 && (
                                 <span className="mr-2 rounded bg-[var(--led-warning-tint)] px-1.5 py-0.5 text-[11px] text-[var(--led-warning)]" title={`Missing: ${row.missing.join(', ')}`}>
                                   Missing {row.missing.length}
                                 </span>
                               )}
                               <Button variant="ghost" size="sm" onClick={() => setEditing({ row, section: section.key })}>Edit</Button>
+                              <Button variant="ghost" size="sm" onClick={() => setClosing({ mode: 'close', contracts: [asRef(row)] })}>Close</Button>
                               {section.key === 'other' && (
                                 <Button variant="ghost" size="sm" onClick={() => removeLine(row)}>Remove</Button>
                               )}
@@ -282,7 +422,65 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
               <span>Annual <strong className="tabular-nums">{money(data.totals.annual_repayment)}</strong></span>
               <span>Balloons <strong className="tabular-nums">{money(data.totals.balloon)}</strong></span>
             </div>
-            <PrintableSchedule id={printId} data={data} visible={visible} />
+            {data.closed.length > 0 && (
+              <div className="mt-5 rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowClosed((o) => !o)}
+                  aria-expanded={showClosed}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left text-[13px] font-semibold"
+                >
+                  <span>Closed contracts <span className="font-normal text-muted-foreground">({data.closed.length}) · paid off, sold or refinanced — not in totals or exports</span></span>
+                  <span aria-hidden className="text-muted-foreground">{showClosed ? '−' : '+'}</span>
+                </button>
+                {showClosed && (
+                  <div className="overflow-x-auto border-t border-border px-4 pb-3">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground">
+                          {['Status', 'Lender', 'Contract no.', 'Amount', 'VIN', 'PPSR charge', 'Closed', 'Notes'].map((h) => (
+                            <th key={h} className={`py-2 pr-3 font-medium whitespace-nowrap ${h === 'Amount' ? 'text-right' : ''}`}>{h}</th>
+                          ))}
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.closed.map((row) => (
+                          <tr key={row.id} className="border-b border-border/50 align-top text-muted-foreground">
+                            <td className="py-2 pr-3 whitespace-nowrap">
+                              <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] font-semibold text-foreground">{row.closure?.label}</span>
+                            </td>
+                            <td className="py-2 pr-3">{row.lender_name}</td>
+                            <td className="py-2 pr-3">{row.contract_number || '—'}</td>
+                            <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{money(row.amount)}</td>
+                            <td className="py-2 pr-3 whitespace-pre-line">{row.vin || '—'}</td>
+                            <td className="py-2 pr-3">{row.ppsr_charge_number || '—'}</td>
+                            <td className="py-2 pr-3 whitespace-nowrap">{row.closure?.closed_at ? formatDate(row.closure.closed_at) : '—'}</td>
+                            <td className="py-2 pr-3 min-w-[180px]">
+                              {row.closure?.notes || '—'}
+                              {row.closure?.superseded_by && (
+                                <div className="mt-0.5 text-[12px]">
+                                  Replaced by{' '}
+                                  {holderHref(row.closure.superseded_by) ? (
+                                    <Link to={holderHref(row.closure.superseded_by)!} className="underline">{row.closure.superseded_by.holder_name}</Link>
+                                  ) : row.closure.superseded_by.holder_name}
+                                  {' · '}{row.closure.superseded_by.lender_name}
+                                  {row.closure.superseded_by.contract_number ? ` · ${row.closure.superseded_by.contract_number}` : ''}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 text-right">
+                              <Button variant="ghost" size="sm" onClick={() => reopenContract(row)}>Reopen</Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            <PrintableSchedule id={printId} data={data} visible={visible} eyebrow={copy.heading} />
           </>
         )}
       </Card>
@@ -291,8 +489,19 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
           base={base}
           row={editing.row}
           isOurs={editing.section === 'ours'}
+          statuses={data?.closure_statuses}
           onClose={() => setEditing(null)}
           onSaved={(next) => { setData(next); setEditing(null); }}
+        />
+      )}
+      {closing && (
+        <ContractClosureDialog
+          mode={closing.mode}
+          contracts={closing.contracts}
+          statuses={data?.closure_statuses}
+          busy={closingBusy}
+          onCancel={() => setClosing(null)}
+          onConfirm={closeContracts}
         />
       )}
     </section>
@@ -320,7 +529,7 @@ function TotalsRow({ label, totals, visible, trailing = false }: {
 
 /** Off-screen A4 landscape layout that the PDF is drawn from — the chosen
  *  columns only, nothing the desk uses internally. */
-function PrintableSchedule({ id, data, visible }: { id: string; data: CommitmentSchedule; visible: CommitmentColumn[] }) {
+function PrintableSchedule({ id, data, visible, eyebrow }: { id: string; data: CommitmentSchedule; visible: CommitmentColumn[]; eyebrow: string }) {
   const th: React.CSSProperties = { color: '#111827', padding: '5px 6px', textAlign: 'left', fontWeight: 700, fontSize: 9 };
   const td: React.CSSProperties = { borderBottom: '1px solid #d9dde5', padding: '4px 6px', fontSize: 9, verticalAlign: 'top', whiteSpace: 'pre-line', wordBreak: 'break-word' };
   const labelAt = visible.findIndex((c) => !TOTALLED.has(c.key));
@@ -333,7 +542,7 @@ function PrintableSchedule({ id, data, visible }: { id: string; data: Commitment
     <div style={{ position: 'absolute', left: -10000, top: 0 }} aria-hidden>
       <div id={id} style={{ width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', background: '#fff', color: '#111827', fontFamily: SANS, fontSize: 10, lineHeight: 1.35 }}>
         <XpressPrintHeader
-          eyebrow="Business commitment schedule"
+          eyebrow={eyebrow}
           title={data.holder.name}
           subtitle={data.holder.abn ? `ABN ${data.holder.abn}` : undefined}
         />
@@ -395,7 +604,7 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?
   ] },
   { title: 'Asset', fields: [
     { key: 'asset_description', label: 'Asset details (one per line)', type: 'textarea' },
-    { key: 'vin', label: 'VIN (one per line)', type: 'textarea' },
+    { key: 'vin', label: 'VIN (one per line, 17 characters each)', type: 'textarea' },
   ] },
   { title: 'PPSR & tax', fields: [
     { key: 'ppsr_charge_number', label: 'PPSR charge no.' },
@@ -424,26 +633,33 @@ function initialForm(row: CommitmentRow | null): FormState {
   };
 }
 
-function CommitmentLineModal({ base, row, isOurs, onClose, onSaved }: {
+function CommitmentLineModal({ base, row, isOurs, statuses, onClose, onSaved }: {
   base: string;
   row: CommitmentRow | null;
   isOurs: boolean;
+  statuses?: { value: ContractClosureStatus; label: string }[];
   onClose: () => void;
   onSaved: (schedule: CommitmentSchedule) => void;
 }) {
   const { toast } = useToast();
   const [form, setForm] = useState<FormState>(() => initialForm(row));
   const [saving, setSaving] = useState(false);
+  // Active contracts already carrying the VIN/PPSR just entered (from the 409).
+  const [conflicts, setConflicts] = useState<CommitmentContractRef[] | null>(null);
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !conflicts) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, conflicts]);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    void save();
+  };
+
+  const save = async (answer?: { close_previous?: ContractClosureAnswer[]; keep_duplicates?: boolean }) => {
     if (!form.lender_name?.trim() || !form.amount) {
       toast('Lender and amount are required', 'error');
       return;
@@ -455,14 +671,22 @@ function CommitmentLineModal({ base, row, isOurs, onClose, onSaved }: {
       body[k] = v.trim() === '' ? null : NUMERIC.has(k) ? Number(v) : v;
     }
     body.repayment_frequency = (form.repayment_frequency || 'monthly') as RepaymentFrequency;
+    const payload = { ...body, ...(answer ?? {}) };
     setSaving(true);
     try {
       const { data } = row
-        ? await api.patch<CommitmentSchedule>(`${base}/lines/${row.id}`, body)
-        : await api.post<CommitmentSchedule>(`${base}/lines`, body);
+        ? await api.patch<CommitmentSchedule>(`${base}/lines/${row.id}`, payload)
+        : await api.post<CommitmentSchedule>(`${base}/lines`, payload);
+      setConflicts(null);
       onSaved(data);
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to save'), 'error');
+      const detail = (err as { response?: { status?: number; data?: { detail?: { code?: string; conflicts?: CommitmentContractRef[] } } } })
+        .response?.data?.detail;
+      if (detail && typeof detail === 'object' && detail.code === 'duplicate_contract' && detail.conflicts?.length) {
+        setConflicts(detail.conflicts);
+      } else {
+        toast(getErrorMessage(err, 'Failed to save'), 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -494,7 +718,7 @@ function CommitmentLineModal({ base, row, isOurs, onClose, onSaved }: {
                 <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-3' : ''}>
                   <label className={LABEL} htmlFor={`cl-${f.key}`}>{f.label}</label>
                   {f.type === 'textarea' ? (
-                    <textarea id={`cl-${f.key}`} className="led-input w-full min-h-[60px] resize-y text-sm" value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
+                    <textarea id={`cl-${f.key}`} className="led-input w-full min-h-[60px] resize-y text-sm" value={form[f.key] ?? ''} onChange={(e) => set(f.key, f.key === 'vin' ? normaliseVinLines(e.target.value) : e.target.value)} />
                   ) : (
                     <Input id={`cl-${f.key}`} type={f.type ?? 'text'} step={f.type === 'number' ? 'any' : undefined} min={f.type === 'number' ? 0 : undefined} value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
                   )}
@@ -539,6 +763,171 @@ function CommitmentLineModal({ base, row, isOurs, onClose, onSaved }: {
           <Button type="submit" loading={saving}>Save</Button>
         </div>
       </form>
+      {conflicts && (
+        <ContractClosureDialog
+          mode="duplicate"
+          contracts={conflicts}
+          statuses={statuses}
+          busy={saving}
+          onCancel={() => setConflicts(null)}
+          // Any contract left unticked stays active alongside this one.
+          onConfirm={(answers) => void save({ close_previous: answers, keep_duplicates: answers.length < conflicts.length })}
+          onKeepBoth={() => void save({ keep_duplicates: true })}
+        />
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+const DEFAULT_CLOSURE_STATUSES: { value: ContractClosureStatus; label: string }[] = [
+  { value: 'paid_off', label: 'Paid off' },
+  { value: 'sold', label: 'Sold' },
+  { value: 'refinanced', label: 'Refinanced' },
+];
+
+export interface ContractClosureAnswer { line_id: string; status: ContractClosureStatus; notes: string }
+
+const holderHref = (c: CommitmentContractRef) =>
+  c.holder_id ? (c.holder_type === 'organization' ? `/admin/companies/${c.holder_id}` : `/admin/contacts/${c.holder_id}`) : null;
+
+/**
+ * Marks contracts paid off / sold / refinanced, with notes. Three uses:
+ * - `duplicate`: a VIN/PPSR just entered is already on these active contracts —
+ *   mark them, or keep both active.
+ * - `resolve`: a row already shares a VIN/PPSR with these contracts.
+ * - `close`: the desk closing one contract by hand.
+ */
+function ContractClosureDialog({ mode, contracts, statuses, busy, onCancel, onConfirm, onKeepBoth }: {
+  mode: 'duplicate' | 'resolve' | 'close';
+  contracts: CommitmentContractRef[];
+  statuses?: { value: ContractClosureStatus; label: string }[];
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: (answers: ContractClosureAnswer[]) => void;
+  onKeepBoth?: () => void;
+}) {
+  const options = statuses?.length ? statuses : DEFAULT_CLOSURE_STATUSES;
+  const [answers, setAnswers] = useState<Record<string, { mark: boolean; status: ContractClosureStatus | ''; notes: string }>>(
+    () => Object.fromEntries(contracts.map((c) => [c.id, { mark: true, status: '', notes: '' }])),
+  );
+  const patch = (id: string, next: Partial<{ mark: boolean; status: ContractClosureStatus | ''; notes: string }>) =>
+    setAnswers((a) => ({ ...a, [id]: { ...a[id], ...next } }));
+  const marked = contracts.filter((c) => answers[c.id]?.mark);
+  const ready = marked.length > 0 && marked.every((c) => answers[c.id].status);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  const confirm = () => {
+    if (!ready) return;
+    onConfirm(marked.map((c) => ({ line_id: c.id, status: answers[c.id].status as ContractClosureStatus, notes: answers[c.id].notes })));
+  };
+
+  const heading = mode === 'close' ? 'Close this contract' : 'VIN / PPSR already on another contract';
+  const lead = mode === 'duplicate'
+    ? `A VIN or PPSR charge belongs to one live contract. ${contracts.length === 1 ? 'This contract is' : 'These contracts are'} still active with the same identifier — mark ${contracts.length === 1 ? 'it' : 'them'} as paid off, sold or refinanced?`
+    : mode === 'resolve'
+      ? 'This contract shares a VIN or PPSR charge with the active contract(s) below. Mark the earlier one as paid off, sold or refinanced.'
+      : 'A closed contract leaves the schedule totals and exports, and its VIN/PPSR is freed for another contract. It can be reopened.';
+
+  return createPortal(
+    <div className="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4" style={{ zIndex: 'calc(var(--z-modal) + 1)' }}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="contract-closure-title"
+        className="relative w-full max-w-[600px] max-h-[90vh] overflow-y-auto rounded-t-[10px] sm:rounded-[10px] bg-background border border-border p-6 shadow-xl"
+        style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}
+      >
+        <div className="flex items-start gap-3">
+          {mode !== 'close' && (
+            <span aria-hidden className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--led-warning-tint)] text-[15px] font-bold text-[var(--led-warning)]">!</span>
+          )}
+          <div>
+            <h3 id="contract-closure-title" className="text-[17px] font-semibold text-foreground">{heading}</h3>
+            <p className="text-[13px] text-muted-foreground mt-1">{lead}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {contracts.map((c) => {
+            const a = answers[c.id];
+            const href = holderHref(c);
+            return (
+              <div key={c.id} className="rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="text-[13px]">
+                    <div className="font-semibold text-foreground">
+                      {href && mode !== 'close' ? <Link to={href} target="_blank" className="hover:underline">{c.holder_name}</Link> : c.holder_name}
+                      <span className="font-normal text-muted-foreground"> · {c.lender_name}</span>
+                    </div>
+                    <div className="text-muted-foreground mt-0.5">
+                      {[c.contract_number && `Contract ${c.contract_number}`, c.settled_date && `Settled ${formatDate(c.settled_date)}`, money(c.amount)].filter(Boolean).join(' · ')}
+                    </div>
+                    {c.matched.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {c.matched.map((m) => (
+                          <span key={m} className="rounded bg-[var(--led-warning-tint)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--led-warning)]">Same {m}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {mode !== 'close' && (
+                    <label className="flex items-center gap-1.5 text-[12.5px] cursor-pointer">
+                      <input type="checkbox" checked={a.mark} onChange={(e) => patch(c.id, { mark: e.target.checked })} className="h-3.5 w-3.5 accent-[var(--led-ink)]" />
+                      Mark this contract
+                    </label>
+                  )}
+                </div>
+                {a.mark && (
+                  <div className="mt-3">
+                    <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Contract outcome">
+                      {options.map((o) => (
+                        <button
+                          key={o.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={a.status === o.value}
+                          onClick={() => patch(c.id, { status: o.value })}
+                          className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${a.status === o.value ? 'bg-[var(--led-ink)] text-[var(--led-surface)]' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      aria-label="Notes"
+                      placeholder="Notes — e.g. refinanced with CBA, payout letter on file"
+                      className="led-input mt-2 w-full min-h-[56px] resize-y text-sm"
+                      maxLength={2000}
+                      value={a.notes}
+                      onChange={(e) => patch(c.id, { notes: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>{mode === 'duplicate' ? 'Back to edit' : 'Cancel'}</Button>
+          {mode === 'duplicate' && onKeepBoth && (
+            <Button type="button" variant="secondary" onClick={onKeepBoth} disabled={busy}>Keep both active & save</Button>
+          )}
+          <Button type="button" onClick={confirm} loading={busy} disabled={!ready || busy}>
+            {mode === 'duplicate' ? 'Mark & save' : mode === 'close' ? 'Close contract' : 'Mark contract'}
+          </Button>
+        </div>
+        {!ready && marked.length > 0 && (
+          <p className="mt-2 text-right text-[12px] text-muted-foreground">Choose paid off, sold or refinanced for each contract you're marking.</p>
+        )}
+      </div>
     </div>,
     document.body,
   );

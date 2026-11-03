@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { VIN_LENGTH, normaliseVin } from '../../lib/vin';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
@@ -1848,7 +1849,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                   </div>
                   <div>
                     <label className={LBL}>VIN <span className="font-normal">(optional)</span></label>
-                    <input type="text" className="led-input" placeholder="1HGCM82633A123456" value={extra.vehicle_vin} onChange={e => setExtra('vehicle_vin', e.target.value)} />
+                    <input type="text" className="led-input" placeholder="1HGCM82633A123456" maxLength={VIN_LENGTH} value={extra.vehicle_vin} onChange={e => setExtra('vehicle_vin', normaliseVin(e.target.value))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">

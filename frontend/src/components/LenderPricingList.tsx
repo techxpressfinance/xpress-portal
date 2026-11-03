@@ -12,10 +12,12 @@ interface LenderPricingRowProps {
   onEdit: () => void;
   onPdf: () => void;
   onDelete: () => void;
+  /** Standalone sheets only: attach this pricing to a live application. */
+  onLink?: () => void;
 }
 
 /** One lender pricing sheet in a list: version, title, term/cycle and actions. */
-export function LenderPricingRow({ sheet, pdfLoading, onView, onEdit, onPdf, onDelete }: LenderPricingRowProps) {
+export function LenderPricingRow({ sheet, pdfLoading, onView, onEdit, onPdf, onDelete, onLink }: LenderPricingRowProps) {
   const params = parseLenderPricingInputs(sheet);
   const meta = [
     params.lender_name.trim() || null,
@@ -49,6 +51,11 @@ export function LenderPricingRow({ sheet, pdfLoading, onView, onEdit, onPdf, onD
         >
           {pdfLoading ? 'Preparing…' : 'PDF'}
         </button>
+        {onLink && (
+          <button onClick={onLink} className={`${btn} bg-primary/10 text-primary hover:bg-primary/20`}>
+            Link to application
+          </button>
+        )}
         <button onClick={onDelete} className={`${btn} bg-destructive/10 text-destructive hover:bg-destructive/20`}>
           Delete
         </button>

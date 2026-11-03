@@ -6,6 +6,7 @@ import LenderPricingEditor from '../../components/LenderPricingEditor';
 import { LenderPricingRow } from '../../components/LenderPricingList';
 import SheetTypeTag from '../../components/SheetTypeTag';
 import LenderPricingView from '../../components/LenderPricingView';
+import LinkApplicationModal from '../../components/LinkApplicationModal';
 import { useLenderPricingPdf } from '../../hooks/useLenderPricingPdf';
 import { useConfirm } from '../../hooks/useConfirm';
 import { QUOTE_SHEET_STATUS_BADGE } from '../../lib/constants';
@@ -32,6 +33,8 @@ export default function QuoteSheets() {
     { kind: 'new' } | { kind: 'edit' | 'view'; sheet: QuoteSheet } | null
   >(null);
   const lenderPdf = useLenderPricingPdf();
+  // A standalone sheet being attached to a live application.
+  const [linkingSheet, setLinkingSheet] = useState<QuoteSheet | null>(null);
   const listMode = !showForm && !editingSheet && !viewingSheet && !lenderPricingMode;
   // The two kinds of sheet share a model but never a list: a quote goes to the
   // client, lender pricing never leaves the desk. Tabs rather than stacked
@@ -328,6 +331,7 @@ export default function QuoteSheets() {
                       onEdit={() => setLenderPricingMode({ kind: 'edit', sheet })}
                       onPdf={() => lenderPdf.downloadPdf(sheet)}
                       onDelete={() => deleteLenderPricing(sheet)}
+                      onLink={() => setLinkingSheet(sheet)}
                     />
                   ))}
                 </div>
@@ -439,6 +443,13 @@ export default function QuoteSheets() {
                       >
                         Client PDF
                       </button>
+                      <button
+                        onClick={() => setLinkingSheet(sheet)}
+                        className="rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                        title="Move this quote onto a live application on the board"
+                      >
+                        Link to application
+                      </button>
                       {sheet.status === 'draft' && (
                         <button
                           onClick={async () => {
@@ -466,6 +477,19 @@ export default function QuoteSheets() {
       )}
 
       {lenderPdf.pdfNode}
+
+      {linkingSheet && (
+        <LinkApplicationModal
+          sheet={linkingSheet}
+          onClose={() => setLinkingSheet(null)}
+          onLinked={(linked, app) => {
+            setQuoteSheets(prev => prev.filter(s => s.id !== linked.id));
+            setLinkingSheet(null);
+            const ref = `APP-${app.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+            toast(`${linked.sheet_type === 'lender_pricing' ? 'Lender pricing' : 'Quote'} linked to ${ref} as v${linked.version}`, 'success');
+          }}
+        />
+      )}
 
       {/* Off-screen PDF render */}
       {pdfRenderSheet && (

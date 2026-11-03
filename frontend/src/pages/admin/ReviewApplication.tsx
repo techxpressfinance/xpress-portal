@@ -2020,7 +2020,10 @@ export default function ReviewApplication() {
                         {LOAN_TYPE_LABELS[application.loan_type] || application.loan_type.replace(/_/g, ' ')}
                       </h1>
                       <p className="mt-1 text-[14px] font-medium text-muted-foreground">
-                        {displayName}
+                        {/* The entity is the applicant — name it as strongly as a person would be. */}
+                        {isCompanyApplicant(application)
+                          ? <strong className="font-bold text-foreground">{displayName}</strong>
+                          : displayName}
                         {isCompanyApplicant(application) && (
                           <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground ring-1 ring-border">
                             <BuildingOfficeIcon className="h-3 w-3" strokeWidth={2} />

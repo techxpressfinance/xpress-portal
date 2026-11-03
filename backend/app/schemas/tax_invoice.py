@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.services.vin import normalise_vin
 
 
 class TaxInvoiceCreate(BaseModel):
@@ -103,3 +105,8 @@ class TaxInvoiceUpdate(BaseModel):
     valuer_name: Optional[str] = None
     valuation_date: Optional[date] = None
     notes: Optional[str] = None
+
+    @field_validator("asset_vin")
+    @classmethod
+    def _vin(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_vin(v)

@@ -28,6 +28,7 @@ from app.services import acn as acn_service
 from app.services.activity_log import log_activity
 from app.services.lender_pricing import latest_for_application as latest_lender_pricing
 from app.services.loan_category import application_asset_details, application_loan_category
+from app.services.vin import valid_vin_or_none
 
 # GST is 1/11th of a GST-inclusive amount.
 GST_DIVISOR = Decimal("11")
@@ -938,7 +939,8 @@ def prefill_from_application(
         "asset_make": _text(asset.get("make")),
         "asset_model": _text(asset.get("model")),
         "asset_year": (_text(asset.get("year")) or "")[:4] or None,
-        "asset_vin": _text(asset.get("vin")),
+        # A malformed VIN on the deal is left blank for the desk, not printed.
+        "asset_vin": valid_vin_or_none(_text(asset.get("vin"))),
         "asset_odometer": odometer,
         "asset_condition": condition,
         **money,

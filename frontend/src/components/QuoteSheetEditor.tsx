@@ -3,7 +3,8 @@ import { useAutosave } from '../lib/useAutosave';
 import { Button, Card } from './ui';
 import SheetEditorHeader from './SheetEditorHeader';
 import QuoteSheetComparison from './QuoteSheetComparison';
-import type { QuoteOption, QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
+import type { Lender, QuoteOption, QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
+import LenderCombobox from './LenderCombobox';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { downloadQuoteSheetPdf } from '../lib/pdfExport';
@@ -480,6 +481,13 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
   const [inputs, setInputs] = useState<QuoteInputParameters>(() => parseInputParams(quoteSheet));
   const [saving, setSaving] = useState(false);
   const [customTermInput, setCustomTermInput] = useState('');
+  // The lender book, loaded only once the desk opts to name a lender.
+  const [lenderBook, setLenderBook] = useState<Lender[] | null>(null);
+  const wantsLender = !!inputs.show_lender;
+  useEffect(() => {
+    if (!wantsLender || lenderBook) return;
+    api.get<Lender[]>('/lenders').then(({ data }) => setLenderBook(data)).catch(() => setLenderBook([]));
+  }, [wantsLender, lenderBook]);
 
   const updateInput = <K extends keyof QuoteInputParameters>(key: K, value: QuoteInputParameters[K]) => {
     setInputs(prev => ({ ...prev, [key]: value }));
@@ -1234,6 +1242,41 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
               </p>
             </div>
             <div className="space-y-3">
+              {/* Optional: name the lender on the client quote */}
+              <div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => updateInput('show_lender', !inputs.show_lender)}
+                    aria-pressed={!!inputs.show_lender}
+                    className={`h-8 px-3 rounded-lg text-[12px] font-semibold transition-colors border whitespace-nowrap ${inputs.show_lender
+                      ? 'bg-primary/10 text-primary border-primary/20'
+                      : 'bg-muted text-muted-foreground border-border/40'
+                    }`}
+                  >
+                    {inputs.show_lender ? 'Lender: shown' : 'Lender: hidden'}
+                  </button>
+                  <span className="text-[10px] text-muted-foreground">Optional — name the lender on the quote and its PDF.</span>
+                </div>
+                {inputs.show_lender && (
+                  <div className="mt-2 max-w-sm">
+                    <LenderCombobox
+                      id="quote-lender"
+                      lenders={lenderBook}
+                      value={inputs.quote_lender_id ?? null}
+                      orphanedName={inputs.quote_lender_id && lenderBook && !lenderBook.some(l => l.id === inputs.quote_lender_id) ? inputs.quote_lender_name : null}
+                      onChange={(id) => {
+                        const lender = lenderBook?.find(l => l.id === id);
+                        setInputs(prev => ({ ...prev, quote_lender_id: id || null, quote_lender_name: lender?.name ?? null }));
+                      }}
+                      className={`${fieldBase} px-3`}
+                    />
+                    {inputs.show_lender && !inputs.quote_lender_name && (
+                      <p className="text-[10px] text-muted-foreground mt-1">Pick a lender — nothing is shown until one is chosen.</p>
+                    )}
+                  </div>
+                )}
+              </div>
               <div>
                 <label className={`${labelBase} mb-1.5`}>Repayment display range (±$)</label>
                 <div className="flex items-center gap-3">

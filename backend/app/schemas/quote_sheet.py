@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QuoteOptionCreate(BaseModel):
@@ -116,6 +116,12 @@ class QuoteSheetUpdate(BaseModel):
     recipient_name: Optional[str] = None
     recipient_email: Optional[str] = None
     lender_id: Optional[str] = None
+
+
+class QuoteSheetLinkApplication(BaseModel):
+    """Attach a standalone quote or lender pricing sheet to a live application."""
+
+    application_id: str = Field(min_length=1, max_length=36)
 
 
 class QuoteSheetEmailRequest(BaseModel):

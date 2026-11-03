@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { VIN_LENGTH, normaliseVin } from '../lib/vin';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { useConfirm } from '../hooks/useConfirm';
@@ -711,7 +712,7 @@ export default function TaxInvoicePanel({
                       <Text label="Make" value={field(invoice, 'asset_make')} onChange={(v) => set('asset_make', v)} disabled={locked} />
                       <Text label="Model" value={field(invoice, 'asset_model')} onChange={(v) => set('asset_model', v)} disabled={locked} />
                       <Text label="Year" value={field(invoice, 'asset_year')} onChange={(v) => set('asset_year', v)} disabled={locked} />
-                      <Text label="VIN / serial" value={field(invoice, 'asset_vin')} onChange={(v) => set('asset_vin', v)} disabled={locked} />
+                      <Text label="VIN / serial" value={field(invoice, 'asset_vin')} onChange={(v) => set('asset_vin', normaliseVin(v))} maxLength={VIN_LENGTH} disabled={locked} />
                       <Text label="Registration" value={field(invoice, 'asset_registration')} onChange={(v) => set('asset_registration', v)} disabled={locked} />
                       <Text label="Odometer" type="number" value={field(invoice, 'asset_odometer')} onChange={(v) => set('asset_odometer', v === '' ? null : Number(v))} disabled={locked} />
                       <Choice
@@ -1008,13 +1009,14 @@ function CompanyAddressField({ invoice, onSave }: {
 }
 
 function Text({
-  label, value, onChange, type = 'text', disabled,
+  label, value, onChange, type = 'text', disabled, maxLength,
 }: {
   label: string;
   value: string | number | boolean;
   onChange: (v: string) => void;
   type?: string;
   disabled?: boolean;
+  maxLength?: number;
 }) {
   return (
     <label className="block">
@@ -1024,6 +1026,7 @@ function Text({
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        maxLength={maxLength}
         className="w-full rounded-md border border-[var(--led-line)] bg-background px-2.5 py-1.5 text-[13px] text-foreground disabled:opacity-60"
       />
     </label>
