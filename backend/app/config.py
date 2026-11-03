@@ -39,6 +39,12 @@ EMAIL_ENABLED = bool(SES_FROM_EMAIL)
 # — paused for now. Set REFERRER_EMAILS_ENABLED=true to resume sending to referrers.
 REFERRER_EMAILS_ENABLED = os.getenv("REFERRER_EMAILS_ENABLED", "false").lower() == "true"
 
+# Client-facing emails — paused for now. While false, every outgoing email is
+# restricted to staff (admin/broker/super_admin) and referrer accounts; anyone
+# else (client users, contacts, parties, guarantors, borrowers on tracking links)
+# is dropped at send time. Set CLIENT_EMAILS_ENABLED=true to resume.
+CLIENT_EMAILS_ENABLED = os.getenv("CLIENT_EMAILS_ENABLED", "false").lower() == "true"
+
 # OpenAI / LLM analysis - optional, analysis feature disabled if no key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")

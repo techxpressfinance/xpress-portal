@@ -11,7 +11,7 @@ from typing import Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.config import EMAIL_ENABLED, FRONTEND_URL, REFERRER_EMAILS_ENABLED, SES_CONFIGURATION_SET, SES_FROM_EMAIL, SES_REGION
+from app.config import CLIENT_EMAILS_ENABLED, EMAIL_ENABLED, FRONTEND_URL, REFERRER_EMAILS_ENABLED, SES_CONFIGURATION_SET, SES_FROM_EMAIL, SES_REGION
 
 
 def _esc(value: str) -> str:
@@ -103,8 +103,55 @@ def _get_base_html(content: str) -> str:
     </html>
     """
 
+_NON_CLIENT_ROLES = ("admin", "broker", "super_admin", "referrer")
+
+
+def _allowed_recipients(emails: list[str]) -> list[str]:
+    """Drop client recipients while CLIENT_EMAILS_ENABLED is off.
+
+    Allowlist, not blocklist: only addresses belonging to an active staff or
+    referrer account pass, so contacts/parties/borrowers with no account are
+    blocked too. Fails closed — if the lookup errors, nothing is sent.
+    """
+    emails = [e for e in emails if e]
+    if CLIENT_EMAILS_ENABLED or not emails:
+        return emails
+    try:
+        from sqlalchemy import func, select
+
+        from app.database import SessionLocal
+        from app.models.user import User, UserRole
+
+        lowered = {e.strip().lower() for e in emails}
+        db = SessionLocal()
+        try:
+            rows = db.execute(
+                select(func.lower(User.email)).where(
+                    func.lower(User.email).in_(lowered),
+                    User.role.in_([UserRole(r) for r in _NON_CLIENT_ROLES]),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            ).scalars().all()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Client-email filter lookup failed; suppressing send to %s", emails)
+        return []
+    allowed = set(rows)
+    kept = [e for e in emails if e.strip().lower() in allowed]
+    blocked = [e for e in emails if e.strip().lower() not in allowed]
+    if blocked:
+        logger.info("Client emails paused (CLIENT_EMAILS_ENABLED=false); not sending to %s", blocked)
+    return kept
+
+
 def _send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None, cc_emails: Optional[list[str]] = None) -> None:
     """Send email via Amazon SES. Fails silently with logging."""
+    recipients = _allowed_recipients([to_email] + (cc_emails or []))
+    if not recipients:
+        return
+    to_email, cc_emails = recipients[0], recipients[1:]
     try:
         msg = MIMEMultipart("alternative")
         msg["From"] = f"Xpress Finance <{SES_FROM_EMAIL}>"
@@ -1195,6 +1242,9 @@ def _send_with_attachment(
     to_emails: list[str], subject: str, body: str, filename: str, content: bytes, mime_subtype: str,
 ) -> None:
     """One message to several recipients, with a single file attached."""
+    to_emails = _allowed_recipients(list(to_emails))
+    if not to_emails:
+        return
     try:
         msg = MIMEMultipart("mixed")
         msg["From"] = f"Xpress Finance <{SES_FROM_EMAIL}>"
