@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
+from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.quote_sheet import QuoteOption, QuoteSheet, QuoteSheetStatus, QuoteSheetType
 from app.models.user import User
 from app.schemas.quote_sheet import (
@@ -17,8 +18,10 @@ from app.schemas.quote_sheet import (
     QuoteOptionUpdate,
     QuoteSheetCreate,
     QuoteSheetEmailRequest,
+    QuoteSheetLinkApplication,
     QuoteSheetUpdate,
 )
+from app.services.activity_log import log_activity
 from app.services.email import send_quote_sheet_email
 from app.services.lender_pricing import apply_lender_pricing
 from app.services.quote_serializers import serialize_quote_option as _serialize_option, serialize_quote_sheet as _serialize
@@ -61,6 +64,10 @@ def _next_version(db: Session) -> int:
         .scalar()
     )
     return (max_ver or 0) + 1
+
+
+# Settled, declined and not-proceeding deals are off the live board.
+_CLOSED_STATUSES = (ApplicationStatus.settled, ApplicationStatus.rejected, ApplicationStatus.not_proceeding)
 
 
 # ── List ──────────────────────────────────────────────────────────────
@@ -398,3 +405,42 @@ def send_standalone_quote_email(
     db.commit()
 
     return {"detail": "Quote sheet email sent"}
+
+
+# ── Link to an application ────────────────────────────────────────────
+
+@router.post("/{sheet_id}/link-application")
+def link_quote_sheet_to_application(
+    sheet_id: str,
+    data: QuoteSheetLinkApplication,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Move a standalone quote or lender pricing sheet onto a live application
+    on the board. It leaves the standalone list and becomes the next version on
+    the application, where its lender pricing feeds the tax invoice and
+    settlement steps like any sheet made there."""
+    sheet = _get_sheet(db, sheet_id, tenant_id)
+    app = get_in_tenant(
+        db, LoanApplication, data.application_id, tenant_id,
+        LoanApplication.deleted_at.is_(None), detail="Application not found",
+    )
+    if app.status in _CLOSED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only a live application can take a quote — this one is settled, declined or not proceeding.",
+        )
+    next_version = (
+        db.query(func.max(QuoteSheet.version)).filter(QuoteSheet.application_id == app.id).scalar() or 0
+    ) + 1
+    sheet.application_id = app.id
+    sheet.version = next_version
+    log_activity(
+        db, current_user.id, "quote_sheet_linked", "application", app.id,
+        {"quote_sheet_id": sheet.id, "sheet_type": sheet.sheet_type.value, "version": next_version},
+        tenant_id=tenant_id,
+    )
+    db.commit()
+    db.refresh(sheet)
+    return _serialize(sheet)

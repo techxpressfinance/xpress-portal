@@ -1581,6 +1581,9 @@ export interface QuoteInputParameters {
   preferred_term?: number;             // term (months) of the preferred option, e.g. 60
   preferred_balloon?: boolean;         // false = No Balloon column, true = With Balloon
   preferred_balloon_index?: number;    // which of the term's balloons, when it quotes several (0 = first)
+  show_lender?: boolean;               // name the lender on the client quote (default: hidden)
+  quote_lender_id?: string | null;     // lender book entry, when chosen from it
+  quote_lender_name?: string | null;   // the name as printed — kept so clients never need the lender book
 }
 
 export const QUOTE_SHEET_TYPES = ['client_quote', 'lender_pricing'] as const;

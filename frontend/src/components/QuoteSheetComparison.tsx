@@ -261,6 +261,8 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       preferredTerm: (params.preferred_term as number | undefined) ?? null,
       preferredBalloon: (params.preferred_balloon as boolean | undefined) ?? false,
       preferredBalloonIndex: (params.preferred_balloon_index as number | undefined) ?? 0,
+      // Named only when the desk switched it on and picked one.
+      lenderName: params.show_lender ? ((params.quote_lender_name as string | null | undefined)?.trim() || null) : null,
     };
   } catch {
     return null;
@@ -294,6 +296,7 @@ export default function QuoteSheetComparison({
   const preferredTerm = parsedParams?.preferredTerm ?? null;
   const preferredBalloon = parsedParams?.preferredBalloon ?? false;
   const preferredBalloonIndex = parsedParams?.preferredBalloonIndex ?? 0;
+  const lenderName = parsedParams?.lenderName ?? null;
 
   // Filter terms for client view / PDF if selected_terms is set
   const termGroups = (isClientView || isPdfExport) && selectedTerms
@@ -371,6 +374,7 @@ export default function QuoteSheetComparison({
     const summaryCells: { label: string; value: ReactNode; gold?: boolean; wide?: boolean }[] = [
       ...(clientName ? [{ label: 'Client', value: clientName, wide: true }] : []),
       { label: 'Asset', value: assetDescription !== 'Asset' ? assetDescription : '—', wide: true },
+      ...(lenderName ? [{ label: 'Lender', value: lenderName, wide: true }] : []),
       { label: 'Drive-away price', value: <Money v={first.purchase_price} /> },
       { label: 'Deposit', value: <Money v={first.deposit} /> },
       { label: 'Amount financed', value: <Money v={isClientView ? clientLoanAmt0 : first.loan_amount} />, gold: true },
@@ -982,6 +986,11 @@ export default function QuoteSheetComparison({
 
       {quoteSheet.title && (
         <h3 className="text-lg font-bold text-foreground tracking-tight">{quoteSheet.title}</h3>
+      )}
+      {lenderName && (
+        <p className="text-[13px] text-muted-foreground">
+          Lender <span className="font-semibold text-foreground">{lenderName}</span>
+        </p>
       )}
 
       {/* Term scenario grid */}
