@@ -62,6 +62,28 @@ COLUMNS: list[dict] = [
     {"key": "tax_invoice_date", "label": "Tax invoice date", "kind": "date", "group": "ppsr", "default": False},
 ]
 COLUMN_KEYS = [c["key"] for c in COLUMNS]
+
+# The two ways the desk reads the same lines, from the two sheets of its
+# "business commitment Schedule.xlsx": the loan-by-loan commitment schedule, and
+# the PPSR sheet (registrations, tax-invoice and GST figures, in that sheet's
+# column order). Each view lists its default columns in display order.
+VIEWS: dict[str, dict] = {
+    "schedule": {
+        "label": "Commitment schedule",
+        "title": "Business Commitment Schedule",
+        "columns": [c["key"] for c in COLUMNS if c["default"]],
+    },
+    "ppsr": {
+        "label": "PPSR",
+        "title": "PPSR Schedule",
+        "columns": [
+            "sr", "ppsr_charge_number", "ppsr_change_number", "ppsr_organisation_identifier",
+            "settled_date", "end_date", "asset_description", "vin", "lender_name",
+            "monthly_repayment", "asset_price_ex_gst", "gst_claimed", "amount", "tax_invoice_date",
+        ],
+    },
+}
+DEFAULT_VIEW = "schedule"
 _TOTALLED = ("amount", "monthly_repayment", "balloon")
 
 # Fields the desk may edit on a line, ours or other.
@@ -313,16 +335,25 @@ def build(db: Session, holder, tenant_id: str) -> dict:
         "arranger": arranger,
         "generated_at": datetime.now().date(),
         "columns": COLUMNS,
+        "views": [{"key": k, "label": v["label"], "title": v["title"], "columns": v["columns"]} for k, v in VIEWS.items()],
         "sections": sections,
         "totals": _totals(all_rows),
     }
 
 
-def parse_columns(value: Optional[str]) -> list[str]:
+def parse_view(value: Optional[str]) -> str:
+    view = value or DEFAULT_VIEW
+    if view not in VIEWS:
+        raise HTTPException(status_code=400, detail="Unknown schedule view")
+    return view
+
+
+def parse_columns(value: Optional[str], view: str = DEFAULT_VIEW) -> list[str]:
+    """The requested columns in the order asked for (a view orders its own)."""
     if not value:
-        return [c["key"] for c in COLUMNS if c["default"]]
-    wanted = {k.strip() for k in value.split(",")}
-    keys = [k for k in COLUMN_KEYS if k in wanted]
+        return list(VIEWS[view]["columns"])
+    known = set(COLUMN_KEYS)
+    keys = list(dict.fromkeys(k.strip() for k in value.split(",") if k.strip() in known))
     if not keys:
         raise HTTPException(status_code=400, detail="Choose at least one column")
     return keys
@@ -330,7 +361,7 @@ def parse_columns(value: Optional[str]) -> list[str]:
 
 # ── Excel ────────────────────────────────────────────────────────────
 
-def to_xlsx(schedule: dict, columns: list[str]) -> bytes:
+def to_xlsx(schedule: dict, columns: list[str], view: str = DEFAULT_VIEW) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
@@ -339,7 +370,8 @@ def to_xlsx(schedule: dict, columns: list[str]) -> bytes:
     cols = [spec[k] for k in columns]
     wb = Workbook()
     ws = wb.active
-    ws.title = "Commitment schedule"
+    title = VIEWS[view]["title"]
+    ws.title = title[:31]
     bold = Font(bold=True)
     # Ours in navy, elsewhere in amber, so the two never read as one list.
     section_fill = {"ours": PatternFill("solid", fgColor="1F2A44"), "other": PatternFill("solid", fgColor="7A5A12")}
@@ -349,7 +381,7 @@ def to_xlsx(schedule: dict, columns: list[str]) -> bytes:
     box = Border(top=thin, bottom=thin, left=thin, right=thin)
     fmt = {"money": '"$"#,##0.00', "percent": "0.00%", "date": "DD/MM/YYYY", "int": "0"}
 
-    ws.cell(row=1, column=1, value="Business Commitment Schedule").font = Font(bold=True, size=14)
+    ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=14)
     holder = schedule["holder"]
     ws.cell(row=2, column=1, value=holder["name"] + (f"  ·  ABN {holder['abn']}" if holder.get("abn") else "")).font = bold
     ws.cell(row=3, column=1, value=f"Prepared {schedule['generated_at'].strftime('%d/%m/%Y')}")

@@ -35,21 +35,23 @@ def download_schedule_xlsx(
     holder_type: str,
     holder_id: str,
     columns: Optional[str] = Query(None, max_length=1000),
+    view: Optional[str] = Query(None, max_length=20),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
     holder = schedules.get_holder(db, holder_type, holder_id, tenant_id)
-    keys = schedules.parse_columns(columns)
-    content = schedules.to_xlsx(schedules.build(db, holder, tenant_id), keys)
+    view_key = schedules.parse_view(view)
+    keys = schedules.parse_columns(columns, view_key)
+    content = schedules.to_xlsx(schedules.build(db, holder, tenant_id), keys, view_key)
     log_activity(db, current_user.id, "commitment_schedule_downloaded", holder_type, holder.id,
-                 {"format": "xlsx", "columns": keys}, tenant_id=tenant_id)
+                 {"format": "xlsx", "view": view_key, "columns": keys}, tenant_id=tenant_id)
     db.commit()
     safe = re.sub(r"[^\w\s-]", "", schedules.holder_name(holder)).strip().replace(" ", "-") or "schedule"
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="Commitment-Schedule-{safe}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{"PPSR" if view_key == "ppsr" else "Commitment"}-Schedule-{safe}.xlsx"'},
     )
 
 

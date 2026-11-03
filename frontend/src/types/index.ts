@@ -2231,11 +2231,23 @@ export interface CommitmentTotals {
   annual_repayment: number;
 }
 
+/** The two readings of the same lines: the loan-by-loan schedule, or the PPSR sheet. */
+export type CommitmentView = 'schedule' | 'ppsr';
+
+export interface CommitmentViewSpec {
+  key: CommitmentView;
+  label: string;
+  title: string;
+  /** Default columns for this view, in display order. */
+  columns: string[];
+}
+
 export interface CommitmentSchedule {
   holder: { type: CommitmentHolderType; id: string; name: string; abn: string | null };
   arranger: string;
   generated_at: string;
   columns: CommitmentColumn[];
+  views: CommitmentViewSpec[];
   sections: { key: 'ours' | 'other'; title: string; rows: CommitmentRow[]; totals: CommitmentTotals }[];
   totals: CommitmentTotals;
 }

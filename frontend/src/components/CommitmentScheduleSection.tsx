@@ -16,6 +16,7 @@ import type {
   CommitmentRow,
   CommitmentSchedule,
   CommitmentTotals,
+  CommitmentView,
   RepaymentFrequency,
 } from '../types';
 
@@ -27,9 +28,25 @@ const SECTION_TONE: Record<SectionKey, { band: string; tint: string; screen: str
   other: { band: '#7a5a12', tint: '#f6eedc', screen: 'border-l-[#b8860b] bg-[#b8860b]/[0.06]' },
 };
 const TOTALLED = new Set(['amount', 'monthly_repayment', 'balloon']);
-// One column choice and format for the desk, remembered across holders.
-const COLUMNS_KEY = 'commitment-schedule-columns';
+// One view, column choice (per view) and format for the desk, remembered across holders.
+const COLUMNS_KEY: Record<CommitmentView, string> = {
+  schedule: 'commitment-schedule-columns',
+  ppsr: 'commitment-schedule-columns-ppsr',
+};
+const VIEW_KEY = 'commitment-schedule-view';
 const FORMAT_KEY = 'commitment-schedule-format';
+const VIEW_COPY: Record<CommitmentView, { heading: string; blurb: string; file: string }> = {
+  schedule: {
+    heading: 'Business commitment schedule',
+    blurb: 'Loans we arranged, then commitments held elsewhere. Who arranged an outside loan never prints.',
+    file: 'Commitment-Schedule',
+  },
+  ppsr: {
+    heading: 'PPSR schedule',
+    blurb: 'The same lines as PPSR registrations — charge and change numbers, assets, tax invoice and GST claimed.',
+    file: 'PPSR-Schedule',
+  },
+};
 const SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 const money = (n: number | null | undefined) =>
@@ -71,7 +88,12 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
   const confirm = useConfirm();
   const [data, setData] = useState<CommitmentSchedule | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chosen, setChosen] = useState<string[] | null>(() => readStored<string[]>(COLUMNS_KEY));
+  const [view, setView] = useState<CommitmentView>(() => readStored<CommitmentView>(VIEW_KEY) === 'ppsr' ? 'ppsr' : 'schedule');
+  const [chosenByView, setChosenByView] = useState<Record<CommitmentView, string[] | null>>(() => ({
+    schedule: readStored<string[]>(COLUMNS_KEY.schedule),
+    ppsr: readStored<string[]>(COLUMNS_KEY.ppsr),
+  }));
+  const chosen = chosenByView[view];
   const [format, setFormat] = useState<Format>(() => readStored<Format>(FORMAT_KEY) === 'pdf' ? 'pdf' : 'xlsx');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -102,23 +124,37 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
   }, [pickerOpen]);
 
   const allColumns = useMemo(() => data?.columns ?? [], [data]);
+  const viewSpec = data?.views?.find((v) => v.key === view);
+  const viewDefaults = useMemo(
+    () => viewSpec?.columns ?? allColumns.filter((c) => c.default).map((c) => c.key),
+    [viewSpec, allColumns],
+  );
+  // Display order: the view's own columns in its order, then any extras the
+  // desk ticks, in the schedule's natural order.
+  const ordered = useMemo(() => {
+    const byKey = new Map(allColumns.map((c) => [c.key, c]));
+    const lead = viewDefaults.map((k) => byKey.get(k)).filter((c): c is CommitmentColumn => !!c);
+    return [...lead, ...allColumns.filter((c) => !viewDefaults.includes(c.key))];
+  }, [allColumns, viewDefaults]);
   const visibleKeys = useMemo(() => {
     const known = new Set(allColumns.map((c) => c.key));
     const picked = chosen?.filter((k) => known.has(k));
-    return picked?.length ? picked : allColumns.filter((c) => c.default).map((c) => c.key);
-  }, [allColumns, chosen]);
-  const visible = allColumns.filter((c) => visibleKeys.includes(c.key));
+    return picked?.length ? picked : viewDefaults;
+  }, [allColumns, chosen, viewDefaults]);
+  const visible = ordered.filter((c) => visibleKeys.includes(c.key));
 
   const toggleColumn = (key: string) => {
     const next = visibleKeys.includes(key) ? visibleKeys.filter((k) => k !== key) : [...visibleKeys, key];
     if (!next.length) return;
-    setChosen(next);
-    writeStored(COLUMNS_KEY, next);
+    setChosenByView((prev) => ({ ...prev, [view]: next }));
+    writeStored(COLUMNS_KEY[view], next);
   };
   const resetColumns = () => {
-    setChosen(null);
-    try { localStorage.removeItem(COLUMNS_KEY); } catch { /* ignore */ }
+    setChosenByView((prev) => ({ ...prev, [view]: null }));
+    try { localStorage.removeItem(COLUMNS_KEY[view]); } catch { /* ignore */ }
   };
+  const pickView = (v: CommitmentView) => { setView(v); writeStored(VIEW_KEY, v); };
+  const copy = VIEW_COPY[view];
   const pickFormat = (f: Format) => { setFormat(f); writeStored(FORMAT_KEY, f); };
 
   const download = async () => {
@@ -128,12 +164,12 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
     try {
       if (format === 'xlsx') {
         const { data: blob } = await api.get<Blob>(`${base}/xlsx`, {
-          params: { columns: visibleKeys.join(',') },
+          params: { view, columns: visible.map((c) => c.key).join(',') },
           responseType: 'blob',
         });
-        saveBlob(blob, `Commitment-Schedule-${safeName}.xlsx`);
+        saveBlob(blob, `${copy.file}-${safeName}.xlsx`);
       } else {
-        await downloadElementPdf(printId, `Commitment-Schedule-${safeName}.pdf`, 'landscape');
+        await downloadElementPdf(printId, `${copy.file}-${safeName}.pdf`, 'landscape');
       }
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to download the schedule'), 'error');
@@ -164,12 +200,26 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-lg font-semibold">
-              Business commitment schedule <span className="text-sm font-normal text-muted-foreground">({lineCount})</span>
-            </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Loans we arranged, then commitments held elsewhere. Who arranged an outside loan never prints.
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-lg font-semibold">
+                {copy.heading} <span className="text-sm font-normal text-muted-foreground">({lineCount})</span>
+              </h3>
+              <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Schedule view">
+                {(['schedule', 'ppsr'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="radio"
+                    aria-checked={view === v}
+                    onClick={() => pickView(v)}
+                    className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${view === v ? 'bg-[var(--led-ink)] text-[var(--led-surface)]' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {data?.views?.find((s) => s.key === v)?.label ?? (v === 'ppsr' ? 'PPSR' : 'Commitment schedule')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">{copy.blurb}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative" ref={pickerRef}>
@@ -282,7 +332,7 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
               <span>Annual <strong className="tabular-nums">{money(data.totals.annual_repayment)}</strong></span>
               <span>Balloons <strong className="tabular-nums">{money(data.totals.balloon)}</strong></span>
             </div>
-            <PrintableSchedule id={printId} data={data} visible={visible} />
+            <PrintableSchedule id={printId} data={data} visible={visible} eyebrow={copy.heading} />
           </>
         )}
       </Card>
@@ -320,7 +370,7 @@ function TotalsRow({ label, totals, visible, trailing = false }: {
 
 /** Off-screen A4 landscape layout that the PDF is drawn from — the chosen
  *  columns only, nothing the desk uses internally. */
-function PrintableSchedule({ id, data, visible }: { id: string; data: CommitmentSchedule; visible: CommitmentColumn[] }) {
+function PrintableSchedule({ id, data, visible, eyebrow }: { id: string; data: CommitmentSchedule; visible: CommitmentColumn[]; eyebrow: string }) {
   const th: React.CSSProperties = { color: '#111827', padding: '5px 6px', textAlign: 'left', fontWeight: 700, fontSize: 9 };
   const td: React.CSSProperties = { borderBottom: '1px solid #d9dde5', padding: '4px 6px', fontSize: 9, verticalAlign: 'top', whiteSpace: 'pre-line', wordBreak: 'break-word' };
   const labelAt = visible.findIndex((c) => !TOTALLED.has(c.key));
@@ -333,7 +383,7 @@ function PrintableSchedule({ id, data, visible }: { id: string; data: Commitment
     <div style={{ position: 'absolute', left: -10000, top: 0 }} aria-hidden>
       <div id={id} style={{ width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', background: '#fff', color: '#111827', fontFamily: SANS, fontSize: 10, lineHeight: 1.35 }}>
         <XpressPrintHeader
-          eyebrow="Business commitment schedule"
+          eyebrow={eyebrow}
           title={data.holder.name}
           subtitle={data.holder.abn ? `ABN ${data.holder.abn}` : undefined}
         />
