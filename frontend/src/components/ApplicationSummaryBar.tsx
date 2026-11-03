@@ -31,7 +31,7 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
   const guarantorNames = [
     ...parties.filter((p) => p.role === 'guarantor').map(personName),
     ...(application.corporate_guarantors || []).map((g) => g.organization_name),
-  ].filter(Boolean);
+  ].filter((n): n is string => Boolean(n));
   // Where nobody is recorded as a guarantor yet, the directors stand in — the
   // primary held inline on a company application, then the other parties —
   // labelled as directors, since that is all the application says they are.
@@ -50,7 +50,7 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
   const details: ReactNode[] = [
     entityName && <span key="entity" className={glassChip}>Entity · {entityName}</span>,
     guarantorNames.length > 0 && (
-      <span key="guarantor" className={glassChip}>Guarantor · {guarantorNames.join(', ')}</span>
+      <OverflowChip key="guarantor" className={glassChip} label="Guarantor" names={guarantorNames} />
     ),
     directorNames.length > 0 && (
       <span key="director" className={glassChip}>Director · {directorNames.join(', ')}</span>
@@ -120,5 +120,33 @@ export default function ApplicationSummaryBar({ application, actions, breadcrumb
       </div>
     </div>
     </>
+  );
+}
+
+/**
+ * "Label · First name +N": the first name inline, the rest in a popover on
+ * hover or keyboard focus. With a single name it is a plain chip.
+ */
+function OverflowChip({ label, names, className }: { label: string; names: string[]; className: string }) {
+  const [first, ...rest] = names;
+  if (rest.length === 0) return <span className={className}>{label} · {first}</span>;
+  return (
+    <span
+      tabIndex={0}
+      aria-label={`${label}s: ${names.join(', ')}`}
+      className={`${className} group relative cursor-default outline-none focus-visible:ring-2 focus-visible:ring-[var(--led-accent,currentColor)]`}
+    >
+      {label} · {first}
+      <span className="ml-1.5 rounded-full bg-black/[0.07] px-1.5 text-[11.5px] font-semibold tabular-nums dark:bg-white/15">
+        +{rest.length}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-0 top-full z-50 mt-2 min-w-[12rem] max-w-[18rem] rounded-lg bg-[var(--led-ink,#18181b)] px-3 py-2 text-left text-[12px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100"
+      >
+        <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-white/60">Other {label.toLowerCase()}s</span>
+        {rest.map((n, i) => <span key={`${n}-${i}`} className="block py-0.5">{n}</span>)}
+      </span>
+    </span>
   );
 }
