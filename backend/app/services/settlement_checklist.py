@@ -180,7 +180,7 @@ LENDER_SUBMISSION = {
         _item("insurance", "Insurance details", optional=True, subs=[
             _sub("insurance_company", "Name of the insurance company"),
             _sub("insurer", "Name of the insurer"),
-            _sub("vin_rego", "VIN and rego details recorded"),
+            _sub("vin_rego", "VIN (or serial / hull no.) and rego details recorded"),
             _sub("start_date", "Start date in line with the insurance policy date"),
             _sub("interested_party", "Name of the interested party"),
             _sub("policy_number", "Policy number"),
@@ -230,7 +230,7 @@ LOAN_SETTLED = {
         _item("date_settled", "Date loan settled recorded"),
         _item(
             "asset_details", "Asset details recorded",
-            "Equipment / commercial / home loan: VIN recorded, home address recorded, commercial GSA recorded — prior to settlement.",
+            "Equipment / commercial / home loan: VIN or serial no. recorded, home address recorded, commercial GSA recorded — prior to settlement.",
         ),
         _item("google_review", "Google review collected", "Upon approval."),
     ],

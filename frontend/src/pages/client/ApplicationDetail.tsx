@@ -10,6 +10,7 @@ import QuoteSheetComparison from '../../components/QuoteSheetComparison';
 import StatusTimeline from '../../components/StatusTimeline';
 import { useToast } from '../../components/Toast';
 import { getErrorMessage, formatDate, formatDateTime } from '../../lib/utils';
+import { assetIdentifierRows } from '../../lib/vin';
 import { Card, Badge, Button, ConfirmDialog, Breadcrumbs } from '../../components/ui';
 import { DOC_TYPE_LABELS, LOAN_CATEGORIES, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, categoryForSubType, findLoanSubType } from '../../lib/constants';
 import { downloadQuoteSheetPdf } from '../../lib/pdfExport';
@@ -646,6 +647,9 @@ export default function ApplicationDetail() {
                           <div><p className="text-[12px] text-[var(--led-muted)]">Condition</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.condition || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Price</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.price > 0 ? `$${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}` : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.deposit > 0 ? `$${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}` : '—'}</p></div>
+                          {assetIdentifierRows(loanDetails.vehicle_details).map(([k, v]) => (
+                            <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}><p className="text-[12px] text-[var(--led-muted)]">{k}</p><p className="text-[14px] font-medium text-[var(--led-ink)] whitespace-pre-line">{v}</p></div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -674,6 +678,9 @@ export default function ApplicationDetail() {
                           <div><p className="text-[12px] text-[var(--led-muted)]">Deposit</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.deposit > 0 ? `$${Number(loanDetails.asset_details.deposit).toLocaleString('en-AU')}` : '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Vendor Type</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.vendor_type || '—'}</p></div>
                           <div><p className="text-[12px] text-[var(--led-muted)]">Business Use %</p><p className="text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.business_use_pct > 0 ? `${loanDetails.asset_details.business_use_pct}%` : '—'}</p></div>
+                          {assetIdentifierRows(loanDetails.asset_details).map(([k, v]) => (
+                            <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}><p className="text-[12px] text-[var(--led-muted)]">{k}</p><p className="text-[14px] font-medium text-[var(--led-ink)] whitespace-pre-line">{v}</p></div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1161,9 +1168,9 @@ export default function ApplicationDetail() {
                           {loanDetails.vehicle_details.condition && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Condition</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.condition}</dd></div>
                           )}
-                          {loanDetails.vehicle_details.vin && (
-                            <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">VIN</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.vehicle_details.vin}</dd></div>
-                          )}
+                          {assetIdentifierRows(loanDetails.vehicle_details).map(([k, v]) => (
+                            <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}><dt className="text-[12px] font-medium text-[var(--led-muted)]">{k}</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)] whitespace-pre-line">{v}</dd></div>
+                          ))}
                           {loanDetails.vehicle_details.price > 0 && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Price</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">${Number(loanDetails.vehicle_details.price).toLocaleString('en-AU')}</dd></div>
                           )}
@@ -1272,6 +1279,9 @@ export default function ApplicationDetail() {
                           {loanDetails.asset_details.term && (
                             <div><dt className="text-[12px] font-medium text-[var(--led-muted)]">Loan Term</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)]">{loanDetails.asset_details.term}</dd></div>
                           )}
+                          {assetIdentifierRows(loanDetails.asset_details).map(([k, v]) => (
+                            <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}><dt className="text-[12px] font-medium text-[var(--led-muted)]">{k}</dt><dd className="mt-0.5 text-[14px] font-medium text-[var(--led-ink)] whitespace-pre-line">{v}</dd></div>
+                          ))}
                         </dl>
                       </div>
                     )}

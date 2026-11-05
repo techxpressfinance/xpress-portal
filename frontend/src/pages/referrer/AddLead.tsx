@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { VIN_LENGTH, normaliseVin } from '../../lib/vin';
+import { assetIdentifierErrors, assetIdentifierPayload, readAssetIdentifier, type AssetIdentifier } from '../../lib/vin';
+import AssetIdentifierFields from '../../components/AssetIdentifierFields';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
@@ -134,6 +135,9 @@ const EXTRA_DEFAULTS = {
   vehicle_year: '',
   vehicle_condition: 'New',
   vehicle_vin: '',
+  vehicle_identifier_type: 'vin' as AssetIdentifier['identifier_type'],
+  vehicle_serial_number: '',
+  vehicle_identifier_notes: '',
   vehicle_price: '',
   deposit_amount: '',
   loan_term: '5 years',
@@ -270,8 +274,26 @@ function cloneExtraFields(app: Record<string, unknown>, lend: Record<string, unk
   };
 }
 
-function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string): Record<string, unknown> {
+const ASSET_SUB_TYPES = ['car', 'motorcycle', 'caravan', 'other_vehicle', 'vehicles_or_transport', 'machinery_or_equipment'];
+
+function assetIdentifierOf(extra: typeof EXTRA_DEFAULTS): AssetIdentifier {
+  return readAssetIdentifier({
+    identifier_type: extra.vehicle_identifier_type,
+    vin: extra.vehicle_vin,
+    serial_number: extra.vehicle_serial_number,
+    identifier_notes: extra.vehicle_identifier_notes,
+  });
+}
+
+function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string, { autosave = false } = {}): Record<string, unknown> {
   const details: Record<string, unknown> = {};
+  // VIN or serial + notes. A draft autosave mid-way through typing one sends
+  // it blank rather than have the server refuse the whole draft; submitting
+  // is blocked until it is valid.
+  const typedId = assetIdentifierOf(extra);
+  const assetId = assetIdentifierPayload(
+    autosave && Object.keys(assetIdentifierErrors(typedId)).length ? readAssetIdentifier(null) : typedId,
+  );
   const label = findLoanSubType(subLoanType)?.label;
   if (isConsumerSubType(subLoanType)) {
     details.consumer_loan_type = { type: subLoanType, label };
@@ -282,7 +304,7 @@ function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string)
         model: extra.vehicle_model,
         year: extra.vehicle_year,
         condition: extra.vehicle_condition,
-        vin: extra.vehicle_vin,
+        ...assetId,
         price: parseFloat(extra.vehicle_price) || 0,
         deposit: parseFloat(extra.deposit_amount) || 0,
         loan_term: extra.loan_term,
@@ -318,6 +340,7 @@ function buildLoanTypeDetails(extra: typeof EXTRA_DEFAULTS, subLoanType: string)
         vendor_type: extra.vendor_type,
         business_use_pct: parseFloat(extra.eq_business_use_pct) || 0,
         term: extra.loan_term,
+        ...assetId,
       };
     }
     if (['property', 'development_construction', 'new_fit_out', 'renovation'].includes(subLoanType)) {
@@ -406,6 +429,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
 
   // Extra client detail fields (shown when self_managed)
   const [extra, setExtraFields] = useState(EXTRA_DEFAULTS);
+  const [showAssetIdErrors, setShowAssetIdErrors] = useState(false);
   const setExtra = <K extends keyof typeof EXTRA_DEFAULTS>(key: K, value: typeof EXTRA_DEFAULTS[K]) =>
     setExtraFields(prev => ({ ...prev, [key]: value }));
 
@@ -469,6 +493,25 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
   };
 
   const isSelfManaged = showFullDetails || engagementModel === 'self_managed';
+
+  const assetIdentifierField = (
+    <div ref={registerField('asset_identifier')} tabIndex={-1}>
+      <AssetIdentifierFields
+        idPrefix="lead-asset"
+        optional
+        showErrors={showAssetIdErrors}
+        labelClassName={LBL}
+        value={assetIdentifierOf(extra)}
+        onChange={(next) => setExtraFields(prev => ({
+          ...prev,
+          vehicle_identifier_type: next.identifier_type,
+          vehicle_vin: next.vin,
+          vehicle_serial_number: next.serial_number,
+          vehicle_identifier_notes: next.identifier_notes,
+        }))}
+      />
+    </div>
+  );
 
   // Entity book typeahead on the business-name fields. The search endpoint is
   // staff-only, so it stays idle on the referrer's own lead form — a referrer
@@ -796,7 +839,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
    * only the headline fields, so a broker who closed the tab lost the entire
    * detail form. One builder means the two can no longer drift apart.
    */
-  const buildExtraPayload = useCallback((): Record<string, unknown> => (isSelfManaged ? {
+  const buildExtraPayload = useCallback(({ autosave = false }: { autosave?: boolean } = {}): Record<string, unknown> => (isSelfManaged ? {
     applicant_title: extra.applicant_title || null,
     applicant_middle_name: extra.applicant_middle_name || null,
     applicant_dob: extra.applicant_dob || null,
@@ -860,7 +903,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
       },
       assets: { real_estate: realEstateAssets, other: otherAssets },
       liabilities,
-      loan_type_details: buildLoanTypeDetails(extra, subLoanType),
+      loan_type_details: buildLoanTypeDetails(extra, subLoanType, { autosave }),
     }),
   } : {}), [
     isSelfManaged, extra, subLoanType,
@@ -953,7 +996,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
         notes: notes.trim() || null,
         ...(effectiveLoanType && { loan_type: effectiveLoanType }),
         ...(parseFloat(amount) > 0 && { amount: parseFloat(amount) }),
-        ...buildExtraPayload(),
+        ...buildExtraPayload({ autosave: true }),
         // Business-purpose values win over the detail block's, as on submit.
         ...(draftBusinessFields && {
           business_name: businessName || null,
@@ -1002,6 +1045,11 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
     }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       errors.amount = 'Enter a valid amount';
+    }
+    // VIN exactly 17, or a serial number with asset notes.
+    if (ASSET_SUB_TYPES.includes(subLoanType) && Object.keys(assetIdentifierErrors(assetIdentifierOf(extra))).length) {
+      errors.asset_identifier = 'Check the asset identifier';
+      setShowAssetIdErrors(true);
     }
     // The engagement choice keeps its own error slot — it's a radio group with a
     // message already wired in, not a field with a border to redden.
@@ -1836,7 +1884,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                     <input type="text" className="led-input" placeholder="e.g. Corolla" value={extra.vehicle_model} onChange={e => setExtra('vehicle_model', e.target.value)} />
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={LBL}>Year</label>
                     <input type="text" inputMode="numeric" className="led-input" placeholder="2024" value={extra.vehicle_year} onChange={e => setExtra('vehicle_year', e.target.value.replace(/[^0-9]/g, ''))} />
@@ -1847,11 +1895,8 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                       {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className={LBL}>VIN <span className="font-normal">(optional)</span></label>
-                    <input type="text" className="led-input" placeholder="1HGCM82633A123456" maxLength={VIN_LENGTH} value={extra.vehicle_vin} onChange={e => setExtra('vehicle_vin', normaliseVin(e.target.value))} />
-                  </div>
                 </div>
+                {assetIdentifierField}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={LBL}>Vehicle Price ($)</label>
@@ -2020,6 +2065,7 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
                         onChange={e => setExtra('equipment_description', e.target.value)}
                       />
                     </div>
+                    {assetIdentifierField}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <label className={LBL}>Price ($)</label>

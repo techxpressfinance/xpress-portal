@@ -28,7 +28,7 @@ from app.services import acn as acn_service
 from app.services.activity_log import log_activity
 from app.services.lender_pricing import latest_for_application as latest_lender_pricing
 from app.services.loan_category import application_asset_details, application_loan_category
-from app.services.vin import valid_vin_or_none
+from app.services.vin import IDENTIFIER_SERIAL, application_identifier, identifier_problems
 
 # GST is 1/11th of a GST-inclusive amount.
 GST_DIVISOR = Decimal("11")
@@ -438,7 +438,12 @@ def dealer_to_supply(invoice: TaxInvoice) -> list[str]:
     the dealer, so those are listed whatever the broker has typed."""
     if invoice.supplier_type != SupplierType.dealer:
         return []
-    needed = [label for field, label in _DEALER_GOODS_FIELDS if getattr(invoice, field) in (None, "")]
+    needed = [
+        label for field, label in _DEALER_GOODS_FIELDS
+        if getattr(invoice, field) in (None, "")
+        # An asset identified by serial number has no VIN for the dealer to supply.
+        and not (field == "asset_vin" and invoice.asset_identifier_type == IDENTIFIER_SERIAL)
+    ]
     needed += [
         "Dealer's ABN",
         "Tax invoice number",
@@ -534,6 +539,10 @@ def completeness(invoice: TaxInvoice) -> list[str]:
         missing.append("Description of what is being sold")
     if not invoice.sale_price:
         missing.append("Sale price")
+    missing += identifier_problems(
+        invoice.asset_identifier_type, invoice.asset_vin,
+        invoice.asset_serial_number, invoice.asset_identifier_notes,
+    )
 
     if invoice.supplier_type == SupplierType.dealer:
         if not invoice.attention and not invoice.supplier_email:
@@ -939,11 +948,22 @@ def prefill_from_application(
         "asset_make": _text(asset.get("make")),
         "asset_model": _text(asset.get("model")),
         "asset_year": (_text(asset.get("year")) or "")[:4] or None,
-        # A malformed VIN on the deal is left blank for the desk, not printed.
-        "asset_vin": valid_vin_or_none(_text(asset.get("vin"))),
+        # VIN or serial number + notes. A malformed VIN on the deal is left
+        # blank for the desk, not printed.
+        **_identifier_prefill(asset),
         "asset_odometer": odometer,
         "asset_condition": condition,
         **money,
+    }
+
+
+def _identifier_prefill(asset: dict) -> dict:
+    ident = application_identifier(asset)
+    return {
+        "asset_identifier_type": ident["identifier_type"],
+        "asset_vin": ident["vin"],
+        "asset_serial_number": ident["serial_number"],
+        "asset_identifier_notes": ident["identifier_notes"],
     }
 
 
@@ -1073,6 +1093,9 @@ def serialize(invoice: TaxInvoice, db: Optional[Session] = None) -> dict:
         "asset_model": invoice.asset_model,
         "asset_year": invoice.asset_year,
         "asset_vin": invoice.asset_vin,
+        "asset_identifier_type": invoice.asset_identifier_type or "vin",
+        "asset_serial_number": invoice.asset_serial_number,
+        "asset_identifier_notes": invoice.asset_identifier_notes,
         "asset_registration": invoice.asset_registration,
         "asset_odometer": invoice.asset_odometer,
         "asset_condition": invoice.asset_condition,

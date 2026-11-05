@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { normaliseVin } from '../../lib/vin';
+import { assetIdentifierErrors, assetIdentifierPayload, readAssetIdentifier, type AssetIdentifier } from '../../lib/vin';
+import AssetIdentifierFields from '../AssetIdentifierFields';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
 import { useToast } from '../Toast';
@@ -12,7 +13,6 @@ import {
   bucketForDays,
   bucketLabel,
   daysInArrears,
-  VIN_LENGTH,
 } from '../../lib/arrears';
 import type {
   ArrearsFileType,
@@ -54,7 +54,8 @@ interface FormState {
   /** Co-financed contracts carry several; the first is the primary lender. */
   lenders: ArrearsLender[];
   contract_number: string;
-  vin: string;
+  /** VIN (exactly 17) or serial / hull no. + asset notes. */
+  identifier: AssetIdentifier;
   asset_details: string;
   file_type: ArrearsFileType;
   repayment_amount: string;
@@ -76,7 +77,7 @@ type RequiredField = (typeof REQUIRED_FIELDS)[number];
 const FIELD_LABELS: Record<RequiredField, string> = {
   party: 'client / entity',
   lenders: 'lenders',
-  vin: 'VIN number',
+  vin: 'asset identifier',
   in_arrears_since: 'in arrears since',
 };
 
@@ -122,7 +123,7 @@ export default function ArrearsRecordModal({
           : []
       : [],
     contract_number: record?.contract_number ?? '',
-    vin: record?.vin ?? '',
+    identifier: readAssetIdentifier(record),
     asset_details: record?.asset_details ?? '',
     file_type: record?.file_type ?? 'asset_finance',
     repayment_amount: record?.repayment_amount != null ? String(record.repayment_amount) : '',
@@ -359,8 +360,8 @@ export default function ArrearsRecordModal({
   }, []);
 
   // Full ISO 3779 VIN only — a partial chassis number can't be matched back to
-  // the asset, so a short one is treated the same as a missing one.
-  const vinValid = form.vin.trim().length === VIN_LENGTH;
+  // the asset — or, for an asset without one, a serial number with notes.
+  const identifierErrors = assetIdentifierErrors(form.identifier, { vinRequired: true });
 
   /** One message per required field, in the order the fields appear in the
    *  form, so the first failure is also the topmost one to scroll to. */
@@ -369,23 +370,16 @@ export default function ArrearsRecordModal({
       ? 'Pick a client, an entity, or both — a record has to hang off a real party'
       : '',
     lenders: form.lenders.length === 0 ? 'Add at least one lender' : '',
-    vin: !form.vin.trim()
-      ? 'VIN number is required'
-      : !vinValid
-        ? `Must be exactly ${VIN_LENGTH} characters (${form.vin.trim().length} entered)`
-        : '',
+    vin: identifierErrors.vin || identifierErrors.serial_number || identifierErrors.identifier_notes || '',
     in_arrears_since: !form.in_arrears_since ? 'Pick the date the contract fell into arrears' : '',
   };
   const failing = REQUIRED_FIELDS.filter((f) => errors[f]);
   const valid = failing.length === 0;
 
-  /** Show a field's error once Save has been pressed. The VIN is the exception:
-   *  its length rule can only be broken by typing, so flagging it live beats
-   *  letting the broker finish the form on a VIN that was never going to pass. */
+  /** Show a field's error once Save has been pressed. (The asset identifier
+   *  shows its own errors as each of its fields is left.) */
   const errorFor = (field: RequiredField) =>
-    (attempted || (field === 'vin' && form.vin.trim().length > 0)) && errors[field]
-      ? errors[field]
-      : undefined;
+    attempted && errors[field] ? errors[field] : undefined;
 
   const save = async () => {
     if (!valid) {
@@ -407,7 +401,15 @@ export default function ArrearsRecordModal({
       organization_id: form.organization_id,
       lenders: form.lenders,
       contract_number: form.contract_number.trim() || null,
-      vin: form.vin.trim(),
+      ...(() => {
+        const id = assetIdentifierPayload(form.identifier);
+        return {
+          identifier_type: id.identifier_type,
+          vin: id.vin || null,
+          serial_number: id.serial_number || null,
+          identifier_notes: id.identifier_notes || null,
+        };
+      })(),
       asset_details: form.asset_details.trim() || null,
       file_type: form.file_type,
       repayment_amount: form.repayment_amount ? Number(form.repayment_amount) : null,
@@ -592,17 +594,17 @@ export default function ArrearsRecordModal({
               )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div id={FIELD_ANCHORS.vin}>
-                <Input
-                  label="VIN number *"
-                  value={form.vin}
-                  onChange={(e) => set('vin', normaliseVin(e.target.value))}
-                  maxLength={VIN_LENGTH}
-                  placeholder="JALC4W88767001234"
-                  error={errorFor('vin')}
-                />
-              </div>
+            <div id={FIELD_ANCHORS.vin}>
+              <AssetIdentifierFields
+                idPrefix="arrears-asset"
+                vinRequired
+                showErrors={attempted}
+                value={form.identifier}
+                onChange={(next) => set('identifier', next)}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <Input
                 label="Contract number"
                 value={form.contract_number}

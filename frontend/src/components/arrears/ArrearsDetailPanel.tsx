@@ -1,3 +1,4 @@
+import { assetIdentifierRows } from '../../lib/vin';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../api/client';
@@ -1059,7 +1060,7 @@ export default function ArrearsDetailPanel({
                     ['Lenders', lenderNames(record)],
                     ['Repayment', formatRepayment(record.repayment_amount, record.repayment_frequency)],
                     ['Contract number', record.contract_number || '—'],
-                    ['VIN', record.vin || '—'],
+                    ...(assetIdentifierRows(record).length ? assetIdentifierRows(record) : [['VIN', '—']]),
                   ].map(([label, value]) => (
                     <div key={label}>
                       <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>

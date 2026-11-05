@@ -52,6 +52,7 @@ from app.services.query_utils import escape_like
 from app.services.access_control import check_application_access
 from app.services.activity_log import field_changes, log_activity, snapshot
 from app.services.loan_category import category_filtered_ids, parse_categories
+from app.services.vin import check_application_assets
 from app.services.journey import summary as journey_summary, summary_map as journey_summary_map
 from app.services.serialization import app_with_user as _app_with_user, is_staff_viewer, referrer_info_map
 from app.services.email import (
@@ -164,6 +165,14 @@ def _sync_company_contact(
     return contact
 
 
+def _check_asset_identifier(new_blob: Optional[str], old_blob: Optional[str] = None) -> None:
+    """VIN exactly 17, or a serial number with asset notes (services/vin.py)."""
+    try:
+        check_application_assets(new_blob, old_blob)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
 @router.post("", response_model=LoanApplicationOut, status_code=status.HTTP_201_CREATED)
 def create_application(
     data: LoanApplicationCreate,
@@ -171,6 +180,7 @@ def create_application(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    _check_asset_identifier(data.lend_extra_data)
     # When staff (broker/admin) create an application on a client's behalf, mirror the
     # referrer direct-referral flow: the client owns the application and is emailed a
     # setup/complete link. (Direct engagement has its own token flow below.)
@@ -574,6 +584,7 @@ def clone_application(
     # form never sent keep the cloned value.
     overrides = data.model_dump(exclude_unset=True)
     incoming_extra = overrides.pop("lend_extra_data", None)
+    _check_asset_identifier(incoming_extra)
     clone_kwargs.update(overrides)
     clone_kwargs["lend_extra_data"] = _merge_lend_extra_data(clone_kwargs["lend_extra_data"], incoming_extra)
     if clone_kwargs.get("business_abn"):
@@ -985,6 +996,8 @@ def update_application(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
 
     check_application_access(application, current_user, db=db)
+    if "lend_extra_data" in data.model_fields_set:
+        _check_asset_identifier(data.lend_extra_data, application.lend_extra_data)
 
     is_draft = application.status.value == "draft"
 

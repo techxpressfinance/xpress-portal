@@ -59,6 +59,12 @@ class ArrearsRecord(TenantScoped, Base):
     # Required on new records; nullable only because rows written before the
     # column existed can't be backfilled.
     vin: Mapped[Optional[str]] = mapped_column(String(50), index=True, nullable=True)
+    # "vin" (default) or "serial" for an asset without a VIN — then the serial
+    # / hull number and asset notes (what it is, where it came from) are
+    # required instead (services/vin.py).
+    identifier_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    serial_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    identifier_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     asset_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # One of ARREARS_FILE_TYPES (services/arrears.py).
     file_type: Mapped[str] = mapped_column(String(30), nullable=False)

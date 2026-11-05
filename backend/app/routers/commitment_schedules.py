@@ -18,6 +18,7 @@ from app.services import commitment_schedule as schedules
 from app.services import contract_registry as registry
 from app.services.activity_log import log_activity
 from app.services.tenant_scope import get_tenant_id
+from app.services.vin import NOTES_REQUIRED_MESSAGE
 
 router = APIRouter(prefix="/api/commitment-schedules", tags=["commitment-schedules"])
 
@@ -88,7 +89,7 @@ def _resolve_duplicates(
         db.rollback()
         raise HTTPException(status_code=409, detail={
             "code": "duplicate_contract",
-            "message": "This VIN or PPSR charge is already on another active contract.",
+            "message": "This VIN, serial number or PPSR charge is already on another active contract.",
             "conflicts": [jsonable_encoder(registry.describe(o, m)) for o, m in conflicts],
         })
     for line_id, closure in answered.items():
@@ -154,6 +155,9 @@ def _apply(entry: LendingHistoryEntry, payload: dict) -> None:
     # A term and settled date with no end date work it out.
     if entry.end_date is None and entry.start_date and entry.term_months:
         entry.end_date = schedules._add_months(entry.start_date, entry.term_months)
+    # A serial number says little on its own: it needs the asset notes.
+    if entry.serial_numbers and not entry.identifier_notes:
+        raise HTTPException(status_code=400, detail=NOTES_REQUIRED_MESSAGE)
 
 
 @router.post("/{holder_type}/{holder_id}/lines", status_code=status.HTTP_201_CREATED)

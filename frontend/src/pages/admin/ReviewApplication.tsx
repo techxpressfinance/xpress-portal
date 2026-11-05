@@ -40,6 +40,7 @@ import { NOTE_TABS, notesForCategory } from '../../lib/notesHistory';
 import { getErrorMessage, formatDate, formatDateTime, getInitials } from '../../lib/utils';
 import { APPLICATION_SECTIONS, DOC_TYPE_LABELS, LOAN_CATEGORIES, LOAN_TYPE_LABELS, OCR_STATUS_BADGE, QUOTE_SHEET_STATUS_BADGE, RECOMMENDED_DOC_TYPES, STATUS_LABEL, VALID_TRANSITIONS, applicationLoanCategory, clearsApproval, categoryForSubType, findLoanSubType, loanTypeOptions } from '../../lib/constants';
 import { applicantDisplayName, applicantName, isCompanyApplicant } from '../../lib/applicantName';
+import { assetIdentifierRows } from '../../lib/vin';
 import { useEntitySearch } from '../../hooks/useEntitySearch';
 import { useClientSearch } from '../../hooks/useClientSearch';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -1786,6 +1787,12 @@ export default function ReviewApplication() {
                                     <p className="text-[14px] font-medium text-foreground">${Number(loanDetails.vehicle_details.deposit).toLocaleString('en-AU')}</p>
                                   </div>
                                 )}
+                                {assetIdentifierRows(loanDetails.vehicle_details).map(([k, v]) => (
+                                  <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}>
+                                    <p className="text-[12px] text-muted-foreground">{k}</p>
+                                    <p className="text-[14px] font-medium text-foreground whitespace-pre-line">{v}</p>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1888,6 +1895,12 @@ export default function ReviewApplication() {
                                     <p className="text-[14px] font-medium text-foreground">{loanDetails.asset_details.business_use_pct}%</p>
                                   </div>
                                 )}
+                                {assetIdentifierRows(loanDetails.asset_details).map(([k, v]) => (
+                                  <div key={k} className={k === 'Asset notes' ? 'sm:col-span-2' : undefined}>
+                                    <p className="text-[12px] text-muted-foreground">{k}</p>
+                                    <p className="text-[14px] font-medium text-foreground whitespace-pre-line">{v}</p>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
