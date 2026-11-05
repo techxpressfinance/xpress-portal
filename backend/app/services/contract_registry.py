@@ -1,7 +1,7 @@
-"""One live contract per VIN and per PPSR charge.
+"""One live contract per VIN, per serial number and per PPSR charge.
 
-Every commitment schedule line (`LendingHistoryEntry`) is a contract. A VIN or
-PPSR charge number can sit on only one *active* contract in a tenant: when it
+Every commitment schedule line (`LendingHistoryEntry`) is a contract. A VIN,
+serial / hull number or PPSR charge number can sit on only one *active* contract in a tenant: when it
 turns up on another — the asset refinanced, sold to someone else, or the loan
 paid out and re-financed — the previous contract is either marked paid off /
 sold / refinanced (with notes, linked to the contract that took over) or the
@@ -10,7 +10,7 @@ desk explicitly keeps both active.
 The check runs only for identifiers *newly* put on a contract, so a pair the
 desk chose to keep doesn't re-warn on every later save. Matching is
 tenant-wide — the same truck can move between clients — and exact after
-normalising (spaces dropped, uppercased), one VIN per line.
+normalising (spaces dropped, uppercased), one VIN or serial per line.
 """
 from __future__ import annotations
 
@@ -41,8 +41,15 @@ def ppsr_of(value: Optional[str]) -> Optional[str]:
     return _clean(value) or None
 
 
+def asset_ids_of(vin: Optional[str], serial_numbers: Optional[str]) -> set[str]:
+    """Every asset identifier on a line, labelled as the warning names it
+    ("VIN …", "Serial …") — so a VIN and a serial that happen to read the same
+    are not mistaken for one asset."""
+    return {f"VIN {v}" for v in vins_of(vin)} | {f"Serial {v}" for v in vins_of(serial_numbers)}
+
+
 def identifiers(entry: LendingHistoryEntry) -> tuple[set[str], Optional[str]]:
-    return vins_of(entry.vin), ppsr_of(entry.ppsr_charge_number)
+    return asset_ids_of(entry.vin, entry.serial_numbers), ppsr_of(entry.ppsr_charge_number)
 
 
 def holder_label(entry: LendingHistoryEntry) -> str:
@@ -75,7 +82,11 @@ def _active_with_identifiers(db: Session, tenant_id: str, exclude_ids: Iterable[
     q = db.query(LendingHistoryEntry).filter(
         LendingHistoryEntry.tenant_id == tenant_id,
         LendingHistoryEntry.closure_status.is_(None),
-        or_(LendingHistoryEntry.vin.isnot(None), LendingHistoryEntry.ppsr_charge_number.isnot(None)),
+        or_(
+            LendingHistoryEntry.vin.isnot(None),
+            LendingHistoryEntry.serial_numbers.isnot(None),
+            LendingHistoryEntry.ppsr_charge_number.isnot(None),
+        ),
     )
     exclude = [i for i in exclude_ids if i]
     if exclude:
@@ -92,7 +103,7 @@ def find_conflicts(
     out = []
     for other in _active_with_identifiers(db, tenant_id, [exclude_id] if exclude_id else []):
         o_vins, o_ppsr = identifiers(other)
-        matched = [f"VIN {v}" for v in sorted(vins & o_vins)]
+        matched = sorted(vins & o_vins)
         if ppsr and o_ppsr == ppsr:
             matched.append(f"PPSR charge {ppsr}")
         if matched:
@@ -109,8 +120,8 @@ def duplicate_index(db: Session, tenant_id: str) -> dict[str, list[tuple[Lending
     for e in entries:
         vins, ppsr = identifiers(e)
         for v in vins:
-            by_key.setdefault(f"vin:{v}", []).append(e)
-            labels[f"vin:{v}"] = f"VIN {v}"
+            by_key.setdefault(v, []).append(e)
+            labels[v] = v
         if ppsr:
             by_key.setdefault(f"ppsr:{ppsr}", []).append(e)
             labels[f"ppsr:{ppsr}"] = f"PPSR charge {ppsr}"

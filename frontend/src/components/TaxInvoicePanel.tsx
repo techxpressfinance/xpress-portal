@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { VIN_LENGTH, normaliseVin } from '../lib/vin';
+import { readAssetIdentifier } from '../lib/vin';
+import AssetIdentifierFields from './AssetIdentifierFields';
 import api from '../api/client';
 import { useToast } from './Toast';
 import { useConfirm } from '../hooks/useConfirm';
@@ -712,7 +713,26 @@ export default function TaxInvoicePanel({
                       <Text label="Make" value={field(invoice, 'asset_make')} onChange={(v) => set('asset_make', v)} disabled={locked} />
                       <Text label="Model" value={field(invoice, 'asset_model')} onChange={(v) => set('asset_model', v)} disabled={locked} />
                       <Text label="Year" value={field(invoice, 'asset_year')} onChange={(v) => set('asset_year', v)} disabled={locked} />
-                      <Text label="VIN / serial" value={field(invoice, 'asset_vin')} onChange={(v) => set('asset_vin', normaliseVin(v))} maxLength={VIN_LENGTH} disabled={locked} />
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <AssetIdentifierFields
+                          idPrefix={`ti-${invoice.id}`}
+                          labelClassName="block text-[11.5px] text-muted-foreground mb-1"
+                          disabled={locked}
+                          value={readAssetIdentifier({
+                            identifier_type: field(invoice, 'asset_identifier_type'),
+                            vin: field(invoice, 'asset_vin'),
+                            serial_number: field(invoice, 'asset_serial_number'),
+                            identifier_notes: field(invoice, 'asset_identifier_notes'),
+                          })}
+                          onChange={(next) => setDraft((prev) => ({
+                            ...prev,
+                            asset_identifier_type: next.identifier_type,
+                            asset_vin: next.vin || null,
+                            asset_serial_number: next.serial_number || null,
+                            asset_identifier_notes: next.identifier_notes || null,
+                          }))}
+                        />
+                      </div>
                       <Text label="Registration" value={field(invoice, 'asset_registration')} onChange={(v) => set('asset_registration', v)} disabled={locked} />
                       <Text label="Odometer" type="number" value={field(invoice, 'asset_odometer')} onChange={(v) => set('asset_odometer', v === '' ? null : Number(v))} disabled={locked} />
                       <Choice
@@ -1504,7 +1524,15 @@ function RequestDocument({ invoice }: { invoice: TaxInvoice }) {
           rows={[
             [['New or used', condition], ['Year', invoice.asset_year || '']],
             [['Make', invoice.asset_make || ''], ['Model (full details)', invoice.asset_model || invoice.asset_description || '']],
-            [['VIN or chassis number', invoice.asset_vin || ''], ['Engine number', invoice.asset_engine_number || '']],
+            [
+              invoice.asset_identifier_type === 'serial'
+                ? ['Serial / hull number', invoice.asset_serial_number || '']
+                : ['VIN or chassis number', invoice.asset_vin || ''],
+              ['Engine number', invoice.asset_engine_number || ''],
+            ],
+            ...(invoice.asset_identifier_type === 'serial' && invoice.asset_identifier_notes
+              ? [[['Asset notes', invoice.asset_identifier_notes]] as [string, string][]]
+              : []),
             [['Build and compliance date', buildCompliance], ['Odometer', invoice.asset_odometer != null ? `${invoice.asset_odometer.toLocaleString('en-AU')} km` : '']],
             [['Colour', invoice.asset_colour || ''], ['Registration details including expiry', rego]],
           ]}
@@ -1660,7 +1688,9 @@ function InvoiceDocument({ invoice }: { invoice: TaxInvoice }) {
                 <div style={{ fontSize: 10.5, color: MUTED }}>
                   {[
                     asset && invoice.asset_description ? asset : '',
-                    invoice.asset_vin ? `VIN/Serial ${invoice.asset_vin}` : '',
+                    invoice.asset_identifier_type === 'serial'
+                      ? (invoice.asset_serial_number ? `Serial ${invoice.asset_serial_number}` : '')
+                      : (invoice.asset_vin ? `VIN ${invoice.asset_vin}` : ''),
                     invoice.asset_engine_number ? `Engine ${invoice.asset_engine_number}` : '',
                     invoice.asset_registration ? `Rego ${invoice.asset_registration}` : '',
                     invoice.asset_colour || '',

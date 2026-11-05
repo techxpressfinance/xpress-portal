@@ -68,6 +68,7 @@ from app.services.s3_storage import delete_file, download_file, file_exists, upl
 from app.services.scoring import score, tokenize
 from app.services.search_cache import get_searchable_contacts
 from app.services.tenant_scope import get_tenant_id
+from app.services.vin import identifier_problems
 from app.services.upload_validation import safe_filename, validate_attachment
 
 router = APIRouter(prefix="/api/arrears", tags=["arrears"])
@@ -165,7 +166,10 @@ def _serialize(
         "lender_name": record.lender_name,
         "lenders": lenders,
         "contract_number": record.contract_number,
+        "identifier_type": record.identifier_type or "vin",
         "vin": record.vin,
+        "serial_number": record.serial_number,
+        "identifier_notes": record.identifier_notes,
         "asset_details": record.asset_details,
         "file_type": record.file_type,
         "repayment_amount": repayment_amount,
@@ -356,6 +360,7 @@ def _base_query(
             )),
             ArrearsRecord.contract_number.ilike(pattern),
             ArrearsRecord.vin.ilike(pattern),
+            ArrearsRecord.serial_number.ilike(pattern),
             ArrearsRecord.asset_details.ilike(pattern),
         ]
         if contact_ids:
@@ -762,6 +767,9 @@ _TRACKED_FLAGS = {
 }
 
 
+_IDENTIFIER_FIELDS = {"identifier_type", "vin", "serial_number", "identifier_notes"}
+
+
 @router.patch("/{record_id}", response_model=ArrearsRecordDetailOut)
 def update_arrears_record(
     record_id: str,
@@ -808,7 +816,8 @@ def update_arrears_record(
             record.delinquent_reason = None
 
     changed_details = [
-        f for f in ("contract_number", "vin", "asset_details", "file_type",
+        f for f in ("contract_number", "identifier_type", "vin", "serial_number", "identifier_notes",
+                    "asset_details", "file_type",
                     "repayment_amount", "repayment_frequency", "arrears_amount", "in_arrears_since")
         if f in updates and updates[f] != getattr(record, f)
     ]
@@ -823,6 +832,18 @@ def update_arrears_record(
 
     for field, value in updates.items():
         setattr(record, field, value)
+
+    # The identifier is checked as a whole once any part of it changes, so a
+    # switch to serial number can't land without its notes. Untouched legacy
+    # rows (saved before a VIN was mandatory) are left alone.
+    if _IDENTIFIER_FIELDS & updates.keys():
+        problems = identifier_problems(
+            record.identifier_type, record.vin, record.serial_number, record.identifier_notes,
+            vin_required=True,
+        )
+        if problems:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=problems[0])
 
     if changed_details:
         _log_event(db, record, current_user, "updated", "Updated: " + ", ".join(

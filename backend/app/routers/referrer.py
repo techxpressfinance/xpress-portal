@@ -19,6 +19,7 @@ from app.services.activity_log import log_activity
 from app.services.contacts import ensure_contact
 from app.services.email import notify_admins_new_account, send_new_lead_notification, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
+from app.services.vin import check_application_assets
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
 
@@ -303,6 +304,11 @@ def create_direct_referral(
 
     if email == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot refer yourself")
+
+    try:
+        check_application_assets(data.lend_extra_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     try:
         loan_type = LoanType(data.loan_type)

@@ -1,3 +1,4 @@
+import { assetIdentifierRows, assetIdentifierShort } from '../../lib/vin';
 import {
   EVENT_LABELS,
   attemptMethodLabel,
@@ -116,7 +117,7 @@ function RecordBlock({ record, images }: { record: ArrearsRecordDetail; images: 
         <Fact k="Lenders" v={lenderNames(record)} />
         <Fact k="Loan type" v={fileTypeLabel(record.file_type)} />
         <Fact k="Contract number" v={record.contract_number ?? '—'} />
-        <Fact k="VIN" v={record.vin ?? '—'} />
+        {(assetIdentifierRows(record).length ? assetIdentifierRows(record) : [['VIN', '—']]).map(([k, v]) => <Fact key={k} k={k} v={v} />)}
         <Fact k="Repayment" v={formatRepayment(record.repayment_amount, record.repayment_frequency)} />
         <Fact k="Asset" v={record.asset_details ?? '—'} />
       </div>
@@ -204,7 +205,7 @@ export default function ArrearsRecordPrint({
   const party = subject || records[0]?.contact_name || records[0]?.organization_name || null;
   const title = records.length === 1 ? 'Arrears Record' : 'Arrears Book';
   const subtitle = records.length === 1
-    ? [party, lenderNames(records[0]), records[0].vin ? `VIN ${records[0].vin}` : null]
+    ? [party, lenderNames(records[0]), assetIdentifierShort(records[0])]
         .filter(Boolean).join(' · ')
     : `${records.length} contracts${party ? ` · ${party}` : ''}`;
 

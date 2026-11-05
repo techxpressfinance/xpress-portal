@@ -33,6 +33,13 @@ function yesNo(v: boolean | null | undefined): string | null {
   return v == null ? null : v ? 'Yes' : 'No';
 }
 
+/** Asset identifier keys whose humanised form reads wrong ("Vin"). */
+const IDENTIFIER_KEY_LABEL: Record<string, string> = {
+  vin: 'VIN',
+  serial_number: 'Serial / hull no.',
+  identifier_notes: 'Asset notes',
+};
+
 /** "vehicle_make" → "Vehicle make". */
 function humanise(key: string): string {
   const s = key.replace(/_/g, ' ').trim();
@@ -201,7 +208,11 @@ export default function ApplicationPrint({
   // The detail groups other than the sub-type picker, with blanks removed.
   const detailGroups = Object.entries(loanDetails)
     .filter(([key, val]) => val && typeof val === 'object' && !['consumer_loan_type', 'commercial_loan_type'].includes(key))
-    .map(([key, val]) => [key, Object.entries(val).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0 && v !== false && typeof v !== 'object')] as const)
+    .map(([key, val]) => [key, Object.entries(val)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0 && v !== false && typeof v !== 'object')
+      // The VIN / serial choice is implied by which of the two is printed.
+      .filter(([k]) => k !== 'identifier_type')
+      .map(([k, v]): [string, unknown] => [IDENTIFIER_KEY_LABEL[k] ?? k, v])] as const)
     .filter(([, entries]) => entries.length > 0);
 
   const expenseFields: Field[] = [

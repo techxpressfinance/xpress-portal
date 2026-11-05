@@ -1258,6 +1258,11 @@ export interface TaxInvoice {
   asset_model: string | null;
   asset_year: string | null;
   asset_vin: string | null;
+  /** 'vin' (exactly 17 characters) or 'serial' for an asset without a VIN —
+   *  then the serial / hull number and asset notes are required. */
+  asset_identifier_type: 'vin' | 'serial';
+  asset_serial_number: string | null;
+  asset_identifier_notes: string | null;
   asset_registration: string | null;
   asset_odometer: number | null;
   asset_condition: string | null;
@@ -1822,8 +1827,13 @@ export interface ArrearsRecord {
   /** Full co-financed set; legacy single-lender rows read back as one entry. */
   lenders: ArrearsLender[];
   contract_number: string | null;
-  /** VIN/chassis number of the secured asset — required on new records. */
+  /** 'vin' (17-character VIN required) or 'serial' (serial / hull no. +
+   *  asset notes required) — one or the other on new records. */
+  identifier_type: 'vin' | 'serial';
+  /** VIN/chassis number of the secured asset. */
   vin: string | null;
+  serial_number: string | null;
+  identifier_notes: string | null;
   asset_details: string | null;
   file_type: ArrearsFileType;
   repayment_amount: number | null;
@@ -2234,7 +2244,9 @@ export interface CommitmentRow {
   interest_rate: number | null;
   brokerage_amount: number | null;
   asset_description: string | null;
+  /** Display: VINs then serial / hull numbers, one per line (raw under `edit`). */
   vin: string | null;
+  identifier_notes: string | null;
   end_date: string | null;
   ppsr_charge_number: string | null;
   ppsr_change_number: string | null;
@@ -2248,9 +2260,12 @@ export interface CommitmentRow {
     repayment_frequency: RepaymentFrequency | null;
     notes: string | null;
     other_broker_name: string | null;
+    vin: string | null;
+    serial_numbers: string | null;
+    identifier_notes: string | null;
   };
   missing: string[];
-  /** Other active contracts sharing this one's VIN or PPSR charge. */
+  /** Other active contracts sharing this one's VIN, serial or PPSR charge. */
   duplicates: CommitmentContractRef[];
   /** Set on a paid off / sold / refinanced contract (the `closed` list). */
   closure: CommitmentClosure | null;

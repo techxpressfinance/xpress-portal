@@ -7,7 +7,8 @@ from typing import List, Optional
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.pagination import PaginatedResponse
-from app.services.arrears import ARREARS_FILE_TYPES, REPAYMENT_FREQUENCIES, VIN_LENGTH
+from app.services.arrears import ARREARS_FILE_TYPES, REPAYMENT_FREQUENCIES
+from app.services.vin import clean_text, identifier_problems, normalise_identifier_type, normalise_vin
 
 
 class ArrearsAttachmentOut(BaseModel):
@@ -143,8 +144,13 @@ class ArrearsRecordBase(BaseModel):
     # Co-financed contracts have several; the first is the primary lender.
     lenders: List[ArrearsLenderIn] = []
     contract_number: Optional[str] = None
-    # VIN/chassis number of the secured asset — mandatory on new records.
-    vin: str
+    # How the secured asset is identified (services/vin.py): a 17-character
+    # VIN, or — for boats, trailers and the like — a serial / hull number with
+    # asset notes. One or the other is mandatory on new records.
+    identifier_type: Optional[str] = None
+    vin: Optional[str] = None
+    serial_number: Optional[str] = None
+    identifier_notes: Optional[str] = None
     asset_details: Optional[str] = None
     file_type: str
     repayment_amount: Optional[Decimal] = None
@@ -162,13 +168,18 @@ class ArrearsRecordBase(BaseModel):
 
     @field_validator("vin")
     @classmethod
-    def validate_vin(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("VIN number is required")
-        v = v.strip().upper()
-        if len(v) != VIN_LENGTH:
-            raise ValueError(f"VIN number must be exactly {VIN_LENGTH} characters")
-        return v
+    def validate_vin(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_vin(v)
+
+    @field_validator("identifier_type")
+    @classmethod
+    def validate_identifier_type(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_identifier_type(v)
+
+    @field_validator("serial_number", "identifier_notes")
+    @classmethod
+    def trim_text(cls, v: Optional[str]) -> Optional[str]:
+        return clean_text(v)
 
     @field_validator("repayment_frequency")
     @classmethod
@@ -194,6 +205,11 @@ class ArrearsRecordCreate(ArrearsRecordBase):
             raise ValueError("Select a client, an entity, or both")
         if not self.lenders:
             raise ValueError("At least one lender is required")
+        problems = identifier_problems(
+            self.identifier_type, self.vin, self.serial_number, self.identifier_notes, vin_required=True,
+        )
+        if problems:
+            raise ValueError(problems[0])
         return self
 
 
@@ -208,7 +224,10 @@ class ArrearsRecordUpdate(BaseModel):
     # primary lender); omit it to leave lenders untouched.
     lenders: Optional[List[ArrearsLenderIn]] = None
     contract_number: Optional[str] = None
+    identifier_type: Optional[str] = None
     vin: Optional[str] = None
+    serial_number: Optional[str] = None
+    identifier_notes: Optional[str] = None
     asset_details: Optional[str] = None
     file_type: Optional[str] = None
     repayment_amount: Optional[Decimal] = None
@@ -242,19 +261,23 @@ class ArrearsRecordUpdate(BaseModel):
             raise ValueError("At least one lender is required")
         return v
 
+    # Optional so flag-only PATCHes (resolve/proof/delinquent) never need the
+    # identifier; when any part of it is sent the router checks the record as
+    # a whole (VIN, or serial + notes).
     @field_validator("vin")
     @classmethod
     def validate_vin(cls, v: Optional[str]) -> Optional[str]:
-        # Optional so flag-only PATCHes (resolve/proof/delinquent) never need
-        # it — but an explicitly sent value can't be blank.
-        if v is None:
-            return v
-        v = v.strip().upper()
-        if not v:
-            raise ValueError("VIN number cannot be blank")
-        if len(v) != VIN_LENGTH:
-            raise ValueError(f"VIN number must be exactly {VIN_LENGTH} characters")
-        return v
+        return normalise_vin(v)
+
+    @field_validator("identifier_type")
+    @classmethod
+    def validate_identifier_type(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_identifier_type(v)
+
+    @field_validator("serial_number", "identifier_notes")
+    @classmethod
+    def trim_text(cls, v: Optional[str]) -> Optional[str]:
+        return clean_text(v)
 
     @field_validator("in_arrears_since")
     @classmethod
@@ -277,7 +300,10 @@ class ArrearsRecordOut(BaseModel):
     lender_name: str
     lenders: List[ArrearsLenderOut] = []
     contract_number: Optional[str] = None
+    identifier_type: str = "vin"
     vin: Optional[str] = None
+    serial_number: Optional[str] = None
+    identifier_notes: Optional[str] = None
     asset_details: Optional[str] = None
     file_type: str
     repayment_amount: Optional[Decimal] = None

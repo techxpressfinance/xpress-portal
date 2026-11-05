@@ -146,6 +146,12 @@ class TaxInvoice(TenantScoped, Base):
     asset_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     asset_year: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
     asset_vin: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    # "vin" (default, exactly 17 characters) or "serial" for an asset without
+    # a VIN — a boat's hull number, a trailer's serial plate. A serial number
+    # needs asset notes: what the asset is and where it comes from.
+    asset_identifier_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    asset_serial_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    asset_identifier_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     asset_registration: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     asset_odometer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # "new", "demo" or "used". Priced and inspected differently at each step,

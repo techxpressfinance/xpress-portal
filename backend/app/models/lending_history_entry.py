@@ -67,6 +67,11 @@ class LendingHistoryEntry(Base):
     # Several assets can sit under one loan (a truck and its trailer): one per line.
     asset_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     vin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Assets without a VIN (boats, trailers, equipment): serial / hull numbers,
+    # one per line, plus the notes that must come with them — what the asset
+    # is and where it came from (services/vin.py).
+    serial_numbers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    identifier_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # PPSR register details — off the schedule unless the desk switches them on.
     ppsr_charge_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     ppsr_change_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
@@ -76,7 +81,7 @@ class LendingHistoryEntry(Base):
     tax_invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # ── Contract closure ──────────────────────────────────────────────
-    # A VIN or PPSR charge belongs to one live contract. When it turns up on a
+    # A VIN, serial number or PPSR charge belongs to one live contract. When it turns up on a
     # new one, the desk marks the old one paid off / sold / refinanced (see
     # services/contract_registry.py). None = still active.
     closure_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)

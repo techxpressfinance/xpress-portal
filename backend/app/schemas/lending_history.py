@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.services.vin import normalise_vin_lines
+from app.services.vin import clean_text, normalise_serial_lines, normalise_vin_lines
 
 
 RepaymentFrequencyLiteral = Literal["weekly", "fortnightly", "monthly"]
@@ -86,6 +86,8 @@ class CommitmentLineUpdate(BaseModel):
     end_date: Optional[date] = None
     asset_description: Optional[str] = Field(default=None, max_length=2000)
     vin: Optional[str] = Field(default=None, max_length=1000)
+    serial_numbers: Optional[str] = Field(default=None, max_length=4000)
+    identifier_notes: Optional[str] = Field(default=None, max_length=2000)
     ppsr_charge_number: Optional[str] = Field(default=None, max_length=60)
     ppsr_change_number: Optional[str] = Field(default=None, max_length=60)
     ppsr_organisation_identifier: Optional[str] = Field(default=None, max_length=60)
@@ -106,6 +108,16 @@ class CommitmentLineUpdate(BaseModel):
     @classmethod
     def _vin(cls, v: Optional[str]) -> Optional[str]:
         return normalise_vin_lines(v)
+
+    @field_validator("serial_numbers")
+    @classmethod
+    def _serials(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_serial_lines(v)
+
+    @field_validator("identifier_notes")
+    @classmethod
+    def _notes(cls, v: Optional[str]) -> Optional[str]:
+        return clean_text(v)
 
 
 class CommitmentLineCreate(CommitmentLineUpdate):

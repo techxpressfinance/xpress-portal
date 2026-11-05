@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.services.vin import normalise_vin
+from app.services.vin import clean_text, normalise_identifier_type, normalise_vin
 
 
 class TaxInvoiceCreate(BaseModel):
@@ -59,6 +59,9 @@ class TaxInvoiceUpdate(BaseModel):
     asset_model: Optional[str] = None
     asset_year: Optional[str] = None
     asset_vin: Optional[str] = None
+    asset_identifier_type: Optional[str] = None
+    asset_serial_number: Optional[str] = None
+    asset_identifier_notes: Optional[str] = None
     asset_registration: Optional[str] = None
     asset_odometer: Optional[int] = None
     asset_condition: Optional[str] = None
@@ -110,3 +113,13 @@ class TaxInvoiceUpdate(BaseModel):
     @classmethod
     def _vin(cls, v: Optional[str]) -> Optional[str]:
         return normalise_vin(v)
+
+    @field_validator("asset_identifier_type")
+    @classmethod
+    def _identifier_type(cls, v: Optional[str]) -> Optional[str]:
+        return normalise_identifier_type(v)
+
+    @field_validator("asset_serial_number", "asset_identifier_notes")
+    @classmethod
+    def _trimmed(cls, v: Optional[str]) -> Optional[str]:
+        return clean_text(v)

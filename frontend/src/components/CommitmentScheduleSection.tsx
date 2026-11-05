@@ -7,7 +7,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { Button, Card, Input, Select } from './ui';
 import { formatDate, getErrorMessage } from '../lib/utils';
 import { saveBlob } from '../lib/arrears';
-import { normaliseVinLines } from '../lib/vin';
+import { ASSET_NOTES_PLACEHOLDER, ASSET_NOTES_REQUIRED, normaliseVinLines, vinLinesError } from '../lib/vin';
 import { downloadElementPdf } from '../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../lib/printPage';
 import XpressPrintHeader from './print/XpressPrintHeader';
@@ -438,7 +438,7 @@ export default function CommitmentScheduleSection({ holderType, holderId }: {
                     <table className="w-full text-sm text-left">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground">
-                          {['Status', 'Lender', 'Contract no.', 'Amount', 'VIN', 'PPSR charge', 'Closed', 'Notes'].map((h) => (
+                          {['Status', 'Lender', 'Contract no.', 'Amount', 'VIN / serial', 'PPSR charge', 'Closed', 'Notes'].map((h) => (
                             <th key={h} className={`py-2 pr-3 font-medium whitespace-nowrap ${h === 'Amount' ? 'text-right' : ''}`}>{h}</th>
                           ))}
                           <th />
@@ -604,7 +604,10 @@ const FIELD_GROUPS: { title: string; fields: { key: string; label: string; type?
   ] },
   { title: 'Asset', fields: [
     { key: 'asset_description', label: 'Asset details (one per line)', type: 'textarea' },
-    { key: 'vin', label: 'VIN (one per line, 17 characters each)', type: 'textarea' },
+    { key: 'vin', label: 'VIN (one per line, exactly 17 characters each)', type: 'textarea' },
+    // Boats, trailers, equipment — anything without a VIN.
+    { key: 'serial_numbers', label: 'Serial / hull no. (one per line)', type: 'textarea' },
+    { key: 'identifier_notes', label: 'Asset notes — required with a serial no.: what it is and where it came from (private sale / dealer)', type: 'textarea' },
   ] },
   { title: 'PPSR & tax', fields: [
     { key: 'ppsr_charge_number', label: 'PPSR charge no.' },
@@ -624,7 +627,8 @@ function initialForm(row: CommitmentRow | null): FormState {
   return {
     lender_name: s(row.lender_name), identifier: s(row.contract_number), amount: s(row.amount), start_date: s(row.settled_date),
     term_months: s(row.term_months), end_date: s(row.end_date), balloon: s(row.balloon),
-    interest_rate: s(row.interest_rate), brokerage_amount: s(row.brokerage_amount), asset_description: s(row.asset_description), vin: s(row.vin),
+    interest_rate: s(row.interest_rate), brokerage_amount: s(row.brokerage_amount), asset_description: s(row.asset_description), vin: s(row.edit.vin),
+    serial_numbers: s(row.edit.serial_numbers), identifier_notes: s(row.edit.identifier_notes),
     ppsr_charge_number: s(row.ppsr_charge_number), ppsr_change_number: s(row.ppsr_change_number),
     ppsr_organisation_identifier: s(row.ppsr_organisation_identifier), asset_price_ex_gst: s(row.asset_price_ex_gst),
     gst_claimed: s(row.gst_claimed), tax_invoice_date: s(row.tax_invoice_date),
@@ -662,6 +666,15 @@ function CommitmentLineModal({ base, row, isOurs, statuses, onClose, onSaved }: 
   const save = async (answer?: { close_previous?: ContractClosureAnswer[]; keep_duplicates?: boolean }) => {
     if (!form.lender_name?.trim() || !form.amount) {
       toast('Lender and amount are required', 'error');
+      return;
+    }
+    const badVin = vinLinesError(form.vin);
+    if (badVin) {
+      toast(badVin, 'error');
+      return;
+    }
+    if (form.serial_numbers?.trim() && !form.identifier_notes?.trim()) {
+      toast(ASSET_NOTES_REQUIRED, 'error');
       return;
     }
     // Blank clears a field; numbers go as numbers.
@@ -718,7 +731,21 @@ function CommitmentLineModal({ base, row, isOurs, statuses, onClose, onSaved }: 
                 <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-3' : ''}>
                   <label className={LABEL} htmlFor={`cl-${f.key}`}>{f.label}</label>
                   {f.type === 'textarea' ? (
-                    <textarea id={`cl-${f.key}`} className="led-input w-full min-h-[60px] resize-y text-sm" value={form[f.key] ?? ''} onChange={(e) => set(f.key, f.key === 'vin' ? normaliseVinLines(e.target.value) : e.target.value)} />
+                    <>
+                      <textarea
+                        id={`cl-${f.key}`}
+                        className="led-input w-full min-h-[60px] resize-y text-sm"
+                        placeholder={f.key === 'identifier_notes' ? ASSET_NOTES_PLACEHOLDER : undefined}
+                        value={form[f.key] ?? ''}
+                        onChange={(e) => set(f.key, f.key === 'vin' ? normaliseVinLines(e.target.value) : e.target.value)}
+                      />
+                      {f.key === 'vin' && vinLinesError(form.vin) && (
+                        <p role="alert" className="mt-1 text-[12px] font-medium text-[var(--led-danger)]">{vinLinesError(form.vin)}</p>
+                      )}
+                      {f.key === 'identifier_notes' && form.serial_numbers?.trim() && !form.identifier_notes?.trim() && (
+                        <p className="mt-1 text-[12px] font-medium text-[var(--led-danger)]">{ASSET_NOTES_REQUIRED}</p>
+                      )}
+                    </>
                   ) : (
                     <Input id={`cl-${f.key}`} type={f.type ?? 'text'} step={f.type === 'number' ? 'any' : undefined} min={f.type === 'number' ? 0 : undefined} value={form[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
                   )}

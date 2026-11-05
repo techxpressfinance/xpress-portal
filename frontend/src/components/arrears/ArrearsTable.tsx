@@ -1,3 +1,4 @@
+import { assetIdentifierShort } from '../../lib/vin';
 import { Badge } from '../ui';
 import {
   bucketClass,
@@ -76,9 +77,9 @@ export default function ArrearsTable({
                 <p className="truncate text-foreground" title={r.asset_details ?? undefined}>
                   {r.asset_details || '—'}
                 </p>
-                {(r.contract_number || r.vin) && (
+                {(r.contract_number || assetIdentifierShort(r)) && (
                   <p className="truncate text-[12px] text-muted-foreground">
-                    {[r.contract_number, r.vin].filter(Boolean).join(' · ')}
+                    {[r.contract_number, assetIdentifierShort(r)].filter(Boolean).join(' · ')}
                   </p>
                 )}
               </td>
@@ -125,7 +126,7 @@ export function ArrearsPrintTable({ records }: { records: ArrearsRecord[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #333' }}>
-          {['Entity', 'Client', 'Lender', 'Repayment', 'Arrears', 'Days', 'Bucket', 'Contract no.', 'VIN', 'Asset', 'Loan type', 'Resolved', 'Proof'].map((h) => (
+          {['Entity', 'Client', 'Lender', 'Repayment', 'Arrears', 'Days', 'Bucket', 'Contract no.', 'VIN / serial', 'Asset', 'Loan type', 'Resolved', 'Proof'].map((h) => (
             <th key={h} style={{ padding: '4px 5px', textAlign: 'left', color: '#111' }}>{h}</th>
           ))}
         </tr>
@@ -141,7 +142,7 @@ export function ArrearsPrintTable({ records }: { records: ArrearsRecord[] }) {
             <td style={{ padding: '4px 5px', color: '#111' }}>{r.days_in_arrears}</td>
             <td style={{ padding: '4px 5px', color: '#111' }}>{bucketLabel(r.bucket)}</td>
             <td style={{ padding: '4px 5px', color: '#111' }}>{r.contract_number || '—'}</td>
-            <td style={{ padding: '4px 5px', color: '#111' }}>{r.vin || '—'}</td>
+            <td style={{ padding: '4px 5px', color: '#111' }}>{(r.identifier_type === 'serial' ? r.serial_number : r.vin) || '—'}</td>
             <td style={{ padding: '4px 5px', color: '#111' }}>{r.asset_details || '—'}</td>
             <td style={{ padding: '4px 5px', color: '#111' }}>{fileTypeLabel(r.file_type)}</td>
             <td style={{ padding: '4px 5px', color: '#111' }}>{r.resolved ? 'Yes' : 'No'}</td>

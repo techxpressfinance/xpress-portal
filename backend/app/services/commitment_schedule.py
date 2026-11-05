@@ -37,7 +37,7 @@ from app.models.tenant import Tenant
 from app.services.lender_pricing import latest_for_application
 from app.services.loan_category import application_asset_details
 from app.services import contract_registry as registry
-from app.services.vin import valid_vin_or_none
+from app.services.vin import application_identifier
 
 # key, label, kind, picker group, shown by default. Kind drives formatting in
 # both exports.
@@ -54,7 +54,9 @@ COLUMNS: list[dict] = [
     # Commercially sensitive on a schedule that goes to a lender — opt in.
     {"key": "brokerage_amount", "label": "Brokerage amount", "kind": "money", "group": "loan", "default": False},
     {"key": "asset_description", "label": "Asset details", "kind": "multiline", "group": "loan", "default": True},
-    {"key": "vin", "label": "VIN", "kind": "multiline", "group": "loan", "default": True},
+    # VINs and, for assets without one, serial / hull numbers — one per line.
+    {"key": "vin", "label": "VIN / serial no.", "kind": "multiline", "group": "loan", "default": True},
+    {"key": "identifier_notes", "label": "Asset notes", "kind": "multiline", "group": "loan", "default": False},
     {"key": "end_date", "label": "End date", "kind": "date", "group": "loan", "default": True},
     {"key": "ppsr_charge_number", "label": "PPSR charge no.", "kind": "text", "group": "ppsr", "default": False},
     {"key": "ppsr_change_number", "label": "PPSR change no.", "kind": "text", "group": "ppsr", "default": False},
@@ -91,7 +93,7 @@ _TOTALLED = ("amount", "monthly_repayment", "balloon")
 # Fields the desk may edit on a line, ours or other.
 EDITABLE_FIELDS = (
     "lender_name", "amount", "balloon", "repayment_amount", "repayment_frequency", "start_date",
-    "interest_rate", "term_months", "end_date", "asset_description", "vin",
+    "interest_rate", "term_months", "end_date", "asset_description", "vin", "serial_numbers", "identifier_notes",
     "ppsr_charge_number", "ppsr_change_number", "ppsr_organisation_identifier",
     "asset_price_ex_gst", "gst_claimed", "tax_invoice_date", "identifier", "brokerage_amount",
     "notes", "other_broker_name",
@@ -188,9 +190,19 @@ def prefill_from_application(db: Session, app: LoanApplication) -> dict:
         "end_date": _add_months(settled, term) if settled and term else None,
         "asset_description": _asset_text(asset) or params.get("asset_description") or None,
         # Only a VIN that passes the 17-character rule; a malformed one (rego
-        # stuck on, two VINs in one) is left blank and flagged as missing.
-        "vin": valid_vin_or_none(asset.get("vin")),
+        # stuck on, two VINs in one) is left blank and flagged as missing. An
+        # asset recorded by serial number carries its serial and notes.
+        **_identifier_prefill(asset),
         "asset_price_ex_gst": round(float(pricing.asset_price) / 1.1, 2) if pricing and pricing.asset_price else None,
+    }
+
+
+def _identifier_prefill(asset: dict) -> dict:
+    ident = application_identifier(asset)
+    return {
+        "vin": ident["vin"],
+        "serial_numbers": ident["serial_number"],
+        "identifier_notes": ident["identifier_notes"],
     }
 
 
@@ -269,9 +281,11 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
     missing = [label for label, value in (
         ("monthly repayment", entry.repayment_amount), ("term", entry.term_months), ("rate", entry.interest_rate),
     ) if value is None]
-    # A line with an asset on it should carry its VIN.
-    if entry.asset_description and not entry.vin:
-        missing.append("VIN")
+    # A line with an asset on it should carry its VIN (or serial number).
+    if entry.asset_description and not entry.vin and not entry.serial_numbers:
+        missing.append("VIN or serial no.")
+    if entry.serial_numbers and not entry.identifier_notes:
+        missing.append("asset notes")
     return {
         "id": entry.id,
         "application_id": entry.application_id,
@@ -286,7 +300,10 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
         "interest_rate": entry.interest_rate,
         "brokerage_amount": entry.brokerage_amount,
         "asset_description": entry.asset_description,
-        "vin": entry.vin,
+        # Display: VINs then serial numbers, one per line. The raw fields are
+        # under "edit".
+        "vin": "\n".join(v for v in (entry.vin, entry.serial_numbers) if v) or None,
+        "identifier_notes": entry.identifier_notes,
         "end_date": entry.end_date,
         "ppsr_charge_number": entry.ppsr_charge_number,
         "ppsr_change_number": entry.ppsr_change_number,
@@ -300,6 +317,9 @@ def _row(entry: LendingHistoryEntry, sr: int) -> dict:
             "repayment_frequency": entry.repayment_frequency.value if entry.repayment_frequency else None,
             "notes": entry.notes,
             "other_broker_name": entry.other_broker_name,
+            "vin": entry.vin,
+            "serial_numbers": entry.serial_numbers,
+            "identifier_notes": entry.identifier_notes,
         },
         "missing": missing,
         "closure": None,

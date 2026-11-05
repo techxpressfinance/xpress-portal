@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { VIN_LENGTH, normaliseVin } from '../../lib/vin';
-import { useForm } from 'react-hook-form';
+import { assetIdentifierErrors, assetIdentifierPayload, readAssetIdentifier, type AssetIdentifier } from '../../lib/vin';
+import AssetIdentifierFields from '../../components/AssetIdentifierFields';
+import { useForm, type UseFormSetValue } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
@@ -126,6 +127,9 @@ interface FormData {
   vehicle_model: string;
   vehicle_year: string;
   vehicle_vin: string;
+  vehicle_identifier_type: 'vin' | 'serial';
+  vehicle_serial_number: string;
+  vehicle_identifier_notes: string;
   vehicle_price: string;
   vehicle_type: string;
   vehicle_condition: string;
@@ -315,6 +319,15 @@ const blankLiability = (): Liability => ({
 
 const blankIncome = (): AdditionalIncome => ({ income_type: 'Rental Income', amount: '', frequency: 'Monthly' });
 
+/** Put a stored asset block's identifier (VIN, or serial + notes) on the form. */
+function loadAssetIdentifier(setValue: UseFormSetValue<FormData>, details: Record<string, unknown>) {
+  const id = readAssetIdentifier(details);
+  setValue('vehicle_identifier_type', id.identifier_type);
+  setValue('vehicle_vin', id.vin);
+  setValue('vehicle_serial_number', id.serial_number);
+  setValue('vehicle_identifier_notes', id.identifier_notes);
+}
+
 export default function NewApplication() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -441,6 +454,7 @@ export default function NewApplication() {
       preferred_contact_method: 'Mobile',
       // Comprehensive loan defaults
       vehicle_condition: 'New',
+      vehicle_identifier_type: 'vin',
       loan_term: '5 years',
       first_home_buyer: 'no',
       vendor_type: 'Dealer',
@@ -448,6 +462,50 @@ export default function NewApplication() {
       equipment_type: 'Truck',
     },
   });
+
+  // ── Asset identifier: VIN (exactly 17) or serial / hull no. + notes ──
+  const [showAssetIdErrors, setShowAssetIdErrors] = useState(false);
+  // Driven by AssetIdentifierFields rather than native inputs, so register
+  // them by hand to keep them in the submitted / autosaved values.
+  useEffect(() => {
+    register('vehicle_identifier_type');
+    register('vehicle_vin');
+    register('vehicle_serial_number');
+    register('vehicle_identifier_notes');
+  }, [register]);
+  const assetIdentifierFromForm = (data: Pick<FormData, 'vehicle_identifier_type' | 'vehicle_vin' | 'vehicle_serial_number' | 'vehicle_identifier_notes'>): AssetIdentifier =>
+    readAssetIdentifier({
+      identifier_type: data.vehicle_identifier_type,
+      vin: data.vehicle_vin,
+      serial_number: data.vehicle_serial_number,
+      identifier_notes: data.vehicle_identifier_notes,
+    });
+  const assetSectionShown = isSectionVisible('loan_details') && (
+    ['car', 'motorcycle', 'caravan', 'other_vehicle'].includes(selectedConsumerLoanType)
+    || ['vehicles_or_transport', 'machinery_or_equipment'].includes(selectedCommercialLoanType)
+  );
+  const assetIdentifierField = (
+    <div id="asset-identifier">
+      <AssetIdentifierFields
+        idPrefix="app-asset"
+        optional
+        showErrors={showAssetIdErrors}
+        labelClassName={LABEL_CLS}
+        value={assetIdentifierFromForm({
+          vehicle_identifier_type: watch('vehicle_identifier_type'),
+          vehicle_vin: watch('vehicle_vin'),
+          vehicle_serial_number: watch('vehicle_serial_number'),
+          vehicle_identifier_notes: watch('vehicle_identifier_notes'),
+        })}
+        onChange={(next) => {
+          setValue('vehicle_identifier_type', next.identifier_type, { shouldDirty: true });
+          setValue('vehicle_vin', next.vin, { shouldDirty: true });
+          setValue('vehicle_serial_number', next.serial_number, { shouldDirty: true });
+          setValue('vehicle_identifier_notes', next.identifier_notes, { shouldDirty: true });
+        }}
+      />
+    </div>
+  );
 
   const watchedBusinessAbn = watch('business_abn') || '';
   const commercialAbnMatch = useAbnCompanyLookup(comAbn);
@@ -597,7 +655,7 @@ export default function NewApplication() {
           if (vehicleDetails.make) setValue('vehicle_make', vehicleDetails.make as string);
           if (vehicleDetails.model) setValue('vehicle_model', vehicleDetails.model as string);
           if (vehicleDetails.year) setValue('vehicle_year', vehicleDetails.year as string);
-          if (vehicleDetails.vin) setValue('vehicle_vin', vehicleDetails.vin as string);
+          loadAssetIdentifier(setValue, vehicleDetails);
           if (vehicleDetails.condition) setValue('vehicle_condition', vehicleDetails.condition as string);
           if (vehicleDetails.price) setValue('vehicle_price', String(vehicleDetails.price));
           if (vehicleDetails.deposit) setValue('deposit_amount', String(vehicleDetails.deposit));
@@ -629,6 +687,7 @@ export default function NewApplication() {
           if (assetDetails.deposit) setValue('deposit_amount', String(assetDetails.deposit));
           if (assetDetails.vendor_type) setValue('vendor_type', assetDetails.vendor_type as string);
           if (assetDetails.business_use_pct) setValue('eq_business_use_pct', String(assetDetails.business_use_pct));
+          loadAssetIdentifier(setValue, assetDetails);
         }
 
         const workingCapital = loanTypeDetails.working_capital as Record<string, unknown> | undefined;
@@ -837,7 +896,7 @@ export default function NewApplication() {
     if (!acknowledged) return;
     const data = getValues();
     if (completeId) {
-      const payload = buildPayload(data);
+      const payload = buildPayload(data, { autosave: true });
       setSaveStatus('saving');
       api.patch(`/applications/${completeId}`, payload)
         .then(() => { setSaveStatus('saved'); setLastSavedAt(new Date()); })
@@ -936,7 +995,14 @@ export default function NewApplication() {
   };
 
 
-  const buildPayload = (data: FormData): Record<string, unknown> => {
+  const buildPayload = (data: FormData, { autosave = false }: { autosave?: boolean } = {}): Record<string, unknown> => {
+    // VIN or serial + notes. An autosave mid-way through typing one sends it
+    // blank rather than have the server refuse the whole draft; submitting
+    // is blocked until it is valid (see onSubmit).
+    const typedId = assetIdentifierFromForm(data);
+    const assetId = assetIdentifierPayload(
+      autosave && Object.keys(assetIdentifierErrors(typedId)).length ? readAssetIdentifier(null) : typedId,
+    );
     const extraData: Record<string, unknown> = {};
 
     if (lendEnabled) {
@@ -998,7 +1064,7 @@ export default function NewApplication() {
             make: data.vehicle_make,
             model: data.vehicle_model,
             year: data.vehicle_year,
-            vin: data.vehicle_vin,
+            ...assetId,
             condition: data.vehicle_condition,
             price: parseFloat(data.vehicle_price) || 0,
             deposit: parseFloat(data.deposit_amount) || 0,
@@ -1048,6 +1114,7 @@ export default function NewApplication() {
             vendor_type: data.vendor_type,
             business_use_pct: parseFloat(data.eq_business_use_pct) || 0,
             term: data.loan_term,
+            ...assetId,
           };
         }
 
@@ -1242,6 +1309,12 @@ export default function NewApplication() {
   const onSubmit = async (data: FormData) => {
     if (!lendEnabled && isSectionVisible('loan_details') && !selectedSubType && !completeId) {
       toast('Please select a loan type', 'error');
+      return;
+    }
+    if (assetSectionShown && Object.keys(assetIdentifierErrors(assetIdentifierFromForm(data))).length) {
+      setShowAssetIdErrors(true);
+      document.getElementById('asset-identifier')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('Check the asset identifier — a VIN must be exactly 17 characters, and a serial number needs asset notes', 'error');
       return;
     }
     const payload = buildPayload(data);
@@ -1636,7 +1709,7 @@ export default function NewApplication() {
                             <Input placeholder="e.g. Corolla" {...register('vehicle_model')} />
                           </div>
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className={LABEL_CLS}>Year <span className="font-normal">(Optional)</span></label>
                             <Input type="number" min="1900" max={new Date().getFullYear() + 1} placeholder="2024" {...register('vehicle_year')} />
@@ -1647,18 +1720,8 @@ export default function NewApplication() {
                               {VEHICLE_CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
-                          <div>
-                            <label className={LABEL_CLS}>VIN <span className="font-normal">(optional)</span></label>
-                            <Input
-                              placeholder="1HGCM82633A123456"
-                              maxLength={VIN_LENGTH}
-                              {...register('vehicle_vin', {
-                                onChange: (e) => { e.target.value = normaliseVin(e.target.value); },
-                                setValueAs: (v: string) => normaliseVin(v ?? ''),
-                              })}
-                            />
-                          </div>
                         </div>
+                        {assetIdentifierField}
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className={LABEL_CLS}>Vehicle Price ($)</label>
@@ -1803,6 +1866,7 @@ export default function NewApplication() {
                           <label className={LABEL_CLS}>Description <span className="font-normal">(Optional)</span></label>
                           <Input placeholder="e.g. 2023 Isuzu NPR 65-190 Tray Truck" {...register('equipment_description')} />
                         </div>
+                        {assetIdentifierField}
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className={LABEL_CLS}>Asset Price ($)</label>
