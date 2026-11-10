@@ -22,11 +22,12 @@ export interface FeeRow {
 }
 
 /** The standard fees, each filled from the lender pricing when it carries one. */
-export function defaultFees(inputs: { establishment_fee: number; origination_fee: number; ppsr_fee: number }): FeeRow[] {
+export function defaultFees(inputs: { establishment_fee: number; origination_fee: number; vir_fee: number; ppsr_fee: number }): FeeRow[] {
   const from = (n: number) => (n > 0 ? n : null);
   return [
     { label: 'Loan Establishment fee', amount: from(inputs.establishment_fee) },
     { label: 'Origination fee', amount: from(inputs.origination_fee) },
+    { label: 'VIR', amount: from(inputs.vir_fee) },
     { label: 'Vehicle inspection fee', amount: null },
     { label: 'PPSR', amount: from(inputs.ppsr_fee) },
   ];

@@ -62,6 +62,7 @@ const DEFAULT_INPUTS: QuoteInputParameters = {
   establishment_fee: 0,
   ppsr_fee: 0,
   origination_fee: 0,
+  vir_fee: 0,
   brokerage_percent: 0,
   brokerage_amount: null,
   gst_on_brokerage: false,
@@ -165,7 +166,7 @@ function stampDutyRate(inputs: QuoteInputParameters): number {
 function computeFromInputs(inputs: QuoteInputParameters) {
   const deposit = inputs.deposit_amount != null ? inputs.deposit_amount : inputs.asset_price * (inputs.deposit_percent / 100);
   const amountBorrowed = inputs.asset_price - deposit;
-  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
+  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee;
   const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
 
   // Brokerage: dollar override or calculate from %
@@ -326,14 +327,14 @@ function scenariosToOptions(inputs: QuoteInputParameters, scenarios: Scenario[])
     client_interest_rate: s.clientInterest != null ? fmt2(s.clientInterest * 100) : null,
     establishment_fee: inputs.establishment_fee,
     monthly_account_fee: inputs.monthly_account_fee || null,
-    application_fee: inputs.ppsr_fee + inputs.origination_fee,
+    application_fee: inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee,
     brokerage: fmt2(brokerage),
     repayment_monthly: s.monthlyRepayment,
     repayment_fortnightly: s.fortnightlyRepayment,
     repayment_weekly: s.weeklyRepayment,
     total_repayments: s.totalOverTerm,
     total_interest: s.totalInterest,
-    total_fees: fmt2(inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + brokerage),
+    total_fees: fmt2(inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee + brokerage),
     features: null,
     notes: null,
   }));
@@ -959,6 +960,11 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
               label="Origination Fee"
               value={inputs.origination_fee || ''}
               onChange={v => updateInput('origination_fee', v)}
+            />
+            <DollarInput
+              label="VIR"
+              value={inputs.vir_fee || ''}
+              onChange={v => updateInput('vir_fee', v)}
             />
             <DollarInput
               label="Monthly Account Fee"

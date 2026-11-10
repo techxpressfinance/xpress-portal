@@ -1570,6 +1570,7 @@ export interface QuoteInputParameters {
   balloon_amounts: Record<string, number | null>; // Dollar overrides per term
   // Further balloons quoted for the same term (5yr at 30% AND 5yr at 15%), in
   // the order entered. The first balloon of a term stays in the two maps above.
+  vir_fee: number;                     // VIR — a fee like establishment: in total fees, financed with them
   extra_balloons?: Record<string, { percent: number; amount: number | null }[]>;
   monthly_account_fee: number;         // Ongoing monthly fee added to repayment
   non_taxable_charges: number;         // Lease only — non-taxable on-road charges
@@ -1659,6 +1660,7 @@ export interface LenderPricingInputs {
   balloon_on_total_price: boolean;
   balloon_percent: number;
   balloon_amount: number | null;       // Dollar override — if set, takes priority over %
+  vir_fee: number;                     // VIR — a fee like establishment: in total fees, financed with them
   direct_debit_cycle: DirectDebitCycle; // repayment cycle as approved by the lender
   // The monthly repayment exactly as the lender's approval states it, typed over
   // the calculated one (rounding, lender-specific fees). One per structure; null

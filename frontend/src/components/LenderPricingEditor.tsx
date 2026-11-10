@@ -533,6 +533,7 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
             <DollarField label="Establishment Fee" value={inputs.establishment_fee} onChange={v => set('establishment_fee', v)} />
             <DollarField label="PPSR" value={inputs.ppsr_fee} onChange={v => set('ppsr_fee', v)} />
             <DollarField label="Origination Fee" value={inputs.origination_fee} onChange={v => set('origination_fee', v)} />
+            <DollarField label="VIR" value={inputs.vir_fee} onChange={v => set('vir_fee', v)} />
             <DollarField label="Monthly Account Fee" value={inputs.monthly_account_fee} onChange={v => set('monthly_account_fee', v)} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
