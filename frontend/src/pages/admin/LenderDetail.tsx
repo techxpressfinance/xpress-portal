@@ -17,9 +17,16 @@ const emptyDraft: ContactDraft = { name: '', designation: '', email: '', phone: 
 
 // Every editable Lender column, held as strings so the inputs stay controlled;
 // blanks are normalised back to null on save.
-type LenderDraft = Record<'name' | 'notes' | 'address' | 'abn' | 'panel' | 'vbi' | LenderMailboxKey, string>;
+type VbiKey = 'vbi_personal_percent' | 'vbi_commercial_percent' | 'vbi_repeat_percent';
+const VBI_OVERRIDES: { key: VbiKey; label: string }[] = [
+  { key: 'vbi_personal_percent', label: 'VBI % — personal loans' },
+  { key: 'vbi_commercial_percent', label: 'VBI % — business / commercial' },
+  { key: 'vbi_repeat_percent', label: 'VBI % — repeat customers' },
+];
+type LenderDraft = Record<'name' | 'notes' | 'address' | 'abn' | 'panel' | 'vbi' | VbiKey | LenderMailboxKey, string>;
 const emptyLenderDraft: LenderDraft = {
   name: '', notes: '', address: '', abn: '', panel: '', vbi: '',
+  vbi_personal_percent: '', vbi_commercial_percent: '', vbi_repeat_percent: '',
   service_request_email: '', credit_email: '', settlements_email: '',
   payout_letter_email: '', doc_request_email: '', collections_email: '',
 };
@@ -70,6 +77,7 @@ export default function LenderDetail() {
       abn: lender.abn || '',
       panel: lender.on_panel == null ? '' : lender.on_panel ? 'on' : 'off',
       vbi: lender.vbi_percent == null ? '' : String(lender.vbi_percent),
+      ...Object.fromEntries(VBI_OVERRIDES.map(({ key }) => [key, lender[key] == null ? '' : String(lender[key])])) as Record<VbiKey, string>,
       ...Object.fromEntries(
         LENDER_MAILBOXES.map(({ key }) => [key, lender[key] || '']),
       ) as Record<LenderMailboxKey, string>,
@@ -92,13 +100,16 @@ export default function LenderDetail() {
       if (isAdmin) {
         const panel = draft.panel === '' ? null : draft.panel === 'on';
         if (panel !== (lender.on_panel ?? null)) payload.on_panel = panel;
-        const vbi = draft.vbi.trim() === '' ? null : Number(draft.vbi);
-        if (vbi !== null && (Number.isNaN(vbi) || vbi < 0 || vbi > 100)) {
-          toast('VBI must be a percentage between 0 and 100', 'error');
-          setSaving(false);
-          return;
+        const rates: [keyof Lender, string][] = [['vbi_percent', draft.vbi], ...VBI_OVERRIDES.map(({ key }) => [key, draft[key]] as [keyof Lender, string])];
+        for (const [key, raw] of rates) {
+          const value = raw.trim() === '' ? null : Number(raw);
+          if (value !== null && (Number.isNaN(value) || value < 0 || value > 100)) {
+            toast('VBI must be a percentage between 0 and 100', 'error');
+            setSaving(false);
+            return;
+          }
+          if (value !== (lender[key] ?? null)) payload[key] = value;
         }
-        if (vbi !== (lender.vbi_percent ?? null)) payload.vbi_percent = vbi;
       }
       if (Object.keys(payload).length > 0) {
         const { data } = await api.patch(`/lenders/${id}`, payload);
@@ -260,7 +271,23 @@ export default function LenderDetail() {
                     <option value="off">Off panel</option>
                   </select>
                 </div>
-                <Input label="VBI %" type="number" min={0} max={100} step="0.01" value={draft.vbi} onChange={(e) => setDraft((d) => ({ ...d, vbi: e.target.value }))} />
+                <Input label="VBI % (of amount financed ex GST)" type="number" min={0} max={100} step="0.01" value={draft.vbi} onChange={(e) => setDraft((d) => ({ ...d, vbi: e.target.value }))} />
+                {VBI_OVERRIDES.map(({ key, label }) => (
+                  <Input
+                    key={key}
+                    label={label}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    placeholder="Same as VBI %"
+                    value={draft[key]}
+                    onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                  />
+                ))}
+                <p className="sm:col-span-2 text-[12px] text-muted-foreground -mt-1">
+                  Leave an override blank to use the VBI %. A repeat-customer rate wins over the others; personal loans before business. The ledger estimates each deal&rsquo;s volume bonus from these.
+                </p>
               </div>
             )}
 
@@ -319,6 +346,9 @@ export default function LenderDetail() {
                   <Badge type="custom" value={lender.on_panel ? 'On panel' : 'Off panel'} className={lender.on_panel ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'} />
                 )}
                 {lender.vbi_percent != null && <span className="text-muted-foreground">VBI <span className="font-medium text-foreground">{lender.vbi_percent}%</span></span>}
+                {VBI_OVERRIDES.filter(({ key }) => lender[key] != null).map(({ key, label }) => (
+                  <span key={key} className="text-muted-foreground">{label.replace('VBI % — ', '')} <span className="font-medium text-foreground">{lender[key]}%</span></span>
+                ))}
               </div>
             )}
             {(lender.abn || lender.address) && (

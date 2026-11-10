@@ -58,7 +58,7 @@ from app.models.client_alert import ClientAlert  # noqa: F401 — ensure table i
 from app.models.settled_deal_snapshot import SettledDealSnapshot  # noqa: F401 — ensure table is created
 from app.models.trust_party import TrustParty  # noqa: F401 — ensure table is created
 from app.models.settlement_checklist import SettlementChecklist  # noqa: F401 — ensure table is created
-from app.models.ledger import LedgerAuditEvent, LedgerDeal, LedgerGrant, LedgerInvoice, LedgerSettings  # noqa: F401 — ensure tables are created
+from app.models.ledger import LedgerAuditEvent, LedgerDeal, LedgerGrant, LedgerDealShare, LedgerInvoice, LedgerMonth, LedgerPayee, LedgerReceipt, LedgerSettings  # noqa: F401 — ensure tables are created
 from app.models.decline_reason import DeclineReason  # noqa: F401 — ensure table is created
 from app.models.arrears import (  # noqa: F401 — ensure tables are created
     ArrearsAttachment,
@@ -165,6 +165,7 @@ _MIGRATIONS = [
     ("users", "business_director_name", "VARCHAR(255)"),
     ("users", "business_address", "VARCHAR(500)"),
     ("users", "bank_account_name", "TEXT"),
+    ("users", "bank_name", "TEXT"),
     ("users", "bank_bsb", "TEXT"),
     ("users", "bank_account_number", "TEXT"),
     ("users", "business_logo_path", "VARCHAR(500)"),
@@ -212,6 +213,21 @@ _MIGRATIONS = [
     ("lenders", "logo_filename", "VARCHAR(255)"),
     ("lenders", "on_panel", "BOOLEAN"),
     ("lenders", "vbi_percent", "FLOAT"),
+    ("lenders", "vbi_personal_percent", "FLOAT"),
+    ("lenders", "vbi_commercial_percent", "FLOAT"),
+    ("lenders", "vbi_repeat_percent", "FLOAT"),
+    # Private ledger: the monthly volume bonus tiers (JSON; NULL = the defaults).
+    ("ledger_settings", "vb_tiers", "TEXT"),
+    # Ledger-only deals (history import / business outside the portal).
+    ("ledger_deals", "is_manual", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("ledger_deals", "manual_settled_on", "DATE"),
+    ("ledger_deals", "manual_customer_name", "TEXT"),
+    ("ledger_deals", "manual_entity_name", "TEXT"),
+    ("ledger_deals", "manual_category", "VARCHAR(20)"),
+    ("ledger_deals", "manual_broker_id", "VARCHAR(36)"),
+    ("ledger_deals", "manual_broker_name", "VARCHAR(200)"),
+    ("ledger_deals", "notes", "TEXT"),
+    ("ledger_invoices", "payee_id", "VARCHAR(36)"),
     # The broker's choices on the direct debit first payment request (JSON) —
     # the figures themselves come from the lender pricing.
     ("loan_applications", "direct_debit_request", "TEXT"),

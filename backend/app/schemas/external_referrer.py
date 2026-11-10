@@ -64,6 +64,7 @@ class ReferrerBusinessProfile(BaseModel):
     business_director_name: Optional[str] = None
     business_address: Optional[str] = None
     bank_account_name: Optional[str] = None
+    bank_name: Optional[str] = None
     bank_bsb: Optional[str] = None
     bank_account_number: Optional[str] = None
     phone: Optional[str] = None
@@ -72,7 +73,7 @@ class ReferrerBusinessProfile(BaseModel):
     _clean_bsb = field_validator("bank_bsb", mode="before")(_normalize_bsb)
     _clean_account = field_validator("bank_account_number", mode="before")(_normalize_account_number)
     _clean_text = field_validator(
-        "business_director_name", "business_address", "bank_account_name", "phone", mode="before"
+        "business_director_name", "business_address", "bank_account_name", "bank_name", "phone", mode="before"
     )(_blank_to_none)
 
 

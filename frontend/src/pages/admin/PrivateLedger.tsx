@@ -11,6 +11,8 @@ import LedgerDealEditor from '../../components/ledger/LedgerDealEditor';
 import LedgerReferrersTab from '../../components/ledger/LedgerReferrersTab';
 import LedgerSharingTab from '../../components/ledger/LedgerSharingTab';
 import LedgerInvoiceModal from '../../components/ledger/LedgerInvoiceDocument';
+import LedgerNewDealModal from '../../components/ledger/LedgerNewDealModal';
+import LedgerReceiptsTab from '../../components/ledger/LedgerReceiptsTab';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { formatDate, getErrorMessage } from '../../lib/utils';
@@ -26,15 +28,17 @@ import {
 } from '../../lib/ledger';
 import type {
   LedgerAccessInfo,
+  LedgerBroker,
   LedgerCategory,
   LedgerColumn,
   LedgerDealRow,
   LedgerDealsResponse,
   LedgerInvoice,
-  LedgerReferrerOption,
+  LedgerPayee,
+  LedgerReport,
 } from '../../types';
 
-type Tab = 'deals' | 'referrers' | 'invoices' | 'sharing';
+type Tab = 'deals' | 'referrers' | 'invoices' | 'receipts' | 'sharing';
 
 const TILES: { key: string; label: string }[] = [
   { key: 'finance_amount', label: 'Settled volume' },
@@ -45,6 +49,9 @@ const TILES: { key: string; label: string }[] = [
   { key: 'income_ex_gst', label: 'Total income (ex GST)' },
   { key: 'referrer_comms_ex_gst', label: 'Referrer comms (ex GST)' },
   { key: 'net_profit', label: 'Net profit' },
+  { key: 'volume_bonus', label: 'Possible volume bonus' },
+  { key: 'vb_received_ex_gst', label: 'Volume bonus received (ex GST)' },
+  { key: 'final_profit', label: 'Final profit before expenses' },
 ];
 
 /** The private commission ledger: settled deals with our income and what we
@@ -60,7 +67,11 @@ export default function PrivateLedger() {
   const [range, setRange] = useState(() => presetRange('this_month'));
   const [data, setData] = useState<LedgerDealsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [referrers, setReferrers] = useState<LedgerReferrerOption[]>([]);
+  const [payees, setPayees] = useState<LedgerPayee[]>([]);
+  const [brokers, setBrokers] = useState<LedgerBroker[]>([]);
+  // Narrow the books to one team member's deals ('' = everyone's).
+  const [brokerId, setBrokerId] = useState('');
+  const [addingDeal, setAddingDeal] = useState(false);
   const [editing, setEditing] = useState<LedgerDealRow | null>(null);
   const [columnKeys, setColumnKeys] = useState<string[]>(() => loadColumnPref() ?? DEFAULT_LEDGER_COLUMNS);
   const [pickingColumns, setPickingColumns] = useState(false);
@@ -86,7 +97,10 @@ export default function PrivateLedger() {
   const isOwner = Boolean(access?.is_owner);
   const can = (s: string) => isOwner || scopes.has(s as never);
 
-  const params = useMemo(() => ({ date_from: range.from || undefined, date_to: range.to || undefined }), [range]);
+  const params = useMemo(
+    () => ({ date_from: range.from || undefined, date_to: range.to || undefined, broker_id: brokerId || undefined }),
+    [range, brokerId],
+  );
 
   const load = useCallback(async () => {
     if (!access?.access || !(can('deals') || can('summary'))) return;
@@ -103,10 +117,17 @@ export default function PrivateLedger() {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
+  const canReferrers = Boolean(access?.access && (isOwner || scopes.has('referrers' as never)));
+  const loadPayees = useCallback(() => {
+    if (!canReferrers) return;
+    api.get<LedgerPayee[]>('/ledger/payees').then(({ data }) => setPayees(data)).catch(() => setPayees([]));
+  }, [canReferrers]);
+  useEffect(() => { loadPayees(); }, [loadPayees]);
+
   useEffect(() => {
-    if (!isOwner) return;
-    api.get<LedgerReferrerOption[]>('/ledger/referrer-options').then(({ data }) => setReferrers(data)).catch(() => setReferrers([]));
-  }, [isOwner]);
+    if (!access?.access) return;
+    api.get<LedgerBroker[]>('/ledger/brokers').then(({ data }) => setBrokers(data)).catch(() => setBrokers([]));
+  }, [access]);
 
   useEffect(() => {
     if (tab !== 'invoices') return;
@@ -153,7 +174,7 @@ export default function PrivateLedger() {
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Settled deals ${range.from || 'start'} to ${range.to || 'today'}.xlsx`;
+      a.download = `Settled deals ${range.from || 'start'} to ${range.to || 'today'}${brokerName ? ` - ${brokerName}` : ''}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -183,6 +204,25 @@ export default function PrivateLedger() {
     }
   };
 
+  const saveVbReceived = async (month: string, value: number | null) => {
+    try {
+      await api.put(`/ledger/months/${month}`, { vb_received_inc_gst: value });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save'), 'error');
+      throw err;
+    }
+  };
+
+  const report: LedgerReport = { months: data?.months ?? [], quarters: data?.quarters ?? [], years: data?.years ?? [], totals: data?.totals };
+
+  const brokerName = brokers.find((b) => b.id === brokerId)?.full_name ?? '';
+
+  const onDeleted = (key: string) => {
+    setData((prev) => prev && prev.deals ? { ...prev, deals: prev.deals.filter((d) => d.application_id !== key) } : prev);
+    setRefreshKey((k) => k + 1);
+  };
+
   const onSaved = (row: LedgerDealRow) => {
     setData((prev) => prev && prev.deals
       ? { ...prev, deals: prev.deals.map((d) => (d.application_id === row.application_id ? row : d)) }
@@ -209,8 +249,9 @@ export default function PrivateLedger() {
 
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: 'deals', label: 'Settled deals', show: can('deals') || can('summary') },
-    { key: 'referrers', label: 'Referrers', show: can('referrers') },
+    { key: 'referrers', label: 'Referrer comms', show: can('referrers') },
     { key: 'invoices', label: 'Invoices', show: can('invoices') && can('referrers') },
+    { key: 'receipts', label: 'Receipts', show: can('income') },
     { key: 'sharing', label: 'Sharing', show: isOwner },
   ];
   const totals = data?.totals;
@@ -232,6 +273,15 @@ export default function PrivateLedger() {
                   {RANGE_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </label>
+              {tab === 'deals' && brokers.length > 0 && (
+                <label className="block">
+                  <span className="mb-1 block text-[11.5px] text-muted-foreground">Book</span>
+                  <select className="led-input !h-9 text-[13px]" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+                    <option value="">Everyone&rsquo;s deals</option>
+                    {brokers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
+                  </select>
+                </label>
+              )}
               {preset === 'custom' && (
                 <>
                   <label className="block">
@@ -295,6 +345,7 @@ export default function PrivateLedger() {
                   {isOwner && <span className="rounded px-2 py-0.5 italic text-muted-foreground border border-border">Italic = from the application, not entered</span>}
                 </div>
                 <div className="ml-auto flex flex-wrap gap-2">
+                  {isOwner && <Button variant="secondary" size="sm" onClick={() => setAddingDeal(true)}>Add deal</Button>}
                   <div className="relative" ref={pickerRef}>
                     <Button variant="secondary" size="sm" onClick={() => setPickingColumns((v) => !v)}>Columns ({shownColumns.length})</Button>
                     {pickingColumns && (
@@ -329,10 +380,10 @@ export default function PrivateLedger() {
               ) : (
                 <LedgerDealsTable
                   rows={data.deals}
-                  months={data.months ?? []}
-                  totals={data.totals}
+                  report={report}
                   columns={shownColumns}
                   onEdit={isOwner ? setEditing : undefined}
+                  onSaveVbReceived={isOwner ? saveVbReceived : undefined}
                 />
               )}
             </>
@@ -347,6 +398,8 @@ export default function PrivateLedger() {
           canInvoice={can('invoices')}
           onEditDeal={isOwner ? setEditing : undefined}
           refreshKey={refreshKey}
+          payees={payees}
+          onPayeesChanged={() => { loadPayees(); setRefreshKey((k) => k + 1); }}
         />
       )}
 
@@ -390,10 +443,26 @@ export default function PrivateLedger() {
         </Card>
       )}
 
+      {tab === 'receipts' && <LedgerReceiptsTab range={range} isOwner={isOwner} />}
+
       {tab === 'sharing' && isOwner && <LedgerSharingTab scopeLabels={access.scope_labels ?? {}} />}
 
       {editing && (
-        <LedgerDealEditor deal={editing} referrers={referrers} onClose={() => setEditing(null)} onSaved={onSaved} />
+        <LedgerDealEditor
+          deal={editing}
+          payees={payees}
+          brokers={brokers}
+          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
+      )}
+      {addingDeal && (
+        <LedgerNewDealModal
+          brokers={brokers}
+          onClose={() => setAddingDeal(false)}
+          onCreated={(row) => { setAddingDeal(false); setEditing(row); setRefreshKey((k) => k + 1); }}
+        />
       )}
       {openInvoice && (
         <LedgerInvoiceModal invoice={openInvoice} isOwner={isOwner} onClose={() => setOpenInvoice(null)} onPaid={() => setRefreshKey((k) => k + 1)} />
@@ -403,9 +472,9 @@ export default function PrivateLedger() {
       {printing && data?.deals && (
         <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
           <div id="ledger-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-            <XpressPrintHeader eyebrow="Private Ledger" title="Settled deals" subtitle={`${periodText} · ${data.deals.length} deal${data.deals.length === 1 ? '' : 's'}`} />
+            <XpressPrintHeader eyebrow="Private Ledger" title={brokerName ? `Settled deals — ${brokerName}` : 'Settled deals'} subtitle={`${periodText} · ${data.deals.length} deal${data.deals.length === 1 ? '' : 's'}`} />
             <div style={{ padding: `0 ${PRINT_INSET}px` }}>
-              <LedgerDealsPrintTable rows={data.deals} months={data.months ?? []} totals={data.totals} columns={shownColumns} />
+              <LedgerDealsPrintTable rows={data.deals} report={report} columns={shownColumns} />
             </div>
           </div>
         </div>

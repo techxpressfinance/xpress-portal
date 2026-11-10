@@ -90,6 +90,7 @@ interface ReferrerForm {
   business_director_name: string;
   business_address: string;
   bank_account_name: string;
+  bank_name: string;
   bank_bsb: string;
   bank_account_number: string;
 }
@@ -97,7 +98,7 @@ interface ReferrerForm {
 const INITIAL_FORM: ReferrerForm = {
   full_name: '', email: '', phone: '', organization_name: '',
   business_abn: '', business_gst_registered: '', business_director_name: '', business_address: '',
-  bank_account_name: '', bank_bsb: '', bank_account_number: '',
+  bank_account_name: '', bank_name: '', bank_bsb: '', bank_account_number: '',
 };
 
 const onlyDigits = (v: string) => v.replace(/\D/g, '');
@@ -191,6 +192,7 @@ export default function ReferrerManagement() {
         business_director_name: form.business_director_name.trim() || null,
         business_address: form.business_address.trim() || null,
         bank_account_name: form.bank_account_name.trim() || null,
+        bank_name: form.bank_name.trim() || null,
         bank_bsb: onlyDigits(form.bank_bsb) || null,
         bank_account_number: onlyDigits(form.bank_account_number) || null,
       });
@@ -314,6 +316,7 @@ export default function ReferrerManagement() {
                 <Input label="Director's name" placeholder="Jane Smith" value={form.business_director_name} onChange={e => update('business_director_name', e.target.value)} />
                 <Input label="Business address" placeholder="12 Example St, Sydney NSW 2000" value={form.business_address} onChange={e => update('business_address', e.target.value)} />
                 <Input label="Bank account name" placeholder="Example Pty Ltd" value={form.bank_account_name} onChange={e => update('bank_account_name', e.target.value)} />
+                <Input label="Bank" placeholder="e.g. NAB" value={form.bank_name} onChange={e => update('bank_name', e.target.value)} />
                 <div className="grid gap-4 grid-cols-2">
                   <Input label="BSB" placeholder="123-456" inputMode="numeric" value={form.bank_bsb} onChange={e => update('bank_bsb', e.target.value)} error={errors.bank_bsb} />
                   <Input label="Account number" placeholder="12345678" inputMode="numeric" value={form.bank_account_number} onChange={e => update('bank_account_number', onlyDigits(e.target.value).slice(0, 10))} error={errors.bank_account_number} />

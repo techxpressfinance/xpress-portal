@@ -22,6 +22,7 @@ interface FormState {
   business_director_name: string;
   business_address: string;
   bank_account_name: string;
+  bank_name: string;
   bank_bsb: string;
   bank_account_number: string;
   phone: string;
@@ -33,6 +34,7 @@ const EMPTY: FormState = {
   business_director_name: '',
   business_address: '',
   bank_account_name: '',
+  bank_name: '',
   bank_bsb: '',
   bank_account_number: '',
   phone: '',
@@ -45,6 +47,7 @@ function toForm(profile: ReferrerBusinessProfile): FormState {
     business_director_name: profile.business_director_name ?? '',
     business_address: profile.business_address ?? '',
     bank_account_name: profile.bank_account_name ?? '',
+    bank_name: profile.bank_name ?? '',
     bank_bsb: profile.bank_bsb ?? '',
     bank_account_number: profile.bank_account_number ?? '',
     phone: profile.phone ?? '',
@@ -149,6 +152,7 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
         business_director_name: form.business_director_name.trim() || null,
         business_address: form.business_address.trim() || null,
         bank_account_name: form.bank_account_name.trim() || null,
+        bank_name: form.bank_name.trim() || null,
         bank_bsb: digits(form.bank_bsb) || null,
         bank_account_number: digits(form.bank_account_number) || null,
         phone: form.phone.trim() || null,
@@ -272,12 +276,18 @@ export default function BusinessDetailsForm({ basePath, onSaved, intro, contactN
         <Card>
           <h3 className="text-[15px] font-semibold text-foreground mb-1">Bank account for payment</h3>
           <p className="text-[13px] text-muted-foreground mb-4">Stored encrypted. Only you and portal administrators can see it.</p>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Input
               label="Account name"
               placeholder="Example Pty Ltd"
               value={form.bank_account_name}
               onChange={e => update('bank_account_name', e.target.value)}
+            />
+            <Input
+              label="Bank"
+              placeholder="e.g. NAB"
+              value={form.bank_name}
+              onChange={e => update('bank_name', e.target.value)}
             />
             <Input
               label="BSB"

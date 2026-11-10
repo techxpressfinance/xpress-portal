@@ -43,6 +43,9 @@ class LedgerSettings(Base):
     business_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     invoice_prefix: Mapped[str] = mapped_column(String(20), default="RC-", nullable=False)
     next_invoice_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Our share of the volume bonus by the month's settled volume, as JSON
+    # [{"min_volume": 250000, "share_percent": 50}, …]. NULL = DEFAULT_VB_TIERS.
+    vb_tiers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
 
@@ -109,10 +112,130 @@ class LedgerDeal(Base):
     share_gst: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     # When we paid the referrer — the owner's eyes only.
+    # LEGACY: the referrer/share/payment fields above and here describe the
+    # deal's single payee from before LedgerDealShare. They are read as that
+    # payee's share until the owner saves shares for the deal, which clears them.
     paid_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     payment_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     payment_notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
 
+    # A ledger-only deal: no portal application behind it (history imported
+    # from the spreadsheet, or business written outside the portal).
+    # application_id is then just the deal's own key, and these describe it.
+    is_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    manual_settled_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    manual_customer_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    manual_entity_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    # asset_finance / consumer / home_loan / commercial (the colour coding).
+    manual_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Whose book the deal belongs to: a team member, or a name for history.
+    manual_broker_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    manual_broker_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+
+    updated_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class LedgerPayee(Base):
+    """Someone the owner pays referral commission to.
+
+    Either a portal referrer (user_id set — their billing details stay on the
+    User, this row only holds ledger-private extras) or someone who never had a
+    portal login (an accountant, a sub-contractor, a staff member): their
+    details live here. Ledger-private: nobody outside the ledger sees this."""
+
+    __tablename__ = "ledger_payees"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_ledger_payee_user"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    gst_registered: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_account_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    # Their usual cut, prefilled on deals that don't have one entered yet.
+    default_share_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(7, 4), nullable=True)
+    default_share_base: Mapped[str] = mapped_column(String(20), default="brokerage", nullable=False)
+    default_share_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+SHARE_STATUSES = ("unpaid", "scheduled", "paid", "not_payable")
+
+
+class LedgerDealShare(Base):
+    """One payee's cut of one deal — a deal can pay several (e.g. 33% / 67%
+    between two partners). The share is a percentage of a base or a dollar
+    figure, as the quote sheets do brokerage; each is paid on its own."""
+
+    __tablename__ = "ledger_deal_shares"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    # LedgerDeal.application_id — the deal's key (a portal application or a manual deal).
+    deal_key: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    payee_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    share_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(7, 4), nullable=True)
+    share_base: Mapped[str] = mapped_column(String(20), default="brokerage", nullable=False)
+    share_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    # None = follow the payee's GST registration.
+    share_gst: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # unpaid / scheduled (scheduled_on) / paid (paid_on) / not_payable.
+    status: Mapped[str] = mapped_column(String(20), default="unpaid", nullable=False)
+    scheduled_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    paid_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    payment_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # One transfer often covers several deals ("paid as part of $17,501.75").
+    payment_reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    payment_notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class LedgerReceipt(Base):
+    """Money received from another party — commission passed on by another
+    broker or aggregator, a split settled up. Kept to reconcile against."""
+
+    __tablename__ = "ledger_receipts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    received_on: Mapped[date] = mapped_column(Date, nullable=False)
+    from_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    created_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class LedgerMonth(Base):
+    """What the owner records against a whole month — the volume bonus the
+    aggregator actually paid for it (entered inc GST, as it arrives). Final
+    profit for the month is net profit plus this, ex GST."""
+
+    __tablename__ = "ledger_months"
+    __table_args__ = (UniqueConstraint("tenant_id", "month", name="uq_ledger_month"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    vb_received_inc_gst: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     updated_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
@@ -129,7 +252,9 @@ class LedgerInvoice(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     number: Mapped[str] = mapped_column(String(40), nullable=False)
+    # The payee's portal user id, or the payee id for someone off-portal.
     referrer_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    payee_id: Mapped[Optional[str]] = mapped_column(String(36), index=True, nullable=True)
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)
     period_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     period_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

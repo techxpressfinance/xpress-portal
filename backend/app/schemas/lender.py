@@ -53,6 +53,9 @@ class LenderCreate(BaseModel):
     # Admin-only (see routers/lenders.py): ignored from brokers, null for them.
     on_panel: Optional[bool] = None
     vbi_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_personal_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_commercial_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_repeat_percent: Optional[float] = Field(default=None, ge=0, le=100)
 
     @field_validator("name")
     @classmethod
@@ -78,6 +81,9 @@ class LenderUpdate(BaseModel):
     # Admin-only (see routers/lenders.py): ignored from brokers, null for them.
     on_panel: Optional[bool] = None
     vbi_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_personal_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_commercial_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    vbi_repeat_percent: Optional[float] = Field(default=None, ge=0, le=100)
 
     @field_validator("name")
     @classmethod
@@ -105,6 +111,9 @@ class LenderOut(BaseModel):
     # Admin-only — null for everyone else.
     on_panel: Optional[bool] = None
     vbi_percent: Optional[float] = None
+    vbi_personal_percent: Optional[float] = None
+    vbi_commercial_percent: Optional[float] = None
+    vbi_repeat_percent: Optional[float] = None
     contacts: list[LenderContactOut] = []
     created_at: datetime
     updated_at: datetime

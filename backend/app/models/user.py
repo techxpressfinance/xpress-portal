@@ -85,6 +85,7 @@ class User(TenantScoped, Base):
     business_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # Bank details are financial PII — encrypted at rest like other sensitive columns.
     bank_account_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     bank_bsb: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     bank_account_number: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     # Optional branding assets used on the generated invoice
