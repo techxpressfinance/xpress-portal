@@ -707,7 +707,7 @@ function BoardColumn({
       <div className="led-kanban-col-header">
         <span className="led-sdot" style={{ background: colorDot(col.color) }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.005em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className="led-kanban-col-title" title={col.title}>
             {col.title}
           </div>
           {col.team && (

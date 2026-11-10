@@ -1207,6 +1207,22 @@ table {
   padding: 6px 8px 10px;
 }
 
+/* A long stage name is cut to one line; hovering the header shows it in full. */
+.led-kanban-col-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.led-kanban-col-header:hover .led-kanban-col-title {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
 .led-kanban-col-meta {
   font-size: 11px;
   color: var(--led-muted);
