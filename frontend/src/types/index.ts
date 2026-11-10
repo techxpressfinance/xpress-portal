@@ -372,13 +372,20 @@ export type ApplicantType = 'individual' | 'company';
 // A contact linked to a company in the contact book, offered for adding to an
 // application as a party.
 export interface CompanyDirectorCandidate {
-  contact_id: string;
+/** Someone connected to a company, offered as a party: a linked contact (any
+ *  role), a person in its trust structure, or a director on one of its earlier
+ *  applications. suggested = looks like a signer, so it starts ticked. */
+  candidate_id: string;
+  contact_id: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   phone: string | null;
   link_role: string | null;
   already_added: boolean;
+  source: 'company' | 'trust' | 'previous_application';
+  source_label: string | null;
+  suggested: boolean;
 }
 
 // An unconfirmed client↔business pairing an application implies. Confirming it

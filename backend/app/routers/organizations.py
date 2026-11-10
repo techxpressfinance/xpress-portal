@@ -18,6 +18,8 @@ from app.models.user import User
 from app.schemas.organization import (
     EntitySearchResult,
     OrganizationContactLink,
+    OrganizationLinkUpdate,
+    OrganizationPersonIn,
     OrganizationCreate,
     OrganizationDetailOut,
     OrganizationDuplicateCheck,
@@ -32,6 +34,8 @@ from app.schemas.organization import (
 from app.config import ABR_ENABLED
 from app.constants import ENTITY_TYPES, TRUST_PARTY_ROLES
 from app.services import acn as acn_service
+from app.services import entity_parties
+from app.services.activity_log import log_activity
 from app.services.abr import lookup_abn as abr_lookup_abn
 from app.services.abr import search_names as abr_search_names
 from app.services.dedupe import (
@@ -769,15 +773,121 @@ def delete_organization(
     db.commit()
 
 
+def _push_to_applications(db: Session, org: Organization, contact: Contact, role: Optional[str],
+                          current_user: User, tenant_id: str) -> list:
+    """Add a signing person to the entity's live applications (see
+    services/entity_parties.py) and log it on each. Caller commits, then
+    sends the invites."""
+    added = entity_parties.add_to_live_applications(db, tenant_id, org.id, contact, role)
+    for app, party, _company in added:
+        log_activity(db, current_user.id, "director_added_from_entity", "application", app.id,
+                     {"organization_id": org.id, "role": party.role,
+                      "guarantor_id": party.application_guarantor_id}, tenant_id=tenant_id)
+    return added
+
+
+def _link_out(contact: Contact, link: ContactOrganization, added: list) -> dict:
+    return {
+        "id": contact.id,
+        "first_name": contact.first_name,
+        "last_name": contact.last_name,
+        "email": contact.email,
+        "phone": contact.phone,
+        "role": link.role,
+        # Live applications this person was just added to as a director/guarantor.
+        "added_to_applications": len({app.id for app, _p, _c in added}),
+    }
+
+
+@router.post("/{org_id}/people", status_code=status.HTTP_201_CREATED)
+def add_person(
+    org_id: str,
+    data: OrganizationPersonIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Add someone to the entity in one or more roles — an existing contact, or
+    a new person (reusing the contact with that email if there is one). Anyone
+    who signs (director, guarantor, signatory, partner, owner) is added to the
+    entity's live applications straight away and sent their invite."""
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    roles = [r.strip() for r in data.roles if r and r.strip()]
+    if not roles:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose at least one role")
+    if data.contact_id:
+        contact = db.query(Contact).filter(Contact.id == data.contact_id, Contact.tenant_id == tenant_id).first()
+        if not contact:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    else:
+        first, last = (data.first_name or "").strip(), (data.last_name or "").strip()
+        if not first or not last:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter their first and last name")
+        email = (data.email or "").strip().lower() or None
+        contact = None
+        if email:
+            contact = db.query(Contact).filter(
+                Contact.tenant_id == tenant_id, func.lower(Contact.email) == email
+            ).first()
+        if contact is None:
+            contact = Contact(tenant_id=tenant_id, first_name=first, last_name=last, email=email,
+                              phone=(data.phone or "").strip() or None)
+            db.add(contact)
+            db.flush()
+        elif data.phone and not contact.phone:
+            contact.phone = data.phone.strip()
+    link = db.query(ContactOrganization).filter(
+        ContactOrganization.organization_id == org.id, ContactOrganization.contact_id == contact.id
+    ).first()
+    if link:
+        # Already on the entity: add the new roles to the ones they hold.
+        held = [r.strip() for r in (link.role or "").split(",") if r.strip()]
+        link.role = ", ".join(held + [r for r in roles if r.lower() not in {h.lower() for h in held}])[:100]
+    else:
+        link = ContactOrganization(contact_id=contact.id, organization_id=org.id,
+                                   role=", ".join(roles)[:100], tenant_id=tenant_id)
+        db.add(link)
+    db.flush()
+    added = _push_to_applications(db, org, contact, link.role, current_user, tenant_id)
+    db.commit()
+    entity_parties.send_invites(added)
+    return _link_out(contact, link, added)
+
+
+@router.patch("/{org_id}/contacts/{contact_id}")
+def update_contact_link(
+    org_id: str,
+    contact_id: str,
+    data: OrganizationLinkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Change the roles someone holds on the entity. Gaining a signing role
+    adds them to its live applications; losing one leaves those applications
+    as they are (remove them there if they shouldn't sign)."""
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    link = db.query(ContactOrganization).filter(
+        ContactOrganization.organization_id == org.id, ContactOrganization.contact_id == contact_id
+    ).first()
+    if not link or not link.contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    link.role = ", ".join(r.strip() for r in data.roles if r and r.strip())[:100] or None
+    added = _push_to_applications(db, org, link.contact, link.role, current_user, tenant_id)
+    db.commit()
+    entity_parties.send_invites(added)
+    return _link_out(link.contact, link, added)
+
+
 @router.post("/{org_id}/contacts", status_code=status.HTTP_201_CREATED)
 def link_contact(
     org_id: str,
     data: OrganizationContactLink,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role("admin", "broker")),
+    current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    _get_org_in_tenant(org_id, tenant_id, db)
+    org = _get_org_in_tenant(org_id, tenant_id, db)
     contact = db.query(Contact).filter(Contact.id == data.contact_id, Contact.tenant_id == tenant_id).first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
@@ -800,15 +910,12 @@ def link_contact(
         tenant_id=tenant_id,
     )
     db.add(link)
+    db.flush()
+    # A director/guarantor linked here belongs on the entity's live deals too.
+    added = _push_to_applications(db, org, contact, link.role, current_user, tenant_id)
     db.commit()
-    return {
-        "id": contact.id,
-        "first_name": contact.first_name,
-        "last_name": contact.last_name,
-        "email": contact.email,
-        "phone": contact.phone,
-        "role": link.role,
-    }
+    entity_parties.send_invites(added)
+    return _link_out(contact, link, added)
 
 
 # ---------------------------------------------------------------------------
