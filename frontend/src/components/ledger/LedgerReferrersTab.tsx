@@ -4,24 +4,36 @@ import api from '../../api/client';
 import { useToast } from '../Toast';
 import { Button, Card } from '../ui';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { formatLedgerMoney, SHARE_BASE_LABEL } from '../../lib/ledger';
-import type { LedgerDealRow, LedgerDealsResponse, LedgerInvoice, LedgerReferrerSummary } from '../../types';
+import { formatLedgerMoney, PAYMENT_METHODS, SHARE_BASE_LABEL, SHARE_STATUS_LABEL } from '../../lib/ledger';
+import type { LedgerDealRow, LedgerDealsResponse, LedgerInvoice, LedgerPayee, LedgerReferrerSummary, LedgerShare, LedgerShareStatus } from '../../types';
 import LedgerInvoiceModal from './LedgerInvoiceDocument';
+import LedgerPayeesPanel from './LedgerPayeesPanel';
 
-function shareText(d: LedgerDealRow): string {
-  if (d.share_amount != null) return 'Fixed amount';
-  if (d.share_percent != null) return `${d.share_percent}% ${SHARE_BASE_LABEL[d.share_base ?? 'brokerage']}`;
-  return 'Not set';
+function shareText(s: LedgerShare | null | undefined, d: LedgerDealRow): string {
+  if (!s) return '—';
+  const split = (d.shares?.length ?? 0) > 1 ? ' · split deal' : '';
+  if (s.share_amount != null) return `Fixed amount${split}`;
+  if (s.share_percent != null) return `${s.share_percent}% ${SHARE_BASE_LABEL[s.share_base ?? 'brokerage']}${split}`;
+  return `Not set${split}`;
+}
+
+function statusText(s: LedgerShare | null | undefined): string {
+  if (!s?.status) return '—';
+  if (s.status === 'paid') return s.paid_on ? `Paid ${formatDate(s.paid_on)}` : 'Paid';
+  if (s.status === 'scheduled') return s.scheduled_on ? `Scheduled ${formatDate(s.scheduled_on)}` : 'Scheduled';
+  return SHARE_STATUS_LABEL[s.status];
 }
 
 /** Who referred how many settled deals in the range — and, for one referrer,
  *  every deal and client on the same page, with the invoice built from them. */
-export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditDeal, refreshKey }: {
+export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditDeal, refreshKey, payees, onPayeesChanged }: {
   range: { from: string; to: string };
   isOwner: boolean;
   canInvoice: boolean;
   onEditDeal?: (row: LedgerDealRow) => void;
   refreshKey: number;
+  payees: LedgerPayee[];
+  onPayeesChanged: () => void;
 }) {
   const { toast } = useToast();
   const [summary, setSummary] = useState<LedgerReferrerSummary[]>([]);
@@ -34,6 +46,11 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
   const [creating, setCreating] = useState(false);
   const [invoices, setInvoices] = useState<LedgerInvoice[]>([]);
   const [openInvoice, setOpenInvoice] = useState<LedgerInvoice | null>(null);
+  const [bulkStatus, setBulkStatus] = useState<LedgerShareStatus>('paid');
+  const [bulkDate, setBulkDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bulkMethod, setBulkMethod] = useState('Bank transfer');
+  const [bulkReference, setBulkReference] = useState('');
+  const [marking, setMarking] = useState(false);
 
   const params = useMemo(() => ({ date_from: range.from || undefined, date_to: range.to || undefined }), [range]);
 
@@ -56,7 +73,10 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
       setDeals(rows);
       setInvoices(inv.data);
       // Start with what hasn't been paid yet — what an invoice is usually for.
-      setTicked(new Set(rows.filter((r) => !r.paid_on).map((r) => r.application_id)));
+      setTicked(new Set(rows.filter((r) => {
+        const st = r.payee_share?.status;
+        return st === 'unpaid' || st === 'scheduled';
+      }).map((r) => r.application_id)));
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to load deals'), 'error');
     } finally {
@@ -68,7 +88,30 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
 
   const current = summary.find((s) => s.referrer_id === selected);
   const tickedRows = deals.filter((d) => ticked.has(d.application_id));
-  const tickedTotal = tickedRows.reduce((a, d) => a + (d.referrer_comms_inc_gst ?? 0), 0);
+  const tickedTotal = tickedRows.reduce((a, d) => a + (d.payee_share?.comms_inc_gst ?? 0), 0);
+
+  const markTicked = async () => {
+    if (!selected || !tickedRows.length) return;
+    setMarking(true);
+    try {
+      const { data } = await api.post<{ updated: number }>('/ledger/deals/mark-paid', {
+        application_ids: tickedRows.map((d) => d.application_id),
+        payee_key: selected,
+        status: bulkStatus,
+        paid_on: bulkStatus === 'paid' ? bulkDate : null,
+        scheduled_on: bulkStatus === 'scheduled' ? bulkDate : null,
+        payment_method: bulkStatus === 'paid' || bulkStatus === 'scheduled' ? bulkMethod : null,
+        payment_reference: bulkReference.trim() || null,
+      });
+      toast(`${data.updated} deal${data.updated === 1 ? '' : 's'} marked ${SHARE_STATUS_LABEL[bulkStatus].toLowerCase()}`, 'success');
+      setBulkReference('');
+      loadReferrer(selected);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to update'), 'error');
+    } finally {
+      setMarking(false);
+    }
+  };
 
   const createInvoice = async () => {
     if (!selected || !tickedRows.length) return;
@@ -156,7 +199,11 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
             <h2 className="text-[14px] font-semibold text-foreground">
               {current.referrer_name} — {current.deals} settled deal{current.deals === 1 ? '' : 's'}
             </h2>
-            <Link to={`/admin/referrers/${selected}`} className="text-[12px] text-[var(--led-accent)] hover:underline">Referrer profile</Link>
+            {selected.startsWith('u:') ? (
+              <Link to={`/admin/referrers/${selected.slice(2)}`} className="text-[12px] text-[var(--led-accent)] hover:underline">Referrer profile</Link>
+            ) : (
+              <span className="text-[12px] text-muted-foreground">Off-portal payee</span>
+            )}
           </div>
           {dealsLoading ? (
             <p className="px-4 py-6 text-[13px] text-muted-foreground">Loading…</p>
@@ -172,8 +219,8 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
                     <th className="px-3 py-2 text-left">Lender</th>
                     <th className="px-3 py-2 text-right">Finance amount</th>
                     <th className="px-3 py-2 text-left">Share</th>
-                    <th className="px-3 py-2 text-right">Comms inc GST</th>
-                    {isOwner && <th className="px-3 py-2 text-left">Paid</th>}
+                    <th className="px-3 py-2 text-right">Their comms inc GST</th>
+                    {isOwner && <th className="px-3 py-2 text-left">Payment</th>}
                     {onEditDeal && <th />}
                   </tr>
                 </thead>
@@ -187,14 +234,22 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
                       )}
                       <td className="px-3 py-2 whitespace-nowrap">{formatDate(d.settled_on)}</td>
                       <td className="px-3 py-2">
-                        <Link to={`/admin/applications/${d.application_id}`} className="font-medium text-foreground hover:underline">{d.customer_name}</Link>
+                        {d.is_manual ? (
+                          <span className="font-medium text-foreground">{d.customer_name}</span>
+                        ) : (
+                          <Link to={`/admin/applications/${d.application_id}`} className="font-medium text-foreground hover:underline">{d.customer_name}</Link>
+                        )}
                       </td>
                       <td className="px-3 py-2">{d.entity_name || '—'}</td>
                       <td className="px-3 py-2">{d.lender_name || '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatLedgerMoney(d.finance_amount)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{shareText(d)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatLedgerMoney(d.referrer_comms_inc_gst)}</td>
-                      {isOwner && <td className="px-3 py-2 whitespace-nowrap">{d.paid_on ? formatDate(d.paid_on) : <span className="text-muted-foreground">Unpaid</span>}</td>}
+                      <td className="px-3 py-2 text-muted-foreground">{shareText(d.payee_share, d)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatLedgerMoney(d.payee_share?.comms_inc_gst)}</td>
+                      {isOwner && (
+                        <td className="px-3 py-2 whitespace-nowrap" title={[d.payee_share?.payment_reference, d.payee_share?.payment_notes].filter(Boolean).join(' · ') || undefined}>
+                          <span className={d.payee_share?.status === 'unpaid' ? 'text-muted-foreground' : ''}>{statusText(d.payee_share)}</span>
+                        </td>
+                      )}
                       {onEditDeal && (
                         <td className="px-2 py-1 text-right">
                           <button type="button" onClick={() => onEditDeal(d)} className="led-btn led-btn-ghost led-btn-sm">Edit</button>
@@ -232,6 +287,25 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
             </div>
           )}
 
+          {isOwner && deals.length > 0 && (
+            <div className="px-4 py-3 border-t border-border flex flex-wrap items-end gap-2 text-[12.5px]">
+              <span className="pb-2 text-muted-foreground">Mark the ticked deals</span>
+              <select className="led-input !h-8 !w-auto text-[12.5px]" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value as LedgerShareStatus)}>
+                {(Object.keys(SHARE_STATUS_LABEL) as LedgerShareStatus[]).map((k) => <option key={k} value={k}>{SHARE_STATUS_LABEL[k]}</option>)}
+              </select>
+              {(bulkStatus === 'paid' || bulkStatus === 'scheduled') && (
+                <>
+                  <input type="date" className="led-input !h-8 !w-auto text-[12.5px]" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} aria-label={bulkStatus === 'paid' ? 'Paid on' : 'Scheduled for'} />
+                  <select className="led-input !h-8 !w-auto text-[12.5px]" value={bulkMethod} onChange={(e) => setBulkMethod(e.target.value)}>
+                    {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+                  </select>
+                </>
+              )}
+              <input className="led-input !h-8 !w-56 text-[12.5px]" value={bulkReference} placeholder="Reference, e.g. one transfer of $17,501.75" onChange={(e) => setBulkReference(e.target.value)} />
+              <Button size="sm" variant="secondary" onClick={markTicked} loading={marking} disabled={!tickedRows.length}>Apply</Button>
+            </div>
+          )}
+
           {canInvoice && invoices.length > 0 && (
             <div className="px-4 py-3 border-t border-border">
               <p className="text-[12px] font-medium text-[var(--led-ink-2)] mb-1.5">Invoices for {current.referrer_name}</p>
@@ -246,6 +320,8 @@ export default function LedgerReferrersTab({ range, isOwner, canInvoice, onEditD
           )}
         </Card>
       )}
+
+      <LedgerPayeesPanel payees={payees} isOwner={isOwner} onChanged={onPayeesChanged} />
 
       {openInvoice && (
         <LedgerInvoiceModal

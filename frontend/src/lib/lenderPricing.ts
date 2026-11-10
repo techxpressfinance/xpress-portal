@@ -34,6 +34,7 @@ export const LENDER_PRICING_DEFAULTS: LenderPricingInputs = {
   establishment_fee: 0,
   ppsr_fee: 0,
   origination_fee: 0,
+  vir_fee: 0,
   monthly_account_fee: 0,
   fees_financed: true,
   non_taxable_charges: 0,
@@ -110,7 +111,7 @@ export function computeLenderPricing(inputs: LenderPricingInputs) {
   // Amount borrowed = asset price − deposit − trade-in + payout figure. Any
   // payout still owing on the trade-in is rolled into the new loan.
   const amountBorrowed = inputs.asset_price - deposit - inputs.trade_in_amount + inputs.payout_amount;
-  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee;
+  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee;
   const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
   const brokerage = inputs.gst_on_brokerage
     ? inputs.brokerage_amount * (1 + inputs.gst_percent / 100)
@@ -280,7 +281,7 @@ export function lenderPricingOptions(inputs: LenderPricingInputs, structures: Le
     client_interest_rate: s.allUpRate != null ? fmt2(s.allUpRate * 100) : null,
     establishment_fee: inputs.establishment_fee,
     monthly_account_fee: inputs.monthly_account_fee || null,
-    application_fee: inputs.ppsr_fee + inputs.origination_fee,
+    application_fee: inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee,
     brokerage: fmt2(d.brokerage),
     repayment_monthly: s.repayment_monthly,
     repayment_fortnightly: s.repayment_fortnightly,

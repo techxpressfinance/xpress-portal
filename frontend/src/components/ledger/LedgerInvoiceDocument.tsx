@@ -5,7 +5,7 @@ import { Button } from '../ui';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX } from '../../lib/printPage';
 import { formatDate, getErrorMessage } from '../../lib/utils';
-import { formatLedgerMoney, PAYMENT_METHODS } from '../../lib/ledger';
+import { formatLedgerMoney, invoicePayeeKey, PAYMENT_METHODS } from '../../lib/ledger';
 import type { LedgerInvoice } from '../../types';
 import LedgerModal from './LedgerModal';
 
@@ -102,6 +102,7 @@ export function LedgerInvoiceDocument({ invoice, elementId }: { invoice: LedgerI
         <div style={{ marginTop: 28 }}>
           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: '#555', marginBottom: 4 }}>Payment to</div>
           {s.bank_account_name && <div>Account name {s.bank_account_name}</div>}
+          {s.bank_name && <div>Bank {s.bank_name}</div>}
           {s.bank_bsb && <div>BSB {s.bank_bsb}</div>}
           {s.bank_account_number && <div>Account {s.bank_account_number}</div>}
         </div>
@@ -142,9 +143,11 @@ export default function LedgerInvoiceModal({ invoice, isOwner, onClose, onPaid }
       const ids = invoice.application_ids;
       await api.post('/ledger/deals/mark-paid', {
         application_ids: ids,
+        payee_key: invoicePayeeKey(invoice),
+        status: 'paid',
+        payment_reference: `Invoice ${invoice.number}`,
         paid_on: paidOn,
         payment_method: method,
-        payment_notes: `Invoice ${invoice.number}`,
       });
       toast(`${ids.length} deal${ids.length === 1 ? '' : 's'} marked paid`, 'success');
       onPaid?.();

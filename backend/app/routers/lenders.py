@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/lenders", tags=["lenders"])
 
 # Panel status and VBI are commercial terms — admins see and set them; brokers
 # get null on reads and a 403 if they try to write them.
-_ADMIN_ONLY_FIELDS = ("on_panel", "vbi_percent")
+_ADMIN_ONLY_FIELDS = ("on_panel", "vbi_percent", "vbi_personal_percent", "vbi_commercial_percent", "vbi_repeat_percent")
 
 
 def _view(lender: Lender, user: User) -> LenderOut:

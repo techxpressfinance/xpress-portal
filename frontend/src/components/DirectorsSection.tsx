@@ -60,7 +60,8 @@ function CompanyDirectorPicker({
       .then(({ data }) => {
         if (cancelled) return;
         setCandidates(data);
-        setSelected(new Set());
+        // Directors, guarantors and signatories start ticked — one click adds them.
+        setSelected(new Set(data.filter((c) => c.suggested && !c.already_added).map((c) => c.candidate_id)));
       })
       .catch((err) => {
         if (!cancelled) toast(getErrorMessage(err, 'Failed to load the company’s directors'), 'error');
@@ -71,11 +72,11 @@ function CompanyDirectorPicker({
     return () => { cancelled = true; };
   }, [open, applicationId, guarantorId, toast]);
 
-  const toggle = (contactId: string) => {
+  const toggle = (candidateId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(contactId)) next.delete(contactId);
-      else next.add(contactId);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
       return next;
     });
   };
@@ -86,7 +87,7 @@ function CompanyDirectorPicker({
       const { data } = await api.post<LoanApplicant[]>(
         `/applications/${applicationId}/directors/from-company`,
         {
-          contact_ids: [...selected],
+          candidate_ids: [...selected],
           ...(guarantorId ? { guarantor_id: guarantorId } : {}),
         },
       );
@@ -123,8 +124,9 @@ function CompanyDirectorPicker({
 
           {!loading && candidates.length === 0 && (
             <p className="text-[12px] text-muted-foreground">
-              No directors on file for this company yet. Link them as contacts on the company record,
-              or add them by email above.
+              Nobody is on file for this company yet — ABN Lookup doesn&rsquo;t publish directors, so a new
+              company starts empty. Add them by email above (they&rsquo;ll be offered here on its next
+              application), or link them as contacts on the company record.
             </p>
           )}
 
@@ -133,18 +135,18 @@ function CompanyDirectorPicker({
               <div className="space-y-1.5">
                 {candidates.map((c) => (
                   <label
-                    key={c.contact_id}
-                    className={`flex items-center gap-2 text-[13px] ${c.already_added ? 'text-muted-foreground' : 'text-foreground cursor-pointer'}`}
+                    key={c.candidate_id}
+                    className={`flex flex-wrap items-center gap-x-2 text-[13px] ${c.already_added ? 'text-muted-foreground' : 'text-foreground cursor-pointer'}`}
                   >
                     <input
                       type="checkbox"
                       disabled={c.already_added}
-                      checked={c.already_added || selected.has(c.contact_id)}
-                      onChange={() => toggle(c.contact_id)}
+                      checked={c.already_added || selected.has(c.candidate_id)}
+                      onChange={() => toggle(c.candidate_id)}
                     />
                     <span className="font-medium">{candidateName(c)}</span>
                     <span className="text-[12px] text-muted-foreground">
-                      {c.link_role || 'director'}
+                      {c.source_label || c.link_role || 'Linked contact'}
                       {c.already_added
                         ? ' · already added'
                         : c.email

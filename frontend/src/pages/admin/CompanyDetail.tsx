@@ -227,17 +227,51 @@ function EditCompanyModal({ company, onClose, onSaved }: {
   );
 }
 
-function LinkContactModal({ companyId, excludeIds, onClose, onLinked }: {
+// Roles offered on the entity page, by entity type — mirror ENTITY_ROLES in
+// backend/app/services/entity_parties.py. One person can hold several.
+const ENTITY_ROLES: Record<string, string[]> = {
+  company: ['Director', 'Secretary', 'Shareholder', 'Guarantor', 'Authorised signatory', 'Beneficial owner', 'Accountant', 'Contact'],
+  trustee: ['Director', 'Secretary', 'Shareholder', 'Guarantor', 'Authorised signatory', 'Beneficial owner', 'Accountant', 'Contact'],
+  trust: ['Guarantor', 'Authorised signatory', 'Beneficial owner', 'Accountant', 'Contact'],
+  partnership: ['Partner', 'Guarantor', 'Authorised signatory', 'Accountant', 'Contact'],
+  sole_trader: ['Owner', 'Guarantor', 'Accountant', 'Contact'],
+};
+const DEFAULT_ROLES = ['Director', 'Partner', 'Owner', 'Guarantor', 'Authorised signatory', 'Secretary', 'Shareholder', 'Accountant', 'Contact'];
+// Mirrors is_signing_role(): these put someone on the entity's live applications.
+const signs = (role: string) => {
+  const r = role.trim().toLowerCase();
+  return ['director', 'guarantor', 'signator'].some((w) => r.includes(w)) || ['partner', 'owner', 'sole trader', 'proprietor'].includes(r);
+};
+const splitRoles = (role: string | null) => (role || '').split(',').map((r) => r.trim()).filter(Boolean);
+
+type SavedPerson = OrganizationContactLite & { added_to_applications?: number };
+
+/** Add someone to the entity in one or more roles — an existing contact or a
+ *  new person — or (with `editing`) change the roles a linked person holds.
+ *  Directors, guarantors and signatories go onto the entity's live
+ *  applications straight away, with their invite. */
+function PersonModal({ companyId, entityType, excludeIds, editing, onClose, onSaved }: {
   companyId: string;
+  entityType: string | null;
   excludeIds: Set<string>;
+  editing?: OrganizationContactLite;
   onClose: () => void;
-  onLinked: (contact: OrganizationContactLite) => void;
+  onSaved: (person: SavedPerson, isNew: boolean) => void;
 }) {
   const { toast } = useToast();
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null }[]>([]);
-  const [role, setRole] = useState('');
   const [picked, setPicked] = useState<typeof results[number] | null>(null);
+  const [person, setPerson] = useState({ first_name: '', last_name: '', email: '', phone: '' });
+  const held = splitRoles(editing?.role ?? null);
+  const base = ENTITY_ROLES[entityType || ''] ?? DEFAULT_ROLES;
+  // Keep any role already held that isn't in the standard list (older free text).
+  const options = [...base, ...held.filter((h) => !base.some((b) => b.toLowerCase() === h.toLowerCase()))];
+  const [roles, setRoles] = useState<Set<string>>(() => new Set(
+    held.map((h) => options.find((o) => o.toLowerCase() === h.toLowerCase()) ?? h),
+  ));
+  const [otherRole, setOtherRole] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -247,6 +281,7 @@ function LinkContactModal({ companyId, excludeIds, onClose, onLinked }: {
   }, [onClose]);
 
   useEffect(() => {
+    if (editing || mode !== 'existing') return;
     let cancelled = false;
     const t = setTimeout(() => {
       api.get('/contacts', { params: { search: query || undefined, page: 1, per_page: 20 } })
@@ -257,78 +292,122 @@ function LinkContactModal({ companyId, excludeIds, onClose, onLinked }: {
         .catch(() => { if (!cancelled) setResults([]); });
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [query, excludeIds]);
+  }, [query, excludeIds, mode, editing]);
+
+  const toggleRole = (r: string) => setRoles((prev) => {
+    const next = new Set(prev);
+    if (next.has(r)) next.delete(r); else next.add(r);
+    return next;
+  });
+
+  const chosen = [...roles, ...(otherRole.trim() ? [otherRole.trim()] : [])];
+  const willSign = chosen.some(signs);
 
   const submit = async () => {
-    if (!picked) return;
+    if (!chosen.length) { toast('Choose at least one role', 'error'); return; }
+    if (!editing && mode === 'existing' && !picked) { toast('Choose a contact', 'error'); return; }
+    if (!editing && mode === 'new' && (!person.first_name.trim() || !person.last_name.trim())) {
+      toast('Enter their first and last name', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      const { data } = await api.post(`/organizations/${companyId}/contacts`, {
-        contact_id: picked.id,
-        role: role.trim() || null,
-      });
-      toast('Contact linked', 'success');
-      onLinked(data);
+      const { data } = editing
+        ? await api.patch<SavedPerson>(`/organizations/${companyId}/contacts/${editing.id}`, { roles: chosen })
+        : await api.post<SavedPerson>(`/organizations/${companyId}/people`, mode === 'existing'
+          ? { contact_id: picked!.id, roles: chosen }
+          : { ...person, email: person.email.trim() || null, phone: person.phone.trim() || null, roles: chosen });
+      const n = data.added_to_applications ?? 0;
+      toast(n
+        ? `Saved — added to ${n} live application${n === 1 ? '' : 's'}${data.email ? ' and sent their invite' : ' (no email yet, so no invite)'}`
+        : 'Saved', 'success');
+      onSaved(data, !editing);
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to link contact'), 'error');
+      toast(getErrorMessage(err, 'Failed to save'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const tabCls = (active: boolean) =>
+    `flex-1 rounded-lg px-3 py-1.5 text-[13px] font-medium ${active ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`;
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
-        <h3 className="text-[17px] font-semibold text-foreground mb-4">Link Contact</h3>
-        {picked ? (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 flex items-center justify-between">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-background border border-border p-6 shadow-xl" style={{ animation: 'fadeInUp 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both' }}>
+        <h3 className="text-[17px] font-semibold text-foreground mb-4">
+          {editing ? `Roles — ${editing.first_name} ${editing.last_name}` : 'Add a person'}
+        </h3>
+
+        {!editing && (
+          <div className="mb-4 flex gap-1 rounded-xl bg-secondary/60 p-1" role="tablist">
+            <button type="button" role="tab" aria-selected={mode === 'new'} className={tabCls(mode === 'new')} onClick={() => setMode('new')}>New person</button>
+            <button type="button" role="tab" aria-selected={mode === 'existing'} className={tabCls(mode === 'existing')} onClick={() => setMode('existing')}>Existing contact</button>
+          </div>
+        )}
+
+        {!editing && mode === 'new' && (
+          <div className="grid gap-3 sm:grid-cols-2 mb-4">
+            <Input label="First name" value={person.first_name} onChange={(e) => setPerson((p) => ({ ...p, first_name: e.target.value }))} autoFocus />
+            <Input label="Last name" value={person.last_name} onChange={(e) => setPerson((p) => ({ ...p, last_name: e.target.value }))} />
+            <Input label="Email" type="email" value={person.email} onChange={(e) => setPerson((p) => ({ ...p, email: e.target.value }))} />
+            <Input label="Mobile" value={person.phone} onChange={(e) => setPerson((p) => ({ ...p, phone: e.target.value }))} />
+            <p className="sm:col-span-2 text-[12px] text-muted-foreground -mt-1">If someone in your contacts already has this email, they&rsquo;re used instead of creating a duplicate.</p>
+          </div>
+        )}
+
+        {!editing && mode === 'existing' && (
+          picked ? (
+            <div className="mb-4 rounded-xl border border-border bg-secondary/40 px-4 py-3 flex items-center justify-between">
               <div>
                 <div className="font-medium">{picked.first_name} {picked.last_name}</div>
                 <div className="text-[12px] text-muted-foreground">{picked.email || '—'}</div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setPicked(null)}>Change</Button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Role (optional)</label>
-              <Input placeholder="e.g. director, guarantor, signatory" value={role} onChange={e => setRole(e.target.value)} />
-            </div>
-            <div className="flex gap-3 justify-end pt-2">
-              <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
-              <Button variant="primary" size="md" loading={saving} onClick={submit}>Link Contact</Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <Input
-              autoFocus
-              placeholder="Search contacts…"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-            />
-            <div className="mt-3 max-h-72 overflow-y-auto divide-y divide-border border border-border rounded-xl">
-              {results.length === 0 ? (
-                <p className="px-3 py-4 text-[13px] text-muted-foreground">No matches</p>
-              ) : (
-                results.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setPicked(c)}
-                    className="w-full text-left px-3 py-2 hover:bg-secondary/50 transition-colors"
-                  >
+          ) : (
+            <div className="mb-4">
+              <Input autoFocus placeholder="Search contacts…" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <div className="mt-2 max-h-56 overflow-y-auto divide-y divide-border border border-border rounded-xl">
+                {results.length === 0 ? (
+                  <p className="px-3 py-4 text-[13px] text-muted-foreground">No matches</p>
+                ) : results.map((c) => (
+                  <button key={c.id} type="button" onClick={() => setPicked(c)} className="w-full text-left px-3 py-2 hover:bg-secondary/50 transition-colors">
                     <div className="font-medium">{c.first_name} {c.last_name}</div>
                     <div className="text-[12px] text-muted-foreground">{c.email || '—'}</div>
                   </button>
-                ))
-              )}
+                ))}
+              </div>
             </div>
-            <div className="flex gap-3 justify-end pt-4">
-              <Button variant="secondary" size="md" onClick={onClose}>Cancel</Button>
-            </div>
-          </>
+          )
         )}
+
+        <div>
+          <p className="block text-sm font-medium text-foreground mb-2">Roles</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {options.map((r) => (
+              <label key={r} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                <input type="checkbox" checked={roles.has(r)} onChange={() => toggleRole(r)} />
+                {r}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3">
+            <Input placeholder="Other role (optional)" value={otherRole} onChange={(e) => setOtherRole(e.target.value)} />
+          </div>
+          {willSign && (
+            <p className="mt-3 rounded-lg bg-primary/5 px-3 py-2 text-[12px] text-foreground">
+              Signs for the entity — they&rsquo;ll be added to its live applications as a director/guarantor
+              {editing ? ' (if not already on them)' : ''} and emailed their invite to complete their details.
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-3 justify-end pt-5">
+          <Button variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" size="md" loading={saving} onClick={submit}>{editing ? 'Save roles' : 'Add person'}</Button>
+        </div>
       </div>
     </div>,
     document.body,
@@ -345,6 +424,7 @@ export default function CompanyDetail() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [linkingContact, setLinkingContact] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<OrganizationContactLite | null>(null);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [refreshingAbr, setRefreshingAbr] = useState(false);
@@ -360,8 +440,9 @@ export default function CompanyDetail() {
   const handleUnlink = async (contactId: string) => {
     if (!company) return;
     if (!(await confirm({
-      title: 'Unlink this contact from the entity?',
-      confirmText: 'Unlink',
+      title: 'Remove this person from the entity?',
+      message: 'They stay in your contacts, and on any application they were already added to.',
+      confirmText: 'Remove',
     }))) return;
     setUnlinkingId(contactId);
     try {
@@ -371,7 +452,7 @@ export default function CompanyDetail() {
         contacts: prev.contacts.filter(c => c.id !== contactId),
         contact_count: Math.max(0, prev.contact_count - 1),
       } : prev);
-      toast('Contact unlinked', 'success');
+      toast('Removed from the entity', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to unlink'), 'error');
     } finally {
@@ -577,13 +658,16 @@ export default function CompanyDetail() {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
-            Linked Contacts
+            People
             <span className="ml-2 text-sm font-normal text-muted-foreground">({company.contacts.length})</span>
           </h3>
-          <Button variant="primary" size="sm" onClick={() => setLinkingContact(true)}>+ Link Contact</Button>
+          <Button variant="primary" size="sm" onClick={() => setLinkingContact(true)}>+ Add person</Button>
         </div>
+        <p className="text-[12px] text-muted-foreground -mt-2 mb-3">
+          Directors, guarantors and signatories added here go onto this entity&rsquo;s live applications automatically.
+        </p>
         {company.contacts.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">No contacts linked yet. Add a director, guarantor or signatory above.</p>
+          <p className="text-sm text-muted-foreground py-2">Nobody added yet. Add the directors, guarantors and signatories above.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -592,7 +676,7 @@ export default function CompanyDetail() {
                   <th className="pb-3 font-medium">Name</th>
                   <th className="pb-3 font-medium">Email</th>
                   <th className="pb-3 font-medium">Phone</th>
-                  <th className="pb-3 font-medium">Role</th>
+                  <th className="pb-3 font-medium">Roles</th>
                   <th className="pb-3 font-medium"></th>
                 </tr>
               </thead>
@@ -604,9 +688,18 @@ export default function CompanyDetail() {
                     </td>
                     <td className="py-3 text-muted-foreground">{c.email || '—'}</td>
                     <td className="py-3 text-muted-foreground">{c.phone || '—'}</td>
-                    <td className="py-3">{c.role ? <Badge type="custom" value={c.role} className="bg-chart-2/10 text-chart-2" /> : '—'}</td>
                     <td className="py-3">
-                      <Button variant="ghost" size="sm" loading={unlinkingId === c.id} onClick={() => handleUnlink(c.id)}>Unlink</Button>
+                      {splitRoles(c.role).length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {splitRoles(c.role).map((r) => (
+                            <Badge key={r} type="custom" value={r} className={signs(r) ? 'bg-primary/10 text-primary' : 'bg-chart-2/10 text-chart-2'} />
+                          ))}
+                        </div>
+                      ) : <span className="text-muted-foreground">No role</span>}
+                    </td>
+                    <td className="py-3 whitespace-nowrap text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setEditingPerson(c)}>Roles</Button>
+                      <Button variant="ghost" size="sm" loading={unlinkingId === c.id} onClick={() => handleUnlink(c.id)}>Remove</Button>
                     </td>
                   </tr>
                 ))}
@@ -695,18 +788,29 @@ export default function CompanyDetail() {
         />
       )}
 
-      {linkingContact && (
-        <LinkContactModal
+      {(linkingContact || editingPerson) && (
+        <PersonModal
           companyId={company.id}
+          entityType={company.entity_type ?? null}
           excludeIds={excludeIds}
-          onClose={() => setLinkingContact(false)}
-          onLinked={(contact) => {
-            setCompany(prev => prev ? {
-              ...prev,
-              contacts: [...prev.contacts, contact],
-              contact_count: prev.contact_count + 1,
-            } : prev);
+          editing={editingPerson ?? undefined}
+          onClose={() => { setLinkingContact(false); setEditingPerson(null); }}
+          onSaved={(saved) => {
+            const person: OrganizationContactLite = {
+              id: saved.id, first_name: saved.first_name, last_name: saved.last_name,
+              email: saved.email, phone: saved.phone, role: saved.role,
+            };
+            setCompany(prev => {
+              if (!prev) return prev;
+              const exists = prev.contacts.some(c => c.id === person.id);
+              return {
+                ...prev,
+                contacts: exists ? prev.contacts.map(c => (c.id === person.id ? person : c)) : [...prev.contacts, person],
+                contact_count: exists ? prev.contact_count : prev.contact_count + 1,
+              };
+            });
             setLinkingContact(false);
+            setEditingPerson(null);
           }}
         />
       )}

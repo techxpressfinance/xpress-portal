@@ -210,23 +210,33 @@ class LoanApplicantOut(LoanApplicantBase):
 
 
 class CompanyDirectorCandidate(BaseModel):
-    """A contact linked to a company in the contact book, offered for adding to
-    an application as a party. ``already_added`` marks the ones on it already."""
+    """Someone known to be connected to a company, offered for adding to an
+    application as a party: a contact linked to it (any role), a person in its
+    trust structure, or a director on one of its earlier applications.
+    ``suggested`` = looks like a director/guarantor/signatory (pre-ticked);
+    ``already_added`` marks the ones on the application already."""
 
-    contact_id: str
+    candidate_id: str
+    contact_id: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     link_role: Optional[str] = None
+    source: str = "company"  # company / trust / previous_application
+    source_label: Optional[str] = None
+    suggested: bool = False
     already_added: bool = False
 
 
 class AddCompanyDirectorsRequest(BaseModel):
-    """Pull selected contacts of the borrowing/guarantor company onto the
-    application as parties. Those with an email are invited straight away."""
+    """Pull selected people connected to the borrowing/guarantor company onto
+    the application as parties. Those with an email are invited straight away.
+    ``candidate_ids`` come from the company-directors list; ``contact_ids`` is
+    the older contacts-only form."""
 
-    contact_ids: list[str] = Field(..., min_length=1)
+    candidate_ids: list[str] = Field(default_factory=list)
+    contact_ids: list[str] = Field(default_factory=list)
     role: str = "director"
     guarantor_id: Optional[str] = None
 

@@ -4,7 +4,7 @@ import { useToast } from '../Toast';
 import { useConfirm } from '../../hooks/useConfirm';
 import { Badge, Button, Card, Input } from '../ui';
 import { formatDateTime, getErrorMessage } from '../../lib/utils';
-import type { LedgerAuditEntry, LedgerGrant, LedgerScope, LedgerSettings, LedgerTeamMember } from '../../types';
+import type { LedgerAuditEntry, LedgerGrant, LedgerScope, LedgerSettings, LedgerTeamMember, LedgerVbTier } from '../../types';
 
 const STATE_BADGE: Record<LedgerGrant['state'], { label: string; className: string }> = {
   waiting: { label: 'Waiting 24h', className: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' },
@@ -23,9 +23,12 @@ const ACTION_LABEL: Record<string, string> = {
   grant_revoked: 'Access revoked',
   invoice_created: 'Invoice created',
   invoice_deleted: 'Invoice voided',
-  settings_updated: 'Invoice details changed',
+  settings_updated: 'Settings changed',
+  month_updated: 'Volume bonus received entered',
   exported: 'Downloaded',
 };
+
+const tierDraft = (tiers: LedgerVbTier[]) => tiers.map((t) => ({ min: String(t.min_volume), share: String(t.share_percent) }));
 
 /** Owner only: who else can see the ledger and what of it, the details on our
  *  side of the invoices, and the trail of what has happened. */
@@ -40,6 +43,8 @@ export default function LedgerSharingTab({ scopeLabels }: { scopeLabels: Record<
   const [newScopes, setNewScopes] = useState<Set<string>>(new Set(['summary', 'deals']));
   const [granting, setGranting] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [tiers, setTiers] = useState<{ min: string; share: string }[]>([]);
+  const [savingTiers, setSavingTiers] = useState(false);
   const [editing, setEditing] = useState<{ id: string; scopes: Set<string> } | null>(null);
 
   const load = useCallback(async () => {
@@ -53,6 +58,7 @@ export default function LedgerSharingTab({ scopeLabels }: { scopeLabels: Record<
       setGrants(g.data);
       setTeam(t.data);
       setSettings(s.data);
+      setTiers(tierDraft(s.data.vb_tiers));
       setAudit(a.data);
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to load sharing'), 'error');
@@ -108,6 +114,27 @@ export default function LedgerSharingTab({ scopeLabels }: { scopeLabels: Record<
       load();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to revoke'), 'error');
+    }
+  };
+
+  const saveTiers = async (reset = false) => {
+    const parsed: LedgerVbTier[] = reset ? [] : tiers
+      .filter((t) => t.min.trim() !== '' || t.share.trim() !== '')
+      .map((t) => ({ min_volume: Number(t.min.replace(/[$,\s]/g, '')), share_percent: Number(t.share) }));
+    if (parsed.some((t) => Number.isNaN(t.min_volume) || t.min_volume < 0 || Number.isNaN(t.share_percent) || t.share_percent < 0 || t.share_percent > 100)) {
+      toast('Each tier needs a volume of $0 or more and a share between 0 and 100%', 'error');
+      return;
+    }
+    setSavingTiers(true);
+    try {
+      const { data } = await api.put<LedgerSettings>('/ledger/settings', { vb_tiers: parsed });
+      setSettings(data);
+      setTiers(tierDraft(data.vb_tiers));
+      toast('Volume bonus tiers saved', 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Failed to save'), 'error');
+    } finally {
+      setSavingTiers(false);
     }
   };
 
@@ -191,7 +218,7 @@ export default function LedgerSharingTab({ scopeLabels }: { scopeLabels: Record<
         <div className="rounded-md border border-border p-3">
           <p className="text-[12.5px] font-medium text-foreground mb-2">Share with a team member</p>
           <select className="led-input !h-9 w-full max-w-sm text-[13px]" value={newUser} onChange={(e) => setNewUser(e.target.value)}>
-            <option value="">Choose an admin or broker…</option>
+            <option value="">Choose an admin…</option>
             {team.filter((m) => !sharedIds.has(m.id)).map((m) => (
               <option key={m.id} value={m.id}>{m.full_name} · {m.role} · {m.email}</option>
             ))}
@@ -240,6 +267,33 @@ export default function LedgerSharingTab({ scopeLabels }: { scopeLabels: Record<
             />
           </div>
           <Button size="sm" className="mt-3" onClick={saveSettings} loading={savingSettings}>Save details</Button>
+        </Card>
+      )}
+
+      {settings && (
+        <Card>
+          <h2 className="text-[14px] font-semibold text-foreground">Volume bonus tiers</h2>
+          <p className="text-[12.5px] text-muted-foreground mt-0.5 mb-3">
+            Our share of the lenders&rsquo; volume bonus, set by the month&rsquo;s total settled volume and paid from dollar one.
+            Each deal&rsquo;s possible volume bonus = finance amount ex GST × the lender&rsquo;s VBI % (set on the lender) × this share.
+          </p>
+          <div className="space-y-2 max-w-md">
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[12px] font-medium text-[var(--led-ink-2)]">
+              <span>Month settled from ($)</span><span>Our share (%)</span><span />
+            </div>
+            {tiers.map((t, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <input className="led-input !h-9 text-[13px]" inputMode="decimal" value={t.min} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))} />
+                <input className="led-input !h-9 text-[13px]" inputMode="decimal" value={t.share} onChange={(e) => setTiers(tiers.map((x, j) => (j === i ? { ...x, share: e.target.value } : x)))} />
+                <button type="button" className="led-btn led-btn-ghost led-btn-sm" onClick={() => setTiers(tiers.filter((_, j) => j !== i))} aria-label="Remove tier">✕</button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setTiers([...tiers, { min: '', share: '' }])}>Add tier</Button>
+            <Button size="sm" onClick={() => saveTiers()} loading={savingTiers}>Save tiers</Button>
+            <Button size="sm" variant="ghost" onClick={() => saveTiers(true)}>Back to defaults</Button>
+          </div>
         </Card>
       )}
 

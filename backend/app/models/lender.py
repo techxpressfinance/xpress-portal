@@ -64,9 +64,15 @@ class Lender(TenantScoped, Base):
 
     # Commercial standing with us — admin-only, never serialized to brokers.
     # on_panel: whether the lender is on our panel (None = not recorded yet).
-    # vbi_percent: the volume bonus incentive, as a percentage.
+    # vbi_percent: the volume bonus incentive, as a percentage of the amount
+    # financed. The three below override it for one kind of deal (None = use
+    # vbi_percent): personal loans, business/commercial deals, and repeat
+    # customers. The private ledger estimates each deal's bonus from these.
     on_panel: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     vbi_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vbi_personal_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vbi_commercial_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vbi_repeat_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

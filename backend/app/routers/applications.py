@@ -1938,6 +1938,171 @@ def _issue_invite(applicant: LoanApplicant, invite_email: str) -> None:
     applicant.invite_sent_at = datetime.now(timezone.utc)
 
 
+def _is_signing_role(role: Optional[str]) -> bool:
+    """A contact-book role that makes someone a party to the company's loans —
+    one rule shared with the entity page (services/entity_parties.py)."""
+    from app.services.entity_parties import is_signing_role
+
+    return is_signing_role(role)
+
+
+def _norm_person(first: Optional[str], last: Optional[str]) -> str:
+    return " ".join(f"{first or ''} {last or ''}".lower().split())
+
+
+def _entity_people(
+    db: Session,
+    tenant_id: str,
+    org_id: str,
+    application: LoanApplication,
+    existing: list[LoanApplicant],
+    include_primary: bool = True,
+) -> list[dict]:
+    """Everyone known to be connected to a company, for the party picker.
+
+    1. Contacts linked to it — any role, not just "director": links made when
+       a broker confirmed a client↔business pairing carry no role at all.
+    2. Its trust structure: individual trustees/appointors and, for a
+       corporate trustee, that company's directors.
+    3. Directors on its earlier applications (the inline primary and the
+       extra parties), so a company we've financed before pre-fills itself.
+
+    Deduped by contact, then email, then name. ABN Lookup doesn't publish
+    directors, so a brand-new company has none of these until they're added.
+    """
+    taken_ids = {a.contact_id for a in existing if a.contact_id}
+    taken_emails = {(a.invite_email or a.applicant_email or "").strip().lower() for a in existing}
+    taken_names = {_norm_person(a.applicant_first_name, a.applicant_last_name) for a in existing}
+    if include_primary:
+        if application.contact_id:
+            taken_ids.add(application.contact_id)
+        taken_emails.add((application.applicant_email or "").strip().lower())
+        taken_names.add(_norm_person(application.applicant_first_name, application.applicant_last_name))
+    taken_emails.discard("")
+    taken_names.discard("")
+
+    out: list[dict] = []
+    seen_ids: set[str] = set()
+    seen_emails: set[str] = set()
+    seen_names: set[str] = set()
+
+    def add(*, candidate_id: str, contact_id: Optional[str], first: Optional[str], last: Optional[str],
+            email: Optional[str], phone: Optional[str], role: Optional[str], source: str,
+            source_label: Optional[str], suggested: bool, details: dict) -> None:
+        em = (email or "").strip().lower()
+        nm = _norm_person(first, last)
+        if (contact_id and contact_id in seen_ids) or (em and em in seen_emails) or (not em and nm and nm in seen_names):
+            return
+        if not (nm or em):
+            return
+        if contact_id:
+            seen_ids.add(contact_id)
+        if em:
+            seen_emails.add(em)
+        if nm:
+            seen_names.add(nm)
+        added = bool((contact_id and contact_id in taken_ids) or (em and em in taken_emails) or (nm and nm in taken_names))
+        out.append({
+            "candidate_id": candidate_id, "contact_id": contact_id, "first_name": first, "last_name": last,
+            "email": email, "phone": phone, "link_role": role, "source": source, "source_label": source_label,
+            "suggested": suggested and not added, "already_added": added, "details": details,
+        })
+
+    def add_contact(contact: Contact, role: Optional[str], source: str, label: Optional[str], suggested: bool) -> None:
+        add(candidate_id=f"contact:{contact.id}", contact_id=contact.id, first=contact.first_name,
+            last=contact.last_name, email=contact.email, phone=contact.phone, role=role, source=source,
+            source_label=label, suggested=suggested, details={"contact": contact})
+
+    links = db.query(ContactOrganization).filter(
+        ContactOrganization.organization_id == org_id, ContactOrganization.tenant_id == tenant_id,
+    ).all()
+    # Signing roles first, so the list reads directors-down.
+    for link in sorted(links, key=lambda lk: not _is_signing_role(lk.role)):
+        if link.contact:
+            add_contact(link.contact, link.role, "company", (link.role or "Linked contact").strip().capitalize(),
+                        _is_signing_role(link.role))
+
+    from app.models.trust_party import TrustParty
+    for tp in db.query(TrustParty).filter(TrustParty.organization_id == org_id).all():
+        role_label = (tp.role or "").replace("_", " ").capitalize()
+        if tp.contact_id:
+            contact = db.get(Contact, tp.contact_id)
+            if contact and contact.tenant_id == tenant_id:
+                add_contact(contact, tp.role, "trust", role_label, tp.role in ("trustee", "appointor"))
+        elif tp.linked_organization_id and tp.role == "trustee":
+            trustee_org = db.get(Organization, tp.linked_organization_id)
+            for link in db.query(ContactOrganization).filter(
+                ContactOrganization.organization_id == tp.linked_organization_id,
+                ContactOrganization.tenant_id == tenant_id,
+            ).all():
+                if link.contact and _is_signing_role(link.role):
+                    add_contact(link.contact, link.role, "trust",
+                                f"Director of trustee {trustee_org.name if trustee_org else ''}".strip(), True)
+
+    earlier = (
+        db.query(LoanApplication)
+        .filter(
+            LoanApplication.tenant_id == tenant_id,
+            LoanApplication.business_organization_id == org_id,
+            LoanApplication.id != application.id,
+            LoanApplication.deleted_at.is_(None),
+        )
+        .order_by(LoanApplication.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    for prev in earlier:
+        label = f"Director on an earlier application ({prev.created_at.strftime('%b %Y')})"
+        if prev.contact_id and prev.contact and prev.contact.tenant_id == tenant_id:
+            add_contact(prev.contact, "director", "previous_application", label, True)
+        elif prev.applicant_first_name or prev.applicant_email:
+            add(candidate_id=f"app:{prev.id}", contact_id=None, first=prev.applicant_first_name,
+                last=prev.applicant_last_name, email=prev.applicant_email, phone=prev.applicant_mobile,
+                role="director", source="previous_application", source_label=label, suggested=True,
+                details={"application": prev})
+        for party in db.query(LoanApplicant).filter(
+            LoanApplicant.application_id == prev.id, LoanApplicant.application_guarantor_id.is_(None)
+        ).all():
+            plabel = f"{(party.role or 'director').capitalize()} on an earlier application ({prev.created_at.strftime('%b %Y')})"
+            if party.contact_id and party.contact and party.contact.tenant_id == tenant_id:
+                add_contact(party.contact, party.role, "previous_application", plabel, True)
+            else:
+                add(candidate_id=f"party:{party.id}", contact_id=None, first=party.applicant_first_name,
+                    last=party.applicant_last_name, email=party.invite_email or party.applicant_email,
+                    phone=party.applicant_mobile, role=party.role, source="previous_application",
+                    source_label=plabel, suggested=True, details={"party": party})
+    return out
+
+
+def _party_from_details(
+    tenant_id: str,
+    application: LoanApplication,
+    *,
+    first: Optional[str],
+    last: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+    role: str,
+    application_guarantor_id: Optional[str],
+) -> LoanApplicant:
+    """A party for someone known only from an earlier application (no contact
+    record): their name and contact details come across, the rest they fill in."""
+    applicant = LoanApplicant(
+        tenant_id=tenant_id,
+        application_id=application.id,
+        application_guarantor_id=application_guarantor_id,
+        role=role,
+        is_primary=False,
+        applicant_first_name=first,
+        applicant_last_name=last,
+        applicant_email=email,
+        applicant_mobile=phone,
+    )
+    if email:
+        _issue_invite(applicant, email)
+    return applicant
+
+
 def _org_party_candidates(
     db: Session, tenant_id: str, org_id: str, existing: list[LoanApplicant]
 ) -> list[tuple[ContactOrganization, bool]]:
@@ -1957,7 +2122,7 @@ def _org_party_candidates(
     ).all()
     out: list[tuple[ContactOrganization, bool]] = []
     for link in links:
-        if (link.role or "").lower() not in ("director", "guarantor"):
+        if not _is_signing_role(link.role):
             continue
         contact = link.contact
         if not contact:
@@ -2148,18 +2313,9 @@ def list_company_directors(
         if scoped_guarantor_id is None
         else LoanApplicant.application_guarantor_id == scoped_guarantor_id,
     ).all()
-    return [
-        CompanyDirectorCandidate(
-            contact_id=link.contact.id,
-            first_name=link.contact.first_name,
-            last_name=link.contact.last_name,
-            email=link.contact.email,
-            phone=link.contact.phone,
-            link_role=link.role,
-            already_added=added,
-        )
-        for link, added in _org_party_candidates(db, tenant_id, org_id, existing)
-    ]
+    people = _entity_people(db, tenant_id, org_id, application, existing,
+                            include_primary=scoped_guarantor_id is None)
+    return [CompanyDirectorCandidate(**{k: v for k, v in p.items() if k != "details"}) for p in people]
 
 
 @router.post("/{app_id}/directors/from-company", response_model=list[LoanApplicantOut])
@@ -2183,15 +2339,34 @@ def add_directors_from_company(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This application has no company to take directors from",
         )
-    added = _seed_parties_from_org(
-        db,
-        application,
-        tenant_id,
-        org_id,
-        application_guarantor_id=scoped_guarantor_id,
-        contact_ids=set(data.contact_ids),
-        role=data.role,
-    )
+    wanted = set(data.candidate_ids) | {f"contact:{cid}" for cid in data.contact_ids}
+    if not wanted:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose who to add")
+    existing = db.query(LoanApplicant).filter(
+        LoanApplicant.application_id == application.id,
+        LoanApplicant.application_guarantor_id.is_(None)
+        if scoped_guarantor_id is None
+        else LoanApplicant.application_guarantor_id == scoped_guarantor_id,
+    ).all()
+    added: list[LoanApplicant] = []
+    # Re-derived from the company, never trusted from the client: only people
+    # actually connected to this company can be pulled on.
+    for person in _entity_people(db, tenant_id, org_id, application, existing,
+                                 include_primary=scoped_guarantor_id is None):
+        if person["candidate_id"] not in wanted or person["already_added"]:
+            continue
+        details = person["details"]
+        if "contact" in details:
+            party = _party_from_contact(tenant_id, application, details["contact"], role=data.role,
+                                        application_guarantor_id=scoped_guarantor_id)
+        else:
+            party = _party_from_details(
+                tenant_id, application, first=person["first_name"], last=person["last_name"],
+                email=person["email"], phone=person["phone"], role=data.role,
+                application_guarantor_id=scoped_guarantor_id,
+            )
+        db.add(party)
+        added.append(party)
     if not added:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -72,7 +72,7 @@ export default function Layout() {
   }, [tourOpen]);
 
   useEffect(() => {
-    if (user?.role !== 'admin' && user?.role !== 'broker') return;
+    if (user?.role !== 'admin') return;
     api.get<{ access: boolean }>('/ledger/access')
       .then(({ data }) => setLedgerAccess(data.access))
       .catch(() => setLedgerAccess(false));

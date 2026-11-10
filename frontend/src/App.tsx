@@ -288,7 +288,7 @@ export default function App() {
               <Route
                 path="/admin/ledger"
                 element={
-                  <ProtectedRoute roles={['admin', 'broker']}>
+                  <ProtectedRoute roles={['admin']}>
                     <PrivateLedger />
                   </ProtectedRoute>
                 }

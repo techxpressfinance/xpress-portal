@@ -99,6 +99,7 @@ def create_referrer(
         business_director_name=data.business_director_name,
         business_address=data.business_address,
         bank_account_name=data.bank_account_name,
+        bank_name=data.bank_name,
         bank_bsb=data.bank_bsb,
         bank_account_number=data.bank_account_number,
     )
@@ -542,6 +543,7 @@ def _business_profile_out(user: User, *, include_bank: bool = True) -> dict:
         "business_director_name": user.business_director_name,
         "business_address": user.business_address,
         "bank_account_name": user.bank_account_name if include_bank else None,
+        "bank_name": user.bank_name if include_bank else None,
         "bank_bsb": user.bank_bsb if include_bank else None,
         "bank_account_number": user.bank_account_number if include_bank else None,
         "bank_details_visible": include_bank,

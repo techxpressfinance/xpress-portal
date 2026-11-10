@@ -87,6 +87,7 @@ export interface ReferrerBusinessProfile {
   business_director_name: string | null;
   business_address: string | null;
   bank_account_name: string | null;
+  bank_name: string | null;
   bank_bsb: string | null;
   bank_account_number: string | null;
   business_logo_filename: string | null;
@@ -371,13 +372,20 @@ export type ApplicantType = 'individual' | 'company';
 
 // A contact linked to a company in the contact book, offered for adding to an
 // application as a party.
+/** Someone connected to a company, offered as a party: a linked contact (any
+ *  role), a person in its trust structure, or a director on one of its earlier
+ *  applications. suggested = looks like a signer, so it starts ticked. */
 export interface CompanyDirectorCandidate {
-  contact_id: string;
+  candidate_id: string;
+  contact_id: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   phone: string | null;
   link_role: string | null;
+  source: 'company' | 'trust' | 'previous_application';
+  source_label: string | null;
+  suggested: boolean;
   already_added: boolean;
 }
 
@@ -868,6 +876,10 @@ export interface Lender {
   /** Admin-only — null for everyone else. on_panel null = not recorded yet. */
   on_panel: boolean | null;
   vbi_percent: number | null;
+  /** Override vbi_percent for personal loans / business deals / repeat customers; null = use it. */
+  vbi_personal_percent: number | null;
+  vbi_commercial_percent: number | null;
+  vbi_repeat_percent: number | null;
   contacts: LenderContact[];
   created_at: string;
   updated_at: string;
@@ -1558,6 +1570,7 @@ export interface QuoteInputParameters {
   establishment_fee: number;
   ppsr_fee: number;
   origination_fee: number;
+  vir_fee: number;                     // VIR — a fee like establishment: in total fees, financed with them
   brokerage_percent: number;
   brokerage_amount: number | null;     // Dollar override — if set, takes priority over %
   gst_on_brokerage: boolean;
@@ -1647,6 +1660,7 @@ export interface LenderPricingInputs {
   establishment_fee: number;
   ppsr_fee: number;
   origination_fee: number;
+  vir_fee: number;                     // VIR — a fee like establishment: in total fees, financed with them
   monthly_account_fee: number;
   fees_financed: boolean;
   non_taxable_charges: number;         // Lease only
@@ -2329,6 +2343,21 @@ export interface LedgerDealRow {
   application_id: string;
   settled_on: string;
   month: string;
+  /** 1 = settled 1st–15th, 2 = after the 15th. */
+  half: 1 | 2;
+  /** A ledger-only deal (no portal application behind it). */
+  is_manual?: boolean;
+  broker_ids?: string[];
+  broker_name?: string | null;
+  /** Every payee's cut of the deal; referrer_comms_* are their sums. */
+  shares?: LedgerShare[];
+  referrer_keys?: string[];
+  /** Set when the list is narrowed to one payee: their share. */
+  payee_share?: LedgerShare | null;
+  payment_status?: LedgerShareStatus | 'part_paid' | null;
+  payment_status_label?: string | null;
+  payment_reference?: string | null;
+  notes?: string | null;
   customer_name: string;
   entity_name: string | null;
   category: LedgerCategory | null;
@@ -2352,7 +2381,7 @@ export interface LedgerDealRow {
   referrer_name: string | null;
   referrer_organization: string | null;
   share_percent?: number | null;
-  share_base?: LedgerShareBase;
+  share_base?: LedgerShareBase | null;
   share_amount?: number | null;
   share_gst?: boolean;
   referrer_comms_ex_gst?: number;
@@ -2360,6 +2389,10 @@ export interface LedgerDealRow {
   referrer_comms_inc_gst?: number;
   volume_bonus?: number;
   net_profit?: number;
+  /** The lender's VBI % used for the estimate (null = none), our tier share %, and the whole month's settled volume that set it. */
+  vb_rate?: number | null;
+  vb_share?: number;
+  vb_month_volume?: number;
   is_clawback: boolean;
   paid_on?: string | null;
   payment_method?: string | null;
@@ -2375,8 +2408,38 @@ export interface LedgerDealsResponse {
   date_from: string | null;
   date_to: string | null;
   totals?: LedgerTotals;
-  months?: { month: string; totals: LedgerTotals }[];
+  months?: LedgerReportMonth[];
+  quarters?: LedgerReportPeriod[];
+  years?: LedgerReportPeriod[];
   deals?: LedgerDealRow[];
+}
+
+/** One month of the ledger report: its two halves (1st–15th, after the 15th)
+ *  and the month total, which carries the volume bonus received and final profit. */
+export interface LedgerReportMonth {
+  month: string;
+  fy: number;
+  quarter: 1 | 2 | 3 | 4;
+  halves: { half: 1 | 2; label: string; application_ids: string[]; totals: LedgerTotals }[];
+  totals: LedgerTotals;
+  vb_month_volume?: number | null;
+  vb_share?: number | null;
+}
+
+/** A financial-year quarter or year total, printed after its last month. */
+export interface LedgerReportPeriod {
+  fy: number;
+  quarter?: number;
+  label: string;
+  last_month: string;
+  totals: LedgerTotals;
+}
+
+export interface LedgerReport {
+  months: LedgerReportMonth[];
+  quarters: LedgerReportPeriod[];
+  years: LedgerReportPeriod[];
+  totals?: LedgerTotals;
 }
 
 export interface LedgerReferrerSummary {
@@ -2390,6 +2453,87 @@ export interface LedgerReferrerSummary {
   referrer_comms_inc_gst: number;
   unpaid_deals?: number;
   unpaid_comms_inc_gst?: number;
+  /** A portal referrer (key "u:…") rather than an off-portal payee ("p:…"). */
+  is_portal?: boolean;
+}
+
+export type LedgerShareStatus = 'unpaid' | 'scheduled' | 'paid' | 'not_payable';
+
+/** One payee's cut of a deal. Payment fields are the owner's only. */
+export interface LedgerShare {
+  /** null = implied (the client's referrer / pre-split figures), not saved yet. */
+  id: string | null;
+  payee_key: string;
+  payee_id: string | null;
+  user_id: string | null;
+  payee_name: string | null;
+  payee_organization: string | null;
+  share_percent: number | null;
+  share_base: LedgerShareBase;
+  share_amount: number | null;
+  share_gst: boolean;
+  /** true = GST chosen for this share; false = it follows the payee. */
+  share_gst_set: boolean;
+  comms_ex_gst: number;
+  comms_gst: number;
+  comms_inc_gst: number;
+  status?: LedgerShareStatus;
+  scheduled_on?: string | null;
+  paid_on?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  payment_notes?: string | null;
+  saved: boolean;
+}
+
+/** Someone commission is paid to: a portal referrer or an off-portal payee. */
+export interface LedgerPayee {
+  key: string;
+  payee_id: string | null;
+  user_id: string | null;
+  is_portal: boolean;
+  name: string | null;
+  organization_name: string | null;
+  gst_registered: boolean | null;
+  party: {
+    name: string | null;
+    contact_name: string | null;
+    abn: string | null;
+    address: string | null;
+    email: string | null;
+    gst_registered: boolean | null;
+    bank_account_name?: string | null;
+    bank_name?: string | null;
+    bank_bsb?: string | null;
+    bank_account_number?: string | null;
+  };
+  phone: string | null;
+  notes: string | null;
+  default_share_percent: number | null;
+  default_share_base: LedgerShareBase;
+  default_share_amount: number | null;
+  is_active: boolean;
+}
+
+export interface LedgerReceipt {
+  id: string;
+  received_on: string;
+  from_name: string;
+  amount: number;
+  reference: string | null;
+  notes: string | null;
+}
+
+export interface LedgerReceiptsResponse {
+  receipts: LedgerReceipt[];
+  by_payer: { from_name: string; amount: number }[];
+  total: number;
+}
+
+export interface LedgerBroker {
+  id: string;
+  full_name: string;
+  role: string;
 }
 
 export interface LedgerReferrerOption {
@@ -2415,7 +2559,9 @@ export interface LedgerInvoiceLine {
 export interface LedgerInvoice {
   id: string;
   number: string;
+  /** The payee's portal user id, or the payee id for someone off-portal. */
   referrer_id: string;
+  payee_id: string | null;
   issue_date: string;
   period_from: string | null;
   period_to: string | null;
@@ -2437,6 +2583,7 @@ export interface LedgerInvoice {
     email: string | null;
     gst_registered: boolean | null;
     bank_account_name?: string | null;
+    bank_name?: string | null;
     bank_bsb?: string | null;
     bank_account_number?: string | null;
   };
@@ -2457,6 +2604,14 @@ export interface LedgerSettings {
   business_email: string | null;
   invoice_prefix: string;
   next_invoice_number: number;
+  vb_tiers: LedgerVbTier[];
+  vb_tiers_default: LedgerVbTier[];
+}
+
+/** Our share of the volume bonus once the month's settled volume reaches min_volume. */
+export interface LedgerVbTier {
+  min_volume: number;
+  share_percent: number;
 }
 
 export interface LedgerGrant {

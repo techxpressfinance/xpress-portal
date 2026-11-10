@@ -221,6 +221,21 @@ class OrganizationContactLink(BaseModel):
     role: Optional[str] = Field(default=None, max_length=100)
 
 
+class OrganizationPersonIn(BaseModel):
+    """Someone added to an entity: an existing contact, or a new person."""
+
+    contact_id: Optional[str] = None
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[str] = Field(default=None, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=50)
+    roles: list[str] = Field(default_factory=list, max_length=10)
+
+
+class OrganizationLinkUpdate(BaseModel):
+    roles: list[str] = Field(default_factory=list, max_length=10)
+
+
 class OrganizationMergeRequest(BaseModel):
     primary_id: str
     duplicate_ids: list[str]
