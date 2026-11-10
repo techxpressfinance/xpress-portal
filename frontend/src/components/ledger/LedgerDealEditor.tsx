@@ -15,11 +15,11 @@ const MONEY_FIELDS: { key: MoneyField; label: string }[] = [
   { key: 'brokerage', label: 'Brokerage (ex GST)' },
   { key: 'doc_fee', label: 'Doc fee (ex GST)' },
   { key: 'origination_fee', label: 'Origination fee (ex GST)' },
-  { key: 'vir', label: 'VIR (ex GST)' },
+  { key: 'vir', label: 'VIR — vehicle inspection (ex GST)' },
   { key: 'volume_bonus', label: 'Possible volume bonus (ex GST)' },
 ];
 // Figures the application can prefill; the rest start blank.
-const PREFILLABLE = new Set<MoneyField>(['finance_amount', 'brokerage', 'origination_fee', 'vir', 'volume_bonus']);
+const PREFILLABLE = new Set<MoneyField>(['finance_amount', 'brokerage', 'doc_fee', 'origination_fee', 'vir', 'volume_bonus']);
 
 /** How the volume bonus estimate was reached, for the hint under the field. */
 function vbHint(deal: LedgerDealRow): string {

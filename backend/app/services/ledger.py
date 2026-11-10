@@ -51,7 +51,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.contact import Contact
+from app.models.contact import Contact, Organization
 from app.models.ledger import (
     LedgerAuditEvent,
     LedgerDeal,
@@ -124,7 +124,7 @@ COLUMNS = [
     {"key": "doc_fee_gst", "label": "Doc fee GST", "kind": "money", "scope": "income"},
     {"key": "origination_fee", "label": "Origination fee (ex GST)", "kind": "money", "scope": "income"},
     {"key": "origination_gst", "label": "Origination GST", "kind": "money", "scope": "income"},
-    {"key": "vir", "label": "VIR (ex GST)", "kind": "money", "scope": "income"},
+    {"key": "vir", "label": "VIR — vehicle inspection (ex GST)", "kind": "money", "scope": "income"},
     {"key": "vir_gst", "label": "VIR GST", "kind": "money", "scope": "income"},
     {"key": "income_ex_gst", "label": "Total income ex GST", "kind": "money", "scope": "income"},
     {"key": "income_inc_gst", "label": "Total income inc GST", "kind": "money", "scope": "income"},
@@ -257,7 +257,9 @@ def _f(value: Optional[Decimal]) -> Optional[float]:
 
 
 def _pricing_figures(sheet: Optional[QuoteSheet]) -> dict:
-    """Finance amount, brokerage, origination fee and VIR off the latest lender pricing."""
+    """Finance amount (amount borrowed), brokerage, doc fee (= the establishment
+    fee), origination fee and VIR (vehicle inspection report fee) off the latest
+    lender pricing. Fees are taken as entered, as ex-GST figures."""
     if not sheet:
         return {}
     out: dict = {}
@@ -268,7 +270,8 @@ def _pricing_figures(sheet: Optional[QuoteSheet]) -> dict:
     except ValueError:
         params = {}
     if isinstance(params, dict):
-        for src, key in (("brokerage_amount", "brokerage"), ("origination_fee", "origination_fee"), ("vir_fee", "vir")):
+        for src, key in (("brokerage_amount", "brokerage"), ("establishment_fee", "doc_fee"),
+                         ("origination_fee", "origination_fee"), ("vir_fee", "vir")):
             value = params.get(src)
             if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
                 out[key] = _d(value)
@@ -440,25 +443,79 @@ def settled_applications(
     return apps
 
 
-def _first_settlements(db: Session, tenant_id: str) -> dict[str, date]:
-    """Each client's first settlement, for "repeat customer"."""
-    settled_dt = func.coalesce(LoanApplication.settled_at, LoanApplication.updated_at)
-    rows = (
-        db.query(LoanApplication.user_id, func.min(settled_dt))
-        .filter(
-            LoanApplication.tenant_id == tenant_id,
-            LoanApplication.status == ApplicationStatus.settled,
-            LoanApplication.deleted_at.is_(None),
-        )
-        .group_by(LoanApplication.user_id)
-        .all()
-    )
-    out = {}
-    for user_id, first in rows:
-        if isinstance(first, str):  # SQLite hands func.min() back as text
-            first = datetime.fromisoformat(first)
-        if first:
-            out[user_id] = first.date()
+def _client_history(db: Session, tenant_id: str, apps: list[LoanApplication]) -> tuple[dict[str, date], dict[str, bool]]:
+    """For each application: when the enquiry came in, and whether the client
+    was already in our database by then — the desk's two definitions.
+
+    * New lead = the enquiry arrived in the same calendar month the deal
+      settled. The enquiry is the lead it was converted from, if any (a lead
+      can sit for weeks before it becomes an application), else the application.
+    * Repeat client = we already knew them: an earlier application for the same
+      contact, entity or client login, or their contact record predates the
+      enquiry (e.g. brought across from the old client database).
+    """
+    from app.models.lead import Lead
+
+    ids = [a.id for a in apps]
+    inquiry: dict[str, date] = {a.id: a.created_at.date() for a in apps}
+    if ids:
+        for app_id, created in db.query(Lead.converted_application_id, Lead.created_at).filter(
+            Lead.tenant_id == tenant_id, Lead.converted_application_id.in_(ids)
+        ):
+            if created and created.date() < inquiry[app_id]:
+                inquiry[app_id] = created.date()
+
+    others = db.query(
+        LoanApplication.id, LoanApplication.contact_id, LoanApplication.business_organization_id,
+        LoanApplication.user_id, LoanApplication.created_at,
+    ).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None)).all()
+    client_users = {u.id for u in db.query(User.id).filter(User.tenant_id == tenant_id, User.role == UserRole.client)}
+    first_seen: dict[tuple[str, str], date] = {}
+    for o in others:
+        for k in (("c", o.contact_id), ("o", o.business_organization_id),
+                  ("u", o.user_id if o.user_id in client_users else None)):
+            if k[1]:
+                d = o.created_at.date()
+                if k not in first_seen or d < first_seen[k]:
+                    first_seen[k] = d
+    contact_ids = {a.contact_id for a in apps if a.contact_id}
+    contact_created = dict(db.query(Contact.id, Contact.created_at).filter(Contact.id.in_(contact_ids))) if contact_ids else {}
+
+    repeat: dict[str, bool] = {}
+    for a in apps:
+        when = inquiry[a.id]
+        keys = [("c", a.contact_id), ("o", a.business_organization_id),
+                ("u", a.user_id if a.user_id in client_users else None)]
+        earlier = any(k[1] and first_seen.get(k, when) < when for k in keys)
+        known = bool(a.contact_id and contact_created.get(a.contact_id) and contact_created[a.contact_id].date() < when)
+        repeat[a.id] = earlier or known
+    return inquiry, repeat
+
+
+def _trust_display_names(db: Session, apps: list[LoanApplication]) -> dict[str, str]:
+    """A trust is written "Trustee ATF Trust" — e.g. "MLJD Pty Ltd ATF MLJD Trust"."""
+    from app.models.trust_party import TrustParty
+
+    trusts = {a.business_organization.id: a.business_organization for a in apps
+              if getattr(a, "business_organization", None) is not None
+              and a.business_organization.entity_type == "trust"}
+    if not trusts:
+        return {}
+    out: dict[str, str] = {}
+    for tp in db.query(TrustParty).filter(TrustParty.organization_id.in_(list(trusts)), TrustParty.role == "trustee"):
+        org = trusts[tp.organization_id]
+        if tp.organization_id in out or " atf " in f" {org.name.lower()} ":
+            continue
+        trustee = None
+        if tp.linked_organization_id:
+            linked = db.get(Organization, tp.linked_organization_id)
+            trustee = linked.name if linked else None
+        elif tp.contact_id:
+            c = db.get(Contact, tp.contact_id)
+            trustee = " ".join(x for x in [c.first_name, c.last_name] if x) if c else None
+        trustee = trustee or tp.name
+        if trustee:
+            out[tp.organization_id] = f"{trustee} ATF {org.name}"
     return out
 
 
@@ -565,7 +622,8 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
     broker_ids = {b for bs in app_brokers.values() for b in bs} | {m.manual_broker_id for m in manual if m.manual_broker_id}
     users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids | broker_ids))} if (user_ids | broker_ids) else {}
 
-    first_settled = _first_settlements(db, tenant_id)
+    inquiry_dates, repeat_clients = _client_history(db, tenant_id, apps)
+    trust_names = _trust_display_names(db, apps)
 
     def share_out(*, share: Optional[LedgerDealShare], payee: Optional[LedgerPayee], user_id: Optional[str],
                   legacy: Optional[LedgerDeal], bases: dict) -> dict:
@@ -663,7 +721,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
 
         finance = pick("finance_amount", pricing.get("finance_amount", _d(app_amount) if app_amount is not None else None))
         brokerage = pick("brokerage", pricing.get("brokerage"))
-        doc_fee = pick("doc_fee", None)
+        doc_fee = pick("doc_fee", pricing.get("doc_fee"))
         origination = pick("origination_fee", pricing.get("origination_fee"))
         vir = pick("vir", pricing.get("vir"))
         income_gst = e.income_gst if e else True
@@ -778,12 +836,12 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             info = client_referrers.get(app.user_id)
             default_uid = info["id"] if info else None
         settled = settled_on(app)
-        first = first_settled.get(app.user_id)
-        derived_repeat = bool(first and first < settled)
-        derived_new_lead = app.created_at.date().replace(day=1) == settled.replace(day=1)
+        derived_repeat = repeat_clients.get(app.id, False)
+        derived_new_lead = inquiry_dates[app.id].replace(day=1) == settled.replace(day=1)
         brokers = app_brokers.get(app.id, [])
         rows.append(deal_row(
-            key=app.id, e=e, settled=settled, customer=_customer_name(app), entity=_entity_name(app),
+            key=app.id, e=e, settled=settled, customer=_customer_name(app),
+            entity=trust_names.get(app.business_organization_id or "") or _entity_name(app),
             kind=category_kind(app), loan_type=app.loan_type.value, sub_type=application_sub_type(app),
             new_lead=e.new_lead if e and e.new_lead is not None else derived_new_lead,
             repeat=e.repeat_customer if e and e.repeat_customer is not None else derived_repeat,

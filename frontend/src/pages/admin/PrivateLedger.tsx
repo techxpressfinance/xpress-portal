@@ -45,7 +45,7 @@ const TILES: { key: string; label: string }[] = [
   { key: 'brokerage', label: 'Brokerage (ex GST)' },
   { key: 'origination_fee', label: 'Origination fees (ex GST)' },
   { key: 'doc_fee', label: 'Doc fees (ex GST)' },
-  { key: 'vir', label: 'VIR (ex GST)' },
+  { key: 'vir', label: 'Vehicle inspection (VIR, ex GST)' },
   { key: 'income_ex_gst', label: 'Total income (ex GST)' },
   { key: 'referrer_comms_ex_gst', label: 'Referrer comms (ex GST)' },
   { key: 'net_profit', label: 'Net profit' },
