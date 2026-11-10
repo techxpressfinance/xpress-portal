@@ -962,7 +962,7 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
               onChange={v => updateInput('origination_fee', v)}
             />
             <DollarInput
-              label="VIR"
+              label="Vehicle Inspection (VIR)"
               value={inputs.vir_fee || ''}
               onChange={v => updateInput('vir_fee', v)}
             />

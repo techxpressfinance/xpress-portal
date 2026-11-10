@@ -831,7 +831,7 @@ export default function QuoteSheetComparison({
                   <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.originationFee} /></td></tr>
                 )}
                 {parsedParams.virFee != null && parsedParams.virFee > 0 && (
-                  <tr><td style={lbl}>VIR</td><td style={val}><Money v={parsedParams.virFee} /></td></tr>
+                  <tr><td style={lbl}>Vehicle inspection report</td><td style={val}><Money v={parsedParams.virFee} /></td></tr>
                 )}
                 <tr>
                   <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '10px' }}>
@@ -875,7 +875,7 @@ export default function QuoteSheetComparison({
                   <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.originationFee} /></td></tr>
                 )}
                 {parsedParams.virFee != null && (
-                  <tr><td style={lbl}>VIR</td><td style={val}><Money v={parsedParams.virFee} /></td></tr>
+                  <tr><td style={lbl}>Vehicle inspection report</td><td style={val}><Money v={parsedParams.virFee} /></td></tr>
                 )}
                 {parsedParams.interestRate != null && (
                   <tr><td style={lbl}>Lender's rate</td><td style={val}>{fmtPercent(parsedParams.interestRate)}</td></tr>
@@ -1029,7 +1029,7 @@ export default function QuoteSheetComparison({
             <Row label="Origination Fee" value={<Money v={parsedParams.originationFee} />} />
           )}
           {parsedParams.virFee != null && parsedParams.virFee > 0 && (
-            <Row label="VIR" value={<Money v={parsedParams.virFee} />} />
+            <Row label="Vehicle Inspection Report" value={<Money v={parsedParams.virFee} />} />
           )}
           <Row label="Total Fees" value={<Money v={(parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0) + (parsedParams.virFee ?? 0)} />} bold />
         </div>
@@ -1052,7 +1052,7 @@ export default function QuoteSheetComparison({
             <Row label="Origination Fee" value={<Money v={parsedParams.originationFee} />} />
           )}
           {parsedParams.virFee != null && (
-            <Row label="VIR" value={<Money v={parsedParams.virFee} />} />
+            <Row label="Vehicle Inspection Report" value={<Money v={parsedParams.virFee} />} />
           )}
           {parsedParams.interestRate != null && (
             <Row label="Lender's Rate" value={fmtPercent(parsedParams.interestRate)} />

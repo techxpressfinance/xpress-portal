@@ -27,8 +27,8 @@ export function defaultFees(inputs: { establishment_fee: number; origination_fee
   return [
     { label: 'Loan Establishment fee', amount: from(inputs.establishment_fee) },
     { label: 'Origination fee', amount: from(inputs.origination_fee) },
-    { label: 'VIR', amount: from(inputs.vir_fee) },
-    { label: 'Vehicle inspection fee', amount: null },
+    // VIR — the vehicle inspection report fee from the lender pricing.
+    { label: 'Vehicle inspection fee', amount: from(inputs.vir_fee) },
     { label: 'PPSR', amount: from(inputs.ppsr_fee) },
   ];
 }
