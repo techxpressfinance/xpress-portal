@@ -146,6 +146,9 @@ export const ACTION_LABELS: Record<string, string> = {
   document_uploaded: 'Uploaded document',
   document_verified: 'Verified document',
   document_deleted: 'Deleted document',
+  document_downloaded: 'Downloaded document',
+  document_text_viewed: 'Viewed document text',
+  documents_downloaded_all: 'Downloaded all documents',
   // Users
   registered: 'Registered',
   broker_created: 'Created broker',

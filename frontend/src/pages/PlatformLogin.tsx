@@ -96,7 +96,7 @@ export default function PlatformLogin() {
             <Input
               label="Email"
               type="email"
-              placeholder="admin@xpresstech.com"
+              placeholder="admin@xpresstech.ai"
               autoComplete="email"
               error={errors.email?.message}
               {...register('email', { required: 'Email address is required' })}

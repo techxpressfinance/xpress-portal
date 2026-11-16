@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# Keep in step with .python-version (CI and deploy.sh check the others).
+FROM python:3.12-slim
 
 # Install system dependencies for OCR (tesseract) and PostgreSQL client
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -197,17 +197,95 @@ Restart: `sudo systemctl restart xpress-backend`
 
 ---
 
-## Optional: S3 Database Backups
+## Backups (required before go-live)
+
+Three things must survive the loss of this server. Each lives somewhere different on purpose.
+
+| What | Where it goes | How |
+|------|---------------|-----|
+| Database | S3 backup bucket | `deploy/backup.sh` (daily cron + before every deploy) |
+| Uploaded documents | S3 | Either store them in S3 directly (`S3_BUCKET_NAME`, with bucket versioning on) or let `backup.sh` sync `uploads/` to the backup bucket |
+| `FIELD_ENCRYPTION_KEY` | AWS Secrets Manager / company password manager | By hand, once, and again on every key rotation |
+
+**The encryption key is never stored with the backups.** A dump that travels with its own key is plaintext to whoever gets the bucket. But without the key every encrypted column (names, addresses, IDs, bank details, OCR text) in every backup is gone for good — so escrow it now:
 
 ```bash
-# Create backup bucket
-aws s3 mb s3://xpress-backups-prod --region ap-southeast-2
-
-# Add S3 backup permissions to the IAM role (same as above, different bucket ARN)
-
-# Configure
-sudo bash -c 'echo "export S3_BACKUP_BUCKET=xpress-backups-prod" >> /etc/environment'
+# Run once on the server; repeat whenever the key ring changes.
+sudo grep '^FIELD_ENCRYPTION_KEY=' /opt/xpress-tech-portal/backend/.env | cut -d= -f2- | \
+  aws secretsmanager create-secret --name xpress/prod/field-encryption-key \
+    --region ap-southeast-2 --secret-string file:///dev/stdin
+# (later rotations: put-secret-value --secret-id xpress/prod/field-encryption-key ...)
 ```
+Restrict that secret to a break-glass IAM role — **not** the EC2 instance role. Escrow `JWT_SECRET_KEY` and the DB password the same way if you want a full rebuild without resetting them.
+
+### Off-box database backups
+
+```bash
+# 1. A dedicated bucket, versioned, private, with old versions expiring
+aws s3 mb s3://xpress-backups-prod --region ap-southeast-2
+aws s3api put-bucket-versioning --bucket xpress-backups-prod --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket xpress-backups-prod \
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+# 2. Give the EC2 role s3:PutObject + s3:ListBucket on it (GetObject too if you
+#    want restore-test.sh --from-s3). Leave out s3:DeleteObject: a compromised
+#    server should not be able to destroy its own backups.
+
+# 3. Tell the backup script, and make a missing bucket a failure
+sudo tee /etc/xpress-backup.conf <<'CONF'
+S3_BACKUP_BUCKET=xpress-backups-prod
+REQUIRE_OFFSITE=1
+CONF
+
+# 4. Install / update the cron job and run it once
+sudo cp /opt/xpress-tech-portal/deploy/backup.sh /etc/cron.daily/xpress-backup
+sudo /etc/cron.daily/xpress-backup
+```
+Add an S3 lifecycle rule to expire dumps after your retention period (e.g. 90 days). Local copies are kept 7 days.
+
+### Restore drill — run monthly
+
+```bash
+sudo /opt/xpress-tech-portal/deploy/restore-test.sh            # newest local dump
+sudo /opt/xpress-tech-portal/deploy/restore-test.sh --from-s3  # newest dump in the bucket
+```
+It restores into a scratch database, checks the row counts, decrypts sample PII with the key on the server, and drops the scratch database. The live database is not touched. Exit status 0 means the backup is restorable **and** readable.
+
+### Restoring for real
+
+```bash
+sudo systemctl stop xpress-backend
+sudo -u postgres dropdb xpresstech && sudo -u postgres createdb -O xpresstech xpresstech
+sudo -u postgres pg_restore --no-owner --role=xpresstech -d xpresstech /opt/backups/xpress/xpresstech_YYYYMMDD_HHMMSS.dump
+# Rebuilding on a new server: put the escrowed FIELD_ENCRYPTION_KEY back in backend/.env FIRST.
+cd /opt/xpress-tech-portal/backend && sudo -u xpress ./venv/bin/python3 -m app.migrate --check
+sudo systemctl start xpress-backend
+```
+
+---
+
+## Error tracking and uptime
+
+**Errors.** Create a Sentry project (the free tier is enough; pick a region that suits your data-residency needs), then add `SENTRY_DSN=...` to `backend/.env` and restart. Unhandled request errors, failed scheduler jobs / background tasks (anything logged at ERROR) and startup failures are reported, tagged with the deployed commit. Events are scrubbed before sending: no request bodies, headers, cookies, query strings, local variables or breadcrumbs, and only the internal user id. Turn on Sentry's email/Slack alert rule for "a new issue is created".
+
+**Uptime.** Point an external monitor (UptimeRobot, Better Stack, Route 53 health check) at `https://<your-domain>/api/health/ready`. It returns 503 when the database is unreachable or the schema is behind; `/api/health` only says the process is up.
+
+**Backups.** A silent cron failure is the usual way backups die. `REQUIRE_OFFSITE=1` makes the job exit non-zero; pair it with a dead-man's-switch check (e.g. healthchecks.io pinged at the end of the cron job) so a backup that stops running raises an alert.
+
+---
+
+## Database migrations
+
+The schema is managed by Alembic. The app never creates or alters tables when it starts; in production it refuses to start if the schema is behind.
+
+```bash
+cd /opt/xpress-tech-portal/backend
+sudo -u xpress ./venv/bin/python3 -m app.migrate --check   # is the schema current?
+sudo -u xpress ./venv/bin/python3 -m app.migrate           # apply pending migrations
+```
+`deploy.sh` does this for you: build, back up, stop, migrate, start, wait for `/api/health/ready`. If the backup fails the deploy stops before touching anything.
+
+**First deploy after Alembic was introduced:** the database has no `alembic_version` table yet. `app.migrate` detects that, runs the old upgrade path one last time, and stamps the baseline — no manual step. Rehearse it first on a restored copy (`restore-test.sh` shows how to restore one) if you want to see it run before production.
 
 ---
 
@@ -220,7 +298,7 @@ Add these secrets to your GitHub repo (Settings → Secrets → Actions):
 | `EC2_HOST` | Your EC2 public IP or domain |
 | `EC2_SSH_KEY` | Contents of your `.pem` private key |
 
-Every push to `main` will automatically lint, build, and deploy.
+Every push to `main` runs the frontend lint/typecheck and the backend tests; the deploy job runs only if both pass.
 
 ---
 
@@ -252,9 +330,7 @@ sudo -u postgres psql xpresstech
 # Manual backup
 sudo /etc/cron.daily/xpress-backup
 
-# Restore from backup
-gunzip xpresstech_YYYYMMDD_HHMMSS.sql.gz
-sudo -u postgres pg_restore -d xpresstech --clean xpresstech_YYYYMMDD_HHMMSS.sql
+# Restore: see "Restoring for real" above. Prove backups work: sudo ./deploy/restore-test.sh
 ```
 
 ### Restart Services
@@ -341,8 +417,9 @@ sudo ls -la /opt/xpress-tech-portal/backend/.env
 | File | Purpose |
 |------|---------|
 | `deploy/setup.sh` | One-time server provisioning (PostgreSQL, Nginx, systemd, secrets) |
-| `deploy/deploy.sh` | Redeploy after code changes (git pull, build, restart) |
-| `deploy/backup.sh` | Daily PostgreSQL backup (local + optional S3) |
+| `deploy/deploy.sh` | Redeploy after code changes (pull, build, back up, migrate, restart, wait for ready) |
+| `deploy/backup.sh` | Daily backup: PostgreSQL + local uploads, to S3 when configured |
+| `deploy/restore-test.sh` | Restore drill: proves the newest backup restores and decrypts |
 | `deploy/nginx.conf` | Nginx config — HTTPS, static files, API reverse proxy |
 | `deploy/xpress-backend.service` | Systemd service — auto-start, restart on failure |
 | `.github/workflows/deploy.yml` | GitHub Actions CI/CD — lint, build, deploy to EC2 |

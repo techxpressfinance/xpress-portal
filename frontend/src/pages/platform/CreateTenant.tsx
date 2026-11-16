@@ -79,7 +79,7 @@ export default function CreateTenant() {
                 error={errors.slug?.message}
               />
               <p className="mt-1.5 text-[12px] text-muted-foreground">
-                Portal URL: <strong>{watch('slug') || 'slug'}.xpresstech.com</strong>
+                Portal URL: <strong>{watch('slug') || 'slug'}.xpresstech.ai</strong>
               </p>
             </div>
           </div>

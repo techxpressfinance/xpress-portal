@@ -104,7 +104,7 @@ export default function TenantDetail() {
     <div className="p-4 sm:p-8 max-w-2xl mx-auto">
       <PageHeader
         title={tenant.name}
-        subtitle={`${tenant.slug}.xpresstech.com`}
+        subtitle={`${tenant.slug}.xpresstech.ai`}
         action={
           <div className="flex items-center gap-2">
             <Badge type="custom" value={tenant.is_active ? 'Active' : 'Inactive'} className={tenant.is_active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'} />

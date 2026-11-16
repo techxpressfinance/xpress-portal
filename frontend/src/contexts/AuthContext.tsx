@@ -8,6 +8,7 @@ import api, {
   startImpersonationSession,
   type ImpersonationSession,
 } from '../api/client';
+import { clearAllDrafts } from '../lib/draftStorage';
 import type { User } from '../types';
 
 interface AuthState {
@@ -159,6 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Await the server blacklisting the refresh token before clearing local state,
     // but still clear state on failure to avoid trapping the user in a logged-in state.
+    // An unsaved application draft holds PII — it must not outlive the session.
+    clearAllDrafts();
     api.post('/auth/logout').catch(() => { }).finally(() => {
       setAccessToken(null);
       setUser(null);
