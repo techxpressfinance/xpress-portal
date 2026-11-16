@@ -41,7 +41,7 @@ def test_importing_the_app_does_not_touch_the_schema(tmp_path):
     assert run.stdout.strip().splitlines()[-1] == "0"
 
 
-def test_production_refuses_to_start_on_a_stale_schema(monkeypatch):
+def test_refuses_to_start_on_a_stale_schema_when_auto_migrate_is_off(monkeypatch):
     import pytest
 
     import app.startup as startup

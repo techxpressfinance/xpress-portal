@@ -1,4 +1,4 @@
-# Keep in step with .python-version (CI and deploy.sh check the others).
+# Keep in step with .python-version (CI checks this).
 FROM python:3.12-slim
 
 # Install system dependencies for OCR (tesseract) and PostgreSQL client

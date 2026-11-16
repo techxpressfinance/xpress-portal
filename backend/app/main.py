@@ -39,9 +39,9 @@ from app.observability import init_error_tracking  # noqa: E402
 
 init_error_tracking()
 
-# The schema is owned by Alembic (migrations/). Nothing here creates or alters
-# tables: `python -m app.migrate` does that, once per revision, at deploy time.
-# See app/startup.py for what still runs when the process starts.
+# The schema is owned by Alembic (migrations/). Nothing at import time creates
+# or alters tables; pending revisions are applied once each when the server
+# starts (app/startup.py), or by hand with `python -m app.migrate`.
 
 # API docs are only served in development — the OpenAPI schema enumerates the
 # full attack surface and has no business being public in production.
