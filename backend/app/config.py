@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 import os
+import sys
+import warnings
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# One Python everywhere: requirements.txt is compiled for this version, and CI,
+# the Dockerfile and deploy.sh all hold to it (.python-version). Anything else
+# is running against dependency pins nobody tested.
+SUPPORTED_PYTHON = (3, 12)
+if sys.version_info[:2] != SUPPORTED_PYTHON:
+    warnings.warn(
+        "Running on Python %d.%d but this project is pinned to %d.%d — rebuild the venv with the pinned version."
+        % (*sys.version_info[:2], *SUPPORTED_PYTHON),
+        stacklevel=1,
+    )
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
@@ -21,8 +35,22 @@ if JWT_SECRET_KEY == _DEFAULT_JWT_SECRET:
             "JWT_SECRET_KEY is still the default value. "
             "Set a strong, unique JWT_SECRET_KEY in your .env before running in production."
         )
-    import warnings
     warnings.warn("Using default JWT_SECRET_KEY — do NOT use in production", stacklevel=1)
+
+# Schema migrations (Alembic, see app/migrate.py). Development applies pending
+# revisions when the server starts; production never does — the deploy runs
+# `python -m app.migrate` after taking a backup, and the app refuses to start
+# against a schema that is not at the migration head.
+AUTO_MIGRATE = os.getenv(
+    "AUTO_MIGRATE", "true" if ENVIRONMENT == "development" else "false"
+).lower() in ("1", "true", "yes")
+
+# Error tracking — optional. With no DSN nothing is initialised or sent.
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0"))
+# Shown on every event so a regression can be tied to a deploy (deploy.sh sets
+# it to the git commit).
+APP_RELEASE = os.getenv("APP_RELEASE", "")
 
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))

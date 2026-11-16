@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-import app.main  # noqa: F401 — runs create_all on the test database
+import app.main  # noqa: F401 — registers every model and router
 from app.database import SessionLocal
 from app.models.contact import Contact
 from app.models.loan_application import ApplicationStatus, LoanApplication, LoanType

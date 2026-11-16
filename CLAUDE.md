@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-tenant loan-broking portal ("Xpress Tech"): FastAPI + SQLAlchemy backend (`backend/`), React 19 + TypeScript + Vite + Tailwind 4 frontend (`frontend/`). No test suite exists; CI (`.github/workflows/deploy.yml`) runs frontend `npm run lint` + `npx tsc --noEmit` on push to main, then deploys to EC2.
+Multi-tenant loan-broking portal ("Xpress Tech"): FastAPI + SQLAlchemy backend (`backend/`), React 19 + TypeScript + Vite + Tailwind 4 frontend (`frontend/`). Backend tests live in `backend/tests/` (pytest); the frontend has none. CI (`.github/workflows/deploy.yml`) runs frontend `npm run lint` + `npx tsc --noEmit` and backend `pytest` on push to main, then deploys to EC2. One Python version everywhere: 3.12 (`.python-version`; the Dockerfile, CI and `deploy.sh` all follow it).
 
 ## Commands
 
@@ -13,7 +13,10 @@ Multi-tenant loan-broking portal ("Xpress Tech"): FastAPI + SQLAlchemy backend (
 source venv/bin/activate            # always use the venv; use python3, never system pip
 uvicorn app.main:app --reload --port 8000
 ruff check app                      # lint
-python3 create_admin.py             # bootstrap an admin user (also: seed_admin.py, reset_password.py)
+python3 -m pytest -q                # tests (build their DB through Alembic)
+python3 -m app.migrate              # bring the DB schema to head (dev also does this on startup)
+alembic revision --autogenerate -m "add foo to bar"   # write a migration after changing a model
+python3 create_admin.py             # bootstrap an admin user (also: reset_password.py)
 ```
 `backend/.env` must set `ENVIRONMENT=development` locally — `ENVIRONMENT` defaults to **production** (fail-closed), which hard-errors on default `JWT_SECRET_KEY` and missing `FIELD_ENCRYPTION_KEY`.
 
@@ -30,11 +33,17 @@ npm run lint
 ## Architecture
 
 ### Backend layout (`backend/app/`)
-- `main.py` — app assembly: `create_all`, idempotent column migrations, middleware stack, router registration, encryption-key rotation sweep, APScheduler startup.
+- `main.py` — app assembly only: middleware stack, router registration, health endpoints, APScheduler startup. It never touches the schema.
+- `startup.py` — what runs at boot: schema check, encryption-key sweep, super-admin bootstrap, housekeeping purges. `migrate.py` — the migration entrypoint. `observability.py` — Sentry (inert without `SENTRY_DSN`).
 - `routers/` — one file per resource; `models/` — SQLAlchemy; `schemas/` — Pydantic; `services/` — email, OCR, LLM analysis, encryption, S3, search cache, etc.; `middleware/` — tenant, auth, CSRF, rate-limit, security headers.
 
-### Schema migrations (no Alembic)
-`Base.metadata.create_all` never ALTERs existing tables. Columns added after a table ships go in the `_MIGRATIONS` list in `main.py` (idempotent `ALTER TABLE` guarded by `inspect(engine).get_columns()`). New models must be imported in `main.py` (the `# noqa: F401 — ensure table is created` block) or their tables won't be created.
+### Schema migrations (Alembic)
+The schema is owned by Alembic (`backend/migrations/`, config in `backend/alembic.ini`). Each revision runs once and is recorded in `alembic_version`. To change the schema: edit the model, run `alembic revision --autogenerate -m "..."` against an up-to-date dev DB, review the generated file, commit it. `tests/test_migrations.py` fails if models and migrations disagree.
+
+- `python -m app.migrate` is the only thing that changes the schema. Development runs it at startup (`AUTO_MIGRATE`); production never does — `deploy/deploy.sh` runs it after a backup, and the app refuses to start on a stale schema.
+- Migrations must work on both Postgres and SQLite (`render_as_batch` is on for SQLite). Data backfills go in a revision too — never in startup code, where they would re-run on every boot.
+- `app/legacy_migrations.py` is the frozen pre-Alembic upgrade path, run once for a database that predates Alembic. Do not add to it.
+- New model modules under `app/models/` are picked up automatically (the package imports every module).
 
 ### Multi-tenancy
 `TenantMiddleware` resolves the tenant from subdomain, `X-Tenant-Slug` header, or `?tenant=` query param (dev fallbacks) and puts it on `request.state`; requests without a resolvable tenant get 400 (auth/super-admin/branding/health paths are exempt). All domain data is tenant-scoped — every query must filter by tenant.

@@ -74,7 +74,8 @@ fi
 
 echo "=== 6. Setup backend ==="
 cd $APP_DIR/backend
-sudo -u $APP_USER python3 -m venv venv
+# The project is pinned to one Python (see .python-version); Ubuntu 24.04 ships it.
+sudo -u $APP_USER python$(cat $APP_DIR/.python-version) -m venv venv
 sudo -u $APP_USER ./venv/bin/pip install --upgrade pip
 sudo -u $APP_USER ./venv/bin/pip install -r requirements.txt
 
@@ -140,6 +141,8 @@ echo "=== 10. Install systemd service ==="
 cp $APP_DIR/deploy/xpress-backend.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable xpress-backend
+# Build the schema before the first start — the app never creates tables itself.
+(cd $APP_DIR/backend && sudo -u $APP_USER ./venv/bin/python3 -m app.migrate)
 systemctl start xpress-backend
 
 echo "=== 11. Install Nginx config ==="

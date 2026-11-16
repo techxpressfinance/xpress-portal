@@ -281,7 +281,9 @@ def test_old_database_migration_is_repeatable(tmp_path):
         conn.execute(insert(legacy.tables['users']).values(id='client', tenant_id='legacy', email='legacy@example.com', full_name='Legacy Client', role='client'))
     engine.dispose()
     env = dict(os.environ, DATABASE_URL=f'sqlite:///{path}', ENVIRONMENT='development', SES_FROM_EMAIL='')
-    code = '''from app.main import app
+    code = '''from app.migrate import migrate
+migrate()
+from app.main import app
 from app.database import SessionLocal
 from app.models.user import User
 from app.models.contact import Contact

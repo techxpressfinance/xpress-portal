@@ -18,6 +18,7 @@ import {
 import type { LoanCategory } from '../../lib/constants';
 import type { DocType } from '../../types';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder, normalizeResidencyStatus } from '../../lib/residency';
+import { clearDraft, draftKeyFor, hasDraft, readDraft, writeDraft } from '../../lib/draftStorage';
 import { ArrowUpTrayIcon, CheckIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const SELECT_CLS = 'led-input';
@@ -348,7 +349,7 @@ export default function NewApplication() {
   const [autosaveReady, setAutosaveReady] = useState(!completeId);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const performAutosaveRef = useRef<() => void>(() => {});
-  const draftStorageKey = user?.id ? `application-draft-${user.id}` : null;
+  const draftStorageKey = draftKeyFor(user?.id);
 
   // Fields prefilled from the client's saved profile or a previous application,
   // keyed by field name → source, for the "review" hint.
@@ -717,12 +718,11 @@ export default function NewApplication() {
     return () => { cancelled = true; };
   }, [completeId, user?.id, setValue, toast]);
 
-  // Restore an in-progress draft from localStorage (only for fresh /applications/new — not the completeId flow).
+  // Restore an in-progress draft from this browser session (only for fresh /applications/new — not the completeId flow).
   useEffect(() => {
     if (completeId) return;
     if (!draftStorageKey) return;
-    let raw: string | null = null;
-    try { raw = localStorage.getItem(draftStorageKey); } catch { return; }
+    const raw = readDraft(draftStorageKey);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as {
@@ -790,11 +790,7 @@ export default function NewApplication() {
   useEffect(() => {
     if (completeId) return;
     if (!user?.id) return;
-    if (draftStorageKey) {
-      try {
-        if (localStorage.getItem(draftStorageKey)) return;
-      } catch { /* ignore */ }
-    }
+    if (draftStorageKey && hasDraft(draftStorageKey)) return;
     let cancelled = false;
     const NAME_FIELDS = new Set(['applicant_first_name', 'applicant_middle_name', 'applicant_last_name']);
     const PROFILE_FIELDS: (keyof FormData)[] = [
@@ -904,7 +900,7 @@ export default function NewApplication() {
     } else {
       if (!draftStorageKey) return;
       try {
-        localStorage.setItem(draftStorageKey, JSON.stringify({
+        writeDraft(draftStorageKey, JSON.stringify({
           formData: data,
           tab,
           comBusinessName,
@@ -1303,7 +1299,7 @@ export default function NewApplication() {
 
   const clearLocalDraft = () => {
     if (!draftStorageKey) return;
-    try { localStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
+    clearDraft(draftStorageKey);
   };
 
   const onSubmit = async (data: FormData) => {

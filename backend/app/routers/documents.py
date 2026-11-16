@@ -275,6 +275,15 @@ def download_document(
     safe_name = (doc.original_filename or "file").replace("\r", "").replace("\n", "").replace('"', "'")
     safe_name = os.path.basename(safe_name)  # Strip path components
 
+    # Every read of an applicant's document leaves an audit trail (the preview
+    # modal fetches through this endpoint too, so views are covered).
+    log_activity(
+        db, current_user.id, "document_downloaded", "document", doc_id,
+        {"filename": doc.original_filename, "doc_type": doc.doc_type.value, "application_id": doc.application_id},
+        tenant_id=tenant_id,
+    )
+    db.commit()
+
     return Response(
         content=file_bytes,
         media_type=media_type,
@@ -298,11 +307,21 @@ def get_ocr_text(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     check_application_access(application, current_user, db=db)
 
-    return {
+    result = {
         "ocr_status": doc.ocr_status.value if doc.ocr_status else "pending",
         "ocr_text": doc.ocr_text,
         "ocr_error": doc.ocr_error,
     }
+    # The extracted text is the document's contents, so reading it is audited
+    # like a download. Status polls that return no text yet are not logged.
+    if result["ocr_text"]:
+        log_activity(
+            db, current_user.id, "document_text_viewed", "document", doc_id,
+            {"filename": doc.original_filename, "application_id": doc.application_id},
+            tenant_id=tenant_id,
+        )
+        db.commit()
+    return result
 
 
 def _serialize_request(req: DocumentRequest) -> dict:

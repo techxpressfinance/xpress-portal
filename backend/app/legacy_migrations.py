@@ -1,0 +1,1174 @@
+"""The pre-Alembic schema upgrade, frozen.
+
+Until Alembic was adopted, everything below ran at import time in app/main.py on
+EVERY boot: create_all, ~400 idempotent ALTERs, index creation, and a long tail
+of data backfills and repairs. Running repairs on every restart corrupted data
+twice (see the "submitted" status remap and the note-visibility backfill notes
+below), so it now runs exactly once per database:
+
+    python -m app.migrate
+
+finds a database that has tables but no ``alembic_version``, calls
+``run_legacy_migrations()`` to bring it up to the baseline schema, and stamps it
+at the baseline revision. From then on only Alembic revisions in migrations/
+touch the schema. A brand-new database never comes here — the baseline revision
+builds it directly.
+
+DO NOT add to this file. New schema or data changes are Alembic revisions
+(``alembic revision --autogenerate -m "..."``). The body is the original code,
+moved verbatim apart from indentation and failures being logged at WARNING
+instead of DEBUG.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import timezone
+
+from sqlalchemy import bindparam, inspect, text
+
+import app.models  # noqa: F401 — registers every model on Base.metadata
+from app.config import DATABASE_URL  # noqa: F401
+from app.constants import BOARD_STAGE_TEMPLATES, DEFAULT_KANBAN_COLUMNS, DEFAULT_LEAD_COLUMN
+from app.database import Base, engine
+from app.models.settled_deal_snapshot import SettledDealSnapshot
+
+
+def run_legacy_migrations() -> None:
+    Base.metadata.create_all(bind=engine)
+
+    # Idempotent migrations for columns added after initial create_all
+    _MIGRATIONS = [
+        ("users", "contact_id", "VARCHAR(36) REFERENCES contacts(id)"),
+        ("contacts", "needs_identity_review", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("settled_deal_snapshots", "settled_at", "TIMESTAMP"),
+        ("organizations", "acn", "VARCHAR(20)"),
+        ("arrears_records", "vin", "VARCHAR(50)"),
+        ("arrears_records", "identifier_type", "VARCHAR(10)"),
+        ("arrears_records", "serial_number", "TEXT"),
+        ("arrears_records", "identifier_notes", "TEXT"),
+        ("kanban_columns", "stage_key", "VARCHAR(60)"),
+        ("kanban_columns", "loan_category", "VARCHAR(20)"),
+        ("quote_sheets", "sheet_type", "VARCHAR(14) DEFAULT 'client_quote' NOT NULL"),
+        ("approval_conditions", "completed_at", "TIMESTAMP"),
+        ("approval_conditions", "completed_by_id", "VARCHAR(36) REFERENCES users(id)"),
+        ("kanban_columns", "team", "VARCHAR(60)"),
+        ("kanban_columns", "card_kind", "VARCHAR(12) DEFAULT 'application' NOT NULL"),
+        ("leads", "company_abn", "TEXT"),
+        ("kanban_columns", "phase", "VARCHAR(60)"),
+        # Whose move it is while a card sits in the stage — drives the referrer's
+        # "waiting on your client" line. See services/journey.py.
+        ("kanban_columns", "awaiting", "VARCHAR(12)"),
+        ("kanban_boards", "enforce_transitions", "BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("arrears_attachments", "contact_attempt_id", "VARCHAR(36) REFERENCES arrears_contact_attempts(id)"),
+        ("loan_applications", "analysis_status", "VARCHAR(10)"),
+        ("loan_applications", "analysis_result", "TEXT"),
+        ("loan_applications", "analysis_error", "VARCHAR(500)"),
+        ("loan_applications", "analyzed_at", "TIMESTAMP"),
+        ("documents", "ocr_status", "VARCHAR(10) DEFAULT 'pending' NOT NULL"),
+        ("documents", "ocr_text", "TEXT"),
+        ("documents", "ocr_error", "VARCHAR(500)"),
+        ("users", "email_verified", "BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("users", "email_verification_token", "VARCHAR(36)"),
+        ("users", "email_verification_token_expires_at", "TIMESTAMP"),
+        ("loan_applications", "completed_by_id", "VARCHAR(36) REFERENCES users(id)"),
+        ("loan_applications", "completed_at", "TIMESTAMP"),
+        ("users", "auth_method", "VARCHAR(10) DEFAULT 'password' NOT NULL"),
+        ("users", "login_code", "VARCHAR(64)"),
+        ("users", "login_code_expires_at", "TIMESTAMP"),
+        ("users", "login_code_attempts", "INTEGER DEFAULT 0 NOT NULL"),
+        ("users", "invited_by_id", "VARCHAR(36) REFERENCES users(id)"),
+        # Lend.com.au integration — loan_applications
+        ("loan_applications", "applicant_title", "VARCHAR(20)"),
+        ("loan_applications", "applicant_first_name", "VARCHAR(100)"),
+        ("loan_applications", "applicant_last_name", "VARCHAR(100)"),
+        ("loan_applications", "applicant_middle_name", "VARCHAR(100)"),
+        ("loan_applications", "applicant_dob", "VARCHAR(10)"),
+        ("loan_applications", "applicant_gender", "VARCHAR(20)"),
+        ("loan_applications", "applicant_marital_status", "VARCHAR(30)"),
+        ("loan_applications", "applicant_address", "VARCHAR(255)"),
+        ("loan_applications", "applicant_suburb", "VARCHAR(100)"),
+        ("loan_applications", "applicant_state", "VARCHAR(10)"),
+        ("loan_applications", "applicant_postcode", "VARCHAR(10)"),
+        ("loan_applications", "business_abn", "VARCHAR(20)"),
+        ("loan_applications", "business_name", "VARCHAR(200)"),
+        ("loan_applications", "business_registration_date", "VARCHAR(10)"),
+        ("loan_applications", "business_industry_id", "INTEGER"),
+        ("loan_applications", "business_monthly_sales", "NUMERIC(12,2)"),
+        ("loan_applications", "loan_purpose_id", "INTEGER"),
+        ("loan_applications", "loan_term_requested", "INTEGER"),
+        ("loan_applications", "lend_extra_data", "TEXT"),
+        ("loan_applications", "lend_product_type_id", "INTEGER"),
+        ("loan_applications", "lend_owner_type", "VARCHAR(50)"),
+        ("loan_applications", "lend_send_type", "VARCHAR(20)"),
+        ("loan_applications", "lend_who_to_contact", "VARCHAR(20)"),
+        ("loan_applications", "lend_ref", "VARCHAR(20)"),
+        # Lend.com.au integration — documents
+        ("documents", "lend_document_type", "VARCHAR(100)"),
+        ("documents", "lend_uploaded", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        # Account lockout
+        ("users", "failed_login_attempts", "INTEGER DEFAULT 0 NOT NULL"),
+        ("users", "locked_until", "TIMESTAMP"),
+        # Broker-specific fields
+        ("users", "employee_id", "VARCHAR(50)"),
+        ("users", "department", "VARCHAR(100)"),
+        ("users", "license_number", "VARCHAR(100)"),
+        ("users", "specialties", "VARCHAR(100)"),
+        # Referrer-specific fields
+        ("users", "organization_name", "VARCHAR(255)"),
+        # Referrer business & payment details (monthly tax invoicing)
+        ("users", "business_abn", "VARCHAR(20)"),
+        ("users", "business_gst_registered", "BOOLEAN"),
+        ("users", "business_director_name", "VARCHAR(255)"),
+        ("users", "business_address", "VARCHAR(500)"),
+        ("users", "bank_account_name", "TEXT"),
+        ("users", "bank_name", "TEXT"),
+        ("users", "bank_bsb", "TEXT"),
+        ("users", "bank_account_number", "TEXT"),
+        ("users", "business_logo_path", "VARCHAR(500)"),
+        ("users", "business_logo_filename", "VARCHAR(255)"),
+        ("users", "business_letterhead_path", "VARCHAR(500)"),
+        ("users", "business_letterhead_filename", "VARCHAR(255)"),
+        ("users", "business_details_updated_at", "TIMESTAMP"),
+        ("external_referrals", "client_engagement_model", "VARCHAR(20)"),
+        # Token revocation timestamp (for bulk invalidation on password change)
+        ("users", "tokens_revoked_at", "TIMESTAMP"),
+        # Note visibility: comma-separated roles (replaces is_internal boolean)
+        ("application_notes", "visibility", "VARCHAR(100) DEFAULT 'broker' NOT NULL"),
+        # Quote sheet shared input parameters (JSON)
+        ("quote_sheets", "input_parameters", "TEXT"),
+        # Contact linkage on loan applications
+        ("loan_applications", "contact_id", "VARCHAR(36) REFERENCES contacts(id)"),
+        # Standalone quote sheets: recipient info and nullable application_id
+        ("quote_sheets", "recipient_name", "VARCHAR(200)"),
+        ("quote_sheets", "recipient_email", "VARCHAR(255)"),
+        # 1:1 messaging: recipient for client_messages
+        ("client_messages", "recipient_id", "VARCHAR(36) REFERENCES users(id)"),
+        # Multi-tenancy: add tenant_id to all tenant-scoped tables
+        ("users", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("loan_applications", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("documents", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("contacts", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        # Legal structure of an entity (trust/trustee/company/partnership/sole_trader)
+        ("organizations", "entity_type", "VARCHAR(30)"),
+        ("contact_organizations", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("lenders", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("lenders", "address", "VARCHAR(500)"),
+        # One mailbox per desk inside the lender — see models/lender.py for why
+        # these are columns and not a note.
+        ("lenders", "service_request_email", "VARCHAR(200)"),
+        ("lenders", "collections_email", "VARCHAR(200)"),
+        ("lenders", "payout_letter_email", "VARCHAR(200)"),
+        ("lenders", "settlements_email", "VARCHAR(200)"),
+        ("lenders", "credit_email", "VARCHAR(200)"),
+        ("lenders", "doc_request_email", "VARCHAR(200)"),
+        # Printed on the direct debit first payment request (and any other letter
+        # issued in the lender's name): its ABN and its logo.
+        ("lenders", "abn", "VARCHAR(20)"),
+        ("lenders", "logo_path", "VARCHAR(500)"),
+        ("lenders", "logo_filename", "VARCHAR(255)"),
+        ("lenders", "on_panel", "BOOLEAN"),
+        ("lenders", "vbi_percent", "FLOAT"),
+        ("lenders", "vbi_personal_percent", "FLOAT"),
+        ("lenders", "vbi_commercial_percent", "FLOAT"),
+        ("lenders", "vbi_repeat_percent", "FLOAT"),
+        # Private ledger: the monthly volume bonus tiers (JSON; NULL = the defaults).
+        ("ledger_settings", "vb_tiers", "TEXT"),
+        # Ledger-only deals (history import / business outside the portal).
+        ("ledger_deals", "is_manual", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("ledger_deals", "manual_settled_on", "DATE"),
+        ("ledger_deals", "manual_customer_name", "TEXT"),
+        ("ledger_deals", "manual_entity_name", "TEXT"),
+        ("ledger_deals", "manual_category", "VARCHAR(20)"),
+        ("ledger_deals", "manual_broker_id", "VARCHAR(36)"),
+        ("ledger_deals", "manual_broker_name", "VARCHAR(200)"),
+        ("ledger_deals", "notes", "TEXT"),
+        ("ledger_invoices", "payee_id", "VARCHAR(36)"),
+        # The broker's choices on the direct debit first payment request (JSON) —
+        # the figures themselves come from the lender pricing.
+        ("loan_applications", "direct_debit_request", "TEXT"),
+        # The broker's choices on the early termination and balloon payout
+        # declarations (JSON) — term and balloon come from the lender pricing.
+        ("loan_applications", "settlement_declarations", "TEXT"),
+        ("lender_submissions", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("kanban_boards", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("kanban_columns", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("tasks", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("checklist_items", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("quote_sheets", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("quote_options", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("activity_logs", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("direct_messages", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("referrals", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("external_referrals", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("application_notes", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("application_brokers", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        ("broker_groups", "tenant_id", "VARCHAR(36) REFERENCES tenants(id)"),
+        # Kanban board position (independent of workflow status)
+        ("loan_applications", "kanban_column_id", "VARCHAR(36)"),
+        # Extended applicant form fields
+        ("loan_applications", "applicant_mobile", "VARCHAR(20)"),
+        ("loan_applications", "preferred_contact_method", "VARCHAR(50)"),
+        ("loan_applications", "id_expiry_date", "VARCHAR(10)"),
+        ("loan_applications", "applicant_residency_status", "VARCHAR(50)"),
+        ("loan_applications", "residential_status", "VARCHAR(50)"),
+        ("loan_applications", "time_at_address", "VARCHAR(50)"),
+        ("loan_applications", "applicant_num_dependants", "INTEGER"),
+        ("loan_applications", "has_partner", "BOOLEAN"),
+        ("loan_applications", "partner_working", "BOOLEAN"),
+        ("loan_applications", "employment_category", "VARCHAR(30)"),
+        ("loan_applications", "employer_name", "VARCHAR(200)"),
+        ("loan_applications", "employer_industry", "VARCHAR(100)"),
+        ("loan_applications", "job_title", "VARCHAR(100)"),
+        ("loan_applications", "income_frequency", "VARCHAR(20)"),
+        ("loan_applications", "gross_income", "NUMERIC(12,2)"),
+        ("loan_applications", "trading_name", "VARCHAR(200)"),
+        ("loan_applications", "business_structure", "VARCHAR(50)"),
+        ("loan_applications", "gst_registered", "BOOLEAN"),
+        ("loan_applications", "num_directors", "INTEGER"),
+        ("loan_applications", "time_trading", "VARCHAR(50)"),
+        ("loan_applications", "previously_declined", "BOOLEAN"),
+        ("loan_applications", "change_of_circumstances", "BOOLEAN"),
+        ("loan_applications", "signature_name", "VARCHAR(200)"),
+        ("loan_applications", "emergency_contact_name", "VARCHAR(200)"),
+        ("loan_applications", "emergency_contact_relationship", "VARCHAR(100)"),
+        ("loan_applications", "emergency_contact_phone", "VARCHAR(20)"),
+        ("loan_applications", "client_engagement_model", "VARCHAR(20)"),
+        ("loan_applications", "applicant_email", "VARCHAR(200)"),
+        # Client invite magic-link
+        ("loan_applications", "client_invite_token", "VARCHAR(64)"),
+        ("loan_applications", "client_invite_email", "VARCHAR(200)"),
+        ("loan_applications", "client_invite_sent_at", "TIMESTAMP"),
+        # Unread tracking for client messages
+        ("client_messages", "is_read", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        # Assigned broker on service requests
+        ("service_requests", "assigned_broker_id", "VARCHAR(36) REFERENCES users(id)"),
+        # Broker-side notes on service requests
+        ("service_requests", "broker_notes", "TEXT"),
+        # Urgent flag on service requests
+        ("service_requests", "is_urgent", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Message visibility: who can read the message beyond the direct recipient
+        ("client_messages", "visibility", "VARCHAR(20) DEFAULT 'all' NOT NULL"),
+        # Soft delete: timestamp set when an admin/broker deletes an application
+        ("loan_applications", "deleted_at", "TIMESTAMP"),
+        # Company name on external referrals (for contact book)
+        ("external_referrals", "company_name", "VARCHAR(200)"),
+        # Password reset flow
+        ("users", "password_reset_token", "VARCHAR(64)"),
+        ("users", "password_reset_token_expires_at", "TIMESTAMP"),
+        # Soft-delete tracking for users (admin deleted clients)
+        ("users", "deleted_at", "TIMESTAMP"),
+        ("users", "deleted_original_email", "VARCHAR(255)"),
+        ("users", "deleted_original_name", "VARCHAR(255)"),
+        # Client (all-up) interest rate per quote option
+        ("quote_options", "client_interest_rate", "NUMERIC(8,4)"),
+        # Broker lock — prevents client from editing the draft
+        ("loan_applications", "is_locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Broker-selected sections the client may complete (JSON array; null = all)
+        ("loan_applications", "client_sections", "TEXT"),
+        # Links a fulfilled document request to the document that satisfied it
+        ("document_requests", "document_id", "VARCHAR(36)"),
+        # Saved client profile (encrypted JSON) for autofilling new applications
+        ("users", "client_profile", "TEXT"),
+        # FK to organizations — set when application's business ABN matches a Company
+        ("loan_applications", "business_organization_id", "VARCHAR(36) REFERENCES organizations(id)"),
+        # Separates messages composed inside a specific application from "outside" (global) conversations
+        ("client_messages", "application_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
+        # Commercial multi-director reconciliation flags
+        ("loan_applications", "needs_reconciliation", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("loan_applications", "reconciliation_note", "TEXT"),
+        # Referrer direct-engagement: hide from client portal until broker releases
+        ("loan_applications", "hidden_from_client", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Corporate guarantors: a party can be a signatory of a guarantor company
+        ("loan_applicants", "application_guarantor_id", "VARCHAR(36) REFERENCES application_guarantors(id)"),
+        # Standing invite links can grant a role on signup (e.g. broker); NULL = client
+        ("referrals", "invited_role", "VARCHAR(20)"),
+        # High-priority client alerts surface as a banner on the application page
+        ("client_alerts", "is_high_priority", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Optional due date/time on service requests
+        ("service_requests", "due_at", "TIMESTAMP"),
+        # Due-date reminder send tracking
+        ("service_requests", "reminder_midpoint_sent_at", "TIMESTAMP"),
+        ("service_requests", "reminder_due_soon_sent_at", "TIMESTAMP"),
+        # Loop the request creator in on reminder emails
+        ("service_requests", "created_by_id", "VARCHAR(36)"),
+        # Due-date reminder send tracking on tasks (parallel to service requests)
+        ("tasks", "reminder_midpoint_sent_at", "TIMESTAMP"),
+        ("tasks", "reminder_due_soon_sent_at", "TIMESTAMP"),
+        # Kanban boards scoped to a loan category (asset_finance | home_loan | commercial)
+        ("kanban_boards", "loan_category", "VARCHAR(20)"),
+        # Stamped once when status first transitions to settled — drives the monthly
+        # settled-deal archiving sweep (services/settled_deal_archiving.py)
+        ("loan_applications", "settled_at", "TIMESTAMP"),
+        # Provenance for cloned applications (personal/company copied, loan re-entered)
+        ("loan_applications", "cloned_from_id", "VARCHAR(36) REFERENCES loan_applications(id)"),
+        # Trust entities: kind of trust + the "no ABN, checked with the accountant"
+        # acknowledgement a broker must give before a trust can be saved without one
+        ("organizations", "trust_type", "VARCHAR(30)"),
+        ("organizations", "no_abn_confirmed", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("organizations", "no_abn_confirmed_at", "TIMESTAMP"),
+        ("organizations", "no_abn_confirmed_by_id", "VARCHAR(36) REFERENCES users(id)"),
+        # Lender name recorded when the application (re-)enters the Approval status
+        ("loan_applications", "approval_lender_name", "VARCHAR(200)"),
+        # The approving lender as a lender-book link; prefills lender pricing
+        ("loan_applications", "approval_lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+        # Dealer / private / auction sale, set on the Tax Invoices tab
+        ("loan_applications", "sale_type", "VARCHAR(20)"),
+        # Marks a Task as auto-generated from an application's approval conditions
+        ("tasks", "is_approval_conditions_task", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Links a checklist item back to the ApprovalCondition it mirrors, for
+        # two-way sync between a broker's task and the application's approval panel
+        ("checklist_items", "approval_condition_id", "VARCHAR(36) REFERENCES approval_conditions(id)"),
+        # The desk's "Tax Invoice Request" sheet: who it is addressed to at the
+        # dealership, the Sold To / Delivery To parties, the full identity of the
+        # goods, and the trade-in/payout legs of the cost build-up
+        ("tax_invoices", "attention", "VARCHAR(200)"),
+        ("tax_invoices", "fax_number", "VARCHAR(40)"),
+        ("tax_invoices", "reply_to_email", "VARCHAR(200)"),
+        ("tax_invoices", "buyer_acn", "VARCHAR(20)"),
+        ("tax_invoices", "delivery_same_as_buyer", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ("tax_invoices", "delivery_name", "VARCHAR(255)"),
+        ("tax_invoices", "delivery_abn", "VARCHAR(20)"),
+        ("tax_invoices", "delivery_acn", "VARCHAR(20)"),
+        ("tax_invoices", "delivery_address", "VARCHAR(500)"),
+        ("tax_invoices", "asset_condition", "VARCHAR(10)"),
+        ("tax_invoices", "asset_engine_number", "VARCHAR(60)"),
+        # VIN or serial number (+ required asset notes) — services/vin.py
+        ("tax_invoices", "asset_identifier_type", "VARCHAR(10)"),
+        ("tax_invoices", "asset_serial_number", "TEXT"),
+        ("tax_invoices", "asset_identifier_notes", "TEXT"),
+        ("tax_invoices", "asset_build_date", "VARCHAR(30)"),
+        ("tax_invoices", "asset_compliance_date", "VARCHAR(30)"),
+        ("tax_invoices", "asset_colour", "VARCHAR(40)"),
+        ("tax_invoices", "asset_registration_expiry", "VARCHAR(30)"),
+        ("tax_invoices", "trade_in_value", "NUMERIC(12, 2)"),
+        ("tax_invoices", "payout_amount", "NUMERIC(12, 2)"),
+        # What is still owing on the asset being BOUGHT, as against payout_amount
+        # above which is owing on the trade-in. It comes out of the purchase price
+        # rather than adding to it, so the two can never be one column.
+        ("tax_invoices", "asset_payout_amount", "NUMERIC(12, 2)"),
+        # Part payment 1 of settlement — the seller's existing financier, paid
+        # separately from the seller so an encumbered asset clears at settlement.
+        ("tax_invoices", "payout_creditor_name", "VARCHAR(500)"),
+        ("tax_invoices", "payout_creditor_bsb", "VARCHAR(500)"),
+        ("tax_invoices", "payout_creditor_account_number", "VARCHAR(500)"),
+        # Seller's name as it appears on their licence and the registration, held
+        # only so the four-way name match can run before funds go out.
+        ("tax_invoices", "licence_name", "VARCHAR(500)"),
+        ("tax_invoices", "registration_name", "VARCHAR(500)"),
+        # Whether the applicant is a natural person or the borrowing entity itself.
+        # Nullable on add so the backfill below can tell untouched rows apart.
+        ("loan_applications", "applicant_type", "VARCHAR(20)"),
+        # Broker declined to link this application's client to its business
+        ("loan_applications", "business_link_declined", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        # Visa details, captured when the residency status is a visa. The grant
+        # number is encrypted, hence TEXT rather than a sized VARCHAR.
+        ("loan_applications", "applicant_visa_number", "TEXT"),
+        ("loan_applications", "applicant_visa_category", "VARCHAR(100)"),
+        ("loan_applicants", "applicant_visa_number", "TEXT"),
+        ("loan_applicants", "applicant_visa_category", "VARCHAR(100)"),
+        # Lender pricing: the lender it was approved by, the loan-setup figures the
+        # tax invoice prefills from, and the shortfall decision the API enforces.
+        # Mirrored from input_parameters on every write (services/lender_pricing.py).
+        ("quote_sheets", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+        ("quote_sheets", "asset_price", "NUMERIC(12, 2)"),
+        ("quote_sheets", "deposit_amount", "NUMERIC(12, 2)"),
+        ("quote_sheets", "trade_in_amount", "NUMERIC(12, 2)"),
+        ("quote_sheets", "payout_amount", "NUMERIC(12, 2)"),
+        ("quote_sheets", "amount_borrowed", "NUMERIC(12, 2)"),
+        ("quote_sheets", "shortfall_accepted", "VARCHAR(10)"),
+        ("quote_sheets", "shortfall_bypassed", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("quote_sheets", "shortfall_notes", "TEXT"),
+        # The financier on a tax invoice, carried over from that lender pricing.
+        ("tax_invoices", "lender_id", "VARCHAR(36) REFERENCES lenders(id)"),
+        # Chattel mortgage vs lease/HP decides whether the client or the lender is
+        # the dealer's "Sold To" party; emailed_at records the send to the desk.
+        ("tax_invoices", "facility_type", "VARCHAR(20)"),
+        ("tax_invoices", "emailed_at", "TIMESTAMP"),
+        # Private sale: seller's ACN and ABN Lookup result, the payout-letter name,
+        # the paperwork checklist and its yes/no prompts, and the valuation.
+        ("tax_invoices", "supplier_acn", "VARCHAR(20)"),
+        ("tax_invoices", "supplier_abn_status", "VARCHAR(20)"),
+        ("tax_invoices", "supplier_abn_name", "VARCHAR(200)"),
+        ("tax_invoices", "supplier_abn_checked_at", "TIMESTAMP"),
+        ("tax_invoices", "payout_letter_name", "VARCHAR(500)"),
+        ("tax_invoices", "valuation_needed", "BOOLEAN"),
+        ("tax_invoices", "ppsr_charge", "BOOLEAN"),
+        ("tax_invoices", "ppsr_all_pap", "BOOLEAN"),
+        ("tax_invoices", "payout_reduced", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("tax_invoices", "seller_documents", "TEXT"),
+        ("tax_invoices", "valuation_market_value", "NUMERIC(12, 2)"),
+        ("tax_invoices", "valuation_forced_sale_value", "NUMERIC(12, 2)"),
+        ("tax_invoices", "valuer_name", "VARCHAR(200)"),
+        ("tax_invoices", "valuation_date", "DATE"),
+        # The existing client who referred the deal (tracking only).
+        ("loan_applications", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
+        ("leads", "referred_by_contact_id", "VARCHAR(36) REFERENCES contacts(id) ON DELETE SET NULL"),
+        # The referrer partner who sent a lead (see Lead.referrer_id).
+        ("leads", "referrer_id", "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL"),
+        # Private-sale "identification check: required / not required" answer
+        ("tax_invoices", "identity_check_required", "BOOLEAN"),
+        # Australian Business Register snapshot on entities (services/organizations.refresh_from_abr)
+        ("organizations", "abr_entity_type_name", "VARCHAR(100)"),
+        ("organizations", "abn_status", "VARCHAR(20)"),
+        ("organizations", "abn_active_from", "VARCHAR(10)"),
+        ("organizations", "gst_registered", "BOOLEAN"),
+        ("organizations", "gst_from", "VARCHAR(10)"),
+        ("organizations", "trading_names", "TEXT"),
+        ("organizations", "abr_state", "VARCHAR(10)"),
+        ("organizations", "abr_postcode", "VARCHAR(10)"),
+        ("organizations", "abr_checked_at", "TIMESTAMP"),
+        # Note categories (compliance / learning / decline / scratchpad) — see
+        # models/application_note.py. Existing notes stay "general" (Deal Notes).
+        ("application_notes", "category", "VARCHAR(20) DEFAULT 'general' NOT NULL"),
+        ("application_notes", "lender_submission_id", "VARCHAR(36) REFERENCES lender_submissions(id) ON DELETE SET NULL"),
+        ("application_notes", "decline_reason_id", "VARCHAR(36) REFERENCES decline_reasons(id) ON DELETE SET NULL"),
+        ("application_notes", "updated_at", "TIMESTAMP"),
+        ("application_notes", "updated_by_id", "VARCHAR(36) REFERENCES users(id)"),
+        # Business commitment schedule — see models/lending_history_entry.py.
+        ("lending_history_entries", "organization_id", "VARCHAR(36) REFERENCES organizations(id)"),
+        ("lending_history_entries", "application_id", "VARCHAR(36)"),
+        ("lending_history_entries", "interest_rate", "FLOAT"),
+        ("lending_history_entries", "term_months", "INTEGER"),
+        ("lending_history_entries", "end_date", "DATE"),
+        ("lending_history_entries", "asset_description", "TEXT"),
+        ("lending_history_entries", "vin", "TEXT"),
+        ("lending_history_entries", "serial_numbers", "TEXT"),
+        ("lending_history_entries", "identifier_notes", "TEXT"),
+        ("lending_history_entries", "ppsr_charge_number", "VARCHAR(60)"),
+        ("lending_history_entries", "ppsr_change_number", "VARCHAR(60)"),
+        ("lending_history_entries", "ppsr_organisation_identifier", "VARCHAR(60)"),
+        ("lending_history_entries", "asset_price_ex_gst", "FLOAT"),
+        ("lending_history_entries", "gst_claimed", "FLOAT"),
+        ("lending_history_entries", "tax_invoice_date", "DATE"),
+        ("lending_history_entries", "brokerage_amount", "FLOAT"),
+        ("lending_history_entries", "closure_status", "VARCHAR(20)"),
+        ("lending_history_entries", "closed_at", "TIMESTAMP"),
+        ("lending_history_entries", "closure_notes", "TEXT"),
+        ("lending_history_entries", "closed_by_user_id", "VARCHAR(36)"),
+        ("lending_history_entries", "superseded_by_id", "VARCHAR(36)"),
+    ]
+
+    _logger = logging.getLogger(__name__)
+    _inspector = inspect(engine)
+    _dialect = engine.dialect.name
+    _column_cache: dict[str, set[str]] = {}
+    with engine.begin() as conn:
+        for table, col, col_type in _MIGRATIONS:
+            if table not in _column_cache:
+                _column_cache[table] = {c["name"] for c in _inspector.get_columns(table)}
+            if col not in _column_cache[table]:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                _logger.info("Added column %s.%s", table, col)
+
+    # An entity can hold commitments now, so a lending history line's contact_id
+    # became optional. Postgres drops the constraint in place; SQLite can't, so the
+    # table is rebuilt from the model and the rows copied across.
+    _lhe_cols = {c["name"]: c for c in inspect(engine).get_columns("lending_history_entries")}
+    if _lhe_cols.get("contact_id", {}).get("nullable") is False:
+        with engine.begin() as conn:
+            if _dialect == "sqlite":
+                from app.models.lending_history_entry import LendingHistoryEntry as _LHE
+
+                for _ix in inspect(engine).get_indexes("lending_history_entries"):
+                    conn.execute(text(f'DROP INDEX IF EXISTS "{_ix["name"]}"'))
+                conn.execute(text("ALTER TABLE lending_history_entries RENAME TO lending_history_entries_old"))
+                _LHE.__table__.create(conn)
+                _copy = ", ".join(c for c in _lhe_cols if c in _LHE.__table__.c)
+                conn.execute(text(
+                    f"INSERT INTO lending_history_entries ({_copy}) SELECT {_copy} FROM lending_history_entries_old"
+                ))
+                conn.execute(text("DROP TABLE lending_history_entries_old"))
+            else:
+                conn.execute(text("ALTER TABLE lending_history_entries ALTER COLUMN contact_id DROP NOT NULL"))
+            _logger.info("Made lending_history_entries.contact_id nullable")
+
+    # Contact↔company links were created without a tenant for most of their life, and
+    # anything that reads them tenant-scoped (seeding an application's directors from
+    # the company) silently found nothing. Adopt the contact's tenant.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE contact_organizations SET tenant_id = ("
+            "  SELECT c.tenant_id FROM contacts c WHERE c.id = contact_organizations.contact_id"
+            ") WHERE tenant_id IS NULL"
+        ))
+
+    # Classify pre-existing applications now that applicant_type exists. An entity-first
+    # commercial application is one linked to a company with no natural person in the
+    # inline applicant columns — applicant_first_name is NULL rather than encrypted-empty,
+    # so it is testable in SQL. Everything else was an individual. Idempotent: only NULL
+    # rows are touched, and after the first run there are none.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE loan_applications SET applicant_type = 'company' "
+            "WHERE applicant_type IS NULL "
+            "AND applicant_first_name IS NULL "
+            "AND business_organization_id IS NOT NULL "
+            "AND loan_type IN ('business', 'business_loan', 'commercial_property', 'equipment_finance')"
+        ))
+        conn.execute(text(
+            "UPDATE loan_applications SET applicant_type = 'individual' WHERE applicant_type IS NULL"
+        ))
+
+    # Idempotent indexes for hot filter/sort columns. create_all only indexes tables
+    # it creates; databases that predate the index=True model flags need the indexes
+    # added here. Index names match SQLAlchemy's default ix_<table>_<column> so fresh
+    # installs (which create them via create_all) are unaffected.
+    # Unique indexes that can't be expressed as a plain ALTER. Databases predating
+    # the model's __table_args__ need them created here.
+    _UNIQUE_INDEXES = [
+        ("uq_column_board_category_stage", "kanban_columns", "board_id, loan_category, stage_key"),
+    ]
+    with engine.begin() as conn:
+        for _name, _tbl, _cols in _UNIQUE_INDEXES:
+            try:
+                conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {_name} ON {_tbl} ({_cols})"))
+            except Exception as _e:
+                _logger.warning("Index %s skipped: %s", _name, _e)
+
+    _INDEX_COLUMNS = [
+        ("users", "contact_id"),
+        ("loan_applications", "user_id"),
+        ("loan_applications", "status"),
+        ("loan_applications", "loan_type"),
+        ("loan_applications", "assigned_broker_id"),
+        ("loan_applications", "deleted_at"),
+        ("loan_applications", "created_at"),
+        ("external_referrals", "referrer_id"),
+        ("external_referrals", "referred_client_id"),
+    ]
+    with engine.begin() as conn:
+        for _tbl, _col in _INDEX_COLUMNS:
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{_tbl}_{_col} ON {_tbl} ({_col})"))
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_live_user_contact ON users (contact_id) WHERE deleted_at IS NULL AND contact_id IS NOT NULL"))
+
+    # ── Field-level encryption: re-encrypt legacy plaintext rows ──────────────────
+    # Any EncryptedString column may hold plaintext written before encryption was
+    # enabled (or before the column switched to EncryptedString). Discover them all
+    # from the models so new encrypted columns are covered automatically.
+    # Idempotent: values that already decrypt with the configured key are left
+    # untouched. Runs only when FIELD_ENCRYPTION_KEY is configured.
+    from app.models.encrypted_type import EncryptedString as _EncryptedString  # noqa: E402
+
+    _ENCRYPTED_COLUMNS = sorted(
+        (table.name, column.name)
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if isinstance(column.type, _EncryptedString)
+    )
+
+    from app.config import FIELD_ENCRYPTION_KEY as _FIELD_KEY  # noqa: E402
+
+    if _FIELD_KEY:
+        from app.services.encryption import (
+            encrypt_value as _encrypt_value,
+            is_encrypted as _is_encrypted,
+            looks_like_fernet_token as _looks_like_fernet_token,
+            rotate_token as _rotate_token,
+        )
+
+        # Fernet ciphertext exceeds the original VARCHAR(20/200) limits — widen to
+        # TEXT on Postgres first (SQLite doesn't enforce lengths, no change needed).
+        # Only alter columns still typed VARCHAR so repeat startups take no locks.
+        if _dialect != "sqlite":
+            with engine.begin() as conn:
+                for _tbl, _col in _ENCRYPTED_COLUMNS:
+                    _col_types = {c["name"]: str(c["type"]).upper() for c in _inspector.get_columns(_tbl)}
+                    if _col_types.get(_col, "").startswith("VARCHAR"):
+                        conn.execute(text(f"ALTER TABLE {_tbl} ALTER COLUMN {_col} TYPE TEXT"))
+                        _logger.info("Widened %s.%s to TEXT for encrypted storage", _tbl, _col)
+
+        def _wrong_key_error(tbl: str, col: str, row_id) -> RuntimeError:
+            # Fernet-shaped but no configured key decrypts it: this is ciphertext
+            # under a missing key, not legacy plaintext. Re-encrypting it would bury
+            # the data a layer deeper and make it unrecoverable — refuse to start.
+            return RuntimeError(
+                f"{tbl}.{col} (id={row_id}) looks like Fernet ciphertext but none of the "
+                "configured FIELD_ENCRYPTION_KEY keys decrypt it. If the key was rotated, keep "
+                "the previous key in the ring: FIELD_ENCRYPTION_KEY=<new>,<old>. Aborting startup "
+                "so no data is re-encrypted under the wrong key."
+            )
+
+        def _batched_rows(conn, tbl: str, col: str, where: str, batch: int = 200):
+            """Yield (id, value) without holding a whole column in memory — ocr_text
+            alone can be 500KB per row."""
+            _ids = [r[0] for r in conn.execute(text(f"SELECT id FROM {tbl} WHERE {where}"))]
+            _stmt = text(f"SELECT id, {col} FROM {tbl} WHERE id IN :ids").bindparams(
+                bindparam("ids", expanding=True)
+            )
+            for _i in range(0, len(_ids), batch):
+                yield from conn.execute(_stmt, {"ids": _ids[_i : _i + batch]})
+
+        with engine.begin() as conn:
+            _existing_tables = set(_inspector.get_table_names())
+            _ring_size = len([k for k in _FIELD_KEY.split(",") if k.strip()])
+            _total_encrypted = 0
+            _total_rotated = 0
+            for _tbl, _col in _ENCRYPTED_COLUMNS:
+                if _tbl not in _existing_tables:
+                    continue
+
+                # Legacy plaintext pass. Fernet tokens always start with "gAAAAA",
+                # so the prefilter finds plaintext without fetching any ciphertext —
+                # a steady-state boot reads zero rows here.
+                for _row_id, _value in _batched_rows(
+                    conn, _tbl, _col,
+                    f"{_col} IS NOT NULL AND {_col} != '' AND {_col} NOT LIKE 'gAAAAA%'",
+                ):
+                    if _looks_like_fernet_token(_value):
+                        continue  # SQLite LIKE is case-insensitive; never rewrite a real token here
+                    conn.execute(
+                        text(f"UPDATE {_tbl} SET {_col} = :val WHERE id = :id"),
+                        {"val": _encrypt_value(_value), "id": _row_id},
+                    )
+                    _total_encrypted += 1
+
+                if _ring_size > 1:
+                    # Rotation pass: rewrite tokens under older ring keys to the
+                    # newest key. Only runs while a rotation is in flight (ring has
+                    # more than one key), so normal boots never read ciphertext.
+                    for _row_id, _value in _batched_rows(conn, _tbl, _col, f"{_col} LIKE 'gAAAAA%'"):
+                        if not _looks_like_fernet_token(_value):
+                            continue  # case-insensitive LIKE on SQLite can catch plaintext
+                        if not _is_encrypted(_value):
+                            raise _wrong_key_error(_tbl, _col, _row_id)
+                        _rotated = _rotate_token(_value)
+                        if _rotated:
+                            conn.execute(
+                                text(f"UPDATE {_tbl} SET {_col} = :val WHERE id = :id"),
+                                {"val": _rotated, "id": _row_id},
+                            )
+                            _total_rotated += 1
+                else:
+                    # Single-key ring: keep the wrong-key tripwire without scanning —
+                    # verify one sample token per column decrypts.
+                    _sample = conn.execute(
+                        text(f"SELECT id, {_col} FROM {_tbl} WHERE {_col} LIKE 'gAAAAA%' LIMIT 1")
+                    ).fetchone()
+                    if (
+                        _sample is not None
+                        and _looks_like_fernet_token(_sample[1])
+                        and not _is_encrypted(_sample[1])
+                    ):
+                        raise _wrong_key_error(_tbl, _col, _sample[0])
+            if _total_encrypted:
+                _logger.info("Encrypted %d legacy plaintext values across %d columns", _total_encrypted, len(_ENCRYPTED_COLUMNS))
+            if _total_rotated:
+                _logger.info("Rotated %d values to the newest encryption key", _total_rotated)
+
+    # SQLite doesn't support ALTER COLUMN to drop NOT NULL.
+    # Rebuild quote_sheets table to make application_id nullable.
+    with engine.begin() as conn:
+        # Check if application_id is still NOT NULL by trying an insert with NULL
+        _needs_rebuild = False
+        try:
+            _cols = {c["name"]: c for c in _inspector.get_columns("quote_sheets")}
+            if "application_id" in _cols and _cols["application_id"].get("nullable") is False:
+                _needs_rebuild = True
+        except Exception:
+            pass
+
+        if _needs_rebuild:
+            if _dialect == "sqlite":
+                _logger.info("Rebuilding quote_sheets table to make application_id nullable")
+                conn.execute(text("""
+                    CREATE TABLE quote_sheets_new (
+                        id VARCHAR(36) PRIMARY KEY,
+                        application_id VARCHAR(36) REFERENCES loan_applications(id) ON DELETE CASCADE,
+                        version INTEGER NOT NULL DEFAULT 1,
+                        title VARCHAR(200),
+                        status VARCHAR(5) NOT NULL DEFAULT 'draft',
+                        created_by_id VARCHAR(36) NOT NULL REFERENCES users(id),
+                        broker_notes TEXT,
+                        input_parameters TEXT,
+                        recipient_name VARCHAR(200),
+                        recipient_email VARCHAR(255),
+                        sent_at DATETIME,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL
+                    )
+                """))
+                conn.execute(text("""
+                    INSERT INTO quote_sheets_new
+                        (id, application_id, version, title, status, created_by_id,
+                         broker_notes, input_parameters, recipient_name, recipient_email,
+                         sent_at, created_at, updated_at)
+                    SELECT id, application_id, version, title, status, created_by_id,
+                           broker_notes, input_parameters, recipient_name, recipient_email,
+                           sent_at, created_at, updated_at
+                    FROM quote_sheets
+                """))
+                conn.execute(text("DROP TABLE quote_sheets"))
+                conn.execute(text("ALTER TABLE quote_sheets_new RENAME TO quote_sheets"))
+                _logger.info("quote_sheets table rebuilt successfully")
+            else:
+                conn.execute(text("ALTER TABLE quote_sheets ALTER COLUMN application_id DROP NOT NULL"))
+                _logger.info("Made quote_sheets.application_id nullable")
+
+    # Data migration: remap legacy ApplicationStatus values to the new vocabulary.
+    # Old: reviewing, approved  →  New: application_assessed, approval
+    # Postgres: enum is created fresh with correct values so legacy values can't exist; SQLite only.
+    #
+    # "submitted" was ALSO remapped here (→ application_received) until it was found
+    # to run on every boot against a value that is still live: the same commit that
+    # added this remap kept `submitted` in ApplicationStatus, repurposed to mean
+    # "submitted to a lender". So every restart silently dragged genuinely-submitted
+    # applications back to Application Received and rewrote the board column with
+    # them. Legacy rows were converted by the first boot long ago, and a legacy value
+    # is now indistinguishable from a current one — so the pair is gone.
+    if _dialect == "sqlite":
+        with engine.begin() as conn:
+            _status_remap = [
+                ("reviewing", "application_assessed"),
+                ("approved", "approval"),
+            ]
+            for _old, _new in _status_remap:
+                conn.execute(
+                    text("UPDATE loan_applications SET status = :new WHERE status = :old"),
+                    {"old": _old, "new": _new},
+                )
+                conn.execute(
+                    text("UPDATE kanban_columns SET mapped_status = :new WHERE mapped_status = :old"),
+                    {"old": _old, "new": _new},
+                )
+
+    # Backfill: migrate existing assigned_broker_id rows into application_brokers
+    # Only migrate rows where the assigned user is actually a broker (not an admin).
+    if "application_brokers" in {t for t in _inspector.get_table_names()}:
+        with engine.begin() as conn:
+            if _dialect == "sqlite":
+                conn.execute(text(
+                    "INSERT OR IGNORE INTO application_brokers (application_id, broker_id, assigned_at) "
+                    "SELECT la.id, la.assigned_broker_id, la.updated_at FROM loan_applications la "
+                    "JOIN users u ON u.id = la.assigned_broker_id AND u.role = 'broker' "
+                    "WHERE la.assigned_broker_id IS NOT NULL "
+                    "AND la.id NOT IN (SELECT application_id FROM application_brokers)"
+                ))
+            else:
+                conn.execute(text(
+                    "INSERT INTO application_brokers (application_id, broker_id, assigned_at) "
+                    "SELECT la.id, la.assigned_broker_id, la.updated_at FROM loan_applications la "
+                    "JOIN users u ON u.id = la.assigned_broker_id AND u.role = 'broker' "
+                    "WHERE la.assigned_broker_id IS NOT NULL "
+                    "AND la.id NOT IN (SELECT application_id FROM application_brokers) "
+                    "ON CONFLICT DO NOTHING"
+                ))
+
+    # Cleanup: remove any admin-role users that were previously backfilled into
+    # application_brokers (the old backfill had no role filter). Admins should not
+    # appear as assigned brokers.
+    if "application_brokers" in {t for t in _inspector.get_table_names()}:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "DELETE FROM application_brokers "
+                "WHERE broker_id IN (SELECT id FROM users WHERE role = 'admin')"
+            ))
+            # Also clear the legacy column where it points at an admin.
+            conn.execute(text(
+                "UPDATE loan_applications SET assigned_broker_id = NULL "
+                "WHERE assigned_broker_id IN (SELECT id FROM users WHERE role = 'admin')"
+            ))
+
+    # Backfill: migrate existing service_requests.assigned_broker_id into service_request_brokers
+    if "service_request_brokers" in {t for t in _inspector.get_table_names()}:
+        with engine.begin() as conn:
+            if _dialect == "sqlite":
+                conn.execute(text(
+                    "INSERT OR IGNORE INTO service_request_brokers (tenant_id, service_request_id, broker_id, assigned_at) "
+                    "SELECT sr.tenant_id, sr.id, sr.assigned_broker_id, sr.updated_at FROM service_requests sr "
+                    "WHERE sr.assigned_broker_id IS NOT NULL "
+                    "AND sr.id NOT IN (SELECT service_request_id FROM service_request_brokers)"
+                ))
+            else:
+                conn.execute(text(
+                    "INSERT INTO service_request_brokers (tenant_id, service_request_id, broker_id, assigned_at) "
+                    "SELECT sr.tenant_id, sr.id, sr.assigned_broker_id, sr.updated_at FROM service_requests sr "
+                    "WHERE sr.assigned_broker_id IS NOT NULL "
+                    "AND sr.id NOT IN (SELECT service_request_id FROM service_request_brokers) "
+                    "ON CONFLICT DO NOTHING"
+                ))
+
+    # Backfill: migrate existing service_requests.broker_notes into the notes thread
+    # as a single authorless legacy note, so no data is lost on the switch.
+    if "service_request_notes" in {t for t in _inspector.get_table_names()}:
+        with engine.begin() as conn:
+            _insert_prefix = "INSERT OR IGNORE INTO" if _dialect == "sqlite" else "INSERT INTO"
+            _conflict = "" if _dialect == "sqlite" else " ON CONFLICT DO NOTHING"
+            conn.execute(text(
+                f"{_insert_prefix} service_request_notes (id, tenant_id, service_request_id, author_id, content, created_at) "
+                "SELECT "
+                + ("lower(hex(randomblob(16)))" if _dialect == "sqlite" else "gen_random_uuid()::text")
+                + ", sr.tenant_id, sr.id, NULL, sr.broker_notes, sr.updated_at FROM service_requests sr "
+                "WHERE sr.broker_notes IS NOT NULL AND TRIM(sr.broker_notes) <> '' "
+                "AND sr.id NOT IN (SELECT service_request_id FROM service_request_notes)"
+                + _conflict
+            ))
+
+    # application_notes.is_internal → visibility was backfilled here (is_internal=false
+    # → "broker,client,referrer") until it was found to run on every boot. Nothing
+    # writes is_internal any more, but legacy client-facing notes keep
+    # is_internal=false — so when staff later made one staff-only ("broker"), the
+    # next restart silently exposed it to clients and referrers again. Every legacy
+    # row was converted by the first boot after the visibility column shipped, so
+    # the backfill could only ever undo deliberate edits; it is gone.
+
+    # Backfill: create default tenant and assign all existing data
+    with engine.begin() as conn:
+        _tenant_count = conn.execute(text("SELECT COUNT(*) FROM tenants")).scalar()
+        if _tenant_count == 0:
+            import uuid as _uuid
+            from datetime import datetime as _dt, timezone as _tz
+            _default_tenant_id = str(_uuid.uuid4())
+            _now = _dt.now(_tz.utc)
+            conn.execute(text(
+                "INSERT INTO tenants (id, name, slug, is_active, created_at, updated_at) "
+                "VALUES (:id, :name, :slug, :active, :now, :now)"
+            ), {"id": _default_tenant_id, "name": "Default", "slug": "default", "active": True, "now": _now})
+            _tenant_tables = [
+                "users", "loan_applications", "documents", "contacts", "organizations",
+                "contact_organizations", "lenders", "lender_submissions", "kanban_boards",
+                "kanban_columns", "tasks", "checklist_items", "quote_sheets", "quote_options",
+                "activity_logs", "direct_messages", "referrals", "external_referrals",
+                "application_notes", "application_brokers", "broker_groups",
+                "client_messages", "client_alerts",
+            ]
+            for _tbl in _tenant_tables:
+                try:
+                    conn.execute(text(f"UPDATE {_tbl} SET tenant_id = :tid WHERE tenant_id IS NULL"), {"tid": _default_tenant_id})
+                except Exception:
+                    pass  # Table may be empty or not exist yet
+            _logger.info("Created default tenant %s and backfilled all data", _default_tenant_id)
+
+    # Reconcile existing clients before serving the unified directory. The imported
+    # service also registers the transactional hook for every new client workflow.
+    from app.services.client_identity import reconcile_clients, reconcile_application_links  # noqa: E402
+    from app.database import SessionLocal as _IdentitySession  # noqa: E402
+    from app.services.contact_history import snapshot_parties  # noqa: E402
+    from app.models.loan_application import LoanApplication as _IdentityApplication  # noqa: E402
+    with _IdentitySession() as _identity_db:
+        _identity_report = reconcile_clients(_identity_db)
+        _identity_report.update(reconcile_application_links(_identity_db))
+        for _snapshot, _application in _identity_db.query(SettledDealSnapshot, _IdentityApplication).join(
+            _IdentityApplication, (SettledDealSnapshot.application_id == _IdentityApplication.id)
+            & (SettledDealSnapshot.tenant_id == _IdentityApplication.tenant_id),
+        ):
+            snapshot_parties(_identity_db, _application)
+            if _snapshot.settled_at is None:
+                _snapshot.settled_at = _application.settled_at
+        _identity_db.commit()
+        _logger.info("Client/contact reconciliation: %s", _identity_report)
+
+    # Backfill arrears email attachments that landed before the .eml/.msg parser
+    # shipped. Those rows were stored as plain files, so an older contract shows a
+    # bare filename with no subject, no sender, and nothing to read — this re-parses
+    # them out of storage so old records read exactly like new ones. Idempotent: a
+    # row stops qualifying the moment it is marked kind="email", and one that still
+    # can't be parsed (missing file, extract-msg not installed) is simply left for
+    # the next startup.
+    try:
+        from sqlalchemy import or_ as _or
+
+        from app.database import SessionLocal as _SessionLocal
+        from app.models.arrears import ArrearsAttachment as _ArrearsAttachment
+        from app.services.email_import import parse_email as _parse_email
+        from app.services.s3_storage import download_file as _dl_file, file_exists as _file_exists
+
+        _mail_session = _SessionLocal()
+        try:
+            _legacy = (
+                _mail_session.query(_ArrearsAttachment)
+                .filter(
+                    _ArrearsAttachment.kind != "email",
+                    _or(
+                        _ArrearsAttachment.original_filename.ilike("%.eml"),
+                        _ArrearsAttachment.original_filename.ilike("%.msg"),
+                    ),
+                )
+                .all()
+            )
+            _parsed_count = 0
+            for _att in _legacy:
+                try:
+                    if not _file_exists(_att.file_path):
+                        continue
+                    _p = _parse_email(_att.original_filename, _dl_file(_att.file_path))
+                except Exception:
+                    continue  # Unreadable one row at a time; the rest still backfill.
+                _att.kind = "email"
+                _att.email_from = _p.sender
+                _att.email_to = _p.recipients
+                _att.email_subject = _p.subject
+                _att.email_body = _p.body
+                # Naive datetimes are serialized as UTC app-wide, so normalise the
+                # sender's offset rather than storing it unconverted.
+                _att.email_sent_at = (
+                    _p.sent_at.astimezone(timezone.utc).replace(tzinfo=None)
+                    if _p.sent_at and _p.sent_at.tzinfo
+                    else _p.sent_at
+                )
+                _parsed_count += 1
+            _mail_session.commit()
+            if _parsed_count:
+                _logger.info("Backfilled %d legacy arrears email attachment(s)", _parsed_count)
+        except Exception as _e:
+            _mail_session.rollback()
+            _logger.warning("Arrears email backfill failed: %s", _e)
+        finally:
+            _mail_session.close()
+    except Exception as _e:
+        _logger.warning("Arrears email backfill setup failed: %s", _e)
+
+    # Seed a default Kanban board per tenant if they don't have one
+    try:
+        import uuid as _uuid
+        from datetime import datetime as _dt, timezone as _tz
+        with engine.begin() as conn:
+            _tenants = conn.execute(text("SELECT id FROM tenants WHERE is_active = TRUE")).fetchall()
+            for _tenant_row in _tenants:
+                _tid = _tenant_row[0]
+                _board_exists = conn.execute(
+                    text("SELECT COUNT(*) FROM kanban_boards WHERE tenant_id = :tid"), {"tid": _tid}
+                ).scalar()
+                if _board_exists > 0:
+                    continue
+                _admin_row = conn.execute(
+                    text("SELECT id FROM users WHERE role='admin' AND tenant_id = :tid LIMIT 1"), {"tid": _tid}
+                ).first()
+                if not _admin_row:
+                    continue
+                _now = _dt.now(_tz.utc)
+                _board_id = str(_uuid.uuid4())
+                _creator_id = _admin_row[0]
+                conn.execute(text(
+                    "INSERT INTO kanban_boards (id, tenant_id, name, description, created_by_id, is_default, created_at, updated_at) "
+                    "VALUES (:id, :tid, :name, :desc, :creator, :is_default, :now, :now)"
+                ), {"id": _board_id, "tid": _tid, "name": "Default Pipeline", "desc": "Default application pipeline board",
+                    "creator": _creator_id, "is_default": True, "now": _now})
+                for col_def in DEFAULT_KANBAN_COLUMNS:
+                    conn.execute(text(
+                        "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, position, color, created_at) "
+                        "VALUES (:id, :tid, :board_id, :title, :mapped_status, :position, :color, :now)"
+                    ), {"id": str(_uuid.uuid4()), "tid": _tid, "board_id": _board_id, **col_def, "now": _now})
+                _logger.info("Seeded default Kanban board for tenant %s", _tid)
+    except Exception:
+        _logger.warning("Kanban board seeding skipped (table may not exist yet)")
+
+    # One-time repair: remove the stray "Submitted" columns left by the status-remap
+    # bug above. Each boot rewrote the Submitted column's mapped_status to
+    # application_received and the reconciliation then re-added a fresh Submitted
+    # column, so boards accumulated one dead duplicate per restart. The signature is
+    # exact — a template-less column titled "Submitted" but mapped to
+    # application_received, holding no cards — and cannot match a real stage.
+    try:
+        with engine.begin() as conn:
+            _orphans = conn.execute(text(
+                "SELECT id FROM kanban_columns WHERE stage_key IS NULL "
+                "AND title = 'Submitted' AND mapped_status = 'application_received' "
+                "AND id NOT IN (SELECT column_id FROM application_stage_placements) "
+                "AND id NOT IN (SELECT kanban_column_id FROM loan_applications WHERE kanban_column_id IS NOT NULL)"
+            )).fetchall()
+            for (_cid,) in _orphans:
+                conn.execute(text("DELETE FROM kanban_columns WHERE id = :cid"), {"cid": _cid})
+            if _orphans:
+                _logger.info("Removed %d stray Submitted kanban columns", len(_orphans))
+    except Exception as _e:
+        _logger.warning("Stray kanban column cleanup skipped: %s", _e)
+
+    # Ensure every board can render every application.
+    # Stages are no longer one-per-status (a board may carry several stages that roll
+    # up to the same status — see BOARD_STAGE_TEMPLATES), so this no longer prunes or
+    # renames anything: it only adds a stage for any status that has none, because an
+    # application whose status has no stage would have nowhere to fall back to and
+    # would vanish from the board. Custom titles, teams and duplicates are left
+    # alone. Unmapped columns are dropped — they can hold no cards. Idempotent.
+    try:
+        import uuid as _uuid
+        from datetime import datetime as _dt, timezone as _tz
+        _valid_statuses = [c["mapped_status"] for c in DEFAULT_KANBAN_COLUMNS]
+        _status_set = set(_valid_statuses)
+        with engine.begin() as conn:
+            _boards = conn.execute(text("SELECT id FROM kanban_boards")).fetchall()
+            for (_bid,) in _boards:
+                _cols = conn.execute(
+                    text("SELECT id, mapped_status, position, card_kind FROM kanban_columns WHERE board_id = :bid ORDER BY position, created_at"),
+                    {"bid": _bid},
+                ).fetchall()
+                _kept: set = set()
+                _remove_ids = []
+                _max_pos = -1
+                for _cid, _mapped, _pos, _kind in _cols:
+                    _max_pos = max(_max_pos, _pos or 0)
+                    # Lead columns map to no status by design — they hold leads.
+                    if _kind == "lead":
+                        continue
+                    if _mapped in _status_set:
+                        _kept.add(_mapped)
+                    else:
+                        _remove_ids.append(_cid)
+                for _cid in _remove_ids:
+                    conn.execute(text("DELETE FROM kanban_columns WHERE id = :cid"), {"cid": _cid})
+                    conn.execute(text("UPDATE loan_applications SET kanban_column_id = NULL WHERE kanban_column_id = :cid"), {"cid": _cid})
+                for _col_def in DEFAULT_KANBAN_COLUMNS:
+                    _status = _col_def["mapped_status"]
+                    if _status in _kept:
+                        continue
+                    _max_pos += 1
+                    conn.execute(text(
+                        "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, position, color, created_at) "
+                        "VALUES (:id, (SELECT tenant_id FROM kanban_boards WHERE id = :bid), :bid, :title, :mapped_status, :position, :color, :now)"
+                    ), {"id": str(_uuid.uuid4()), "bid": _bid, "title": _col_def["title"],
+                        "mapped_status": _status, "position": _max_pos, "color": _col_def["color"], "now": _dt.now(_tz.utc)})
+                # The plain status set opens with a lead column, so leads always have
+                # somewhere to render. Added once — delete_column refuses to remove
+                # the last one — at the far left, shifting the status columns along.
+                _has_lead = conn.execute(
+                    text("SELECT COUNT(*) FROM kanban_columns WHERE board_id = :bid AND loan_category IS NULL AND card_kind = 'lead'"),
+                    {"bid": _bid},
+                ).scalar()
+                if not _has_lead:
+                    conn.execute(
+                        text("UPDATE kanban_columns SET position = position + 1 WHERE board_id = :bid AND loan_category IS NULL"),
+                        {"bid": _bid},
+                    )
+                    conn.execute(text(
+                        "INSERT INTO kanban_columns (id, tenant_id, board_id, title, mapped_status, card_kind, position, color, created_at) "
+                        "VALUES (:id, (SELECT tenant_id FROM kanban_boards WHERE id = :bid), :bid, :title, NULL, 'lead', 0, :color, :now)"
+                    ), {"id": str(_uuid.uuid4()), "bid": _bid, "title": DEFAULT_LEAD_COLUMN["title"],
+                        "color": DEFAULT_LEAD_COLUMN["color"], "now": _dt.now(_tz.utc)})
+    except Exception as _e:
+        _logger.warning("Kanban column reconciliation skipped (table may not exist yet): %s", _e)
+
+    # "Deal Inquiry" became the lead stage and the draft stage that carried the name
+    # became "Started". Renames only columns still showing the old default title, so
+    # a stage the desk renamed keeps its name. Then fill in the phase band of any
+    # template stage that predates phases (NULL only — "" is a deliberate clear).
+    # Idempotent.
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE kanban_columns SET title = 'Started' WHERE stage_key = 'af_deal_inquiry' AND title = 'Deal Inquiry'"))
+            conn.execute(text("UPDATE kanban_columns SET title = 'Deal Inquiry' WHERE stage_key = 'af_new_lead' AND title = 'New Lead'"))
+            conn.execute(text(
+                "UPDATE kanban_columns SET title = :title "
+                "WHERE card_kind = 'lead' AND loan_category IS NULL AND title = 'New Leads'"
+            ), {"title": DEFAULT_LEAD_COLUMN["title"]})
+            for _category, _template in BOARD_STAGE_TEMPLATES.items():
+                for _stage in _template:
+                    if _stage.get("phase"):
+                        conn.execute(text(
+                            "UPDATE kanban_columns SET phase = :phase "
+                            "WHERE stage_key = :key AND loan_category = :cat AND phase IS NULL"
+                        ), {"phase": _stage["phase"], "key": _stage["stage_key"], "cat": _category})
+                    # Same rule as phase: fill only what was never set, so a desk
+                    # that has re-answered "whose move is it" for its own board
+                    # keeps its answer.
+                    if _stage.get("awaiting"):
+                        conn.execute(text(
+                            "UPDATE kanban_columns SET awaiting = :awaiting "
+                            "WHERE stage_key = :key AND loan_category = :cat AND awaiting IS NULL"
+                        ), {"awaiting": _stage["awaiting"], "key": _stage["stage_key"], "cat": _category})
+    except Exception as _e:
+        _logger.warning("Kanban stage rename/phase backfill skipped: %s", _e)
+
+    # The asset-finance desk's list has one stage where the template had two
+    # ("Invoice Recd. / Quote Locked In" then "Loan Docs Issued"), and puts Needs
+    # More Info after Approved Deals, not before it. ensure_stage_columns only ever
+    # adds stages, so boards that already carry the set are brought across here.
+    # Cards, gates and message rules move to the surviving stage; titles and the
+    # phase band change only where they still show the old default. Each half is
+    # keyed on the old shape (the dropped stage existing, the moved stage still
+    # reporting Submitted), so it runs once and a desk that later re-orders its
+    # board is left alone. Runs before the rule backfill below so the merged stage
+    # keeps wording the desk edited rather than getting the template's.
+    try:
+        with engine.begin() as conn:
+            _pairs = conn.execute(text(
+                "SELECT d.id, k.id FROM kanban_columns d "
+                "LEFT JOIN kanban_columns k ON k.board_id = d.board_id "
+                "AND k.loan_category = d.loan_category AND k.stage_key = 'af_quote_locked' "
+                "WHERE d.stage_key = 'af_loan_docs_issued' AND d.loan_category = 'asset_finance'"
+            )).fetchall()
+            for _drop, _keep in _pairs:
+                if not _keep:
+                    # The desk already deleted the first of the pair: the survivor
+                    # simply takes over the merged stage's key.
+                    conn.execute(text("UPDATE kanban_columns SET stage_key = 'af_quote_locked' WHERE id = :d"), {"d": _drop})
+                    _keep = _drop
+                else:
+                    _ids = {"k": _keep, "d": _drop}
+                    conn.execute(text("UPDATE application_stage_placements SET column_id = :k WHERE column_id = :d"), _ids)
+                    conn.execute(text("UPDATE loan_applications SET kanban_column_id = :k WHERE kanban_column_id = :d"), _ids)
+                    conn.execute(text("UPDATE kanban_column_gates SET column_id = :k WHERE column_id = :d"), _ids)
+                    conn.execute(text(
+                        "UPDATE stage_notification_rules SET column_id = :k WHERE column_id = :d "
+                        "AND NOT EXISTS (SELECT 1 FROM stage_notification_rules r "
+                        "WHERE r.column_id = :k AND r.audience = stage_notification_rules.audience "
+                        "AND r.channel = stage_notification_rules.channel)"
+                    ), _ids)
+                    # SQLite does not enforce the cascades, so clear what is left by hand.
+                    conn.execute(text("DELETE FROM stage_notification_rules WHERE column_id = :d"), _ids)
+                    conn.execute(text("DELETE FROM lead_stage_placements WHERE column_id = :d"), _ids)
+                    conn.execute(text("DELETE FROM kanban_columns WHERE id = :d"), _ids)
+                conn.execute(text(
+                    "UPDATE kanban_columns SET title = 'Tax Invoice Received / Loan Docs Issued' "
+                    "WHERE id = :k AND title IN ('Invoice Recd. / Quote Locked In', 'Loan Docs Issued')"
+                ), {"k": _keep})
+                conn.execute(text("UPDATE kanban_columns SET awaiting = 'client' WHERE id = :k AND awaiting = 'desk'"), {"k": _keep})
+
+            _moves = conn.execute(text(
+                "SELECT m.id, m.board_id FROM kanban_columns m "
+                "WHERE m.stage_key = 'af_credit_more_info' AND m.loan_category = 'asset_finance' "
+                "AND m.mapped_status = 'submitted' "
+                # Never leave Submitted without a stage — its cards would vanish.
+                "AND EXISTS (SELECT 1 FROM kanban_columns o WHERE o.board_id = m.board_id "
+                "AND o.loan_category = m.loan_category AND o.mapped_status = 'submitted' AND o.id <> m.id)"
+            )).fetchall()
+            for _mid, _bid in _moves:
+                conn.execute(text("UPDATE kanban_columns SET mapped_status = 'approval' WHERE id = :m"), {"m": _mid})
+                conn.execute(text("UPDATE kanban_columns SET title = 'Needs More Info' WHERE id = :m AND title = 'Credit Needs More Info'"), {"m": _mid})
+                conn.execute(text("UPDATE kanban_columns SET phase = 'Approved → Settlement' WHERE id = :m AND phase = 'With the Lender'"), {"m": _mid})
+                _set = conn.execute(text(
+                    "SELECT id, stage_key FROM kanban_columns "
+                    "WHERE board_id = :b AND loan_category = 'asset_finance' ORDER BY position, created_at"
+                ), {"b": _bid}).fetchall()
+                _order = [_cid for _cid, _key in _set if _cid != _mid]
+                _approved = next((_cid for _cid, _key in _set if _key == "af_approved_deals"), None)
+                if _approved is None:
+                    continue
+                _order.insert(_order.index(_approved) + 1, _mid)
+                for _pos, _cid in enumerate(_order):
+                    conn.execute(text("UPDATE kanban_columns SET position = :p WHERE id = :c"), {"p": _pos, "c": _cid})
+    except Exception as _e:
+        _logger.warning("Asset finance stage merge/reorder skipped: %s", _e)
+
+    # Notification rules are seeded only for stages a template CREATES, so boards
+    # that already had their stage set never received the referrer rules added with
+    # the journey view. Add any that are missing, keyed on (column, audience,
+    # channel) exactly as _sync_template_notifications is — wording the desk has
+    # since edited is left alone, and a rule an admin deleted on purpose comes back
+    # only here, once, rather than on every board view.
+    try:
+        with engine.begin() as conn:
+            for _category, _template in BOARD_STAGE_TEMPLATES.items():
+                for _stage in _template:
+                    for _i, _rule in enumerate(_stage.get("notifications", [])):
+                        _cols = conn.execute(text(
+                            "SELECT c.id, c.tenant_id FROM kanban_columns c "
+                            "WHERE c.stage_key = :key AND c.loan_category = :cat "
+                            "AND NOT EXISTS (SELECT 1 FROM stage_notification_rules r "
+                            "WHERE r.column_id = c.id AND r.audience = :aud AND r.channel = :chan)"
+                        ), {"key": _stage["stage_key"], "cat": _category,
+                            "aud": _rule["audience"], "chan": _rule["channel"]}).fetchall()
+                        for _col_id, _col_tenant in _cols:
+                            conn.execute(text(
+                                "INSERT INTO stage_notification_rules "
+                                "(id, tenant_id, column_id, audience, channel, subject, body, default_enabled, sort_order, created_at) "
+                                "VALUES (:id, :tid, :cid, :aud, :chan, :subj, :body, :enabled, :sort, :now)"
+                            ), {"id": str(_uuid.uuid4()), "tid": _col_tenant, "cid": _col_id,
+                                "aud": _rule["audience"], "chan": _rule["channel"],
+                                "subj": _rule.get("subject"), "body": _rule["body"],
+                                "enabled": _rule.get("default_enabled", True), "sort": _i,
+                                "now": _dt.now(_tz.utc)})
+    except Exception as _e:
+        _logger.warning("Stage notification rule backfill skipped: %s", _e)

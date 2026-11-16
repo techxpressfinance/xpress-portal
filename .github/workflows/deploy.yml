@@ -24,9 +24,35 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
 
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ENVIRONMENT: development
+    steps:
+      - uses: actions/checkout@v4
+
+      # The one supported Python — the same file the Dockerfile and deploy.sh follow.
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Dockerfile uses the pinned Python
+        run: grep -q "^FROM python:$(cat ../.python-version)-" Dockerfile
+
+      - run: pip install -r requirements-dev.txt
+      # Builds the schema through Alembic and fails if the models have drifted
+      # from the migrations (tests/test_migrations.py).
+      - run: python -m pytest -q
+
   deploy:
     name: Deploy
-    needs: check
+    needs: [check, backend]
     runs-on: ubuntu-latest
     environment: production
     steps:

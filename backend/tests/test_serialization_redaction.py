@@ -64,6 +64,6 @@ def test_response_schema_defaults_every_staff_only_key():
 def test_every_staff_only_key_is_a_real_field():
     """Catch typos: each key must be a model column or a serializer-added key."""
     columns = {c.name for c in LoanApplication.__table__.columns}
-    serializer_added = {"pending_business_link", "client_account_pending", "approval_conditions"}
+    serializer_added = {"pending_business_link", "client_account_pending", "approval_conditions", "referred_by"}
     unknown = STAFF_ONLY_KEYS - columns - serializer_added
     assert not unknown, unknown

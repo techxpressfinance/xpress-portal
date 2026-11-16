@@ -16,6 +16,7 @@ _logger = logging.getLogger(__name__)
 # Paths that don't require tenant context
 _SKIP_PATHS = {
     "/api/health",
+    "/api/health/ready",
     "/docs",
     "/openapi.json",
 }
@@ -52,7 +53,7 @@ def resolve_tenant_slug(request: Request) -> Optional[str]:
     host = host.split(":")[0]  # strip port
     parts = host.split(".")
 
-    # {slug}.xpresstech.com or {slug}.example.com (3+ parts)
+    # {slug}.xpresstech.ai or {slug}.example.com (3+ parts)
     if len(parts) >= 3:
         slug = parts[0].lower()
         if slug not in ("www", "api"):

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAllDrafts } from '../lib/draftStorage';
 import { requestSettled, requestStarted } from '../lib/navProgress';
 
 const api = axios.create({
@@ -164,6 +165,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         setAccessToken(null);
         refreshSubscribers = [];
+        // The session is over (not just a network blip): drop any unsaved draft.
+        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) clearAllDrafts();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
