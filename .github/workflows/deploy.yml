@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The one supported Python — the same file the Dockerfile and deploy.sh follow.
+      # The one supported Python — the same file the Dockerfile follows.
       - uses: actions/setup-python@v5
         with:
           python-version-file: .python-version

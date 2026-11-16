@@ -1,6 +1,6 @@
 """Bring the database schema to the current Alembic head.
 
-    python -m app.migrate            # upgrade (what the deploy runs)
+    python -m app.migrate            # upgrade now (the server also does this at startup)
     python -m app.migrate --check    # exit 1 if the schema is behind
 
 Three starting points, one command:
@@ -11,8 +11,8 @@ Three starting points, one command:
                            any later revisions apply
 * Alembic-managed       -> pending revisions apply
 
-Each revision runs once and is recorded in ``alembic_version``. Nothing in the
-web process alters the schema; see app/startup.py for how it checks.
+Each revision runs once and is recorded in ``alembic_version``. The server
+calls migrate() when it starts (AUTO_MIGRATE, on by default); see app/startup.py.
 """
 from __future__ import annotations
 

@@ -1,12 +1,14 @@
 """What runs when the web process starts.
 
-Deliberately small. Schema changes and data backfills are Alembic revisions,
-applied once by `python -m app.migrate` — they used to run here on every boot,
-and a repair that is right once is a data-corruption bug the hundredth time.
+Deliberately small. Schema changes and data backfills are Alembic revisions:
+each is applied once and recorded, so a boot with nothing pending changes
+nothing. They used to be re-run here on every boot, and a repair that is right
+once is a data-corruption bug the hundredth time.
 
 What is left is work that genuinely belongs to a boot, each step idempotent:
 
-* the schema check (refuse to serve against a database that is behind)
+* bringing the schema to the migration head (or, with AUTO_MIGRATE=false,
+  refusing to serve against a database that is behind)
 * the PII encryption sweep — it depends on FIELD_ENCRYPTION_KEY, which changes
   by editing the environment and restarting, not by a migration
 * housekeeping purges and the platform super-admin bootstrap

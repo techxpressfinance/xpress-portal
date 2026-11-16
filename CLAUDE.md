@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Multi-tenant loan-broking portal ("Xpress Tech"): FastAPI + SQLAlchemy backend (`backend/`), React 19 + TypeScript + Vite + Tailwind 4 frontend (`frontend/`). Backend tests live in `backend/tests/` (pytest); the frontend has none. CI (`.github/workflows/deploy.yml`) runs frontend `npm run lint` + `npx tsc --noEmit` and backend `pytest` on push to main, then deploys to EC2. One Python version everywhere: 3.12 (`.python-version`; the Dockerfile, CI and `deploy.sh` all follow it).
+Multi-tenant loan-broking portal ("Xpress Tech"): FastAPI + SQLAlchemy backend (`backend/`), React 19 + TypeScript + Vite + Tailwind 4 frontend (`frontend/`). Backend tests live in `backend/tests/` (pytest); the frontend has none. CI (`.github/workflows/deploy.yml`) runs frontend `npm run lint` + `npx tsc --noEmit` and backend `pytest` on push to main, then deploys to EC2. One Python version everywhere: 3.12 (`.python-version`; the Dockerfile and CI follow it).
 
 ## Commands
 
@@ -34,13 +34,13 @@ npm run lint
 
 ### Backend layout (`backend/app/`)
 - `main.py` — app assembly only: middleware stack, router registration, health endpoints, APScheduler startup. It never touches the schema.
-- `startup.py` — what runs at boot: schema check, encryption-key sweep, super-admin bootstrap, housekeeping purges. `migrate.py` — the migration entrypoint. `observability.py` — Sentry (inert without `SENTRY_DSN`).
+- `startup.py` — what runs at boot: pending migrations, encryption-key sweep, super-admin bootstrap, housekeeping purges. `migrate.py` — the migration entrypoint. `observability.py` — Sentry (inert without `SENTRY_DSN`).
 - `routers/` — one file per resource; `models/` — SQLAlchemy; `schemas/` — Pydantic; `services/` — email, OCR, LLM analysis, encryption, S3, search cache, etc.; `middleware/` — tenant, auth, CSRF, rate-limit, security headers.
 
 ### Schema migrations (Alembic)
 The schema is owned by Alembic (`backend/migrations/`, config in `backend/alembic.ini`). Each revision runs once and is recorded in `alembic_version`. To change the schema: edit the model, run `alembic revision --autogenerate -m "..."` against an up-to-date dev DB, review the generated file, commit it. `tests/test_migrations.py` fails if models and migrations disagree.
 
-- `python -m app.migrate` is the only thing that changes the schema. Development runs it at startup (`AUTO_MIGRATE`); production never does — `deploy/deploy.sh` runs it after a backup, and the app refuses to start on a stale schema.
+- Pending revisions are applied when the server starts (`AUTO_MIGRATE`, on by default — single worker), so a deploy is just pull + restart. `python -m app.migrate` does the same by hand; with `AUTO_MIGRATE=false` the app refuses to start on a stale schema instead.
 - Migrations must work on both Postgres and SQLite (`render_as_batch` is on for SQLite). Data backfills go in a revision too — never in startup code, where they would re-run on every boot.
 - `app/legacy_migrations.py` is the frozen pre-Alembic upgrade path, run once for a database that predates Alembic. Do not add to it.
 - New model modules under `app/models/` are picked up automatically (the package imports every module).
