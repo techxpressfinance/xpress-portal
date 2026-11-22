@@ -10,7 +10,7 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
     """Raise 403 if the current user doesn't have access to this application.
 
     Rules: admin/broker=every application in the tenant, client=own only,
-    referrer=referred clients only.
+    referrer=applications credited to them (per application) or their own.
     """
     # Brokers see every application in their tenant. Broker assignment drives
     # attribution, workload and notifications — it is deliberately NOT an access
@@ -25,20 +25,9 @@ def check_application_access(app: LoanApplication, current_user: User, *, db=Non
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
         return
     if current_user.role == UserRole.referrer:
-        # Allow access to leads submitted directly by this referrer
-        if app.user_id == current_user.id:
+        # Credit is per application: a referrer sees the files credited to them
+        # and leads they submitted themselves — not the client's other loans,
+        # which another referrer may have brought in.
+        if app.user_id == current_user.id or app.referrer_id == current_user.id:
             return
-        if db is None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        from app.models.external_referral import ExternalReferral
-        referral = (
-            db.query(ExternalReferral)
-            .filter(
-                ExternalReferral.referrer_id == current_user.id,
-                ExternalReferral.referred_client_id == app.user_id,
-            )
-            .first()
-        )
-        if not referral:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")

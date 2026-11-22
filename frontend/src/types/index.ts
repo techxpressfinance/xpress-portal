@@ -249,8 +249,10 @@ export interface LoanApplication {
   client_engagement_model: ClientEngagementModel | null;
   // Set when this application was started as a clone of another one
   cloned_from_id?: string | null;
-  // Referrer info (populated from referral data)
+  // The referrer partner credited with THIS application — per application, so
+  // a client's loans can each have a different referrer.
   referrer: ReferrerInfo | null;
+  referrer_id?: string | null;
   // Staff-only: the existing client (contact) credited with referring this deal.
   referred_by_contact_id?: string | null;
   referred_by?: ReferredBy | null;
@@ -551,6 +553,28 @@ export interface ReferrerInfo {
   email: string | null;
   phone: string | null;
   organization_name: string | null;
+}
+
+/** A referrer as the contact and entity pages show one. */
+export interface ReferrerRef {
+  id: string;
+  full_name: string | null;
+  organization_name?: string | null;
+}
+
+export type ReferrerChangeSource = 'created' | 'changed' | 'backfill';
+
+/** One step in an application's referrer history (staff only). */
+export interface ReferrerChange {
+  id: string;
+  application_id: string;
+  from_referrer: ReferrerRef | null;
+  to_referrer: ReferrerRef | null;
+  changed_by_name: string | null;
+  source: ReferrerChangeSource;
+  source_label: string;
+  note: string | null;
+  created_at: string;
 }
 
 export interface ExternalReferrerStats {
@@ -1722,6 +1746,8 @@ export interface ContactApplication {
   status: ApplicationStatus;
   business_name: string | null;
   business_abn: string | null;
+  /** The referrer credited with this application. */
+  referrer?: ReferrerRef | null;
   created_at: string;
   updated_at: string;
 }
@@ -2048,6 +2074,8 @@ export interface OrganizationApplicationLite {
   /** The application's owner — the creating broker on staff-created rows. */
   user_name: string | null;
   user_role: string | null;
+  /** The referrer credited with this application. */
+  referrer?: ReferrerRef | null;
 }
 
 /** Business facts as stated on the entity's newest application. */
@@ -2065,6 +2093,8 @@ export interface OrganizationDetail extends Organization {
   contacts: OrganizationContactLite[];
   applications: OrganizationApplicationLite[];
   trust_parties: TrustParty[];
+  /** Every referrer credit across the entity's applications, newest first. */
+  referrer_history?: ReferrerChange[];
 }
 
 export interface ContactDetail extends Contact {
@@ -2073,6 +2103,10 @@ export interface ContactDetail extends Contact {
   lending_history: LendingHistoryEntry[];
   /** The lead inquiries this contact was converted from. */
   leads: Lead[];
+  /** The partner who introduced this client — the default for new applications. */
+  introduced_by?: ReferrerRef | null;
+  /** Every referrer credit across this client's applications, newest first. */
+  referrer_history?: ReferrerChange[];
 }
 
 export type DuplicateConfidence = 'high' | 'review';

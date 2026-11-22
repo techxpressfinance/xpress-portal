@@ -9,10 +9,8 @@ from app.database import SessionLocal
 from app.models.lender_submission import LenderSubmission, SubmissionStatus
 from app.models.loan_application import ApplicationStatus, LoanApplication
 from app.models.settled_deal_snapshot import SettledDealSnapshot
-from app.models.user import UserRole
 from app.services.contact_history import snapshot_parties
 from app.services.loan_category import application_loan_category
-from app.services.serialization import referrer_info_map
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +46,9 @@ def _resolve_lender_id(db: Session, application_id: str) -> str | None:
     return submission.lender_id if submission else None
 
 
-def _resolve_referrer_id(app: LoanApplication, referrer_map: dict[str, dict]) -> str | None:
-    if app.user and app.user.role == UserRole.referrer:
-        return app.user.id
-    info = referrer_map.get(app.user_id)
-    return info["id"] if info else None
+def _resolve_referrer_id(app: LoanApplication) -> str | None:
+    """The referrer credited with this application (per application)."""
+    return app.referrer_id
 
 
 def archive_settled_deals(session_factory=SessionLocal) -> None:
@@ -84,8 +80,6 @@ def archive_settled_deals(session_factory=SessionLocal) -> None:
         if not candidates:
             return
 
-        referrer_map = referrer_info_map(db, (app.user_id for app in candidates))
-
         # Committed one at a time (not batched into a single commit at the end):
         # a single bad row (bad data, a transient constraint issue) must not roll
         # back — and therefore silently drop — every other deal in the same sweep.
@@ -110,7 +104,7 @@ def archive_settled_deals(session_factory=SessionLocal) -> None:
                     amount=app.amount,
                     client_user_id=app.user_id,
                     broker_id=_resolve_broker_id(app),
-                    referrer_id=_resolve_referrer_id(app, referrer_map),
+                    referrer_id=_resolve_referrer_id(app),
                     lender_id=_resolve_lender_id(db, app.id),
                 ))
                 snapshot_parties(db, app)

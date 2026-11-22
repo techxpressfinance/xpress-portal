@@ -46,6 +46,13 @@ from app.services.scoring import score, tokenize
 from app.services.search_cache import get_searchable_contacts
 from app.services.serialization import app_with_user
 from app.services.tenant_scope import get_in_tenant, get_tenant_id
+from app.services.referrer_attribution import (
+    client_referrer,
+    referrer_dict,
+    referrer_history,
+    referrer_users_map,
+    stamp_initial_referrer,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -344,6 +351,7 @@ def add_contact_to_pipeline(
         application.assigned_broker_id = current_user.id
     db.add(application)
     db.flush()
+    stamp_initial_referrer(db, application, current_user)
     # Record the chosen stage on that board, so a card dropped straight into a
     # named stage stays there instead of falling back to its status's first one.
     if column:
@@ -461,6 +469,13 @@ def merge_contact_group(
     return _contact_with_count(primary, db)
 
 
+def _referrer_ref(info: Optional[dict]) -> Optional[dict]:
+    """A referrer as the contact and entity pages show one."""
+    if not info:
+        return None
+    return {"id": info["id"], "full_name": info.get("full_name"), "organization_name": info.get("organization_name")}
+
+
 @router.get("/{contact_id}", response_model=ContactDetailOut)
 def get_contact(
     contact_id: str,
@@ -491,6 +506,16 @@ def get_contact(
         })
 
     applications = contact_applications(db, contact_id, tenant_id)
+    # Who was credited on each loan — a client can come through different
+    # referrers for different applications — and how that changed over time.
+    refs = referrer_users_map(db, (a.get("referrer_id") for a in applications))
+    for a in applications:
+        a["referrer"] = _referrer_ref(refs.get(a.pop("referrer_id", None) or ""))
+    history = referrer_history(db, tenant_id, [a["id"] for a in applications if a["source"] == "application"])
+    portal_user = db.query(User).filter(
+        User.contact_id == contact_id, User.tenant_id == tenant_id, User.deleted_at.is_(None),
+    ).first()
+    introduced_by = client_referrer(db, portal_user.id) if portal_user else None
     lending_history = _list_lending_history(contact_id, db, tenant_id)
 
     # The inquiries this contact came from — a contact is only created when a
@@ -508,6 +533,8 @@ def get_contact(
         "applications": applications,
         "lending_history": lending_history,
         "leads": [lead_to_dict(lead) for lead in leads],
+        "introduced_by": _referrer_ref(referrer_dict(introduced_by)),
+        "referrer_history": history,
     }
 
 

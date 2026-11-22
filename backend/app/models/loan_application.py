@@ -193,6 +193,15 @@ class LoanApplication(TenantScoped, Base):
         String(36), ForeignKey("contacts.id", ondelete="SET NULL"), index=True, nullable=True
     )
 
+    # The referrer partner credited with THIS application. Per application, not
+    # per client: a client can come to us through different referrers for
+    # different loans. Stamped at creation from the client's referrer (see
+    # services/referrer_attribution.py); changes are kept in
+    # application_referrer_changes. A referrer sees only the apps credited to them.
+    referrer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
     # Business / company linkage
     business_organization_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
 
@@ -265,6 +274,7 @@ class LoanApplication(TenantScoped, Base):
     contact = relationship("Contact", back_populates="applications", foreign_keys=[contact_id])
     business_organization = relationship("Organization", foreign_keys=[business_organization_id])
     referred_by_contact = relationship("Contact", foreign_keys=[referred_by_contact_id])
+    referrer = relationship("User", foreign_keys=[referrer_id])
     user = relationship("User", back_populates="applications", foreign_keys=[user_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     # Legacy single-broker FK kept for backward compat / migration

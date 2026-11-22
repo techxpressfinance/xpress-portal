@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.models.loan_application import LoanType
 from app.schemas.lead import LeadOut
+from app.schemas.loan_application import ReferrerChangeOut, ReferrerRefOut
 from app.schemas.lending_history import LendingHistoryEntryOut
 
 
@@ -39,6 +40,8 @@ class ContactApplicationOut(BaseModel):
     lender_name: Optional[str] = None
     settled_at: Optional[datetime] = None
     can_open: bool = True
+    # The referrer credited with this application (per application).
+    referrer: Optional[ReferrerRefOut] = None
     created_at: datetime
     updated_at: datetime
 
@@ -103,6 +106,10 @@ class ContactDetailOut(ContactOut):
     lending_history: list[LendingHistoryEntryOut] = []
     # The lead inquiries this contact was converted from.
     leads: list[LeadOut] = []
+    # The partner who introduced this client (the default for new applications).
+    introduced_by: Optional[ReferrerRefOut] = None
+    # Every referrer credit across this client's applications, newest first.
+    referrer_history: list[ReferrerChangeOut] = []
 
 
 class ContactCreate(BaseModel):

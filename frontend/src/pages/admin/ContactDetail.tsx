@@ -13,9 +13,10 @@ import ArrearsSection from '../../components/arrears/ArrearsSection';
 import CommitmentScheduleSection from '../../components/CommitmentScheduleSection';
 import PortalAccess from '../../components/clients/PortalAccess';
 import ContactLendingHistory from '../../components/clients/ContactLendingHistory';
+import ReferrerHistory from '../../components/ReferrerHistory';
 import StartContactApplication from '../../components/clients/StartContactApplication';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
-import { clearsApproval, loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
+import { clearsApproval, LOAN_TYPE_LABELS, loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
 import type { ContactDetail as ContactDetailType, ContactApplication, EntityType, LendingHistoryEntry, RepaymentFrequency, TrustType } from '../../types';
 
 const REPAYMENT_FREQUENCIES: { value: RepaymentFrequency; label: string; short: string }[] = [
@@ -957,7 +958,7 @@ export default function ContactDetail() {
       }}>Keep as separate person</Button></Card>}
       {startingApplication && <StartContactApplication contactId={contact.id} onClose={() => setStartingApplication(false)} />}
       <nav className="flex flex-wrap gap-5 border-b border-border pb-3 text-sm" aria-label="Profile sections">
-        <a href="#overview" className="hover:text-primary">Overview</a><a href="#lending-history" className="hover:text-primary">Lending history</a><a href="#entities" className="hover:text-primary">Entities</a><a href="#portal-access" className="hover:text-primary">Portal access</a>
+        <a href="#overview" className="hover:text-primary">Overview</a><a href="#lending-history" className="hover:text-primary">Lending history</a><a href="#referrers" className="hover:text-primary">Referrers</a><a href="#entities" className="hover:text-primary">Entities</a><a href="#portal-access" className="hover:text-primary">Portal access</a>
       </nav>
       <div className="grid gap-4 sm:grid-cols-3">
         <Card><p className="text-sm text-muted-foreground">Applications & settlements</p><p className="text-2xl font-semibold mt-1">{contact.applications.length}</p></Card>
@@ -1026,6 +1027,33 @@ export default function ContactDetail() {
       <section id="lending-history" className="scroll-mt-6">
         <ContactLendingHistory key={contact.id} contact={contact} onAdd={() => setLendingModal({ entry: null })} onNotes={() => setShowNotesHistory(true)} onEditLoan={entry => setLendingModal({ entry })} onDeleteLoan={handleDeleteLendingEntry} onEditApplication={setEditingApp} deletingId={deletingEntryId} />
       </section>
+      {/* Who brought each of this client's loans in, and how that changed. */}
+      <section id="referrers" className="scroll-mt-6"><Card>
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">Referrers</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Each application is credited to its own referrer, so a client can come to us through different referrers over time.
+            Change one from the application&rsquo;s Referrals box.
+          </p>
+        </div>
+        <p className="text-sm mb-4">
+          <span className="text-muted-foreground">Introduced by: </span>
+          {contact.introduced_by ? (
+            <Link to={`/admin/referrers/${contact.introduced_by.id}`} className="font-medium text-primary hover:underline">
+              {contact.introduced_by.organization_name || contact.introduced_by.full_name || 'Referrer'}
+            </Link>
+          ) : <span className="text-muted-foreground">nobody — came to us directly</span>}
+          <span className="text-muted-foreground"> · the default for their new applications</span>
+        </p>
+        <ReferrerHistory
+          history={contact.referrer_history ?? []}
+          applicationLabel={(appId) => {
+            const a = contact.applications.find((x) => x.id === appId);
+            return a ? `${LOAN_TYPE_LABELS[a.loan_type] || a.loan_type} · $${a.amount.toLocaleString('en-AU')}` : 'Application';
+          }}
+          emptyText="None of this client's applications has been credited to a referrer."
+        />
+      </Card></section>
       <CommitmentScheduleSection key={`cs-${contact.id}`} holderType="contact" holderId={contact.id} />
       {showNotesHistory && id && <NotesHistoryModal subject={{ type: 'contact', id }} onClose={() => setShowNotesHistory(false)} />}
       {/* Companies */}

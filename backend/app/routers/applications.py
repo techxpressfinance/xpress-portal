@@ -55,6 +55,7 @@ from app.services.loan_category import category_filtered_ids, parse_categories
 from app.services.vin import check_application_assets
 from app.services.journey import summary as journey_summary, summary_map as journey_summary_map
 from app.services.serialization import app_with_user as _app_with_user, is_staff_viewer, referrer_info_map
+from app.services.referrer_attribution import credited_application_filter, set_application_referrer, stamp_initial_referrer, referrer_history
 from app.services.email import (
     send_assignment_notification,
     send_complete_application_email,
@@ -70,6 +71,8 @@ from app.services.organizations import ensure_contact_organization_link, find_or
 from app.services.reconciliation import find_matching_application, signature_diff
 from app.schemas.loan_application import (
     AddCompanyDirectorsRequest,
+    ApplicationReferrerUpdate,
+    ReferrerChangeOut,
     ApprovalConditionCreate,
     ApprovalConditionOut,
     ApprovalConditionUpdate,
@@ -279,6 +282,7 @@ def create_application(
 
     db.add(app)
     db.flush()
+    stamp_initial_referrer(db, app, current_user)
 
     # A company can have an optional primary contact entered beside it. Preserve
     # that person in the CRM and on the entity without mistaking them for a
@@ -606,6 +610,9 @@ def clone_application(
     app.brokers = list(source.brokers)
     db.add(app)
     db.flush()
+    # A copy keeps the source's referrer (or lack of one); record the credit.
+    if app.referrer_id:
+        stamp_initial_referrer(db, app, current_user, referrer_id=app.referrer_id)
 
     def _clone_party(src_party: LoanApplicant, *, guarantor_id: Optional[str] = None) -> None:
         party = LoanApplicant(
@@ -694,21 +701,8 @@ def list_applications(
         )
     # Brokers are unscoped here — they see every application in the tenant.
     elif current_user.role == UserRole.referrer:
-        # Referrers see: applications from clients they referred + leads they submitted directly
-        referred_client_ids = (
-            db.query(ExternalReferral.referred_client_id)
-            .filter(
-                ExternalReferral.referrer_id == current_user.id,
-                ExternalReferral.referred_client_id.isnot(None),
-            )
-        )
-        from sqlalchemy import or_
-        query = query.filter(
-            or_(
-                LoanApplication.user_id.in_(referred_client_ids),
-                LoanApplication.user_id == current_user.id,
-            )
-        )
+        # Referrers see the applications credited to them + leads they submitted directly.
+        query = query.filter(credited_application_filter(current_user.id))
 
     if status_filter:
         query = query.filter(LoanApplication.status == status_filter)
@@ -744,7 +738,7 @@ def list_applications(
     total = query.count()
     items = query.order_by(LoanApplication.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
-    referrer_map = referrer_info_map(db, (app.user_id for app in items))
+    referrer_map = referrer_info_map(db, (app.referrer_id for app in items))
     is_client = current_user.role == UserRole.client
     is_referrer = current_user.role == UserRole.referrer
     # Where each file is up to and whose move it is. Only a referrer's list
@@ -774,7 +768,7 @@ def get_application_analytics(
     current_user: User = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    from sqlalchemy import func, or_
+    from sqlalchemy import func
 
     query = db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
 
@@ -785,16 +779,7 @@ def get_application_analytics(
         )
     # Brokers are unscoped here — they see every application in the tenant.
     elif current_user.role == UserRole.referrer:
-        referred_client_ids = db.query(ExternalReferral.referred_client_id).filter(
-            ExternalReferral.referrer_id == current_user.id,
-            ExternalReferral.referred_client_id.isnot(None),
-        )
-        query = query.filter(
-            or_(
-                LoanApplication.user_id.in_(referred_client_ids),
-                LoanApplication.user_id == current_user.id,
-            )
-        )
+        query = query.filter(credited_application_filter(current_user.id))
 
     active_statuses = {"application_received", "application_assessed", "submitted", "approval"}
 
@@ -869,7 +854,7 @@ def list_deleted_applications(
         .order_by(LoanApplication.deleted_at.desc())
         .all()
     )
-    referrer_map = referrer_info_map(db, (app.user_id for app in apps))
+    referrer_map = referrer_info_map(db, (app.referrer_id for app in apps))
     return [_app_with_user(app, db, referrer_map=referrer_map, viewer=current_user) for app in apps]
 
 
@@ -1413,6 +1398,46 @@ def set_referred_by(
         db.commit()
     db.refresh(application, attribute_names=["user", "referred_by_contact"])
     return _app_with_user(application, db, viewer=current_user)
+
+
+@router.put("/{app_id}/referrer", response_model=LoanApplicationOut)
+def set_application_referrer_endpoint(
+    app_id: str,
+    data: ApplicationReferrerUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Change the referrer partner credited with this one application (None =
+    no referrer). The client's other applications keep their own credit. Kept
+    in the application's referrer history and the activity log."""
+    application = db.query(LoanApplication).filter(
+        LoanApplication.id == app_id,
+        LoanApplication.tenant_id == tenant_id,
+        LoanApplication.deleted_at.is_(None),
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if set_application_referrer(db, application, data.referrer_id, current_user, data.note):
+        db.commit()
+    db.refresh(application, attribute_names=["user", "referrer", "referred_by_contact"])
+    return _app_with_user(application, db, viewer=current_user)
+
+
+@router.get("/{app_id}/referrer-history", response_model=list[ReferrerChangeOut])
+def get_application_referrer_history(
+    app_id: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Every referrer this application has been credited to, newest first."""
+    application = db.query(LoanApplication.id).filter(
+        LoanApplication.id == app_id, LoanApplication.tenant_id == tenant_id,
+    ).first()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return referrer_history(db, tenant_id, [app_id])
 
 
 class ClientSectionsUpdate(BaseModel):

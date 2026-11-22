@@ -492,32 +492,24 @@ def _load_referrer(db: Session, referrer_id: str, tenant_id: str) -> User:
 def _referrer_applications(db: Session, referrer: User, tenant_id: str, viewer: User) -> list[dict]:
     """Applications a referrer can see, serialized for a staff viewer.
 
-    Same scope as the referrer's own applications list: files owned by a client
-    they referred, plus leads they submitted themselves.
+    Same scope as the referrer's own applications list: the files credited to
+    them (per application), plus leads they submitted themselves.
     """
-    from sqlalchemy import or_
-
     from app.models.loan_application import LoanApplication
+    from app.services.referrer_attribution import credited_application_filter
     from app.services.serialization import app_with_user, referrer_info_map
 
-    referred_client_ids = db.query(ExternalReferral.referred_client_id).filter(
-        ExternalReferral.referrer_id == referrer.id,
-        ExternalReferral.referred_client_id.isnot(None),
-    )
     apps = (
         db.query(LoanApplication)
         .filter(
             LoanApplication.tenant_id == tenant_id,
             LoanApplication.deleted_at.is_(None),
-            or_(
-                LoanApplication.user_id.in_(referred_client_ids),
-                LoanApplication.user_id == referrer.id,
-            ),
+            credited_application_filter(referrer.id),
         )
         .order_by(LoanApplication.created_at.desc())
         .all()
     )
-    referrer_map = referrer_info_map(db, (a.user_id for a in apps))
+    referrer_map = referrer_info_map(db, (a.referrer_id for a in apps))
     return [
         app_with_user(a, db, referrer_map=referrer_map, list_item=True, viewer=viewer)
         for a in apps

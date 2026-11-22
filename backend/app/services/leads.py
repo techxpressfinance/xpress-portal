@@ -30,6 +30,7 @@ from app.services.loan_category import (
 )
 from app.services.organizations import find_or_create_organization_by_abn
 from app.services.serialization import referred_by_dict
+from app.services.referrer_attribution import stamp_initial_referrer
 
 CATEGORY_LABELS = {"asset_finance": "Asset Finance", "home_loan": "Home Loan", "commercial": "Commercial"}
 
@@ -156,6 +157,7 @@ def convert_lead(db: Session, lead: Lead, actor: User, tenant_id: str) -> tuple[
                 application.business_name = org.name
     db.add(application)
     db.flush()
+    stamp_initial_referrer(db, application, actor, lead=lead)
 
     # application_brokers, not the legacy column, is what broker visibility reads.
     if assigned_broker_id:

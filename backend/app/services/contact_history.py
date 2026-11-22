@@ -93,7 +93,8 @@ def contact_applications(db: Session, contact_id: str, tenant_id: str) -> list[d
     result = {a.id: dict(id=a.id, loan_type=a.loan_type.value, amount=float(a.amount), status=a.status.value,
                         business_name=a.business_name, business_abn=a.business_abn,
                         created_at=a.created_at, updated_at=a.updated_at, roles=roles[a.id], source="application",
-                        lender_name=a.approval_lender_name, settled_at=a.settled_at, can_open=True)
+                        lender_name=a.approval_lender_name, settled_at=a.settled_at, can_open=True,
+                        referrer_id=a.referrer_id)
               for a in apps}
     snapshots = db.query(SettledDealSnapshot, SettledDealParty, Lender.name).join(
         SettledDealParty, (SettledDealParty.application_id == SettledDealSnapshot.application_id)
@@ -108,7 +109,7 @@ def contact_applications(db: Session, contact_id: str, tenant_id: str) -> list[d
             result[snap.application_id] = dict(id=snap.application_id, loan_type=snap.loan_type, amount=float(snap.amount),
                 status="settled", business_name=None, business_abn=None, created_at=snap.settled_at or snap.archived_at,
                 updated_at=snap.archived_at, roles=[], source="settlement", lender_name=lender,
-                settled_at=snap.settled_at, can_open=False)
+                settled_at=snap.settled_at, can_open=False, referrer_id=snap.referrer_id)
         if party.role not in result[snap.application_id]["roles"]:
             result[snap.application_id]["roles"].append(party.role)
     return sorted(result.values(), key=lambda a: (a["settled_at"] or a["created_at"]).isoformat(), reverse=True)

@@ -74,7 +74,6 @@ from app.services.loan_category import (
     application_loan_category,
     application_sub_type,
 )
-from app.services.serialization import referrer_info_map
 
 LEDGER_GRANT_DELAY = timedelta(hours=24)
 
@@ -760,12 +759,10 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
     payees = {p.id: p for p in db.query(LedgerPayee).filter(LedgerPayee.tenant_id == tenant_id)}
     payee_by_user = {p.user_id: p for p in payees.values() if p.user_id}
 
-    # The referrer on the client, as the rest of the app attributes it — the
-    # payee a deal has until the owner says otherwise.
-    client_referrers = referrer_info_map(db, (a.user_id for a in apps))
+    # The referrer credited with the application, as the rest of the app
+    # attributes it — the payee a deal has until the owner says otherwise.
     user_ids = {e.referrer_id for e in list(entries.values()) + manual if e.referrer_set and e.referrer_id}
-    user_ids |= {info["id"] for info in client_referrers.values()}
-    user_ids |= {a.user_id for a in apps if a.user and a.user.role == UserRole.referrer}
+    user_ids |= {a.referrer_id for a in apps if a.referrer_id}
     user_ids |= set(payee_by_user)
     app_brokers = _app_brokers(db, apps)
     broker_ids = {b for bs in app_brokers.values() for b in bs} | {m.manual_broker_id for m in manual if m.manual_broker_id}
@@ -1000,11 +997,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
                     (pricing_sheet.lender_id if pricing_sheet else None) or snapshot_lenders.get(app.id) or ""
                 )
             lender_prefilled = bool(lender)
-        if app.user and app.user.role == UserRole.referrer:
-            default_uid = app.user.id
-        else:
-            info = client_referrers.get(app.user_id)
-            default_uid = info["id"] if info else None
+        default_uid = app.referrer_id
         settled = when(app)
         derived_repeat = repeat_clients.get(app.id, False)
         derived_new_lead = inquiry_dates[app.id].replace(day=1) == settled.replace(day=1)

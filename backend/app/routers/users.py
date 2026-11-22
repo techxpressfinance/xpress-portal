@@ -269,7 +269,8 @@ def get_user_referrer(
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Get the referrer of a user, if any."""
+    """The partner who introduced this client — the default referrer for
+    their new applications. Each application carries its own credit."""
     get_in_tenant(db, User, user_id, tenant_id, detail="User not found")
     ext_ref = db.query(ExternalReferral).filter(
         ExternalReferral.referred_client_id == user_id,
@@ -313,8 +314,10 @@ def set_user_referrer(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Credit a referrer for an application owner who has none — for leads that
-    arrived outside the portal (e.g. via WhatsApp) and were entered by staff."""
+    """Record who introduced a client who has no referrer link — for leads
+    that arrived outside the portal (e.g. via WhatsApp). It becomes the default
+    for the client's NEW applications; existing ones keep their own credit
+    (change those per application)."""
     client = db.query(User).filter(
         User.id == user_id,
         User.tenant_id == tenant_id,
@@ -365,8 +368,9 @@ def unlink_user_referrer(
     current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Remove an application owner's referrer attribution. The referrer stops being
-    credited for the user (and their applications) and loses the user from their lists."""
+    """Remove the client-level link to the referrer who introduced them, so
+    their new applications start without one. Applications already credited
+    keep their own referrer — change those per application."""
     client = db.query(User).filter(
         User.id == user_id,
         User.tenant_id == tenant_id,

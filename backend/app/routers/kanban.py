@@ -1250,7 +1250,7 @@ def get_board_applications(
         ):
             placements[app_id] = (col_id, entered_at)
 
-    referrer_map = referrer_info_map(db, (app.user_id for app in apps))
+    referrer_map = referrer_info_map(db, (app.referrer_id for app in apps))
     for app in apps:
         placed_col_id, entered_at = placements.get(app.id, (None, None))
         col_id = placed_col_id if placed_col_id in app_col_ids else fallback.get(app.status.value)

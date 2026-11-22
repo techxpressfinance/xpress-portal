@@ -30,6 +30,7 @@ import DirectDebitPanel from '../../components/DirectDebitPanel';
 import SettlementDeclarationsPanel from '../../components/SettlementDeclarationsPanel';
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
+import ReferrerHistory from '../../components/ReferrerHistory';
 import ProgressLink from '../../components/ProgressLink';
 import NoteFeed from '../../components/notes/NoteFeed';
 import StickyNote from '../../components/notes/StickyNote';
@@ -47,7 +48,7 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { downloadElementPdf, downloadQuoteSheetPdf } from '../../lib/pdfExport';
 import ApplicationPrint from '../../components/print/ApplicationPrint';
 import { migrateQuoteParams, optionTermMonths, termLabel } from '../../lib/quoteTerms';
-import type { ActivityLog, ApplicationNote, BrokerGroup, DeclineReason, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, User } from '../../types';
+import type { ActivityLog, ApplicationNote, BrokerGroup, DeclineReason, ClientAlert, ClientMessage, Contact, DocType, Document, DocumentRequest, EntitySearchResult, Lender, LenderSubmission, LenderSubmissionStatus, LoanApplication, LoanType, QuoteSheet, ReferredBy, ReferrerChange, ReferrerInfo, User } from '../../types';
 import { ACTION_ICON_CONFIG, ACTION_LABELS } from '../../lib/constants';
 import { describeActivity } from '../../lib/activityLog';
 import { RESIDENCY_STATUSES, VISA_CATEGORIES, isVisaHolder } from '../../lib/residency';
@@ -169,9 +170,15 @@ export default function ReviewApplication() {
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [client, setClient] = useState<User | null>(null);
-  const [referrer, setReferrer] = useState<{ id: string; full_name: string; email: string; phone: string | null; organization_name?: string | null } | null>(null);
+  // The referrer partner credited with THIS application (per application).
+  const [referrer, setReferrer] = useState<ReferrerInfo | null>(null);
+  // Who introduced the client — the default for their new applications.
+  const [clientIntroducer, setClientIntroducer] = useState<ReferrerInfo | null>(null);
+  const [referrerHistory, setReferrerHistory] = useState<ReferrerChange[]>([]);
+  const [editingReferrer, setEditingReferrer] = useState(false);
+  const [referrerNote, setReferrerNote] = useState('');
   const [brokers, setBrokers] = useState<User[]>([]);
-  // Linking a referrer to a client who has none (lead arrived outside the portal)
+  // Crediting / changing the referrer on this application
   const [pickedReferrer, setPickedReferrer] = useState<PickedReferrer | null>(null);
   const [linkingReferrer, setLinkingReferrer] = useState(false);
   const [confirmUnlinkReferrer, setConfirmUnlinkReferrer] = useState(false);
@@ -467,6 +474,8 @@ export default function ReviewApplication() {
 
         setBrokers(brokersRes.data);
 
+        setReferrer(appRes.data.referrer ?? null);
+        loadReferrerHistory();
         // The application's owner is fetched by id rather than found in a list of
         // everyone — it may be the client, or the referrer on a direct lead, or
         // the staff member who created the card.
@@ -487,13 +496,14 @@ export default function ReviewApplication() {
             if (owner.role === 'referrer') {
               // Direct referrer lead — user_id IS the referrer, client has no account
               setClient(null);
-              setReferrer({ id: owner.id, full_name: owner.full_name, email: owner.email, phone: owner.phone, organization_name: appRes.data.referrer?.organization_name ?? null });
               return;
             }
             setClient(owner);
-            api.get(`/users/${ownerId}/referrer`)
-              .then(({ data }) => setReferrer(data.referrer || null))
-              .catch(() => setLoadErrors((prev) => (prev.includes('Referrer') ? prev : [...prev, 'Referrer'])));
+            if (owner.role === 'client') {
+              api.get(`/users/${ownerId}/referrer`)
+                .then(({ data }) => setClientIntroducer(data.referrer || null))
+                .catch(() => setClientIntroducer(null));
+            }
           })
           .catch(() => setClient(null));
       })
@@ -525,19 +535,39 @@ export default function ReviewApplication() {
     } catch { /* ignore */ }
   };
 
-  const handleLinkReferrer = async () => {
-    if (!client || !pickedReferrer) return;
+  function loadReferrerHistory() {
+    if (!id) return;
+    api.get<ReferrerChange[]>(`/applications/${id}/referrer-history`)
+      .then(({ data }) => setReferrerHistory(data))
+      .catch(() => setReferrerHistory([]));
+  }
+
+  // Credit, change or remove (null) the referrer on THIS application only.
+  const saveApplicationReferrer = async (referrerId: string | null) => {
+    if (!id) return;
     setLinkingReferrer(true);
     try {
-      const { data } = await api.post(`/users/${client.id}/referrer`, { referrer_id: pickedReferrer.id });
-      setReferrer(data.referrer);
+      const { data } = await api.put<LoanApplication>(`/applications/${id}/referrer`, {
+        referrer_id: referrerId,
+        note: referrerNote.trim() || null,
+      });
+      setReferrer(data.referrer ?? null);
+      setApplication((prev) => (prev ? { ...prev, referrer: data.referrer, referrer_id: data.referrer_id } : prev));
       setPickedReferrer(null);
-      toast('Referrer linked', 'success');
+      setReferrerNote('');
+      setEditingReferrer(false);
+      setConfirmUnlinkReferrer(false);
+      loadReferrerHistory();
+      toast(referrerId ? 'Referrer updated for this application' : 'Referrer removed from this application', 'success');
     } catch (err) {
-      toast(getErrorMessage(err, 'Failed to link referrer'), 'error');
+      toast(getErrorMessage(err, 'Failed to update the referrer'), 'error');
     } finally {
       setLinkingReferrer(false);
     }
+  };
+
+  const handleLinkReferrer = () => {
+    if (pickedReferrer) saveApplicationReferrer(pickedReferrer.id);
   };
 
   // Credit an existing client with sending us this deal (marketing tracking).
@@ -556,15 +586,9 @@ export default function ReviewApplication() {
   };
 
   const handleUnlinkReferrer = async () => {
-    if (!client) return;
     setUnlinkingReferrer(true);
     try {
-      await api.delete(`/users/${client.id}/referrer`);
-      setReferrer(null);
-      setConfirmUnlinkReferrer(false);
-      toast('Referrer unlinked', 'success');
-    } catch (err) {
-      toast(getErrorMessage(err, 'Failed to unlink referrer'), 'error');
+      await saveApplicationReferrer(null);
     } finally {
       setUnlinkingReferrer(false);
     }
@@ -1611,13 +1635,21 @@ export default function ReviewApplication() {
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <h3 className="text-[13px] font-semibold text-foreground">Referrer partner</h3>
-                        {referrer && client && (
-                          <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
-                            Unlink
-                          </Button>
+                        {referrer && !editingReferrer && (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => { setEditingReferrer(true); setPickedReferrer(null); }}>
+                              Change
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setConfirmUnlinkReferrer(true)}>
+                              Remove
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      {referrer ? (
+                      <p className="text-[12px] text-muted-foreground mb-2">
+                        Credited on this application only — the client&rsquo;s other applications keep their own referrer.
+                      </p>
+                      {referrer && (
                         <dl className="grid gap-2 sm:grid-cols-2">
                           <div className="rounded-lg bg-secondary/50 px-3 py-1.5">
                             <dt className="text-[11px] font-medium text-muted-foreground">Name</dt>
@@ -1649,24 +1681,55 @@ export default function ReviewApplication() {
                             </dd>
                           </div>
                         </dl>
-                      ) : client ? (
-                        <>
-                          <p className="text-[13px] text-muted-foreground mb-3">
-                            No referrer is linked to this application. If the lead came from a referrer outside the portal (e.g. via WhatsApp), link them here so they're credited.
-                          </p>
-                          {/* Picking is not the link — the link is client-level, so it
-                              lands on every deal of theirs. Confirm with the button. */}
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                            <div className="sm:flex-1">
-                              <ReferrerPicker value={pickedReferrer} onChange={setPickedReferrer} disabled={linkingReferrer} />
+                      )}
+                      {(!referrer || editingReferrer) && (
+                        <div className={referrer ? 'mt-3 rounded-lg border border-border p-3' : ''}>
+                          {!referrer && (
+                            <p className="text-[13px] text-muted-foreground mb-3">
+                              No referrer is credited on this application. If the deal came from a referrer (including outside the portal, e.g. via WhatsApp), credit them here.
+                            </p>
+                          )}
+                          <div className="space-y-2.5">
+                            <ReferrerPicker value={pickedReferrer} onChange={setPickedReferrer} disabled={linkingReferrer} />
+                            <input
+                              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-[13px]"
+                              value={referrerNote}
+                              maxLength={1000}
+                              placeholder="Note (optional) — e.g. came back to us via this referrer"
+                              onChange={(e) => setReferrerNote(e.target.value)}
+                              aria-label="Note about this referrer change"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <Button size="sm" onClick={handleLinkReferrer} disabled={!pickedReferrer || linkingReferrer}>
+                                {linkingReferrer ? 'Saving…' : referrer ? 'Save change' : 'Credit referrer'}
+                              </Button>
+                              {editingReferrer && (
+                                <Button size="sm" variant="ghost" onClick={() => { setEditingReferrer(false); setPickedReferrer(null); setReferrerNote(''); }} disabled={linkingReferrer}>
+                                  Cancel
+                                </Button>
+                              )}
                             </div>
-                            <Button size="sm" onClick={handleLinkReferrer} disabled={!pickedReferrer || linkingReferrer} className="shrink-0">
-                              {linkingReferrer ? 'Linking…' : 'Link Referrer'}
-                            </Button>
                           </div>
-                        </>
-                      ) : (
-                        <p className="text-[13px] text-muted-foreground">No referrer is linked to this application.</p>
+                        </div>
+                      )}
+                      {clientIntroducer && clientIntroducer.id !== referrer?.id && (
+                        <p className="mt-2 text-[12px] text-muted-foreground">
+                          Client was introduced by{' '}
+                          <Link to={`/admin/referrers/${clientIntroducer.id}`} className="text-primary hover:underline">
+                            {clientIntroducer.organization_name || clientIntroducer.full_name || 'a referrer'}
+                          </Link>
+                          {' '}— the default for their new applications.
+                        </p>
+                      )}
+                      {referrerHistory.length > 0 && (
+                        <details className="mt-3 group">
+                          <summary className="cursor-pointer text-[12.5px] font-medium text-primary hover:underline">
+                            Referrer history ({referrerHistory.length})
+                          </summary>
+                          <div className="mt-2.5">
+                            <ReferrerHistory history={referrerHistory} />
+                          </div>
+                        </details>
                       )}
                     </div>
                     )}
@@ -3699,7 +3762,7 @@ export default function ReviewApplication() {
                           <ChatThread
                             messages={referrerMessages}
                             currentUserId={currentUser?.id}
-                            counterpartName={referrer.full_name}
+                            counterpartName={referrer.full_name || referrer.email || 'Referrer'}
                             isSelf={referrer.id === currentUser?.id}
                             pinnedIds={pinnedMsgIds}
                             pinningId={pinningMsgId}
@@ -4575,13 +4638,24 @@ export default function ReviewApplication() {
 
       <ConfirmDialog
         open={confirmUnlinkReferrer}
-        title="Unlink this referrer?"
+        title="Remove the referrer from this application?"
         message={referrer ? (
-          <>
-            <span className="font-semibold text-foreground">{referrer.organization_name || referrer.full_name}</span> will no longer be credited for this client or any of their applications.
-          </>
+          <span className="block space-y-2">
+            <span className="block">
+              <span className="font-semibold text-foreground">{referrer.organization_name || referrer.full_name}</span> will no longer be credited on this application.
+              The client&rsquo;s other applications keep their own referrer. The change is kept in the referrer history.
+            </span>
+            <input
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-[13px]"
+              value={referrerNote}
+              maxLength={1000}
+              placeholder="Note (optional) — why it was removed"
+              onChange={(e) => setReferrerNote(e.target.value)}
+              aria-label="Note about removing the referrer"
+            />
+          </span>
         ) : null}
-        confirmText="Unlink Referrer"
+        confirmText="Remove referrer"
         cancelText="Cancel"
         variant="danger"
         loading={unlinkingReferrer}

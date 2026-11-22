@@ -182,10 +182,15 @@ def list_message_recipients(
             Referral.referred_user_id.isnot(None),
             *active_user_clauses(),
         ).all()
+        # Clients with an application credited to them (per-application credit).
+        from app.services.referrer_attribution import referrer_client_ids
+        credited_clients = db.query(User).filter(
+            User.id.in_(referrer_client_ids(db, current_user.id)), User.role == UserRole.client, *active_user_clauses(),
+        ).all()
         # Combine and deduplicate
         seen_ids = {u.id for u in staff}
         recipients = list(staff)
-        for client in ext_referral_clients + internal_referral_clients:
+        for client in ext_referral_clients + internal_referral_clients + credited_clients:
             if client.id not in seen_ids:
                 recipients.append(client)
                 seen_ids.add(client.id)
@@ -290,6 +295,13 @@ def list_client_inbox(
                 if client:
                     pairs.append((r.referred_user_id, current_user.id, client.full_name, current_user.full_name))
                     seen.add(r.referred_user_id)
+        # Clients with an application credited to this referrer.
+        from app.services.referrer_attribution import referrer_client_ids
+        for client in db.query(User).filter(
+            User.id.in_(referrer_client_ids(db, current_user.id) - seen), User.role == UserRole.client,
+        ).all():
+            pairs.append((client.id, current_user.id, client.full_name, current_user.full_name))
+            seen.add(client.id)
         # Surface direct staff (admin/broker) conversations: client_id = referrer.id.
         # Only outside (non-app) messages — app-scoped chats live on the per-app tab.
         staff_rows = (
