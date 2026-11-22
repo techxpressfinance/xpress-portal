@@ -69,17 +69,19 @@ export default function LedgerReceiptsTab({ range, isOwner }: { range: { from: s
   return (
     <div className="space-y-4">
       {data && data.by_payer.length > 0 && (
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-          <Card padding="sm">
-            <p className="text-[11.5px] text-muted-foreground">Received in the period</p>
-            <p className="text-[20px] font-semibold tabular-nums text-foreground">{formatLedgerMoney(data.total)}</p>
-          </Card>
-          {data.by_payer.slice(0, 7).map((p) => (
-            <Card key={p.from_name} padding="sm">
-              <p className="text-[11.5px] text-muted-foreground">From {p.from_name}</p>
-              <p className="text-[20px] font-semibold tabular-nums text-foreground">{formatLedgerMoney(p.amount)}</p>
-            </Card>
-          ))}
+        <div className="led-card p-4 flex flex-wrap items-start gap-x-10 gap-y-3">
+          <div>
+            <p className="led-label">Received in the period</p>
+            <p className="mt-1 text-[22px] font-semibold tabular-nums tracking-tight text-foreground">{formatLedgerMoney(data.total)}</p>
+          </div>
+          <dl className="flex-1 min-w-[240px] grid gap-x-8 gap-y-1 text-[12.5px] sm:grid-cols-2 lg:grid-cols-3">
+            {data.by_payer.map((p) => (
+              <div key={p.from_name} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
+                <dt className="truncate text-muted-foreground">{p.from_name}</dt>
+                <dd className="tabular-nums text-foreground">{formatLedgerMoney(p.amount)}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       )}
       <Card padding="none">

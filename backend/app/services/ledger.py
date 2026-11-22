@@ -59,6 +59,7 @@ from app.models.ledger import (
     LedgerGrant,
     LedgerMonth,
     LedgerPayee,
+    LedgerPayment,
     LedgerSettings,
 )
 from app.models.lender import Lender
@@ -67,7 +68,12 @@ from app.models.quote_sheet import QuoteSheet, QuoteSheetType
 from app.models.settled_deal_snapshot import SettledDealSnapshot
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
-from app.services.loan_category import CONSUMER_SUB_TYPES, application_loan_category, application_sub_type
+from app.services.loan_category import (
+    CATEGORY_LOAN_TYPES,
+    CONSUMER_SUB_TYPES,
+    application_loan_category,
+    application_sub_type,
+)
 from app.services.serialization import referrer_info_map
 
 LEDGER_GRANT_DELAY = timedelta(hours=24)
@@ -77,7 +83,7 @@ GRANT_SCOPES = {
     "summary": "Period totals",
     "deals": "Settled deals list (clients, lenders, amounts)",
     "income": "Our income — brokerage, fees, VIR, net profit",
-    "referrers": "Referrer report and referrer commissions",
+    "referrers": "Referrer & staff commissions, extra payments",
     "invoices": "Referrer commission invoices",
     "export": "Excel / PDF downloads",
 }
@@ -87,13 +93,16 @@ CENT = Decimal("0.01")
 ZERO = Decimal("0")
 
 _INCOME_FIELDS = (
-    "brokerage", "brokerage_gst", "doc_fee", "doc_fee_gst", "origination_fee", "origination_gst",
-    "vir", "vir_gst", "income_ex_gst", "income_inc_gst", "income_gst", "volume_bonus", "net_profit",
+    "brokerage", "brokerage_gst", "brokerage_inc_gst", "doc_fee", "doc_fee_gst", "doc_fee_inc_gst",
+    "origination_fee", "origination_gst", "origination_inc_gst", "vir", "vir_gst", "vir_inc_gst",
+    "income_ex_gst", "income_gst_amount", "income_inc_gst", "income_gst", "volume_bonus", "net_profit",
     "vb_rate", "vb_share", "vb_month_volume", "vb_received_inc_gst", "vb_received_ex_gst", "final_profit",
 )
 _REFERRER_FIELDS = (
     "shares", "share_percent", "share_base", "share_amount", "share_gst",
     "referrer_comms_ex_gst", "referrer_comms_gst", "referrer_comms_inc_gst",
+    "staff_comms_ex_gst", "staff_comms_gst", "staff_comms_inc_gst",
+    "extra_payments_ex_gst", "extra_payments_gst", "extra_payments_inc_gst",
 )
 _PAYMENT_FIELDS = ("paid_on", "payment_method", "payment_notes", "payment_reference", "payment_status",
                    "payment_status_label", "notes")
@@ -102,12 +111,24 @@ _SHARE_PAYMENT_FIELDS = ("status", "scheduled_on", "paid_on", "payment_method", 
 
 # Money columns that are summed into month subtotals and the period total.
 TOTALLED = (
-    "finance_amount", "brokerage", "brokerage_gst", "doc_fee", "doc_fee_gst",
-    "origination_fee", "origination_gst", "vir", "vir_gst", "income_ex_gst", "income_inc_gst",
-    "referrer_comms_ex_gst", "referrer_comms_gst", "referrer_comms_inc_gst", "volume_bonus", "net_profit",
+    "finance_amount", "brokerage", "brokerage_gst", "brokerage_inc_gst", "doc_fee", "doc_fee_gst", "doc_fee_inc_gst",
+    "origination_fee", "origination_gst", "origination_inc_gst", "vir", "vir_gst", "vir_inc_gst",
+    "income_ex_gst", "income_gst_amount", "income_inc_gst",
+    "referrer_comms_ex_gst", "referrer_comms_gst", "referrer_comms_inc_gst",
+    "staff_comms_ex_gst", "staff_comms_gst", "staff_comms_inc_gst", "volume_bonus", "net_profit",
 )
 # Month-level money: blank on a deal, filled on month / quarter / year totals.
-PERIOD_ONLY = ("vb_received_ex_gst", "vb_received_inc_gst", "final_profit")
+PERIOD_ONLY = (
+    "extra_payments_ex_gst", "extra_payments_gst", "extra_payments_inc_gst",
+    "vb_received_ex_gst", "vb_received_inc_gst", "final_profit",
+)
+
+
+def _gst(group: str, part: str) -> dict:
+    """Which figure of a GST trio a money column is: ex GST, the GST, or inc GST.
+    The page's GST view (ex only / inc only / all three) picks columns by it."""
+    return {"gst_group": group, "gst_part": part}
+
 
 # The columns, in the order of the desk's "Deals" spreadsheet. `scope` is what
 # a grantee needs to see the column; "payments" is owner-only.
@@ -118,34 +139,59 @@ COLUMNS = [
     {"key": "customer_name", "label": "Customer name", "kind": "text", "scope": "deals"},
     {"key": "entity_name", "label": "Entity (business)", "kind": "text", "scope": "deals"},
     {"key": "finance_amount", "label": "Finance amount", "kind": "money", "scope": "deals"},
-    {"key": "brokerage", "label": "Brokerage (ex GST)", "kind": "money", "scope": "income"},
-    {"key": "brokerage_gst", "label": "Brokerage GST", "kind": "money", "scope": "income"},
-    {"key": "doc_fee", "label": "Doc fee", "kind": "money", "scope": "income"},
-    {"key": "doc_fee_gst", "label": "Doc fee GST", "kind": "money", "scope": "income"},
-    {"key": "origination_fee", "label": "Origination fee (ex GST)", "kind": "money", "scope": "income"},
-    {"key": "origination_gst", "label": "Origination GST", "kind": "money", "scope": "income"},
-    {"key": "vir", "label": "VIR — vehicle inspection (ex GST)", "kind": "money", "scope": "income"},
-    {"key": "vir_gst", "label": "VIR GST", "kind": "money", "scope": "income"},
-    {"key": "income_ex_gst", "label": "Total income ex GST", "kind": "money", "scope": "income"},
-    {"key": "income_inc_gst", "label": "Total income inc GST", "kind": "money", "scope": "income"},
+    {"key": "brokerage", "label": "Brokerage (ex GST)", "kind": "money", "scope": "income", **_gst("brokerage", "ex")},
+    {"key": "brokerage_gst", "label": "Brokerage GST", "kind": "money", "scope": "income", **_gst("brokerage", "gst")},
+    {"key": "brokerage_inc_gst", "label": "Brokerage (inc GST)", "kind": "money", "scope": "income", **_gst("brokerage", "inc")},
+    {"key": "doc_fee", "label": "Doc fee (ex GST)", "kind": "money", "scope": "income", **_gst("doc_fee", "ex")},
+    {"key": "doc_fee_gst", "label": "Doc fee GST", "kind": "money", "scope": "income", **_gst("doc_fee", "gst")},
+    {"key": "doc_fee_inc_gst", "label": "Doc fee (inc GST)", "kind": "money", "scope": "income", **_gst("doc_fee", "inc")},
+    {"key": "origination_fee", "label": "Origination fee (ex GST)", "kind": "money", "scope": "income", **_gst("origination", "ex")},
+    {"key": "origination_gst", "label": "Origination GST", "kind": "money", "scope": "income", **_gst("origination", "gst")},
+    {"key": "origination_inc_gst", "label": "Origination fee (inc GST)", "kind": "money", "scope": "income", **_gst("origination", "inc")},
+    {"key": "vir", "label": "VIR — vehicle inspection (ex GST)", "kind": "money", "scope": "income", **_gst("vir", "ex")},
+    {"key": "vir_gst", "label": "VIR GST", "kind": "money", "scope": "income", **_gst("vir", "gst")},
+    {"key": "vir_inc_gst", "label": "VIR (inc GST)", "kind": "money", "scope": "income", **_gst("vir", "inc")},
+    {"key": "income_ex_gst", "label": "Total income ex GST", "kind": "money", "scope": "income", **_gst("income", "ex")},
+    {"key": "income_gst_amount", "label": "Total income GST", "kind": "money", "scope": "income", **_gst("income", "gst")},
+    {"key": "income_inc_gst", "label": "Total income inc GST", "kind": "money", "scope": "income", **_gst("income", "inc")},
     {"key": "lender_name", "label": "Lender", "kind": "text", "scope": "deals"},
+    {"key": "deal_status", "label": "Deal status", "kind": "text", "scope": "deals"},
     {"key": "broker_name", "label": "Broker", "kind": "text", "scope": "deals"},
-    {"key": "referrer_comms_ex_gst", "label": "Referrer comms ex GST", "kind": "money", "scope": "referrers"},
-    {"key": "referrer_comms_gst", "label": "GST – referrer comms", "kind": "money", "scope": "referrers"},
-    {"key": "referrer_comms_inc_gst", "label": "Referrer comms inc GST", "kind": "money", "scope": "referrers"},
+    {"key": "referrer_comms_ex_gst", "label": "Referrer comms ex GST", "kind": "money", "scope": "referrers", **_gst("referrer_comms", "ex")},
+    {"key": "referrer_comms_gst", "label": "GST – referrer comms", "kind": "money", "scope": "referrers", **_gst("referrer_comms", "gst")},
+    {"key": "referrer_comms_inc_gst", "label": "Referrer comms inc GST", "kind": "money", "scope": "referrers", **_gst("referrer_comms", "inc")},
     {"key": "referrer_name", "label": "Referrer", "kind": "text", "scope": "deals"},
+    {"key": "staff_comms_ex_gst", "label": "Staff comms ex GST", "kind": "money", "scope": "referrers", **_gst("staff_comms", "ex")},
+    {"key": "staff_comms_gst", "label": "GST – staff comms", "kind": "money", "scope": "referrers", **_gst("staff_comms", "gst")},
+    {"key": "staff_comms_inc_gst", "label": "Staff comms inc GST", "kind": "money", "scope": "referrers", **_gst("staff_comms", "inc")},
+    {"key": "staff_name", "label": "Staff paid", "kind": "text", "scope": "referrers"},
     {"key": "payment_method", "label": "Payment type", "kind": "text", "scope": "payments"},
     {"key": "payment_status_label", "label": "Payment status", "kind": "text", "scope": "payments"},
     {"key": "paid_on", "label": "Paid on", "kind": "date", "scope": "payments"},
     {"key": "payment_reference", "label": "Payment reference", "kind": "text", "scope": "payments"},
-    {"key": "payment_notes", "label": "Payment to referrer – notes", "kind": "text", "scope": "payments"},
+    {"key": "payment_notes", "label": "Payment to referrer / staff – notes", "kind": "text", "scope": "payments"},
     {"key": "volume_bonus", "label": "Possible volume bonus", "kind": "money", "scope": "income"},
     {"key": "net_profit", "label": "Net profit", "kind": "money", "scope": "income"},
     # Filled on the month, quarter and year totals only (PERIOD_ONLY).
-    {"key": "vb_received_ex_gst", "label": "Total volume bonus ex GST", "kind": "money", "scope": "income"},
-    {"key": "vb_received_inc_gst", "label": "Total volume bonus inc GST", "kind": "money", "scope": "income"},
+    {"key": "extra_payments_ex_gst", "label": "Extra payments ex GST", "kind": "money", "scope": "referrers", **_gst("extra_payments", "ex")},
+    {"key": "extra_payments_gst", "label": "GST – extra payments", "kind": "money", "scope": "referrers", **_gst("extra_payments", "gst")},
+    {"key": "extra_payments_inc_gst", "label": "Extra payments inc GST", "kind": "money", "scope": "referrers", **_gst("extra_payments", "inc")},
+    {"key": "vb_received_ex_gst", "label": "Total volume bonus ex GST", "kind": "money", "scope": "income", **_gst("vb_received", "ex")},
+    {"key": "vb_received_inc_gst", "label": "Total volume bonus inc GST", "kind": "money", "scope": "income", **_gst("vb_received", "inc")},
     {"key": "final_profit", "label": "Final profit before expenses", "kind": "money", "scope": "income"},
 ]
+
+# Statuses after "Started" and before settlement: the pipeline the ledger
+# follows before a deal settles (asset finance only, for now).
+PIPELINE_STATUSES = (
+    ApplicationStatus.application_received, ApplicationStatus.application_assessed,
+    ApplicationStatus.submitted, ApplicationStatus.approval,
+)
+PIPELINE_CATEGORIES = ("asset_finance",)
+STATUS_TITLES = {
+    "application_received": "Application received", "application_assessed": "Assessed",
+    "submitted": "Submitted to lender", "approval": "Approved", "settled": "Settled",
+}
 
 # Our share of the lenders' volume bonus, by the month's total settled volume:
 # the highest tier the month reaches applies to every deal in it, from dollar one.
@@ -270,11 +316,16 @@ def _pricing_figures(sheet: Optional[QuoteSheet]) -> dict:
     except ValueError:
         params = {}
     if isinstance(params, dict):
-        for src, key in (("brokerage_amount", "brokerage"), ("establishment_fee", "doc_fee"),
-                         ("origination_fee", "origination_fee"), ("vir_fee", "vir")):
+        # Which fees the desk typed inc GST (the pricing editor's GST switch) —
+        # the ledger keeps every income line ex GST.
+        inclusive = params.get("fee_gst_inclusive")
+        inclusive = inclusive if isinstance(inclusive, dict) else {}
+        for src, flag, key in (("brokerage_amount", "brokerage", "brokerage"), ("establishment_fee", "establishment_fee", "doc_fee"),
+                               ("origination_fee", "origination_fee", "origination_fee"), ("vir_fee", "vir_fee", "vir")):
             value = params.get(src)
             if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
-                out[key] = _d(value)
+                amount = _d(value)
+                out[key] = _r(amount / (1 + GST_RATE)) if inclusive.get(flag) is True else amount
     return out
 
 
@@ -384,16 +435,98 @@ def settled_on(app: LoanApplication) -> date:
     return (app.settled_at or app.updated_at).date()
 
 
-def _customer_name(app: LoanApplication) -> str:
-    name = " ".join(p for p in [app.applicant_first_name, app.applicant_last_name] if p).strip()
-    if name:
-        return name
+def _customer_name(app: LoanApplication, directors: Iterable[str] = ()) -> str:
+    """The person (or people) behind the deal — the sheet's "Customer name /
+    director's name": the applicant, then any further directors on the loan
+    ("Mihir Patel & Puravkumar Patel"). A company applicant has no person
+    inline, so its directors are the customer."""
+    names: list[str] = []
+    if app.applicant_type != "company":
+        inline = " ".join(p for p in [app.applicant_first_name, app.applicant_last_name] if p).strip()
+        if inline:
+            names.append(inline)
+    for d in directors:
+        if d and _norm_name(d) not in {_norm_name(n) for n in names}:
+            names.append(d)
+    if names:
+        return " & ".join(names)
     contact: Optional[Contact] = getattr(app, "contact", None)
     if contact:
         name = " ".join(p for p in [contact.first_name, contact.last_name] if p).strip()
         if name:
             return name
     return _entity_name(app) or "Unnamed applicant"
+
+
+def _director_names(db: Session, apps: list[LoanApplication]) -> dict[str, list[str]]:
+    """Each application's further applicants/directors (not a corporate
+    guarantor's signatories), primary first."""
+    from app.models.loan_applicant import LoanApplicant
+
+    out: dict[str, list[str]] = {}
+    ids = [a.id for a in apps]
+    if not ids:
+        return out
+    rows = (
+        db.query(LoanApplicant)
+        .filter(LoanApplicant.application_id.in_(ids), LoanApplicant.application_guarantor_id.is_(None))
+        .all()
+    )
+    rows.sort(key=lambda r: (not r.is_primary, r.created_at or datetime.min))
+    for r in rows:
+        name = " ".join(p for p in [r.applicant_first_name, r.applicant_last_name] if p).strip()
+        if name:
+            out.setdefault(r.application_id, []).append(name)
+    return out
+
+
+def pipeline_applications(db: Session, tenant_id: str, application_ids: Optional[Iterable[str]] = None) -> list[LoanApplication]:
+    """Deals that have moved past "Started" but not yet settled, in the
+    categories the ledger follows before settlement (PIPELINE_CATEGORIES)."""
+    q = (
+        db.query(LoanApplication)
+        .options(
+            joinedload(LoanApplication.user),
+            joinedload(LoanApplication.contact),
+            joinedload(LoanApplication.business_organization),
+        )
+        .filter(
+            LoanApplication.tenant_id == tenant_id,
+            LoanApplication.status.in_(PIPELINE_STATUSES),
+            LoanApplication.deleted_at.is_(None),
+            # SQL prefilter; the sub-type (encrypted JSON) refines it below.
+            LoanApplication.loan_type.in_({t for c in PIPELINE_CATEGORIES for t in CATEGORY_LOAN_TYPES[c]}),
+        )
+    )
+    if application_ids is not None:
+        q = q.filter(LoanApplication.id.in_(list(application_ids)))
+    apps = [a for a in q.all() if application_loan_category(a) in PIPELINE_CATEGORIES]
+    apps.sort(key=lambda a: a.created_at)
+    return apps
+
+
+def stage_titles(db: Session, apps: list[LoanApplication]) -> dict[str, str]:
+    """Where each deal sits on the board — the stage title on its category's
+    board (the latest move wins), else its status."""
+    from app.models.kanban import ApplicationStagePlacement, KanbanColumn
+
+    out: dict[str, str] = {}
+    ids = [a.id for a in apps]
+    if ids:
+        best: dict[str, tuple] = {}
+        for app_id, title, category, entered in (
+            db.query(ApplicationStagePlacement.application_id, KanbanColumn.title, KanbanColumn.loan_category,
+                     ApplicationStagePlacement.entered_at)
+            .join(KanbanColumn, KanbanColumn.id == ApplicationStagePlacement.column_id)
+            .filter(ApplicationStagePlacement.application_id.in_(ids))
+        ):
+            rank = (category is not None, entered or datetime.min)
+            if app_id not in best or rank > best[app_id][0]:
+                best[app_id] = (rank, title)
+        out = {k: v[1] for k, v in best.items()}
+    for a in apps:
+        out.setdefault(a.id, STATUS_TITLES.get(a.status.value, a.status.value.replace("_", " ").capitalize()))
+    return out
 
 
 def _entity_name(app: LoanApplication) -> Optional[str]:
@@ -564,13 +697,29 @@ def _app_brokers(db: Session, apps: list[LoanApplication]) -> dict[str, list[str
     return out
 
 
+def is_staff_payee(payee: Optional[LedgerPayee], user: Optional[User]) -> bool:
+    """A team member paid a cut, as opposed to a referrer."""
+    if user is not None:
+        return user.role in (UserRole.admin, UserRole.broker)
+    return bool(payee and payee.kind == "staff")
+
+
 def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
-               manual: Iterable[LedgerDeal] = ()) -> list[dict]:
-    """Every figure for each deal — settled applications and ledger-only deals —
-    unredacted, in settled order. See module docstring."""
+               manual: Iterable[LedgerDeal] = (), pipeline: Iterable[LoanApplication] = ()) -> list[dict]:
+    """Every figure for each deal — settled applications, ledger-only deals and
+    (``pipeline``) deals still on their way to settlement — unredacted, in
+    settled order with the pipeline last. See module docstring."""
     manual = list(manual)
+    pipeline_ids = {a.id for a in pipeline}
+    apps = list(apps) + [a for a in pipeline if a.id not in {x.id for x in apps}]
     if not apps and not manual:
         return []
+    today = date.today()
+
+    def when(app: LoanApplication) -> date:
+        # A pipeline deal has no settlement date yet; it is estimated as this month's.
+        return today if app.id in pipeline_ids else settled_on(app)
+
     ids = [a.id for a in apps]
     entries = {e.application_id: e for e in db.query(LedgerDeal).filter(
         LedgerDeal.tenant_id == tenant_id, LedgerDeal.application_id.in_(ids))} if ids else {}
@@ -596,7 +745,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
     tiers = vb_tiers(settings)
     volumes = month_volumes(
         db, tenant_id,
-        [settled_on(a).replace(day=1) for a in apps] + [m.manual_settled_on.replace(day=1) for m in manual if m.manual_settled_on],
+        [when(a).replace(day=1) for a in apps] + [m.manual_settled_on.replace(day=1) for m in manual if m.manual_settled_on],
     )
 
     # Payees and their shares of these deals.
@@ -624,6 +773,8 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
 
     inquiry_dates, repeat_clients = _client_history(db, tenant_id, apps)
     trust_names = _trust_display_names(db, apps)
+    directors = _director_names(db, apps)
+    stages = stage_titles(db, [a for a in apps if a.id in pipeline_ids])
 
     def share_out(*, share: Optional[LedgerDealShare], payee: Optional[LedgerPayee], user_id: Optional[str],
                   legacy: Optional[LedgerDeal], bases: dict) -> dict:
@@ -631,6 +782,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
         deal's legacy single-payee fields, then the payee's usual cut."""
         user = users.get(user_id or (payee.user_id if payee else None) or "")
         who = payee_display(payee, user)
+        staff = is_staff_payee(payee, user)
         if share is not None:
             src_percent, src_base, src_amount, src_gst = share.share_percent, share.share_base, share.share_amount, share.share_gst
         elif legacy is not None and (legacy.share_percent is not None or legacy.share_amount is not None or legacy.share_gst is not None):
@@ -665,6 +817,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "user_id": user.id if user else None,
             "payee_name": who["name"],
             "payee_organization": who["organization"],
+            "payee_kind": "staff" if staff else "referrer",
             "share_percent": float(percent) if percent is not None else None,
             "share_base": base,
             "share_amount": _f(amount),
@@ -707,7 +860,8 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
                  kind: Optional[str], loan_type: str, sub_type: Optional[str], new_lead: bool, repeat: bool,
                  pricing: dict, app_amount, lender: Optional[str], lender_obj: Optional[Lender],
                  lender_prefilled: bool, default_user_id: Optional[str], brokers: list[str],
-                 broker_name: Optional[str], is_manual: bool) -> dict:
+                 broker_name: Optional[str], is_manual: bool, stage: Optional[str] = None) -> dict:
+        is_pipeline = stage is not None
         prefilled: list[str] = ["lender_name"] if lender_prefilled else []
 
         def pick(field: str, fallback: Optional[Decimal]) -> Decimal:
@@ -736,11 +890,16 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
         else:
             uid = (e.referrer_id if e and e.referrer_set else default_user_id)
             shares = [share_out(share=None, payee=payee_by_user.get(uid), user_id=uid, legacy=e, bases=bases)] if uid else []
-        comms = sum((_d(s["comms_ex_gst"]) for s in shares), ZERO)
-        comms_gst = sum((_d(s["comms_gst"]) for s in shares), ZERO)
+        referrer_shares = [s for s in shares if s["payee_kind"] != "staff"]
+        staff_shares = [s for s in shares if s["payee_kind"] == "staff"]
+        comms = sum((_d(s["comms_ex_gst"]) for s in referrer_shares), ZERO)
+        comms_gst = sum((_d(s["comms_gst"]) for s in referrer_shares), ZERO)
+        staff_comms = sum((_d(s["comms_ex_gst"]) for s in staff_shares), ZERO)
+        staff_gst = sum((_d(s["comms_gst"]) for s in staff_shares), ZERO)
         paid_dates = sorted(s["paid_on"] for s in shares if s["paid_on"])
 
         is_clawback = bool(e and e.is_clawback)
+        income_gst_amount = (brokerage + doc_fee + origination + vir) * rate
         vb_rate = None if is_clawback else _vb_rate(lender_obj, sub_type, kind, repeat)
         month_volume = volumes.get(settled.strftime("%Y-%m"), ZERO)
         share = vb_share(month_volume, tiers)
@@ -753,10 +912,12 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
         return {
             "application_id": key,
             "is_manual": is_manual,
-            "settled_on": settled.isoformat(),
-            "month": settled.strftime("%Y-%m"),
+            "is_pipeline": is_pipeline,
+            "settled_on": None if is_pipeline else settled.isoformat(),
+            "month": None if is_pipeline else settled.strftime("%Y-%m"),
             # 1 = settled 1st–15th, 2 = after the 15th.
-            "half": 1 if settled.day <= 15 else 2,
+            "half": None if is_pipeline else (1 if settled.day <= 15 else 2),
+            "deal_status": stage if is_pipeline else ("Clawback" if is_clawback else "Settled"),
             "customer_name": customer,
             "entity_name": entity,
             "category": kind,
@@ -768,21 +929,27 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "finance_amount": _f(finance),
             "brokerage": _f(brokerage),
             "brokerage_gst": _f(brokerage * rate),
+            "brokerage_inc_gst": _f(_r(brokerage) + _r(brokerage * rate)),
             "doc_fee": _f(doc_fee),
             "doc_fee_gst": _f(doc_fee * rate),
+            "doc_fee_inc_gst": _f(_r(doc_fee) + _r(doc_fee * rate)),
             "origination_fee": _f(origination),
             "origination_gst": _f(origination * rate),
+            "origination_inc_gst": _f(_r(origination) + _r(origination * rate)),
             "vir": _f(vir),
             "vir_gst": _f(vir * rate),
+            "vir_inc_gst": _f(_r(vir) + _r(vir * rate)),
             "income_ex_gst": _f(income_ex),
+            "income_gst_amount": _f(income_gst_amount),
             "income_inc_gst": _f(income_ex * (1 + rate)),
             "income_gst": income_gst,
             "lender_name": lender,
             "shares": shares,
             "referrer_keys": [s["payee_key"] for s in shares],
             "referrer_id": shares[0]["payee_key"] if shares else None,
-            "referrer_name": " & ".join(s["payee_name"] or "Unnamed" for s in shares) or None,
-            "referrer_organization": shares[0]["payee_organization"] if shares else None,
+            "referrer_name": " & ".join(s["payee_name"] or "Unnamed" for s in referrer_shares) or None,
+            "referrer_organization": referrer_shares[0]["payee_organization"] if referrer_shares else None,
+            "staff_name": " & ".join(s["payee_name"] or "Unnamed" for s in staff_shares) or None,
             "share_percent": single["share_percent"] if single else None,
             "share_base": single["share_base"] if single else None,
             "share_amount": single["share_amount"] if single else None,
@@ -790,8 +957,11 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "referrer_comms_ex_gst": _f(comms),
             "referrer_comms_gst": _f(comms_gst),
             "referrer_comms_inc_gst": _f(comms + comms_gst),
+            "staff_comms_ex_gst": _f(staff_comms),
+            "staff_comms_gst": _f(staff_gst),
+            "staff_comms_inc_gst": _f(staff_comms + staff_gst),
             "volume_bonus": _f(volume_bonus),
-            "net_profit": _f(income_ex - comms),
+            "net_profit": _f(income_ex - comms - staff_comms),
             "vb_rate": float(vb_rate) if vb_rate is not None else None,
             "vb_share": float(share),
             "vb_month_volume": _f(month_volume),
@@ -835,12 +1005,12 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
         else:
             info = client_referrers.get(app.user_id)
             default_uid = info["id"] if info else None
-        settled = settled_on(app)
+        settled = when(app)
         derived_repeat = repeat_clients.get(app.id, False)
         derived_new_lead = inquiry_dates[app.id].replace(day=1) == settled.replace(day=1)
         brokers = app_brokers.get(app.id, [])
         rows.append(deal_row(
-            key=app.id, e=e, settled=settled, customer=_customer_name(app),
+            key=app.id, e=e, settled=settled, customer=_customer_name(app, directors.get(app.id, ())),
             entity=trust_names.get(app.business_organization_id or "") or _entity_name(app),
             kind=category_kind(app), loan_type=app.loan_type.value, sub_type=application_sub_type(app),
             new_lead=e.new_lead if e and e.new_lead is not None else derived_new_lead,
@@ -848,6 +1018,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             pricing=pricing, app_amount=app.amount, lender=lender, lender_obj=lender_obj,
             lender_prefilled=lender_prefilled, default_user_id=default_uid, brokers=brokers,
             broker_name=", ".join(users[b].full_name for b in brokers if b in users) or None, is_manual=False,
+            stage=stages.get(app.id) if app.id in pipeline_ids else None,
         ))
     for m in manual:
         if not m.manual_settled_on:
@@ -863,8 +1034,133 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             brokers=[m.manual_broker_id] if m.manual_broker_id else [],
             broker_name=(broker_user.full_name if broker_user else m.manual_broker_name), is_manual=True,
         ))
-    rows.sort(key=lambda r: (r["settled_on"], r["customer_name"].lower()))
+    rows.sort(key=lambda r: (r["is_pipeline"], r["settled_on"] or "", r["customer_name"].lower()))
     return rows
+
+
+# ── Extra payments ───────────────────────────────────────────────────────
+
+PAYMENT_CATEGORY_LABELS = {
+    "extra_service": "Extra services (e.g. providing financials)",
+    "mandate_split": "Split of a mandate fee",
+    "staff_bonus": "Staff commission / bonus",
+    "other": "Other",
+}
+
+
+def payments_in_range(db: Session, tenant_id: str, date_from: Optional[date], date_to: Optional[date],
+                      ids: Optional[Iterable[str]] = None) -> list[LedgerPayment]:
+    q = db.query(LedgerPayment).filter(LedgerPayment.tenant_id == tenant_id)
+    if date_from:
+        q = q.filter(LedgerPayment.payment_date >= date_from)
+    if date_to:
+        q = q.filter(LedgerPayment.payment_date <= date_to)
+    if ids is not None:
+        q = q.filter(LedgerPayment.id.in_(list(ids)))
+    return q.order_by(LedgerPayment.payment_date, LedgerPayment.created_at).all()
+
+
+def _deal_names(db: Session, tenant_id: str, keys: set[str]) -> dict[str, str]:
+    """A short "customer — entity" label for the deals payments point at."""
+    if not keys:
+        return {}
+    out: dict[str, str] = {}
+    for app in db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.id.in_(list(keys))):
+        out[app.id] = " — ".join(x for x in [_customer_name(app), _entity_name(app)] if x)
+    for m in db.query(LedgerDeal).filter(LedgerDeal.tenant_id == tenant_id, LedgerDeal.is_manual.is_(True),
+                                         LedgerDeal.application_id.in_(list(keys - set(out)))):
+        out[m.application_id] = " — ".join(x for x in [m.manual_customer_name, m.manual_entity_name] if x)
+    return out
+
+
+def deal_options(db: Session, tenant_id: str) -> list[dict]:
+    """Every deal an extra payment can be linked to, from any month: settled
+    applications, ledger-only deals and the pipeline — newest first."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for app in settled_applications(db, tenant_id, None, None):
+        seen.add(app.id)
+        out.append({"key": app.id, "label": " — ".join(x for x in [_customer_name(app), _entity_name(app)] if x),
+                    "settled_on": settled_on(app).isoformat(), "is_pipeline": False})
+    for m in manual_deals(db, tenant_id, None, None):
+        if m.application_id in seen:
+            continue
+        seen.add(m.application_id)
+        out.append({"key": m.application_id,
+                    "label": " — ".join(x for x in [m.manual_customer_name, m.manual_entity_name] if x),
+                    "settled_on": m.manual_settled_on.isoformat() if m.manual_settled_on else None, "is_pipeline": False})
+    for app in pipeline_applications(db, tenant_id):
+        if app.id in seen:
+            continue
+        out.append({"key": app.id, "label": " — ".join(x for x in [_customer_name(app), _entity_name(app)] if x),
+                    "settled_on": None, "is_pipeline": True})
+    # Pipeline first (still open), then settled newest first.
+    pipeline = [d for d in out if d["is_pipeline"]]
+    settled = sorted((d for d in out if not d["is_pipeline"]), key=lambda d: d["settled_on"] or "", reverse=True)
+    return pipeline + settled
+
+
+def payment_rows(db: Session, tenant_id: str, payments: list[LedgerPayment]) -> list[dict]:
+    """Each extra payment with its payee, GST and the deal it relates to."""
+    if not payments:
+        return []
+    payees = {p.id: p for p in db.query(LedgerPayee).filter(
+        LedgerPayee.tenant_id == tenant_id, LedgerPayee.id.in_({p.payee_id for p in payments}))}
+    uids = {p.user_id for p in payees.values() if p.user_id}
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(uids))} if uids else {}
+    deals = _deal_names(db, tenant_id, {p.deal_key for p in payments if p.deal_key})
+    out = []
+    for p in payments:
+        payee = payees.get(p.payee_id)
+        user = users.get(payee.user_id) if payee and payee.user_id else None
+        who = payee_display(payee, user)
+        gst_on = p.gst if p.gst is not None else bool(who["gst_registered"])
+        amount = _d(p.amount)
+        gst = _r(amount * GST_RATE) if gst_on else ZERO
+        out.append({
+            "id": p.id,
+            "payee_key": payee_key(payee, user.id if user else None) if payee else None,
+            "payee_id": p.payee_id,
+            "payee_name": who["name"],
+            "payee_organization": who["organization"],
+            "payee_kind": "staff" if is_staff_payee(payee, user) else "referrer",
+            "payment_date": p.payment_date.isoformat(),
+            "month": p.payment_date.strftime("%Y-%m"),
+            "category": p.category,
+            "category_label": PAYMENT_CATEGORY_LABELS.get(p.category, p.category),
+            "description": p.description,
+            "deal_key": p.deal_key,
+            "deal_name": deals.get(p.deal_key or ""),
+            "amount_ex_gst": _f(amount),
+            "gst_amount": _f(gst),
+            "amount_inc_gst": _f(amount + gst),
+            "gst": gst_on,
+            "gst_set": p.gst is not None,
+            "status": p.status,
+            "scheduled_on": p.scheduled_on.isoformat() if p.scheduled_on else None,
+            "paid_on": p.paid_on.isoformat() if p.paid_on else None,
+            "payment_method": p.payment_method,
+            "payment_reference": p.payment_reference,
+            "notes": p.notes,
+        })
+    return out
+
+
+_EXTRA_PAYMENT_OWNER_FIELDS = ("status", "scheduled_on", "paid_on", "payment_method", "payment_reference", "notes")
+
+
+def redact_payment(p: dict, access: "LedgerAccess") -> dict:
+    if access.is_owner:
+        return p
+    return {k: v for k, v in p.items() if k not in _EXTRA_PAYMENT_OWNER_FIELDS}
+
+
+def extra_totals(payments: list[dict]) -> dict:
+    return {
+        "extra_payments_ex_gst": float(_r(sum((_d(p["amount_ex_gst"]) for p in payments), ZERO))),
+        "extra_payments_gst": float(_r(sum((_d(p["gst_amount"]) for p in payments), ZERO))),
+        "extra_payments_inc_gst": float(_r(sum((_d(p["amount_inc_gst"]) for p in payments), ZERO))),
+    }
 
 
 def totals(rows: list[dict]) -> dict:
@@ -913,24 +1209,52 @@ def month_records(db: Session, tenant_id: str, keys: Iterable[str]) -> dict:
 
 def _received(totals_: dict, inc: Optional[Decimal]) -> dict:
     """Add the volume bonus received (inc GST, as entered) and final profit to a
-    totals dict. Final profit is net profit + the bonus ex GST."""
+    totals dict. Final profit is net profit + the bonus ex GST − extra payments
+    ex GST."""
     ex = _r(inc / (1 + GST_RATE)) if inc is not None else None
     out = dict(totals_)
     out["vb_received_inc_gst"] = _f(inc)
     out["vb_received_ex_gst"] = _f(ex)
-    out["final_profit"] = float(_r(_d(totals_.get("net_profit")) + (ex or ZERO)))
+    out["final_profit"] = float(_r(
+        _d(totals_.get("net_profit")) + (ex or ZERO) - _d(totals_.get("extra_payments_ex_gst"))
+    ))
     return out
 
 
-def report(rows: list[dict], records: dict, include_received: bool = True) -> dict:
+def half_year_label(fy: int, h: int) -> str:
+    return f"H{h} FY {fy - 1}–{str(fy)[2:]} · " + (f"Jul–Dec {fy - 1}" if h == 1 else f"Jan–Jun {fy}")
+
+
+def _months_between(start: date, end: date) -> list[str]:
+    out, y, m = [], start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def report(rows: list[dict], records: dict, include_received: bool = True, payments: Iterable[dict] = (),
+           date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
     """The deals grouped the spreadsheet's way: months (each with its two
-    halves), FY quarters and FY years, plus the period total. Rows must be in
-    settled order. With include_received False (a referrer's slice of the
-    ledger) the month-level bonus received and final profit are left off —
-    they belong to the whole month, not part of it."""
+    halves), FY quarters, FY half-years and FY years, plus the period total.
+    Rows must be in settled order (pipeline rows are ignored). Extra payments
+    are month-level, by their date. With include_received False (a referrer's
+    slice of the ledger) the month-level bonus received and final profit are
+    left off — they belong to the whole month, not part of it.
+
+    ``show`` says which roll-ups a report of this range prints: a quarter total
+    only when the range covers more than one month, a half-year when it covers
+    more than one quarter, a year when more than one half-year — so a monthly
+    report doesn't end in a "quarter" that is just the month again."""
+    rows = [r for r in rows if not r.get("is_pipeline")]
+    payments = list(payments)
     by_month: dict[str, list[dict]] = {}
     for r in rows:
         by_month.setdefault(r["month"], []).append(r)
+    pay_by_month: dict[str, list[dict]] = {}
+    for p in payments:
+        pay_by_month.setdefault(p["month"], []).append(p)
+        by_month.setdefault(p["month"], [])
 
     def received_of(key: str) -> Optional[Decimal]:
         rec = records.get(key)
@@ -938,6 +1262,7 @@ def report(rows: list[dict], records: dict, include_received: bool = True) -> di
 
     def roll(keys: list[str]) -> dict:
         t = totals([r for k in keys for r in by_month[k]])
+        t.update(extra_totals([p for k in keys for p in pay_by_month.get(k, [])]))
         if not include_received:
             return t
         incs = [received_of(k) for k in keys]
@@ -958,27 +1283,43 @@ def report(rows: list[dict], records: dict, include_received: bool = True) -> di
             "fy": fy,
             "quarter": q,
             "halves": halves,
+            "payment_ids": [p["id"] for p in pay_by_month.get(key, [])],
             "totals": roll([key]),
-            "vb_month_volume": rs[0].get("vb_month_volume"),
-            "vb_share": rs[0].get("vb_share"),
+            "vb_month_volume": rs[0].get("vb_month_volume") if rs else None,
+            "vb_share": rs[0].get("vb_share") if rs else None,
         }
         month_out.append(entry)
 
     quarters: dict[tuple[int, int], list[str]] = {}
+    half_years: dict[tuple[int, int], list[str]] = {}
     years: dict[int, list[str]] = {}
     for m in month_out:
         quarters.setdefault((m["fy"], m["quarter"]), []).append(m["month"])
+        half_years.setdefault((m["fy"], 1 if m["quarter"] <= 2 else 2), []).append(m["month"])
         years.setdefault(m["fy"], []).append(m["month"])
+
+    # What the report covers: the range asked for, else the months it holds.
+    present = sorted(by_month)
+    start = date_from or (date.fromisoformat(f"{present[0]}-01") if present else None)
+    end = date_to or (date.fromisoformat(f"{present[-1]}-01") if present else None)
+    span = _months_between(start, end) if start and end and start <= end else present
+    span_q = {fy_of(k) for k in span}
+    span_h = {(fy, 1 if q <= 2 else 2) for fy, q in span_q}
     return {
         "months": month_out,
         "quarters": [
             {"fy": fy, "quarter": q, "label": quarter_label(fy, q), "last_month": ks[-1], "totals": roll(ks)}
             for (fy, q), ks in sorted(quarters.items())
         ],
+        "half_years": [
+            {"fy": fy, "half": h, "label": half_year_label(fy, h), "last_month": ks[-1], "totals": roll(ks)}
+            for (fy, h), ks in sorted(half_years.items())
+        ],
         "years": [
             {"fy": fy, "label": fy_label(fy), "last_month": ks[-1], "totals": roll(ks)}
             for fy, ks in sorted(years.items())
         ],
+        "show": {"quarters": len(span) > 1, "half_years": len(span_q) > 1, "years": len(span_h) > 1},
         "totals": roll(sorted(by_month)),
     }
 
@@ -986,7 +1327,9 @@ def report(rows: list[dict], records: dict, include_received: bool = True) -> di
 def redact_report(rep: dict, access: "LedgerAccess") -> dict:
     out = {
         "months": [],
+        "show": rep["show"],
         "quarters": [{**q, "totals": redact_totals(q["totals"], access)} for q in rep["quarters"]],
+        "half_years": [{**h, "totals": redact_totals(h["totals"], access)} for h in rep["half_years"]],
         "years": [{**y, "totals": redact_totals(y["totals"], access)} for y in rep["years"]],
         "totals": redact_totals(rep["totals"], access),
     }
@@ -996,6 +1339,8 @@ def redact_report(rep: dict, access: "LedgerAccess") -> dict:
         if not access.can("income"):
             item.pop("vb_month_volume", None)
             item.pop("vb_share", None)
+        if not access.can("referrers"):
+            item.pop("payment_ids", None)
         out["months"].append(item)
     return out
 
@@ -1039,34 +1384,53 @@ def payee_share(row: dict, key: str) -> Optional[dict]:
     return next((s for s in row.get("shares", []) if s["payee_key"] == key), None)
 
 
-def referrer_summary(rows: list[dict], include_payments: bool) -> list[dict]:
-    """Per payee: how many deals they're on in the range, the volume, and
-    THEIR share of the commission (a split deal counts once for each payee)."""
+def referrer_summary(rows: list[dict], include_payments: bool, payments: Iterable[dict] = ()) -> list[dict]:
+    """Per payee — referrers and staff: how many settled deals they're on in
+    the range, the volume, THEIR share of the commission (a split deal counts
+    once for each payee), and the extra payments made to them in the range."""
     grouped: dict[str, list[tuple[dict, dict]]] = {}
     for r in rows:
+        if r.get("is_pipeline"):
+            continue
         for s in r.get("shares", []):
             grouped.setdefault(s["payee_key"], []).append((r, s))
+    extras: dict[str, list[dict]] = {}
+    for p in payments:
+        if p["payee_key"]:
+            extras.setdefault(p["payee_key"], []).append(p)
     out = []
-    for key, pairs in grouped.items():
+    for key in set(grouped) | set(extras):
+        pairs = grouped.get(key, [])
+        mine = extras.get(key, [])
         money = lambda field, ps=pairs: float(_r(sum((_d(s[field]) for _, s in ps), ZERO)))  # noqa: E731
-        first = pairs[0][1]
+        first = pairs[0][1] if pairs else mine[0]
+        ext = extra_totals(mine)
         item = {
             "referrer_id": key,
             "referrer_name": first["payee_name"],
             "referrer_organization": first["payee_organization"],
+            "payee_kind": first["payee_kind"],
             "is_portal": key.startswith("u:"),
             "deals": len(pairs),
             "finance_amount": float(_r(sum((_d(r["finance_amount"]) for r, _ in pairs), ZERO))),
             "referrer_comms_ex_gst": money("comms_ex_gst"),
             "referrer_comms_gst": money("comms_gst"),
             "referrer_comms_inc_gst": money("comms_inc_gst"),
+            "extra_payments": len(mine),
+            **ext,
+            "total_inc_gst": float(_r(_d(money("comms_inc_gst")) + _d(ext["extra_payments_inc_gst"]))),
         }
         if include_payments:
             unpaid = [(r, s) for r, s in pairs if s["status"] in ("unpaid", "scheduled") and s["comms_ex_gst"]]
+            unpaid_extra = [p for p in mine if p["status"] in ("unpaid", "scheduled")]
             item["unpaid_deals"] = len(unpaid)
-            item["unpaid_comms_inc_gst"] = float(_r(sum((_d(s["comms_inc_gst"]) for _, s in unpaid), ZERO)))
+            item["unpaid_extra_payments"] = len(unpaid_extra)
+            item["unpaid_comms_inc_gst"] = float(_r(
+                sum((_d(s["comms_inc_gst"]) for _, s in unpaid), ZERO)
+                + sum((_d(p["amount_inc_gst"]) for p in unpaid_extra), ZERO)
+            ))
         out.append(item)
-    out.sort(key=lambda i: (-i["deals"], (i["referrer_name"] or "").lower()))
+    out.sort(key=lambda i: (i["payee_kind"] == "staff", -i["deals"], (i["referrer_name"] or "").lower()))
     return out
 
 
@@ -1132,17 +1496,41 @@ def referrer_party(referrer: User, include_bank: bool) -> dict:
     return party
 
 
-def invoice_totals(rows: list[dict], key: str) -> dict:
-    """This payee's share of the deals — never the whole deal's commission."""
+def invoice_totals(rows: list[dict], key: str, payments: Iterable[dict] = ()) -> dict:
+    """This payee's share of the deals — never the whole deal's commission —
+    plus any extra payments to them on the invoice."""
     shares = [payee_share(r, key) for r in rows]
-    return {f: float(_r(sum((_d(s[f]) for s in shares if s), ZERO))) for f in ("comms_ex_gst", "comms_gst", "comms_inc_gst")}
+    payments = list(payments)
+    pay_field = {"comms_ex_gst": "amount_ex_gst", "comms_gst": "gst_amount", "comms_inc_gst": "amount_inc_gst"}
+    return {
+        f: float(_r(sum((_d(s[f]) for s in shares if s), ZERO) + sum((_d(p[pay_field[f]]) for p in payments), ZERO)))
+        for f in ("comms_ex_gst", "comms_gst", "comms_inc_gst")
+    }
 
 
-def invoice_lines(rows: list[dict], key: str, layout: str, period_label: str) -> list[dict]:
+def _payment_lines(payments: Iterable[dict]) -> list[dict]:
+    return [{
+        "payment_id": p["id"],
+        "settled_on": p["payment_date"],
+        "customer_name": p["deal_name"],
+        "description": " — ".join(x for x in [p["category_label"], p["description"]] if x),
+        "amount_ex_gst": p["amount_ex_gst"],
+        "gst": p["gst_amount"],
+        "amount_inc_gst": p["amount_inc_gst"],
+    } for p in payments]
+
+
+def invoice_lines(rows: list[dict], key: str, layout: str, period_label: str, payments: Iterable[dict] = ()) -> list[dict]:
+    payments = list(payments)
     if layout == "single":
-        t = invoice_totals(rows, key)
+        t = invoice_totals(rows, key, payments)
+        parts = []
+        if rows:
+            parts.append(f"{len(rows)} settled deal{'s' if len(rows) != 1 else ''}")
+        if payments:
+            parts.append(f"{len(payments)} extra payment{'s' if len(payments) != 1 else ''}")
         return [{
-            "description": f"Referral commission — {len(rows)} settled deal{'s' if len(rows) != 1 else ''}, {period_label}",
+            "description": f"Commission — {' and '.join(parts)}, {period_label}",
             "amount_ex_gst": t["comms_ex_gst"],
             "gst": t["comms_gst"],
             "amount_inc_gst": t["comms_inc_gst"],
@@ -1162,7 +1550,7 @@ def invoice_lines(rows: list[dict], key: str, layout: str, period_label: str) ->
             "gst": s.get("comms_gst", 0.0),
             "amount_inc_gst": s.get("comms_inc_gst", 0.0),
         })
-    return lines
+    return lines + _payment_lines(payments)
 
 
 def period_label(date_from: Optional[date], date_to: Optional[date]) -> str:
@@ -1182,64 +1570,56 @@ def period_label(date_from: Optional[date], date_to: Optional[date]) -> str:
 _CATEGORY_FILLS = {"asset_finance": "C6EFCE", "consumer": "F8CBDE", "home_loan": "BDD7EE", "commercial": "FFF2CC"}
 
 
-def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str) -> bytes:
-    """The desk's spreadsheet layout: per month a 1st–15th and an after-15th
-    section (header, deals, total), the month total with the volume bonus
-    received and final profit, quarter totals at each FY quarter's end, year
-    totals when the range spans more than one FY, and the period total."""
+def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str, layout: str = "detailed",
+            payments: Iterable[dict] = (), pipeline: Iterable[dict] = ()) -> bytes:
+    """The desk's spreadsheet layout. ``detailed`` (for the accountant): per
+    month a 1st–15th and an after-15th section (header, deals, total), the
+    month total with extra payments, the volume bonus received and final
+    profit, then quarter, half-year and year totals where the range spans
+    them, and the period total — plus an "Extra payments" sheet listing each
+    one. ``summary`` (for management): the same totals, one line each, no
+    deals. Deals still in the pipeline go on a sheet of their own."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Settled deals"
+    ws.title = "Settled deals" if layout != "summary" else "Summary"
     bold = Font(bold=True)
     head_fill = PatternFill("solid", fgColor="1F2A44")
     fills = {
         "half": PatternFill("solid", fgColor="F4F6F9"),
         "month": PatternFill("solid", fgColor="E3E7EE"),
         "quarter": PatternFill("solid", fgColor="CDD5E1"),
+        "half_year": PatternFill("solid", fgColor="C2CCDA"),
         "year": PatternFill("solid", fgColor="B7C2D3"),
     }
     thin = Side(style="thin", color="C9CED8")
     box = Border(top=thin, bottom=thin, left=thin, right=thin)
     fmt = {"money": '"$"#,##0.00;[Red]-"$"#,##0.00', "date": "DD/MM/YYYY"}
-    label_col = next((i for i, c in enumerate(columns, start=1) if c["key"] not in TOTALLED and c["key"] not in PERIOD_ONLY), 1)
-    by_id = {r["application_id"]: r for r in rows}
+    widths = {"money": 14, "date": 12, "bool": 9, "text": 24}
+    payments = list(payments)
+    pipeline = list(pipeline)
+    show = rep.get("show", {"quarters": True, "half_years": False, "years": len(rep.get("years", [])) > 1})
 
-    ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=14)
-    r = 3
-
-    def header(row: int) -> None:
-        for i, c in enumerate(columns, start=1):
-            cell = ws.cell(row=row, column=i, value=c["label"])
+    def header(sheet, row: int, cols: list[dict]) -> None:
+        for i, c in enumerate(cols, start=1):
+            cell = sheet.cell(row=row, column=i, value=c["label"])
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = head_fill
             cell.alignment = Alignment(wrap_text=True, vertical="center")
             cell.border = box
 
-    def total_row(label: str, t: dict, row: int, level: str) -> None:
-        ws.cell(row=row, column=label_col, value=label).font = bold
-        for i, c in enumerate(columns, start=1):
-            cell = ws.cell(row=row, column=i)
-            cell.fill = fills[level]
-            cell.border = box
-            summed = c["key"] in TOTALLED or (level != "half" and c["key"] in PERIOD_ONLY)
-            if summed and t.get(c["key"]) is not None:
-                cell.value = t[c["key"]]
-                cell.number_format = fmt["money"]
-                cell.font = bold
-
-    def deal_row(row: dict, at: int) -> None:
+    def deal_cells(sheet, row: dict, at: int, cols: list[dict]) -> None:
         fill = _CATEGORY_FILLS.get(row.get("category") or "")
-        for i, c in enumerate(columns, start=1):
+        for i, c in enumerate(cols, start=1):
             value = None if c["key"] in PERIOD_ONLY else row.get(c["key"])
             if c["kind"] == "date" and value:
                 value = date.fromisoformat(value)
             elif c["kind"] == "bool":
                 value = "Yes" if value else "No"
-            cell = ws.cell(row=at, column=i, value=value)
+            cell = sheet.cell(row=at, column=i, value=value)
             cell.border = box
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             if c["kind"] in fmt:
@@ -1249,42 +1629,181 @@ def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str) -> byt
             if row.get("is_clawback"):
                 cell.font = Font(color="C00000")
 
-    quarter_end = {q["last_month"]: q for q in rep["quarters"]}
-    year_end = {y["last_month"]: y for y in rep["years"]} if len(rep["years"]) > 1 else {}
-    for m in rep["months"]:
-        heading = datetime.strptime(m["month"], "%Y-%m").strftime("%B %Y")
-        ws.cell(row=r, column=1, value=heading).font = Font(bold=True, size=12)
+    def widen(sheet, cols: list[dict], first_width: Optional[int] = None) -> None:
+        for i, c in enumerate(cols, start=1):
+            sheet.column_dimensions[get_column_letter(i)].width = widths.get(c["kind"], 16)
+        if first_width:
+            sheet.column_dimensions["A"].width = first_width
+        sheet.page_setup.orientation = "landscape"
+        sheet.page_setup.fitToWidth = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+
+    ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=14)
+    r = 3
+    quarter_end = {q["last_month"]: q for q in rep["quarters"]} if show.get("quarters") else {}
+    half_end = {h["last_month"]: h for h in rep.get("half_years", [])} if show.get("half_years") else {}
+    year_end = {y["last_month"]: y for y in rep["years"]} if show.get("years") else {}
+
+    if layout == "summary":
+        # One line per total: the label in column A, then the money columns.
+        money_cols = [c for c in columns if c["kind"] == "money" and c["key"] != "finance_amount"]
+        cols = [{"key": "_label", "label": "Period", "kind": "text"},
+                {"key": "count", "label": "Deals", "kind": "count"},
+                *([c for c in columns if c["key"] == "finance_amount"]), *money_cols]
+        header(ws, r, cols)
         r += 1
-        for half in m["halves"]:
-            ws.cell(row=r, column=1, value=half["label"]).font = bold
-            r += 1
-            header(r)
-            r += 1
-            for app_id in half["application_ids"]:
-                if app_id in by_id:
-                    deal_row(by_id[app_id], r)
-                    r += 1
-            total_row(f"Total {half['label']}", half["totals"], r, "half")
-            r += 2
-        total_row(f"TOTAL {heading}", m["totals"], r, "month")
-        r += 2
-        if m["month"] in quarter_end:
-            q = quarter_end[m["month"]]
-            total_row(f"TOTAL {q['label']}", q["totals"], r, "quarter")
-            r += 2
-        if m["month"] in year_end:
-            y = year_end[m["month"]]
-            total_row(f"TOTAL {y['label']}", y["totals"], r, "year")
-            r += 2
 
-    total_row("TOTAL", rep["totals"], r, "year")
+        def line(label: str, t: dict, level: str) -> None:
+            nonlocal r
+            for i, c in enumerate(cols, start=1):
+                cell = ws.cell(row=r, column=i)
+                cell.border = box
+                if level != "half":
+                    cell.fill = fills[level]
+                if c["key"] == "_label":
+                    cell.value = label
+                    cell.font = bold if level != "half" else Font()
+                    continue
+                if level == "half" and c["key"] in PERIOD_ONLY:
+                    continue
+                value = t.get(c["key"])
+                if value is not None:
+                    cell.value = value
+                    if c["kind"] == "money":
+                        cell.number_format = fmt["money"]
+                    if level != "half":
+                        cell.font = bold
+            r += 1
 
-    widths = {"money": 14, "date": 12, "bool": 9, "text": 24}
-    for i, c in enumerate(columns, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = widths.get(c["kind"], 16)
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToWidth = 1
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+        for m in rep["months"]:
+            heading = datetime.strptime(m["month"], "%Y-%m").strftime("%B %Y")
+            if len(m["halves"]) > 1 or (m["halves"] and m["halves"][0]["totals"] != m["totals"]):
+                for half in m["halves"]:
+                    line(f"{heading} · {half['label']}", half["totals"], "half")
+            line(f"TOTAL {heading}", m["totals"], "month")
+            if m["month"] in quarter_end:
+                q = quarter_end[m["month"]]
+                line(f"TOTAL {q['label']}", q["totals"], "quarter")
+            if m["month"] in half_end:
+                h = half_end[m["month"]]
+                line(f"TOTAL {h['label']}", h["totals"], "half_year")
+            if m["month"] in year_end:
+                y = year_end[m["month"]]
+                line(f"TOTAL {y['label']}", y["totals"], "year")
+        line("TOTAL", rep["totals"], "year")
+        widen(ws, cols, first_width=34)
+    else:
+        label_col = next((i for i, c in enumerate(columns, start=1) if c["key"] not in TOTALLED and c["key"] not in PERIOD_ONLY), 1)
+        by_id = {row["application_id"]: row for row in rows}
+
+        def total_row(label: str, t: dict, row: int, level: str) -> None:
+            ws.cell(row=row, column=label_col, value=label).font = bold
+            for i, c in enumerate(columns, start=1):
+                cell = ws.cell(row=row, column=i)
+                cell.fill = fills[level]
+                cell.border = box
+                summed = c["key"] in TOTALLED or (level != "half" and c["key"] in PERIOD_ONLY)
+                if summed and t.get(c["key"]) is not None:
+                    cell.value = t[c["key"]]
+                    cell.number_format = fmt["money"]
+                    cell.font = bold
+
+        for m in rep["months"]:
+            heading = datetime.strptime(m["month"], "%Y-%m").strftime("%B %Y")
+            ws.cell(row=r, column=1, value=heading).font = Font(bold=True, size=12)
+            r += 1
+            for half in m["halves"]:
+                ws.cell(row=r, column=1, value=half["label"]).font = bold
+                r += 1
+                header(ws, r, columns)
+                r += 1
+                for app_id in half["application_ids"]:
+                    if app_id in by_id:
+                        deal_cells(ws, by_id[app_id], r, columns)
+                        r += 1
+                total_row(f"Total {half['label']}", half["totals"], r, "half")
+                r += 2
+            total_row(f"TOTAL {heading}", m["totals"], r, "month")
+            r += 2
+            if m["month"] in quarter_end:
+                q = quarter_end[m["month"]]
+                total_row(f"TOTAL {q['label']}", q["totals"], r, "quarter")
+                r += 2
+            if m["month"] in half_end:
+                h = half_end[m["month"]]
+                total_row(f"TOTAL {h['label']}", h["totals"], r, "half_year")
+                r += 2
+            if m["month"] in year_end:
+                y = year_end[m["month"]]
+                total_row(f"TOTAL {y['label']}", y["totals"], r, "year")
+                r += 2
+        total_row("TOTAL", rep["totals"], r, "year")
+        widen(ws, columns)
+
+        # Each extra payment, for the accountant.
+        if payments:
+            ps = wb.create_sheet("Extra payments")
+            pcols = [
+                {"key": "payment_date", "label": "Date", "kind": "date"},
+                {"key": "payee_name", "label": "Paid to", "kind": "text"},
+                {"key": "payee_kind", "label": "Referrer / staff", "kind": "text"},
+                {"key": "category_label", "label": "What for", "kind": "text"},
+                {"key": "description", "label": "Description", "kind": "text"},
+                {"key": "deal_name", "label": "Deal", "kind": "text"},
+                {"key": "amount_ex_gst", "label": "Amount ex GST", "kind": "money"},
+                {"key": "gst_amount", "label": "GST", "kind": "money"},
+                {"key": "amount_inc_gst", "label": "Amount inc GST", "kind": "money"},
+                {"key": "status", "label": "Status", "kind": "text"},
+                {"key": "paid_on", "label": "Paid on", "kind": "date"},
+                {"key": "notes", "label": "Notes", "kind": "text"},
+            ]
+            pcols = [c for c in pcols if any(c["key"] in p for p in payments)]
+            ps.cell(row=1, column=1, value=f"Extra payments — {title}").font = Font(bold=True, size=14)
+            header(ps, 3, pcols)
+            at = 4
+            for p in payments:
+                row = {**p, "payee_kind": "Staff" if p.get("payee_kind") == "staff" else "Referrer",
+                       "status": STATUS_LABELS.get(p.get("status") or "", p.get("status"))}
+                deal_cells(ps, row, at, pcols)
+                at += 1
+            t = extra_totals(payments)
+            ps.cell(row=at, column=1, value="TOTAL").font = bold
+            for i, c in enumerate(pcols, start=1):
+                key = {"amount_ex_gst": "extra_payments_ex_gst", "gst_amount": "extra_payments_gst",
+                       "amount_inc_gst": "extra_payments_inc_gst"}.get(c["key"])
+                cell = ps.cell(row=at, column=i)
+                cell.fill = fills["year"]
+                cell.border = box
+                if key:
+                    cell.value = t[key]
+                    cell.number_format = fmt["money"]
+                    cell.font = bold
+            widen(ps, pcols)
+
+    # Deals on their way to settlement — not in any total above.
+    if pipeline:
+        pl = wb.create_sheet("Pipeline")
+        pcols = [c for c in columns if c["key"] not in PERIOD_ONLY and c["key"] not in ("settled_on", "paid_on")]
+        if not any(c["key"] == "deal_status" for c in pcols):
+            pcols.insert(0, {"key": "deal_status", "label": "Deal status", "kind": "text"})
+        pl.cell(row=1, column=1, value="Pipeline — moved past Started, not yet settled (not in the totals)").font = Font(bold=True, size=14)
+        header(pl, 3, pcols)
+        at = 4
+        for row in pipeline:
+            deal_cells(pl, row, at, pcols)
+            at += 1
+        t = totals(pipeline)
+        lc = next((i for i, c in enumerate(pcols, start=1) if c["kind"] != "money"), 1)
+        pl.cell(row=at, column=lc, value=f"TOTAL · {len(pipeline)} in the pipeline").font = bold
+        for i, c in enumerate(pcols, start=1):
+            cell = pl.cell(row=at, column=i)
+            cell.fill = fills["month"]
+            cell.border = box
+            if c["key"] in TOTALLED:
+                cell.value = t.get(c["key"])
+                cell.number_format = fmt["money"]
+                cell.font = bold
+        widen(pl, pcols)
 
     out = io.BytesIO()
     wb.save(out)

@@ -27,6 +27,7 @@ from app.models.ledger import (
     LedgerInvoice,
     LedgerMonth,
     LedgerPayee,
+    LedgerPayment,
     LedgerReceipt,
 )
 from app.models.user import User, UserRole
@@ -39,6 +40,7 @@ from app.schemas.ledger import (
     LedgerManualDealCreate,
     LedgerMonthUpdate,
     LedgerPayeeIn,
+    LedgerPaymentIn,
     LedgerReceiptIn,
     LedgerSettingsUpdate,
     LedgerSharesUpdate,
@@ -80,10 +82,36 @@ def _parse_range(date_from: Optional[str], date_to: Optional[str]) -> tuple[Opti
     return start, end
 
 
-def _report(db: Session, access: svc.LedgerAccess, rows: list[dict], referrer_id: Optional[str]) -> dict:
-    """Months (with halves), FY quarters and years, and the period total, redacted."""
-    records = svc.month_records(db, access.tenant_id, (r["month"] for r in rows))
-    return svc.redact_report(svc.report(rows, records, include_received=not referrer_id), access)
+def _report(db: Session, access: svc.LedgerAccess, rows: list[dict], referrer_id: Optional[str],
+            payments: list[dict] = (), start: Optional[date] = None, end: Optional[date] = None) -> dict:
+    """Months (with halves), FY quarters, half-years and years, and the period
+    total, redacted. Extra payments count only for a viewer who may see them."""
+    payments = list(payments) if access.can("referrers") else []
+    months = [r["month"] for r in rows if r.get("month")] + [p["month"] for p in payments]
+    records = svc.month_records(db, access.tenant_id, months)
+    rep = svc.report(rows, records, include_received=not referrer_id, payments=payments, date_from=start, date_to=end)
+    return svc.redact_report(rep, access)
+
+
+def _payments(db: Session, access: svc.LedgerAccess, start, end, rows: list[dict],
+              referrer_id: Optional[str] = None, broker_id: Optional[str] = None) -> list[dict]:
+    """Extra payments in the range, narrowed like the deals: to one payee, or
+    to one broker's book (payments on their deals, or made to them)."""
+    if not access.can("referrers"):
+        return []
+    out = svc.payment_rows(db, access.tenant_id, svc.payments_in_range(db, access.tenant_id, start, end))
+    key = _key(referrer_id)
+    if key:
+        out = [p for p in out if p["payee_key"] == key]
+    if broker_id:
+        keys = {r["application_id"] for r in rows}
+        out = [p for p in out if (p["deal_key"] in keys) or p["payee_key"] == f"u:{broker_id}"]
+    return out
+
+
+def _pipeline_wanted(end: Optional[date]) -> bool:
+    """The pipeline is today's, so it belongs on a view that reaches today."""
+    return end is None or end >= date.today()
 
 
 def _key(referrer_id: Optional[str]) -> Optional[str]:
@@ -94,11 +122,12 @@ def _key(referrer_id: Optional[str]) -> Optional[str]:
 
 
 def _rows(db: Session, access: svc.LedgerAccess, start, end, referrer_id: Optional[str] = None,
-          broker_id: Optional[str] = None) -> list[dict]:
+          broker_id: Optional[str] = None, with_pipeline: bool = False) -> list[dict]:
     rows = svc.build_rows(
         db, access.tenant_id,
         svc.settled_applications(db, access.tenant_id, start, end),
         svc.manual_deals(db, access.tenant_id, start, end),
+        svc.pipeline_applications(db, access.tenant_id) if with_pipeline and _pipeline_wanted(end) else (),
     )
     key = _key(referrer_id)
     if key:
@@ -109,12 +138,14 @@ def _rows(db: Session, access: svc.LedgerAccess, start, end, referrer_id: Option
 
 
 def _one_row(db: Session, access: svc.LedgerAccess, key: str) -> dict:
-    """The ledger row for one deal — a settled application or a ledger-only deal."""
+    """The ledger row for one deal — a settled application, a ledger-only deal,
+    or a deal in the pipeline (its figures can be entered before it settles)."""
     apps = svc.settled_applications(db, access.tenant_id, None, None, [key])
     manual = svc.manual_deals(db, access.tenant_id, None, None, [key]) if not apps else []
-    rows = svc.build_rows(db, access.tenant_id, apps, manual)
+    pipeline = svc.pipeline_applications(db, access.tenant_id, [key]) if not apps and not manual else []
+    rows = svc.build_rows(db, access.tenant_id, apps, manual, pipeline)
     if not rows:
-        raise HTTPException(status_code=404, detail="Settled deal not found")
+        raise HTTPException(status_code=404, detail="Deal not found")
     return rows[0]
 
 
@@ -123,16 +154,21 @@ def _resolve_payee(db: Session, access: svc.LedgerAccess, key: str) -> LedgerPay
     the first time they're paid or given ledger-only extras."""
     key = _key(key) or ""
     if key.startswith("u:"):
+        # A portal referrer, or a team member paid a cut of the deal.
         user = db.query(User).filter(
-            User.id == key[2:], User.tenant_id == access.tenant_id, User.role == UserRole.referrer
+            User.id == key[2:], User.tenant_id == access.tenant_id,
+            User.role.in_([UserRole.referrer, UserRole.admin, UserRole.broker]),
         ).first()
         if not user:
-            raise HTTPException(status_code=400, detail="Unknown referrer")
+            raise HTTPException(status_code=400, detail="Unknown payee")
+        kind = "referrer" if user.role == UserRole.referrer else "staff"
         payee = db.query(LedgerPayee).filter(LedgerPayee.tenant_id == access.tenant_id, LedgerPayee.user_id == user.id).first()
         if not payee:
-            payee = LedgerPayee(tenant_id=access.tenant_id, user_id=user.id)
+            payee = LedgerPayee(tenant_id=access.tenant_id, user_id=user.id, kind=kind)
             db.add(payee)
             db.flush()
+        elif payee.kind != kind:
+            payee.kind = kind
         return payee
     payee = db.query(LedgerPayee).filter(
         LedgerPayee.id == key[2:], LedgerPayee.tenant_id == access.tenant_id, LedgerPayee.user_id.is_(None)
@@ -223,20 +259,27 @@ def list_deals(
     if referrer_id:
         access.require("referrers")
     start, end = _parse_range(date_from, date_to)
-    rows = _rows(db, access, start, end, referrer_id, broker_id)
+    rows = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=access.can("deals"))
+    settled = [r for r in rows if not r["is_pipeline"]]
+    pipeline = [r for r in rows if r["is_pipeline"]]
+    payments = _payments(db, access, start, end, settled, referrer_id, broker_id)
     out: dict = {"date_from": date_from, "date_to": date_to}
     if access.can("summary"):
-        out.update(_report(db, access, rows, referrer_id))
+        out.update(_report(db, access, settled, referrer_id, payments, start, end))
+    key = _key(referrer_id)
+
+    def item_of(r: dict) -> dict:
+        item = svc.redact_row(r, access)
+        if key:
+            item["payee_share"] = next((sh for sh in item.get("shares", []) if sh["payee_key"] == key), None)
+        return item
+
     if access.can("deals"):
-        key = _key(referrer_id)
-        deals = []
-        for r in rows:
-            item = svc.redact_row(r, access)
-            if key:
-                share = next((sh for sh in item.get("shares", []) if sh["payee_key"] == key), None)
-                item["payee_share"] = share
-            deals.append(item)
-        out["deals"] = deals
+        out["deals"] = [item_of(r) for r in settled]
+        out["pipeline"] = [item_of(r) for r in pipeline]
+        out["pipeline_totals"] = svc.redact_totals(svc.totals(pipeline), access)
+    if access.can("referrers"):
+        out["extra_payments"] = [svc.redact_payment(p, access) for p in payments]
     return out
 
 
@@ -426,11 +469,31 @@ def mark_paid(
     ids = list(dict.fromkeys(data.application_ids))
     apps = svc.settled_applications(db, access.tenant_id, None, None, ids)
     manual = svc.manual_deals(db, access.tenant_id, None, None, ids)
-    rows = svc.build_rows(db, access.tenant_id, apps, manual)
+    rows = svc.build_rows(db, access.tenant_id, apps, manual) if ids else []
     if len(rows) != len(ids):
         raise HTTPException(status_code=400, detail="Some of those deals are not settled deals of this tenant")
     target = _key(data.payee_key)
     updated = 0
+    # Extra payments ticked alongside the deals (one transfer often covers both).
+    pay_ids = list(dict.fromkeys(data.payment_ids))
+    extras = db.query(LedgerPayment).filter(
+        LedgerPayment.tenant_id == access.tenant_id, LedgerPayment.id.in_(pay_ids)
+    ).all() if pay_ids else []
+    if len(extras) != len(pay_ids):
+        raise HTTPException(status_code=400, detail="Some of those extra payments were not found")
+    if target and extras:
+        target_id = _resolve_payee(db, access, target).id
+        if any(p.payee_id != target_id for p in extras):
+            raise HTTPException(status_code=400, detail="Not this payee's extra payment")
+    for p in extras:
+        p.status = data.status if data.status != "not_payable" else "unpaid"
+        p.paid_on = data.paid_on if data.status == "paid" else None
+        p.scheduled_on = data.scheduled_on if data.status == "scheduled" else None
+        if data.payment_method is not None:
+            p.payment_method = data.payment_method.strip() or None
+        if data.payment_reference is not None:
+            p.payment_reference = data.payment_reference.strip() or None
+        updated += 1
     for row in rows:
         if target and target not in row["referrer_keys"]:
             raise HTTPException(status_code=400, detail=f"Not this payee's deal: {row['customer_name']}")
@@ -450,7 +513,7 @@ def mark_paid(
                 sh.payment_notes = data.payment_notes.strip() or None
             updated += 1
     svc.audit(db, access, "deals_marked_paid", {
-        "application_ids": ids, "payee": target, "status": data.status, "paid_on": data.paid_on,
+        "application_ids": ids, "payment_ids": pay_ids, "payee": target, "status": data.status, "paid_on": data.paid_on,
     })
     db.commit()
     return {"updated": updated}
@@ -469,7 +532,8 @@ def referrer_report(
     """How many deals each referrer brought in the range, and what they're owed."""
     access.require("referrers")
     start, end = _parse_range(date_from, date_to)
-    return svc.referrer_summary(_rows(db, access, start, end), include_payments=access.is_owner)
+    rows = _rows(db, access, start, end)
+    return svc.referrer_summary(rows, include_payments=access.is_owner, payments=_payments(db, access, start, end, rows))
 
 
 @router.get("/referrer-options")
@@ -496,6 +560,7 @@ def _payee_out(payee: Optional[LedgerPayee], user: Optional[User], include_bank:
         "payee_id": payee.id if payee else None,
         "user_id": user.id if user else None,
         "is_portal": user is not None,
+        "kind": "staff" if svc.is_staff_payee(payee, user) else "referrer",
         "name": user.full_name if user else (payee.name if payee else None),
         "organization_name": user.organization_name if user else (payee.company_name if payee else None),
         "gst_registered": party.get("gst_registered"),
@@ -511,12 +576,14 @@ def _payee_out(payee: Optional[LedgerPayee], user: Optional[User], include_bank:
 
 @router.get("/payees")
 def list_payees(access: svc.LedgerAccess = Depends(ledger_access), db: Session = Depends(get_db)):
-    """Everyone commission can be paid to: the tenant's portal referrers and
-    the ledger's own off-portal payees."""
+    """Everyone commission can be paid to: the tenant's portal referrers, its
+    team members (admins and brokers — staff paid a cut for making a deal
+    happen) and the ledger's own off-portal payees."""
     access.require("referrers")
     users = (
         db.query(User)
-        .filter(User.tenant_id == access.tenant_id, User.role == UserRole.referrer, *active_user_clauses())
+        .filter(User.tenant_id == access.tenant_id,
+                User.role.in_([UserRole.referrer, UserRole.admin, UserRole.broker]), *active_user_clauses())
         .order_by(User.full_name)
         .all()
     )
@@ -544,7 +611,8 @@ def create_payee(data: LedgerPayeeIn, access: svc.LedgerAccess = Depends(ledger_
 
 def _apply_payee(payee: LedgerPayee, data: LedgerPayeeIn, portal: bool) -> None:
     fields = data.model_dump(exclude_unset=True)
-    # A portal referrer's identity and bank details are their own profile.
+    # A portal user's identity and bank details are their own profile, and
+    # their kind follows their role.
     allowed = {"notes", "default_share_percent", "default_share_base", "default_share_amount", "is_active"}
     for field, value in fields.items():
         if portal and field not in allowed:
@@ -555,7 +623,7 @@ def _apply_payee(payee: LedgerPayee, data: LedgerPayeeIn, portal: bool) -> None:
             value = Decimal(str(value))
         if field == "default_share_base" and value is None:
             continue
-        if field == "is_active" and value is None:
+        if field in ("is_active", "kind") and value is None:
             continue
         setattr(payee, field, value)
 
@@ -570,6 +638,116 @@ def update_payee(key: str, data: LedgerPayeeIn, access: svc.LedgerAccess = Depen
     svc.audit(db, access, "payee_updated", {"payee_id": payee.id})
     db.commit()
     return _payee_out(payee, user, True)
+
+
+# ── Extra payments ───────────────────────────────────────────────────────
+
+
+def _apply_payment(db: Session, access: svc.LedgerAccess, p: LedgerPayment, data: LedgerPaymentIn) -> None:
+    if data.status == "paid" and not data.paid_on:
+        raise HTTPException(status_code=400, detail="A paid payment needs the date it was paid")
+    if data.status == "scheduled" and not data.scheduled_on:
+        raise HTTPException(status_code=400, detail="A scheduled payment needs its date")
+    if data.deal_key:
+        known = (
+            db.query(LedgerDeal.id).filter(LedgerDeal.tenant_id == access.tenant_id, LedgerDeal.application_id == data.deal_key).first()
+            or svc.settled_applications(db, access.tenant_id, None, None, [data.deal_key])
+            or svc.pipeline_applications(db, access.tenant_id, [data.deal_key])
+        )
+        if not known:
+            raise HTTPException(status_code=400, detail="Unknown deal")
+    p.payee_id = _resolve_payee(db, access, data.payee_key).id
+    p.payment_date = data.payment_date
+    p.category = data.category
+    p.description = (data.description or "").strip() or None
+    p.amount = Decimal(str(data.amount))
+    p.gst = data.gst
+    p.deal_key = data.deal_key or None
+    p.status = data.status
+    p.scheduled_on = data.scheduled_on if data.status == "scheduled" else None
+    p.paid_on = data.paid_on if data.status == "paid" else None
+    p.payment_method = (data.payment_method or "").strip() or None
+    p.payment_reference = (data.payment_reference or "").strip() or None
+    p.notes = (data.notes or "").strip() or None
+
+
+def _payment_out(db: Session, access: svc.LedgerAccess, p: LedgerPayment) -> dict:
+    return svc.redact_payment(svc.payment_rows(db, access.tenant_id, [p])[0], access)
+
+
+@router.get("/payments")
+def list_payments(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    payee_key: Optional[str] = Query(None),
+    deal_key: Optional[str] = Query(None),
+    access: svc.LedgerAccess = Depends(ledger_access),
+    db: Session = Depends(get_db),
+):
+    """Extra payments in the range — paid above the agreed comms, a split of
+    a mandate fee, a staff bonus — optionally for one payee. deal_key gives
+    every payment linked to that deal, whatever month it was made in."""
+    access.require("referrers")
+    if deal_key:
+        payments = (
+            db.query(LedgerPayment)
+            .filter(LedgerPayment.tenant_id == access.tenant_id, LedgerPayment.deal_key == deal_key)
+            .order_by(LedgerPayment.payment_date, LedgerPayment.created_at)
+            .all()
+        )
+    else:
+        start, end = _parse_range(date_from, date_to)
+        payments = svc.payments_in_range(db, access.tenant_id, start, end)
+    out = svc.payment_rows(db, access.tenant_id, payments)
+    key = _key(payee_key)
+    if key:
+        out = [p for p in out if p["payee_key"] == key]
+    return {"payments": [svc.redact_payment(p, access) for p in out], "totals": svc.extra_totals(out),
+            "categories": svc.PAYMENT_CATEGORY_LABELS}
+
+
+@router.get("/deal-options")
+def list_deal_options(access: svc.LedgerAccess = Depends(ledger_access), db: Session = Depends(get_db)):
+    """Every deal, from any month, an extra payment can be linked to."""
+    access.require_owner()
+    return svc.deal_options(db, access.tenant_id)
+
+
+@router.post("/payments", status_code=status.HTTP_201_CREATED)
+def create_payment(data: LedgerPaymentIn, access: svc.LedgerAccess = Depends(ledger_access), db: Session = Depends(get_db)):
+    access.require_owner()
+    p = LedgerPayment(tenant_id=access.tenant_id, created_by_id=access.user.id)
+    _apply_payment(db, access, p, data)
+    db.add(p)
+    svc.audit(db, access, "extra_payment_created", {"payee": _key(data.payee_key), "amount": data.amount,
+                                                    "category": data.category, "date": data.payment_date})
+    db.commit()
+    return _payment_out(db, access, p)
+
+
+@router.put("/payments/{payment_id}")
+def update_payment(payment_id: str, data: LedgerPaymentIn, access: svc.LedgerAccess = Depends(ledger_access),
+                   db: Session = Depends(get_db)):
+    access.require_owner()
+    p = db.query(LedgerPayment).filter(LedgerPayment.id == payment_id, LedgerPayment.tenant_id == access.tenant_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    _apply_payment(db, access, p, data)
+    svc.audit(db, access, "extra_payment_updated", {"payment_id": p.id})
+    db.commit()
+    return _payment_out(db, access, p)
+
+
+@router.delete("/payments/{payment_id}")
+def delete_payment(payment_id: str, access: svc.LedgerAccess = Depends(ledger_access), db: Session = Depends(get_db)):
+    access.require_owner()
+    p = db.query(LedgerPayment).filter(LedgerPayment.id == payment_id, LedgerPayment.tenant_id == access.tenant_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    svc.audit(db, access, "extra_payment_deleted", {"amount": float(p.amount), "date": p.payment_date})
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
 
 
 # ── Receipts ─────────────────────────────────────────────────────────────
@@ -657,21 +835,33 @@ def export_xlsx(
     referrer_id: Optional[str] = Query(None),
     broker_id: Optional[str] = Query(None),
     columns: Optional[str] = Query(None, max_length=2000),
+    layout: str = Query("detailed", pattern="^(detailed|summary)$"),
+    include_pipeline: bool = Query(False),
+    title: Optional[str] = Query(None, max_length=120),
     access: svc.LedgerAccess = Depends(ledger_access),
     db: Session = Depends(get_db),
 ):
+    """The report as Excel: ``detailed`` lists every deal (the accountant's
+    copy), ``summary`` only the fortnight / month / quarter / half-year / year
+    totals (management's). Columns — and so which GST figures — are the
+    viewer's choice."""
     access.require("export")
     access.require("deals")
     if referrer_id:
         access.require("referrers")
     start, end = _parse_range(date_from, date_to)
     cols = svc.pick_columns(columns, access)
-    raw = _rows(db, access, start, end, referrer_id, broker_id)
-    rep_ = _report(db, access, raw, referrer_id)
-    rows = [svc.redact_row(r, access) for r in raw]
-    title = f"Settled deals — {svc.period_label(start, end)}"
-    content = svc.to_xlsx(rows, rep_, cols, title)
-    svc.audit(db, access, "exported", {"format": "xlsx", "from": start, "to": end, "columns": [c["key"] for c in cols]})
+    raw = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=include_pipeline)
+    settled = [r for r in raw if not r["is_pipeline"]]
+    payments = _payments(db, access, start, end, settled, referrer_id, broker_id)
+    rep_ = _report(db, access, settled, referrer_id, payments, start, end)
+    rows = [svc.redact_row(r, access) for r in settled]
+    pipeline = [svc.redact_row(r, access) for r in raw if r["is_pipeline"]]
+    heading = (title or "").strip() or "Settled deals"
+    content = svc.to_xlsx(rows, rep_, cols, f"{heading} — {svc.period_label(start, end)}", layout=layout,
+                          payments=[svc.redact_payment(p, access) for p in payments], pipeline=pipeline)
+    svc.audit(db, access, "exported", {"format": "xlsx", "layout": layout, "from": start, "to": end,
+                                       "columns": [c["key"] for c in cols]})
     db.commit()
     stamp = "-".join(filter(None, [date_from, date_to])) or "all"
     return Response(
@@ -804,24 +994,31 @@ def create_invoice(
         db, access.tenant_id,
         svc.settled_applications(db, access.tenant_id, None, None, ids),
         svc.manual_deals(db, access.tenant_id, None, None, ids),
-    )
+    ) if ids else []
     if len(rows) != len(ids):
         raise HTTPException(status_code=400, detail="Some of those deals are not settled deals of this tenant")
     stray = [r["customer_name"] for r in rows if key not in r["referrer_keys"]]
     if stray:
         raise HTTPException(status_code=400, detail=f"Not this payee's deal: {', '.join(stray)}")
+    pay_ids = list(dict.fromkeys(data.payment_ids))
+    extras = svc.payment_rows(db, access.tenant_id, svc.payments_in_range(db, access.tenant_id, None, None, pay_ids)) if pay_ids else []
+    if len(extras) != len(pay_ids) or any(p["payee_id"] != payee.id for p in extras):
+        raise HTTPException(status_code=400, detail="Some of those extra payments are not this payee's")
+    if not rows and not extras:
+        raise HTTPException(status_code=400, detail="Choose at least one deal or extra payment")
 
     settings = access.settings
     number = f"{settings.invoice_prefix}{settings.next_invoice_number:04d}"
     settings.next_invoice_number += 1
-    t = svc.invoice_totals(rows, key)
+    t = svc.invoice_totals(rows, key, extras)
     snapshot = {
         "supplier": svc.payee_party(payee, user, include_bank=True),
         "recipient": {k: v for k, v in svc.settings_out(settings, db).items()
                       if k in ("business_name", "business_abn", "business_address", "business_email")},
-        "lines": svc.invoice_lines(rows, key, data.layout, svc.period_label(data.period_from, data.period_to)),
+        "lines": svc.invoice_lines(rows, key, data.layout, svc.period_label(data.period_from, data.period_to), extras),
         "deal_count": len(rows),
         "application_ids": [r["application_id"] for r in rows],
+        "payment_ids": [p["id"] for p in extras],
         "period_label": svc.period_label(data.period_from, data.period_to),
     }
     inv = LedgerInvoice(
@@ -840,7 +1037,7 @@ def create_invoice(
         created_by_id=access.user.id,
     )
     db.add(inv)
-    svc.audit(db, access, "invoice_created", {"number": number, "payee": key, "deals": len(rows)})
+    svc.audit(db, access, "invoice_created", {"number": number, "payee": key, "deals": len(rows), "extra_payments": len(extras)})
     db.commit()
     db.refresh(inv)
     return _invoice_out(inv, access)

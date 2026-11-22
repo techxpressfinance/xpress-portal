@@ -3,6 +3,7 @@
 // carries the trade-in and the payout owing on it. Stored as a QuoteSheet with
 // sheet_type 'lender_pricing'. The maths mirrors the client quote sheet
 // (QuoteSheetEditor) so both agree on the same inputs.
+import { feeTotals, isBrokerageFinanced } from './feeOptions';
 import type { DirectDebitCycle, FacilityType, LenderPricingInputs, QuoteOption, QuoteSheet } from '../types';
 
 export const MIN_TERM_MONTHS = 2; // the arrears formula needs at least two periods
@@ -111,18 +112,24 @@ export function computeLenderPricing(inputs: LenderPricingInputs) {
   // Amount borrowed = asset price − deposit − trade-in + payout figure. Any
   // payout still owing on the trade-in is rolled into the new loan.
   const amountBorrowed = inputs.asset_price - deposit - inputs.trade_in_amount + inputs.payout_amount;
-  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee;
-  const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
+  // Each fee is financed in or paid up front on its own (lib/feeOptions.ts).
+  const fees = feeTotals(inputs);
+  const totalFees = fees.total;
+  const netAmount = amountBorrowed + fees.financed;
   const brokerage = inputs.gst_on_brokerage
     ? inputs.brokerage_amount * (1 + inputs.gst_percent / 100)
     : inputs.brokerage_amount;
+  const brokerageFinanced = isBrokerageFinanced(inputs);
   const itc = itcBenefit(inputs);
   const subTotal = netAmount - itc;
-  const amountFinanced = subTotal + brokerage;
+  const amountFinanced = subTotal + (brokerageFinanced ? brokerage : 0);
   const balloonBase = inputs.balloon_on_total_price ? inputs.asset_price : amountFinanced;
   // Negative equity: payout owing on the trade-in beyond what it is worth.
   const negativeEquity = Math.max(0, inputs.payout_amount - inputs.trade_in_amount);
-  return { deposit, amountBorrowed, totalFees, brokerage, itcBenefit: itc, subTotal, amountFinanced, balloonBase, negativeEquity };
+  return {
+    deposit, amountBorrowed, totalFees, financedFees: fees.financed, upfrontFees: fees.upfront, brokerage, brokerageFinanced,
+    itcBenefit: itc, subTotal, amountFinanced, balloonBase, negativeEquity,
+  };
 }
 
 /** Lending-policy red alerts. Never block a save — the desk may still have good

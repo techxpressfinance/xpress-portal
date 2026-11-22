@@ -5,7 +5,7 @@ import { useToast } from '../Toast';
 import { Button, Card } from '../ui';
 import { getErrorMessage } from '../../lib/utils';
 import { SHARE_BASE_LABEL } from '../../lib/ledger';
-import type { LedgerPayee, LedgerShareBase } from '../../types';
+import type { LedgerPayee, LedgerPayeeKind, LedgerShareBase } from '../../types';
 import LedgerModal from './LedgerModal';
 
 const usualCut = (p: LedgerPayee) => {
@@ -17,7 +17,7 @@ const usualCut = (p: LedgerPayee) => {
 type Form = Record<
   'name' | 'company_name' | 'abn' | 'email' | 'phone' | 'address' | 'bank_account_name' | 'bank_name' | 'bank_bsb'
   | 'bank_account_number' | 'notes' | 'default_share_percent' | 'default_share_amount', string
-> & { gst_registered: '' | 'yes' | 'no'; default_share_base: LedgerShareBase; cut_mode: 'percent' | 'dollar'; is_active: boolean };
+> & { gst_registered: '' | 'yes' | 'no'; default_share_base: LedgerShareBase; cut_mode: 'percent' | 'dollar'; is_active: boolean; kind: LedgerPayeeKind };
 
 function formFor(p: LedgerPayee | null): Form {
   return {
@@ -38,18 +38,22 @@ function formFor(p: LedgerPayee | null): Form {
     default_share_base: p?.default_share_base ?? 'brokerage',
     cut_mode: p?.default_share_amount != null ? 'dollar' : 'percent',
     is_active: p?.is_active ?? true,
+    kind: p?.kind ?? 'referrer',
   };
 }
+
+const payeeType = (p: LedgerPayee) =>
+  p.is_portal ? (p.kind === 'staff' ? 'Team member' : 'Portal referrer') : (p.kind === 'staff' ? 'Staff (off-portal)' : 'Off-portal referrer');
 
 const num = (s: string) => {
   const t = s.replace(/[$,\s%]/g, '');
   return t === '' ? null : Number(t);
 };
 
-/** Everyone commission is paid to. Portal referrers' details are their own
- *  billing profile (edited on the referrer page); here the owner keeps only
- *  their usual cut and notes. Off-portal payees — accountants, partners,
- *  sub-contractors — are kept entirely here. */
+/** Everyone commission is paid to. Portal referrers' and team members'
+ *  details are their own profile; here the owner keeps only their usual cut
+ *  and notes. Off-portal payees — accountants, partners, sub-contractors,
+ *  former staff — are kept entirely here. */
 export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
   payees: LedgerPayee[];
   isOwner: boolean;
@@ -93,6 +97,7 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
         phone: form.phone, address: form.address, bank_account_name: form.bank_account_name, bank_name: form.bank_name,
         bank_bsb: form.bank_bsb.replace(/\D/g, ''), bank_account_number: form.bank_account_number.replace(/\D/g, ''),
         gst_registered: form.gst_registered === '' ? null : form.gst_registered === 'yes',
+        kind: form.kind,
       });
     }
     setSaving(true);
@@ -109,7 +114,11 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
     }
   };
 
-  const shown = payees.filter((p) => showInactive || p.is_active);
+  const [showStaff, setShowStaff] = useState(false);
+  // Every admin and broker is a possible payee; list them only on request, or
+  // once they've a usual cut or notes recorded.
+  const shown = payees.filter((p) => (showInactive || p.is_active)
+    && (showStaff || p.kind !== 'staff' || !p.is_portal || p.notes || p.default_share_amount != null || p.default_share_percent != null));
   const inputCls = 'led-input !h-9 w-full text-[13px]';
   const labelCls = 'mb-1 block text-[12px] font-medium text-[var(--led-ink-2)]';
   const field = (k: keyof Form, label: string, placeholder?: string) => (
@@ -124,9 +133,12 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
       <div className="px-4 py-3 border-b border-border flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-[14px] font-semibold text-foreground">Payees</h2>
-          <p className="text-[12px] text-muted-foreground">Portal referrers and people paid outside the portal. Only admins with ledger access see this.</p>
+          <p className="text-[12px] text-muted-foreground">Referrers, team members paid a cut, and people paid outside the portal. Only admins with ledger access see this.</p>
         </div>
         <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <input type="checkbox" checked={showStaff} onChange={(e) => setShowStaff(e.target.checked)} /> Show all team members
+          </label>
           <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show inactive
           </label>
@@ -154,7 +166,7 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
                   <span className="font-medium">{p.name || p.organization_name || 'Unnamed'}</span>
                   {p.name && p.organization_name && <span className="text-muted-foreground"> · {p.organization_name}</span>}
                 </td>
-                <td className="px-3 py-2">{p.is_portal ? 'Portal referrer' : 'Off-portal'}</td>
+                <td className="px-3 py-2">{payeeType(p)}</td>
                 <td className="px-3 py-2 tabular-nums">{p.party.abn || '—'}</td>
                 <td className="px-3 py-2">{p.gst_registered == null ? '—' : p.gst_registered ? 'Registered' : 'No'}</td>
                 <td className="px-3 py-2">{usualCut(p)}</td>
@@ -168,7 +180,7 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
                 <td className="px-3 py-2 max-w-[260px] truncate" title={p.notes ?? undefined}>{p.notes || '—'}</td>
                 {isOwner && (
                   <td className="px-2 py-1 text-right whitespace-nowrap">
-                    {p.is_portal && p.user_id && (
+                    {p.is_portal && p.user_id && p.kind !== 'staff' && (
                       <Link to={`/admin/referrers/${p.user_id}`} className="led-btn led-btn-ghost led-btn-sm">Profile</Link>
                     )}
                     <button type="button" className="led-btn led-btn-ghost led-btn-sm" onClick={() => open(p)}>Edit</button>
@@ -186,7 +198,9 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
       {editing && (
         <LedgerModal
           title={editing === 'new' ? 'Add a payee' : editing.name || editing.organization_name || 'Payee'}
-          subtitle={portal ? 'Portal referrer — their ABN, GST and bank details are on their referrer profile.' : 'Paid outside the portal — kept in the ledger only.'}
+          subtitle={portal
+            ? (typeof editing === 'object' && editing.kind === 'staff' ? 'Team member — paid a cut of deals they help make happen.' : 'Portal referrer — their ABN, GST and bank details are on their referrer profile.')
+            : 'Paid outside the portal — kept in the ledger only.'}
           onClose={() => setEditing(null)}
           wide
           footer={
@@ -198,6 +212,13 @@ export default function LedgerPayeesPanel({ payees, isOwner, onChanged }: {
         >
           {!portal && (
             <div className="grid gap-3 sm:grid-cols-2 mb-4">
+              <label className="block sm:col-span-2">
+                <span className={labelCls}>Paid as</span>
+                <select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as LedgerPayeeKind)}>
+                  <option value="referrer">Referrer — their cut shows as referrer comms</option>
+                  <option value="staff">Staff — their cut shows as staff comms</option>
+                </select>
+              </label>
               {field('name', 'Name', 'e.g. Paras Abrol')}
               {field('company_name', 'Company', 'e.g. Abrol Associates')}
               {field('abn', 'ABN')}

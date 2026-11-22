@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { QuoteSheet, QuoteOption } from '../types';
 import { migrateQuoteParams, termLabel } from '../lib/quoteTerms';
+import { FEE_KEYS, financedState, isFeeFinanced, type FeeKey, type FeeOptionInputs } from '../lib/feeOptions';
 
 interface QuoteSheetComparisonProps {
   quoteSheet: QuoteSheet;
@@ -241,6 +242,11 @@ function parseInputParams(quoteSheet: QuoteSheet) {
   try {
     // Legacy sheets stored terms in years — normalise to months on read.
     const params = migrateQuoteParams(JSON.parse(quoteSheet.input_parameters));
+    const feeInputs: FeeOptionInputs = {
+      establishment_fee: params.establishment_fee ?? 0, ppsr_fee: params.ppsr_fee ?? 0,
+      origination_fee: params.origination_fee ?? 0, vir_fee: params.vir_fee ?? 0,
+      fees_financed: params.fees_financed ?? true, fee_financed: params.fee_financed,
+    };
     return {
       assetDescription: (params.asset_description || params.asset_type || 'Asset') as string,
       facilityType: (params.facility_type || 'chattel') as string,
@@ -252,7 +258,9 @@ function parseInputParams(quoteSheet: QuoteSheet) {
       brokeragePercent: params.brokerage_percent ?? null,
       interestRate: params.interest_rate ?? null,
       monthlyAccountFee: params.monthly_account_fee ?? 0,
-      feesFinanced: params.fees_financed ?? true,
+      // Every fee financed? A fee paid up front is listed for the client.
+      feesFinanced: financedState(feeInputs) === 'all',
+      upfrontFees: Object.fromEntries(FEE_KEYS.map((k) => [k, isFeeFinanced(feeInputs, k) ? 0 : (feeInputs[k] || 0)])) as Record<FeeKey, number>,
       selectedTerms: (params.selected_terms as number[] | undefined) ?? null,
       showInterestRate: (params.show_interest_rate as boolean | undefined) ?? false,
       showTotalInterest: (params.show_total_interest as boolean | undefined) ?? true,
@@ -821,24 +829,24 @@ export default function QuoteSheetComparison({
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' as const }}>
               <colgroup><col style={{ width: '70%' }} /><col style={{ width: '30%' }} /></colgroup>
               <tbody>
-                {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}><Money v={parsedParams.establishmentFee} /></td></tr>
+                {parsedParams.upfrontFees.establishment_fee != null && parsedParams.upfrontFees.establishment_fee > 0 && (
+                  <tr><td style={lbl}>Loan establishment fee</td><td style={val}><Money v={parsedParams.upfrontFees.establishment_fee} /></td></tr>
                 )}
-                {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-                  <tr><td style={lbl}>PPSR</td><td style={val}><Money v={parsedParams.ppsrFee} /></td></tr>
+                {parsedParams.upfrontFees.ppsr_fee != null && parsedParams.upfrontFees.ppsr_fee > 0 && (
+                  <tr><td style={lbl}>PPSR</td><td style={val}><Money v={parsedParams.upfrontFees.ppsr_fee} /></td></tr>
                 )}
-                {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-                  <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.originationFee} /></td></tr>
+                {parsedParams.upfrontFees.origination_fee != null && parsedParams.upfrontFees.origination_fee > 0 && (
+                  <tr><td style={lbl}>Origination fee</td><td style={val}><Money v={parsedParams.upfrontFees.origination_fee} /></td></tr>
                 )}
-                {parsedParams.virFee != null && parsedParams.virFee > 0 && (
-                  <tr><td style={lbl}>Vehicle inspection report</td><td style={val}><Money v={parsedParams.virFee} /></td></tr>
+                {parsedParams.upfrontFees.vir_fee != null && parsedParams.upfrontFees.vir_fee > 0 && (
+                  <tr><td style={lbl}>Vehicle inspection report</td><td style={val}><Money v={parsedParams.upfrontFees.vir_fee} /></td></tr>
                 )}
                 <tr>
                   <td style={{ ...lbl, fontWeight: 600, color: ink, textTransform: 'none', letterSpacing: '0', borderBottom: 'none', paddingTop: '10px' }}>
                     Total fees
                   </td>
                   <td style={{ ...val, fontWeight: 600, color: ink, borderBottom: 'none', paddingTop: '10px' }}>
-                    <Money v={(parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0) + (parsedParams.virFee ?? 0)} />
+                    <Money v={(parsedParams.upfrontFees.establishment_fee ?? 0) + (parsedParams.upfrontFees.ppsr_fee ?? 0) + (parsedParams.upfrontFees.origination_fee ?? 0) + (parsedParams.upfrontFees.vir_fee ?? 0)} />
                   </td>
                 </tr>
               </tbody>
@@ -1019,19 +1027,19 @@ export default function QuoteSheetComparison({
         <div className="border border-warning/30 bg-warning/5 rounded-lg p-4 space-y-2 break-inside-avoid mt-4">
           <p className="text-[12px] font-semibold text-warning uppercase tracking-wide mb-2">Fees Payable (Not Financed)</p>
           <p className="text-[11px] text-muted-foreground mb-3">These fees are charged separately and are not included in the loan amount.</p>
-          {parsedParams.establishmentFee != null && parsedParams.establishmentFee > 0 && (
-            <Row label="Loan Establishment Fee" value={<Money v={parsedParams.establishmentFee} />} />
+          {parsedParams.upfrontFees.establishment_fee != null && parsedParams.upfrontFees.establishment_fee > 0 && (
+            <Row label="Loan Establishment Fee" value={<Money v={parsedParams.upfrontFees.establishment_fee} />} />
           )}
-          {parsedParams.ppsrFee != null && parsedParams.ppsrFee > 0 && (
-            <Row label="PPSR" value={<Money v={parsedParams.ppsrFee} />} />
+          {parsedParams.upfrontFees.ppsr_fee != null && parsedParams.upfrontFees.ppsr_fee > 0 && (
+            <Row label="PPSR" value={<Money v={parsedParams.upfrontFees.ppsr_fee} />} />
           )}
-          {parsedParams.originationFee != null && parsedParams.originationFee > 0 && (
-            <Row label="Origination Fee" value={<Money v={parsedParams.originationFee} />} />
+          {parsedParams.upfrontFees.origination_fee != null && parsedParams.upfrontFees.origination_fee > 0 && (
+            <Row label="Origination Fee" value={<Money v={parsedParams.upfrontFees.origination_fee} />} />
           )}
-          {parsedParams.virFee != null && parsedParams.virFee > 0 && (
-            <Row label="Vehicle Inspection Report" value={<Money v={parsedParams.virFee} />} />
+          {parsedParams.upfrontFees.vir_fee != null && parsedParams.upfrontFees.vir_fee > 0 && (
+            <Row label="Vehicle Inspection Report" value={<Money v={parsedParams.upfrontFees.vir_fee} />} />
           )}
-          <Row label="Total Fees" value={<Money v={(parsedParams.establishmentFee ?? 0) + (parsedParams.ppsrFee ?? 0) + (parsedParams.originationFee ?? 0) + (parsedParams.virFee ?? 0)} />} bold />
+          <Row label="Total Fees" value={<Money v={(parsedParams.upfrontFees.establishment_fee ?? 0) + (parsedParams.upfrontFees.ppsr_fee ?? 0) + (parsedParams.upfrontFees.origination_fee ?? 0) + (parsedParams.upfrontFees.vir_fee ?? 0)} />} bold />
         </div>
       )}
 

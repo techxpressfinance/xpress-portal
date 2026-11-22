@@ -94,7 +94,9 @@ class LedgerBulkPaid(BaseModel):
     """Set the payment status of several deals in one go — a payee's invoice,
     or one bank transfer that covered several deals."""
 
-    application_ids: list[str] = Field(min_length=1, max_length=500)
+    application_ids: list[str] = Field(default_factory=list, max_length=500)
+    # Extra payments settled by the same transfer.
+    payment_ids: list[str] = Field(default_factory=list, max_length=500)
     # Whose share; None = every payee on those deals.
     payee_key: Optional[str] = Field(None, max_length=60)
     status: ShareStatus = "paid"
@@ -110,7 +112,28 @@ class LedgerBulkPaid(BaseModel):
             raise ValueError("A paid date is needed")
         if self.status == "scheduled" and not self.scheduled_on:
             raise ValueError("A scheduled date is needed")
+        if not self.application_ids and not self.payment_ids:
+            raise ValueError("Choose at least one deal or extra payment")
         return self
+
+
+class LedgerPaymentIn(BaseModel):
+    """A payment to a payee outside a deal's agreed share, in a given month."""
+
+    payee_key: str = Field(min_length=3, max_length=60)
+    payment_date: date
+    category: Literal["extra_service", "mandate_split", "staff_bonus", "other"] = "extra_service"
+    description: Optional[str] = Field(None, max_length=255)
+    amount: float = Field(ge=-10_000_000, le=10_000_000)  # ex GST
+    # None = follow the payee's GST registration.
+    gst: Optional[bool] = None
+    deal_key: Optional[str] = Field(None, max_length=36)
+    status: Literal["unpaid", "scheduled", "paid"] = "unpaid"
+    scheduled_on: Optional[date] = None
+    paid_on: Optional[date] = None
+    payment_method: Optional[str] = Field(None, max_length=50)
+    payment_reference: Optional[str] = Field(None, max_length=200)
+    notes: Optional[str] = Field(None, max_length=4000)
 
 
 class LedgerPayeeIn(BaseModel):
@@ -118,6 +141,8 @@ class LedgerPayeeIn(BaseModel):
     ledger-only extras (notes, usual cut) — the rest of a portal referrer's
     record is their own billing profile."""
 
+    # Off-portal payees only: "referrer" or "staff" (a portal user's follows their role).
+    kind: Optional[Literal["referrer", "staff"]] = None
     name: Optional[str] = Field(None, max_length=255)
     company_name: Optional[str] = Field(None, max_length=255)
     abn: Optional[str] = Field(None, max_length=20)
@@ -176,7 +201,8 @@ class LedgerMonthUpdate(BaseModel):
 class LedgerInvoiceCreate(BaseModel):
     # The payee key ("u:…" / "p:…"); a bare referrer user id still works.
     referrer_id: str = Field(max_length=60)
-    application_ids: list[str] = Field(min_length=1, max_length=500)
+    application_ids: list[str] = Field(default_factory=list, max_length=500)
+    payment_ids: list[str] = Field(default_factory=list, max_length=500)
     layout: Literal["breakdown", "single"] = "breakdown"
     issue_date: Optional[date] = None
     period_from: Optional[date] = None

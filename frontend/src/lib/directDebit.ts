@@ -8,6 +8,7 @@
 // not carry, any structured repayments and who signs.
 import type { DirectDebitCycle, LoanApplication, QuoteSheet } from '../types';
 import { fmt2, parseLenderPricingInputs, repaymentFor } from './lenderPricing';
+import { financedState, isFeeFinanced, type FeeKey } from './feeOptions';
 
 /** A structured payment: `amount` is added on top of the normal repayment, on
  *  that one payment only (payment 4 + 3,000 = the 4th debit is repayment + 3,000). */
@@ -19,17 +20,19 @@ export interface StructuredRow {
 export interface FeeRow {
   label: string;
   amount: number | null;
+  /** The pricing fee it was filled from — its own financed choice applies. */
+  fee?: FeeKey;
 }
 
 /** The standard fees, each filled from the lender pricing when it carries one. */
 export function defaultFees(inputs: { establishment_fee: number; origination_fee: number; vir_fee: number; ppsr_fee: number }): FeeRow[] {
   const from = (n: number) => (n > 0 ? n : null);
   return [
-    { label: 'Loan Establishment fee', amount: from(inputs.establishment_fee) },
-    { label: 'Origination fee', amount: from(inputs.origination_fee) },
+    { label: 'Loan Establishment fee', amount: from(inputs.establishment_fee), fee: 'establishment_fee' },
+    { label: 'Origination fee', amount: from(inputs.origination_fee), fee: 'origination_fee' },
     // VIR — the vehicle inspection report fee from the lender pricing.
-    { label: 'Vehicle inspection fee', amount: from(inputs.vir_fee) },
-    { label: 'PPSR', amount: from(inputs.ppsr_fee) },
+    { label: 'Vehicle inspection fee', amount: from(inputs.vir_fee), fee: 'vir_fee' },
+    { label: 'PPSR', amount: from(inputs.ppsr_fee), fee: 'ppsr_fee' },
   ];
 }
 
@@ -179,7 +182,8 @@ export function buildDirectDebitStatement(
     { label: '1st payment/rental', note: '(inclusive Govt charges)', amount: repayment },
     ...feeRows
       .filter((f) => f.label.trim() && (f.amount ?? 0) > 0)
-      .map((f): DebitRow => inputs.fees_financed
+      // A pricing fee follows its own financed choice; a fee the desk typed in follows the sheet's.
+      .map((f): DebitRow => (f.fee ? isFeeFinanced(inputs, f.fee) : inputs.fees_financed)
         ? { label: `${f.label.trim()} - Financed`, amount: null }
         : { label: f.label.trim(), amount: f.amount }),
   ];
@@ -208,7 +212,7 @@ export function buildDirectDebitStatement(
     withBalloon,
     repayment,
     normalRepayment: priced,
-    allFeesFinanced: inputs.fees_financed,
+    allFeesFinanced: financedState(inputs) === 'all',
     feeRows,
     rows,
     total,

@@ -76,7 +76,7 @@ export default function LenderPricingPdf({ sheet, elementId, clientName, applica
     ['Trade-in', fmtCurrency(inputs.trade_in_amount)],
     ['Payout figure', fmtCurrency(inputs.payout_amount)],
     ['Amount borrowed', fmtCurrency(d.amountBorrowed)],
-    ['Total fees', `${fmtCurrency(d.totalFees)}${inputs.fees_financed ? '' : ' (not financed)'}`],
+    ['Total fees', `${fmtCurrency(d.totalFees)}${d.upfrontFees > 0 ? ` (${fmtCurrency(d.upfrontFees)} not financed)` : ''}`],
     ['Brokerage', fmtCurrency(d.brokerage)],
     ['Amount financed', fmtCurrency(d.amountFinanced)],
     ['Term', inputs.term_months != null ? `${inputs.term_months} months` : '—'],
