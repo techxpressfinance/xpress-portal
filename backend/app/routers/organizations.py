@@ -47,6 +47,7 @@ from app.services.dedupe import (
 from app.services.organizations import clear_abr, parse_trading_names, refresh_from_abr
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
+from app.services.referrer_attribution import referrer_history, referrer_users_map
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
@@ -518,6 +519,12 @@ def deduplicate_organizations(
     }
 
 
+def _referrer_ref(info: Optional[dict]) -> Optional[dict]:
+    if not info:
+        return None
+    return {"id": info["id"], "full_name": info.get("full_name"), "organization_name": info.get("organization_name")}
+
+
 @router.get("/{org_id}", response_model=OrganizationDetailOut)
 def get_organization(
     org_id: str,
@@ -562,6 +569,7 @@ def get_organization(
         .all()
     )
     user_ids = {a.user_id for a in apps if a.user_id}
+    refs = referrer_users_map(db, (a.referrer_id for a in apps))
     users_map: dict[str, tuple[Optional[str], str]] = {}
     if user_ids:
         for u in db.query(User).filter(User.id.in_(user_ids)).all():
@@ -580,9 +588,12 @@ def get_organization(
             "user_role": users_map.get(a.user_id, (None, None))[1] if a.user_id else None,
             "applicant_first_name": a.applicant_first_name,
             "applicant_last_name": a.applicant_last_name,
+            "referrer": _referrer_ref(refs.get(a.referrer_id or "")),
         }
         for a in apps
     ]
+    # Each application's referrer and how that credit changed over time.
+    history = referrer_history(db, tenant_id, [a.id for a in apps])
 
     # What the borrower told us about the business, from the newest application
     # that says anything. Read through rather than copied onto the entity, so it
@@ -606,6 +617,7 @@ def get_organization(
         "contacts": contacts,
         "applications": applications,
         "trust_parties": [_trust_party_dict(p) for p in _ordered_parties(org.trust_parties)],
+        "referrer_history": history,
     }
 
 

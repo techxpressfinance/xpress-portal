@@ -6,6 +6,7 @@ import LenderCombobox from './LenderCombobox';
 import LenderShortfallDialog, { type ShortfallDecision } from './LenderShortfallDialog';
 import SheetEditorHeader from './SheetEditorHeader';
 import api from '../api/client';
+import FeeOptionToggles, { BrokerageFinancedToggle, FeesFinancedSummary } from './FeeOptionToggles';
 import { useToast } from './Toast';
 import { getErrorMessage } from '../lib/utils';
 import { DIRECT_DEBIT_CYCLES, type FacilityType, type Lender, type LenderPricingInputs, type QuoteSheet } from '../types';
@@ -530,25 +531,30 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
         <section className="border border-border rounded-xl p-4">
           <SectionHeader>Fees &amp; Charges</SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DollarField label="Establishment Fee" value={inputs.establishment_fee} onChange={v => set('establishment_fee', v)} />
-            <DollarField label="PPSR" value={inputs.ppsr_fee} onChange={v => set('ppsr_fee', v)} />
-            <DollarField label="Origination Fee" value={inputs.origination_fee} onChange={v => set('origination_fee', v)} />
-            <DollarField label="Vehicle Inspection (VIR)" value={inputs.vir_fee} onChange={v => set('vir_fee', v)} />
+            <div>
+              <DollarField label="Establishment Fee" value={inputs.establishment_fee} onChange={v => set('establishment_fee', v)} />
+              <FeeOptionToggles inputs={inputs} fee="establishment_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarField label="PPSR" value={inputs.ppsr_fee} onChange={v => set('ppsr_fee', v)} />
+              <FeeOptionToggles inputs={inputs} fee="ppsr_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarField label="Origination Fee" value={inputs.origination_fee} onChange={v => set('origination_fee', v)} />
+              <FeeOptionToggles inputs={inputs} fee="origination_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarField label="Vehicle Inspection (VIR)" value={inputs.vir_fee} onChange={v => set('vir_fee', v)} />
+              <FeeOptionToggles inputs={inputs} fee="vir_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
             <DollarField label="Monthly Account Fee" value={inputs.monthly_account_fee} onChange={v => set('monthly_account_fee', v)} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
-            <div>
-              <label className={labelBase}>Fees Treatment</label>
-              <select
-                value={inputs.fees_financed ? 'financed' : 'non-financed'}
-                onChange={e => set('fees_financed', e.target.value === 'financed')}
-                className={selectBase}
-              >
-                <option value="financed">Financed (added to loan)</option>
-                <option value="non-financed">Non-Financed (separate)</option>
-              </select>
-            </div>
-            <CalcField label="Total Fees" value={`${fmtCurrency(derived.totalFees)}${!inputs.fees_financed ? ' (sep.)' : ''}`} />
+            <FeesFinancedSummary inputs={inputs} onChange={setInputs} labelClassName={labelBase} selectClassName={selectBase} />
+            <CalcField
+              label="Total Fees"
+              value={derived.upfrontFees > 0 ? `${fmtCurrency(derived.totalFees)} (${fmtCurrency(derived.upfrontFees)} sep.)` : fmtCurrency(derived.totalFees)}
+            />
             {derived.itcBenefit > 0 ? (
               <CalcField label="ITC Benefit" value={`-${fmtCurrency(derived.itcBenefit)}`} />
             ) : <div />}
@@ -576,7 +582,8 @@ export default function LenderPricingEditor({ applicationId, sheet, defaultLende
                 inactiveLabel="Without GST"
                 onClick={() => set('gst_on_brokerage', !inputs.gst_on_brokerage)}
               />
-              <CalcField label="Brokerage (incl. GST)" value={fmtCurrency(derived.brokerage)} />
+              <CalcField label="Brokerage (incl. GST)" value={`${fmtCurrency(derived.brokerage)}${derived.brokerageFinanced ? '' : ' (sep.)'}`} />
+              <BrokerageFinancedToggle inputs={inputs} onChange={setInputs} labelClassName={labelBase} />
             </div>
           </section>
 

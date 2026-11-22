@@ -20,6 +20,7 @@ from app.services.contacts import ensure_contact
 from app.services.email import notify_admins_new_account, send_new_lead_notification, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
 from app.services.vin import check_application_assets
+from app.services.referrer_attribution import stamp_initial_referrer
 
 router = APIRouter(prefix="/api/referrer", tags=["referrer"])
 
@@ -387,6 +388,9 @@ def create_direct_referral(
     )
     db.add(application)
     db.flush()
+    # The referrer who sent this deal in is credited with it, whoever
+    # introduced the client before.
+    stamp_initial_referrer(db, application, current_user, referrer_id=current_user.id)
     application.contact_id = ensure_contact(
         db, tenant_id,
         data.first_name, data.last_name,

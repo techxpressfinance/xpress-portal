@@ -14,7 +14,6 @@ from app.middleware.auth import get_current_user
 from app.models.client_message import ClientMessage
 from app.models.external_referral import ClientEngagementModel, ExternalReferral
 from app.models.loan_application import LoanApplication
-from app.models.referral import Referral
 from app.models.user import User, UserRole
 from app.services.email import _send_async
 from app.services.tenant_scope import get_tenant_id
@@ -53,18 +52,10 @@ def _check_access(client_id: str, current_user: User, tenant_id: str, db: Sessio
         # Allow referrer to use their own ID as the conversation subject (for staff direct chats)
         if client_id == current_user.id:
             return
-        ext_referral = db.query(ExternalReferral).filter(
-            ExternalReferral.referrer_id == current_user.id,
-            ExternalReferral.referred_client_id == client_id,
-        ).first()
-        if not ext_referral:
-            referral = db.query(Referral).filter(
-                Referral.referrer_id == current_user.id,
-                Referral.referred_user_id == client_id,
-                Referral.tenant_id == tenant_id,
-            ).first()
-            if not referral:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        # Clients they introduced, or with an application credited to them.
+        from app.services.referrer_attribution import referrer_client_ids
+        if client_id not in referrer_client_ids(db, current_user.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 

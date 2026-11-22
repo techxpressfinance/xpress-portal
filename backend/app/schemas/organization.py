@@ -7,6 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants import ENTITY_TYPES, TRUST_PARTY_KINDS, TRUST_PARTY_ROLES, TRUST_TYPES
+from app.schemas.loan_application import ReferrerChangeOut, ReferrerRefOut
 
 
 def _one_of(value: Optional[str], allowed: list[str], field: str) -> Optional[str]:
@@ -195,7 +196,14 @@ class OrganizationApplicationOut(BaseModel):
     amount: float
     status: str
     created_at: datetime
+    # The owner (the creating broker on staff-made applications) — name the
+    # client from the applicant fields first.
     user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    applicant_first_name: Optional[str] = None
+    applicant_last_name: Optional[str] = None
+    # The referrer credited with this application (per application).
+    referrer: Optional[ReferrerRefOut] = None
 
 
 class OrganizationBusinessDetails(BaseModel):
@@ -214,6 +222,8 @@ class OrganizationDetailOut(OrganizationOut):
     contacts: list[OrganizationContactOut] = []
     applications: list[OrganizationApplicationOut] = []
     trust_parties: list[TrustPartyOut] = []
+    # Every referrer credit across the entity's applications, newest first.
+    referrer_history: list[ReferrerChangeOut] = []
 
 
 class OrganizationContactLink(BaseModel):

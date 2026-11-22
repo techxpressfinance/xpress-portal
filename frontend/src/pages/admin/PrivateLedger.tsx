@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -6,25 +6,39 @@ import { Button, Card, PageHeader } from '../../components/ui';
 import { ListSkeleton } from '../../components/ui/Skeletons';
 import NotFound from '../../components/NotFound';
 import XpressPrintHeader from '../../components/print/XpressPrintHeader';
-import LedgerDealsTable, { LedgerDealsPrintTable } from '../../components/ledger/LedgerDealsTable';
+import LedgerDealsTable, { LedgerDealsPrintTable, LedgerPipelineTable } from '../../components/ledger/LedgerDealsTable';
 import LedgerDealEditor from '../../components/ledger/LedgerDealEditor';
 import LedgerReferrersTab from '../../components/ledger/LedgerReferrersTab';
 import LedgerSharingTab from '../../components/ledger/LedgerSharingTab';
 import LedgerInvoiceModal from '../../components/ledger/LedgerInvoiceDocument';
 import LedgerNewDealModal from '../../components/ledger/LedgerNewDealModal';
 import LedgerReceiptsTab from '../../components/ledger/LedgerReceiptsTab';
+import LedgerSummaryCards from '../../components/ledger/LedgerSummaryCards';
+import LedgerMenu from '../../components/ledger/LedgerMenu';
+import { LedgerPaymentModal } from '../../components/ledger/LedgerExtraPayments';
 import { downloadElementPdf } from '../../lib/pdfExport';
 import { A4_PRINT_WIDTH_PX, PRINT_INSET } from '../../lib/printPage';
 import { formatDate, getErrorMessage } from '../../lib/utils';
 import {
+  applyGstView,
   CATEGORY_STYLE,
   DEFAULT_LEDGER_COLUMNS,
+  figureLabel,
   formatLedgerMoney,
+  GST_VIEW_LABEL,
   loadColumnPref,
+  loadViewPref,
+  pickableColumns,
   presetRange,
+  presetReportName,
   RANGE_PRESETS,
+  REPORT_PRESETS,
   saveColumnPref,
+  saveViewPref,
+  type GstView,
   type RangePreset,
+  type ReportLayout,
+  type ViewPref,
 } from '../../lib/ledger';
 import type {
   LedgerAccessInfo,
@@ -33,26 +47,13 @@ import type {
   LedgerColumn,
   LedgerDealRow,
   LedgerDealsResponse,
+  LedgerExtraPayment,
   LedgerInvoice,
   LedgerPayee,
   LedgerReport,
 } from '../../types';
 
 type Tab = 'deals' | 'referrers' | 'invoices' | 'receipts' | 'sharing';
-
-const TILES: { key: string; label: string }[] = [
-  { key: 'finance_amount', label: 'Settled volume' },
-  { key: 'brokerage', label: 'Brokerage (ex GST)' },
-  { key: 'origination_fee', label: 'Origination fees (ex GST)' },
-  { key: 'doc_fee', label: 'Doc fees (ex GST)' },
-  { key: 'vir', label: 'Vehicle inspection (VIR, ex GST)' },
-  { key: 'income_ex_gst', label: 'Total income (ex GST)' },
-  { key: 'referrer_comms_ex_gst', label: 'Referrer comms (ex GST)' },
-  { key: 'net_profit', label: 'Net profit' },
-  { key: 'volume_bonus', label: 'Possible volume bonus' },
-  { key: 'vb_received_ex_gst', label: 'Volume bonus received (ex GST)' },
-  { key: 'final_profit', label: 'Final profit before expenses' },
-];
 
 /** The private commission ledger: settled deals with our income and what we
  *  share with referrers, for the owner and whoever they have let in. What a
@@ -73,14 +74,16 @@ export default function PrivateLedger() {
   const [brokerId, setBrokerId] = useState('');
   const [addingDeal, setAddingDeal] = useState(false);
   const [editing, setEditing] = useState<LedgerDealRow | null>(null);
+  // An extra payment being added ('new') or changed, from the deals table.
+  const [editingPayment, setEditingPayment] = useState<LedgerExtraPayment | 'new' | null>(null);
   const [columnKeys, setColumnKeys] = useState<string[]>(() => loadColumnPref() ?? DEFAULT_LEDGER_COLUMNS);
-  const [pickingColumns, setPickingColumns] = useState(false);
+  const [view, setView] = useState<ViewPref>(loadViewPref);
+  const updateView = (patch: Partial<ViewPref>) => setView((v) => { const next = { ...v, ...patch }; saveViewPref(next); return next; });
   const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
   const [printing, setPrinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [invoices, setInvoices] = useState<LedgerInvoice[]>([]);
   const [openInvoice, setOpenInvoice] = useState<LedgerInvoice | null>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.get<LedgerAccessInfo>('/ledger/access')
@@ -136,22 +139,25 @@ export default function PrivateLedger() {
       .catch((err) => toast(getErrorMessage(err, 'Failed to load invoices'), 'error'));
   }, [tab, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close the column picker on an outside click.
-  useEffect(() => {
-    if (!pickingColumns) return;
-    const onDown = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickingColumns(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [pickingColumns]);
-
   if (access === null) return <div className="p-6"><ListSkeleton /></div>;
   if (!access.access) return <NotFound />;
 
   const allColumns: LedgerColumn[] = access.columns ?? [];
-  const columns = allColumns.filter((c) => columnKeys.includes(c.key));
-  const shownColumns = columns.length ? columns : allColumns;
+  const pickable = pickableColumns(allColumns);
+  // The picked figures, each in the GST view chosen (ex / inc / all three).
+  const viewed = applyGstView(allColumns, columnKeys, view.gst);
+  const shownColumns = viewed.length ? viewed : applyGstView(allColumns, pickable.map((c) => c.key), view.gst);
+  const summary = view.layout === 'summary';
+  const reportName = presetReportName(preset);
+
+  const applyPreset = (key: string) => {
+    const p = REPORT_PRESETS.find((x) => x.key === key);
+    if (!p) return;
+    const keys = p.columns === 'all' ? pickable.map((c) => c.key) : p.columns;
+    setColumnKeys(keys);
+    saveColumnPref(keys);
+    updateView({ layout: p.layout, gst: p.gst });
+  };
 
   const choosePreset = (p: RangePreset) => {
     setPreset(p);
@@ -159,7 +165,11 @@ export default function PrivateLedger() {
   };
 
   const toggleColumn = (key: string) => {
-    const next = columnKeys.includes(key) ? columnKeys.filter((k) => k !== key) : [...columnKeys, key];
+    // A GST figure is one choice however many of its columns the view shows.
+    const group = allColumns.find((c) => c.key === key)?.gst_group;
+    const family = group ? allColumns.filter((c) => c.gst_group === group).map((c) => c.key) : [key];
+    const on = columnKeys.some((k) => family.includes(k));
+    const next = on ? columnKeys.filter((k) => !family.includes(k)) : [...columnKeys, key];
     setColumnKeys(next);
     saveColumnPref(next);
   };
@@ -168,13 +178,19 @@ export default function PrivateLedger() {
     setExporting('xlsx');
     try {
       const res = await api.get('/ledger/export.xlsx', {
-        params: { ...params, columns: shownColumns.map((c) => c.key).join(',') },
+        params: {
+          ...params,
+          columns: shownColumns.map((c) => c.key).join(','),
+          layout: view.layout,
+          include_pipeline: view.showPipeline && !summary,
+          title: `${reportName}${summary ? ' (summary)' : ''}${brokerName ? ` — ${brokerName}` : ''}`,
+        },
         responseType: 'blob',
       });
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Settled deals ${range.from || 'start'} to ${range.to || 'today'}${brokerName ? ` - ${brokerName}` : ''}.xlsx`;
+      a.download = `${reportName}${summary ? ' summary' : ''} ${range.from || 'start'} to ${range.to || 'today'}${brokerName ? ` - ${brokerName}` : ''}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -185,7 +201,7 @@ export default function PrivateLedger() {
   };
 
   const exportPdf = async () => {
-    if (!data?.deals?.length) {
+    if (!data?.deals?.length && !data?.extra_payments?.length) {
       toast('No deals in this period', 'error');
       return;
     }
@@ -194,7 +210,7 @@ export default function PrivateLedger() {
     try {
       // Let React paint the off-screen print table before html2pdf reads it.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      await downloadElementPdf('ledger-report', `Settled deals ${range.from || 'start'} to ${range.to || 'today'}.pdf`, 'landscape');
+      await downloadElementPdf('ledger-report', `${reportName}${summary ? ' summary' : ''} ${range.from || 'start'} to ${range.to || 'today'}.pdf`, 'landscape');
       api.post('/ledger/export-logged').catch(() => {});
     } catch (err) {
       toast(getErrorMessage(err, 'PDF download failed'), 'error');
@@ -214,7 +230,17 @@ export default function PrivateLedger() {
     }
   };
 
-  const report: LedgerReport = { months: data?.months ?? [], quarters: data?.quarters ?? [], years: data?.years ?? [], totals: data?.totals };
+  const report: LedgerReport = {
+    months: data?.months ?? [], quarters: data?.quarters ?? [], half_years: data?.half_years ?? [],
+    years: data?.years ?? [], show: data?.show, totals: data?.totals,
+  };
+  const pipeline = data?.pipeline ?? [];
+  // Deals an extra payment can be tied to: this period's, and the pipeline.
+  const dealOptions = [...(data?.deals ?? []), ...pipeline].map((d) => ({
+    key: d.application_id,
+    label: [d.customer_name, d.entity_name && d.entity_name !== d.customer_name ? d.entity_name : null,
+      d.is_pipeline ? '(pipeline)' : d.settled_on ? formatDate(d.settled_on) : null].filter(Boolean).join(' · '),
+  }));
 
   const brokerName = brokers.find((b) => b.id === brokerId)?.full_name ?? '';
 
@@ -224,9 +250,8 @@ export default function PrivateLedger() {
   };
 
   const onSaved = (row: LedgerDealRow) => {
-    setData((prev) => prev && prev.deals
-      ? { ...prev, deals: prev.deals.map((d) => (d.application_id === row.application_id ? row : d)) }
-      : prev);
+    const swap = (list?: LedgerDealRow[]) => list?.map((d) => (d.application_id === row.application_id ? row : d));
+    setData((prev) => prev ? { ...prev, deals: swap(prev.deals), pipeline: swap(prev.pipeline) } : prev);
     // Totals and the referrer roll-up are the server's sums — fetch them again.
     setRefreshKey((k) => k + 1);
   };
@@ -249,7 +274,7 @@ export default function PrivateLedger() {
 
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: 'deals', label: 'Settled deals', show: can('deals') || can('summary') },
-    { key: 'referrers', label: 'Referrer comms', show: can('referrers') },
+    { key: 'referrers', label: 'Referrer & staff comms', show: can('referrers') },
     { key: 'invoices', label: 'Invoices', show: can('invoices') && can('referrers') },
     { key: 'receipts', label: 'Receipts', show: can('income') },
     { key: 'sharing', label: 'Sharing', show: isOwner },
@@ -259,132 +284,225 @@ export default function PrivateLedger() {
     ? `${range.from ? formatDate(range.from) : 'the start'} – ${range.to ? formatDate(range.to) : 'today'}`
     : 'All time';
 
+  const filterCls = 'led-input !h-8 !w-auto text-[12.5px]';
+  const gstCaption = view.gst === 'ex' ? 'Amounts ex GST' : view.gst === 'inc' ? 'Amounts inc GST' : 'Ex GST, GST and inc GST side by side';
+
   return (
     <div className="p-6 max-w-[1500px] mx-auto space-y-5">
-      <PageHeader
-        title="Private Ledger"
-        subtitle={isOwner ? 'Only you can see this — share it from the Sharing tab.' : 'Shared with you, view-only.'}
-        action={
-          tab !== 'sharing' && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11.5px] text-muted-foreground">Period</span>
-                <select className="led-input !h-9 text-[13px]" value={preset} onChange={(e) => choosePreset(e.target.value as RangePreset)}>
-                  {RANGE_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-              </label>
-              {tab === 'deals' && brokers.length > 0 && (
-                <label className="block">
-                  <span className="mb-1 block text-[11.5px] text-muted-foreground">Book</span>
-                  <select className="led-input !h-9 text-[13px]" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
-                    <option value="">Everyone&rsquo;s deals</option>
-                    {brokers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
-                  </select>
-                </label>
-              )}
-              {preset === 'custom' && (
-                <>
-                  <label className="block">
-                    <span className="mb-1 block text-[11.5px] text-muted-foreground">From</span>
-                    <input type="date" className="led-input !h-9 text-[13px]" value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-[11.5px] text-muted-foreground">To</span>
-                    <input type="date" className="led-input !h-9 text-[13px]" value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} />
-                  </label>
-                </>
-              )}
-            </div>
-          )
-        }
-      />
+      <div className="[&>div]:!mb-0">
+        <PageHeader
+          title="Private Ledger"
+          subtitle={isOwner ? 'Only you can see this — share it from the Sharing tab.' : 'Shared with you, view-only.'}
+        />
+      </div>
 
-      <div className="flex gap-1 border-b border-border" role="tablist">
-        {tabs.filter((t) => t.show).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-2 text-[13px] font-medium border-b-2 -mb-px ${tab === t.key ? 'border-[var(--led-ink)] text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-border">
+        <div className="flex gap-1 -mb-px" role="tablist">
+          {tabs.filter((t) => t.show).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-2.5 text-[13px] font-medium border-b-2 ${tab === t.key ? 'border-[var(--led-ink)] text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab !== 'sharing' && (
+          <div className="flex flex-wrap items-center gap-2 pb-2">
+            <select className={filterCls} aria-label="Period" value={preset} onChange={(e) => choosePreset(e.target.value as RangePreset)}>
+              {[...new Set(RANGE_PRESETS.map((p) => p.group))].map((g) => (
+                <optgroup key={g} label={g === 'Other' ? 'Other periods' : `${g} report`}>
+                  {RANGE_PRESETS.filter((p) => p.group === g).map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            {preset === 'custom' && (
+              <>
+                <input type="date" aria-label="From" className={filterCls} value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} />
+                <span className="text-muted-foreground">–</span>
+                <input type="date" aria-label="To" className={filterCls} value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} />
+              </>
+            )}
+            {tab === 'deals' && brokers.length > 0 && (
+              <select className={filterCls} aria-label="Whose deals" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+                <option value="">Everyone&rsquo;s deals</option>
+                {brokers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
+              </select>
+            )}
+          </div>
+        )}
       </div>
 
       {tab === 'deals' && (
         <>
-          {totals && (
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-              <Card padding="sm">
-                <p className="text-[11.5px] text-muted-foreground">Settled deals</p>
-                <p className="text-[20px] font-semibold tabular-nums text-foreground">{totals.count}</p>
-                <p className="text-[11px] text-muted-foreground">{periodText}</p>
-              </Card>
-              {TILES.filter((t) => totals[t.key] != null).map((t) => (
-                <Card key={t.key} padding="sm">
-                  <p className="text-[11.5px] text-muted-foreground">{t.label}</p>
-                  <p className={`text-[20px] font-semibold tabular-nums ${(totals[t.key] ?? 0) < 0 ? 'text-[var(--led-danger)]' : 'text-foreground'}`}>
-                    {formatLedgerMoney(totals[t.key])}
-                  </p>
-                </Card>
-              ))}
-            </div>
-          )}
+          {totals && <LedgerSummaryCards totals={totals} periodText={periodText} />}
 
           {can('deals') && (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap gap-1.5 text-[11.5px]">
-                  {(Object.keys(CATEGORY_STYLE) as LedgerCategory[]).map((k) => (
-                    <span key={k} className={`rounded px-2 py-0.5 ${CATEGORY_STYLE[k].className}`}>{CATEGORY_STYLE[k].label}</span>
-                  ))}
-                  <span className="rounded px-2 py-0.5 text-[var(--led-danger)] border border-border">Clawback</span>
-                  {isOwner && <span className="rounded px-2 py-0.5 italic text-muted-foreground border border-border">Italic = from the application, not entered</span>}
-                </div>
-                <div className="ml-auto flex flex-wrap gap-2">
-                  {isOwner && <Button variant="secondary" size="sm" onClick={() => setAddingDeal(true)}>Add deal</Button>}
-                  <div className="relative" ref={pickerRef}>
-                    <Button variant="secondary" size="sm" onClick={() => setPickingColumns((v) => !v)}>Columns ({shownColumns.length})</Button>
-                    {pickingColumns && (
-                      <div className="absolute right-0 z-20 mt-1 w-72 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-background p-2 shadow-lg">
-                        <div className="flex justify-between px-1 pb-1.5 text-[11.5px]">
-                          <button type="button" className="text-[var(--led-accent)]" onClick={() => { const all = allColumns.map((c) => c.key); setColumnKeys(all); saveColumnPref(all); }}>All</button>
-                          <button type="button" className="text-[var(--led-accent)]" onClick={() => { setColumnKeys(DEFAULT_LEDGER_COLUMNS); saveColumnPref(DEFAULT_LEDGER_COLUMNS); }}>Default</button>
-                        </div>
-                        {allColumns.map((c) => (
-                          <label key={c.key} className="flex items-center gap-2 rounded px-1 py-1 text-[12.5px] hover:bg-[var(--led-surface-2)]">
-                            <input type="checkbox" checked={columnKeys.includes(c.key)} onChange={() => toggleColumn(c.key)} />
-                            {c.label}
-                          </label>
-                        ))}
-                        <p className="px-1 pt-1.5 text-[11px] text-muted-foreground">Downloads use the same columns.</p>
-                      </div>
-                    )}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="led-segment" role="radiogroup" aria-label="Report layout">
+                    {([['detailed', 'Every deal'], ['summary', 'Totals only']] as [ReportLayout, string][]).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={view.layout === v}
+                        className={view.layout === v ? 'led-active' : ''}
+                        onClick={() => updateView({ layout: v })}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                  {can('export') && (
-                    <>
-                      <Button variant="secondary" size="sm" onClick={exportXlsx} loading={exporting === 'xlsx'}>Excel</Button>
-                      <Button variant="secondary" size="sm" onClick={exportPdf} loading={exporting === 'pdf'}>PDF</Button>
-                    </>
+                  <div className="led-segment" role="radiogroup" aria-label="GST">
+                    {([['ex', 'Ex GST'], ['inc', 'Inc GST'], ['all', 'Ex + GST + inc']] as [GstView, string][]).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={view.gst === v}
+                        title={GST_VIEW_LABEL[v]}
+                        className={view.gst === v ? 'led-active' : ''}
+                        onClick={() => updateView({ gst: v })}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {!summary && pipeline.length > 0 && (
+                    <label className="ml-1 inline-flex items-center gap-1.5 text-[12.5px] text-[var(--led-ink-2)]">
+                      <input type="checkbox" checked={view.showPipeline} onChange={(e) => updateView({ showPipeline: e.target.checked })} />
+                      Pipeline ({pipeline.length})
+                    </label>
                   )}
+
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <LedgerMenu label={`Columns · ${shownColumns.length}`}>
+                      {(close) => (
+                        <>
+                          <p className="led-label px-1 pb-1">Quick setup</p>
+                          <div className="space-y-0.5 pb-2 mb-2 border-b border-border">
+                            {REPORT_PRESETS.map((p) => (
+                              <button
+                                key={p.key}
+                                type="button"
+                                className="block w-full rounded px-1.5 py-1 text-left hover:bg-[var(--led-surface-2)]"
+                                onClick={() => { applyPreset(p.key); close(); }}
+                              >
+                                <span className="block text-[12.5px] font-medium text-foreground">{p.label}</span>
+                                <span className="block text-[11.5px] text-muted-foreground">{p.hint}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-between px-1 pb-1">
+                            <span className="led-label">Columns</span>
+                            <span className="flex gap-3 text-[11.5px]">
+                              <button type="button" className="text-[var(--led-accent)] hover:underline" onClick={() => { const all = pickable.map((c) => c.key); setColumnKeys(all); saveColumnPref(all); }}>All</button>
+                              <button type="button" className="text-[var(--led-accent)] hover:underline" onClick={() => { setColumnKeys(DEFAULT_LEDGER_COLUMNS); saveColumnPref(DEFAULT_LEDGER_COLUMNS); }}>Sheet layout</button>
+                            </span>
+                          </div>
+                          {pickable.map((c) => (
+                            <label key={c.key} className="flex items-center gap-2 rounded px-1 py-1 text-[12.5px] hover:bg-[var(--led-surface-2)]">
+                              <input
+                                type="checkbox"
+                                checked={c.gst_group ? shownColumns.some((x) => x.gst_group === c.gst_group) : columnKeys.includes(c.key)}
+                                onChange={() => toggleColumn(c.key)}
+                              />
+                              {figureLabel(c)}
+                            </label>
+                          ))}
+                        </>
+                      )}
+                    </LedgerMenu>
+                    {can('export') && (
+                      <LedgerMenu label={exporting ? 'Preparing…' : 'Export'} width="w-64">
+                        {(close) => (
+                          <>
+                            <button type="button" disabled={Boolean(exporting)} className="block w-full rounded px-1.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--led-surface-2)]" onClick={() => { close(); exportXlsx(); }}>
+                              Excel workbook
+                            </button>
+                            <button type="button" disabled={Boolean(exporting)} className="block w-full rounded px-1.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--led-surface-2)]" onClick={() => { close(); exportPdf(); }}>
+                              PDF (landscape)
+                            </button>
+                            <p className="mt-1 border-t border-border px-1.5 pt-2 text-[11.5px] text-muted-foreground">
+                              Uses the period, layout, GST view and columns on screen.
+                              {!summary && <> Excel also adds an extra-payments sheet{view.showPipeline ? ' and a pipeline sheet' : ''}.</>}
+                            </p>
+                          </>
+                        )}
+                      </LedgerMenu>
+                    )}
+                    {isOwner && <Button size="sm" variant="secondary" onClick={() => setEditingPayment('new')}>Add extra payment</Button>}
+                    {isOwner && <Button size="sm" onClick={() => setAddingDeal(true)}>Add deal</Button>}
+                  </div>
                 </div>
               </div>
 
               {loading && !data ? (
                 <ListSkeleton />
-              ) : !data?.deals?.length ? (
-                <Card><p className="text-[13px] text-muted-foreground">No deals settled in this period.</p></Card>
+              ) : !report.months.length ? (
+                <Card>
+                  <p className="text-[13px] text-muted-foreground">
+                    No deals settled in this period. A deal joins the report the day it settles, with its client and entity
+                    {pipeline.length ? ' — deals already past Started are in the pipeline below.' : '.'}
+                  </p>
+                </Card>
               ) : (
-                <LedgerDealsTable
-                  rows={data.deals}
-                  report={report}
-                  columns={shownColumns}
-                  onEdit={isOwner ? setEditing : undefined}
-                  onSaveVbReceived={isOwner ? saveVbReceived : undefined}
-                />
+                <div className="space-y-2">
+                  <LedgerDealsTable
+                    rows={data?.deals ?? []}
+                    report={report}
+                    payments={data?.extra_payments ?? []}
+                    columns={shownColumns}
+                    summary={summary}
+                    gstView={view.gst}
+                    onEdit={isOwner ? setEditing : undefined}
+                    onEditPayment={isOwner ? setEditingPayment : undefined}
+                    onSaveVbReceived={isOwner ? saveVbReceived : undefined}
+                  />
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[11.5px] text-muted-foreground">
+                    <span>{gstCaption}</span>
+                    {!summary && (
+                      <>
+                        {(Object.keys(CATEGORY_STYLE) as LedgerCategory[]).map((k) => (
+                          <span key={k} className="inline-flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${CATEGORY_STYLE[k].dot}`} />
+                            {CATEGORY_STYLE[k].label}
+                          </span>
+                        ))}
+                        <span className="text-[var(--led-danger)]">Red = clawback</span>
+                        {isOwner && <span className="italic">Italic = from the application, not entered</span>}
+                        {(data?.extra_payments?.length ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="h-2.5 w-2.5 rounded-sm bg-[var(--led-violet-tint)]" />
+                            Extra payment — counts in the month it was paid
+                          </span>
+                        )}
+                        {isOwner && <span>Click a deal or payment to edit it</span>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {view.showPipeline && !summary && pipeline.length > 0 && (
+                <section className="space-y-2 pt-2">
+                  <div>
+                    <h2 className="text-[14px] font-semibold text-foreground">
+                      Pipeline <span className="font-normal text-muted-foreground">· asset finance past Started, not yet settled</span>
+                    </h2>
+                    <p className="text-[12px] text-muted-foreground">
+                      Not in any total above — each deal joins the report in the month it settles. Figures come from lender
+                      pricing until you enter your own.
+                    </p>
+                  </div>
+                  <LedgerPipelineTable rows={pipeline} totals={data?.pipeline_totals} columns={shownColumns} gstView={view.gst} onEdit={isOwner ? setEditing : undefined} />
+                </section>
               )}
             </>
           )}
@@ -400,6 +518,8 @@ export default function PrivateLedger() {
           refreshKey={refreshKey}
           payees={payees}
           onPayeesChanged={() => { loadPayees(); setRefreshKey((k) => k + 1); }}
+          dealOptions={dealOptions}
+          onChanged={() => setRefreshKey((k) => k + 1)}
         />
       )}
 
@@ -457,6 +577,15 @@ export default function PrivateLedger() {
           onDeleted={onDeleted}
         />
       )}
+      {editingPayment && (
+        <LedgerPaymentModal
+          payment={editingPayment === 'new' ? null : editingPayment}
+          payees={payees}
+          dealOptions={dealOptions}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
       {addingDeal && (
         <LedgerNewDealModal
           brokers={brokers}
@@ -469,12 +598,16 @@ export default function PrivateLedger() {
       )}
 
       {/* Off-screen print source for the PDF download. */}
-      {printing && data?.deals && (
+      {printing && data && (
         <div style={{ position: 'fixed', left: -10000, top: 0 }} aria-hidden>
           <div id="ledger-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-            <XpressPrintHeader eyebrow="Private Ledger" title={brokerName ? `Settled deals — ${brokerName}` : 'Settled deals'} subtitle={`${periodText} · ${data.deals.length} deal${data.deals.length === 1 ? '' : 's'}`} />
+            <XpressPrintHeader
+              eyebrow="Private Ledger"
+              title={`${reportName}${summary ? ' — summary' : ''}${brokerName ? ` — ${brokerName}` : ''}`}
+              subtitle={`${periodText} · ${data.deals?.length ?? 0} settled deal${data.deals?.length === 1 ? '' : 's'} · ${GST_VIEW_LABEL[view.gst]}`}
+            />
             <div style={{ padding: `0 ${PRINT_INSET}px` }}>
-              <LedgerDealsPrintTable rows={data.deals} report={report} columns={shownColumns} />
+              <LedgerDealsPrintTable rows={data.deals ?? []} report={report} payments={data.extra_payments ?? []} columns={shownColumns} summary={summary} />
             </div>
           </div>
         </div>

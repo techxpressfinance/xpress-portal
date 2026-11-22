@@ -277,6 +277,32 @@ class ReferredByUpdate(BaseModel):
     contact_id: Optional[str] = None
 
 
+class ApplicationReferrerUpdate(BaseModel):
+    """Staff change the referrer credited with one application."""
+    # None = no referrer on this application.
+    referrer_id: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=1000)
+
+
+class ReferrerRefOut(BaseModel):
+    id: str
+    full_name: Optional[str] = None
+    organization_name: Optional[str] = None
+
+
+class ReferrerChangeOut(BaseModel):
+    """One step in an application's referrer history."""
+    id: str
+    application_id: str
+    from_referrer: Optional[ReferrerRefOut] = None
+    to_referrer: Optional[ReferrerRefOut] = None
+    changed_by_name: Optional[str] = None
+    source: str
+    source_label: str
+    note: Optional[str] = None
+    created_at: datetime
+
+
 class ReferrerInfoOut(BaseModel):
     id: str
     full_name: Optional[str] = None
@@ -442,6 +468,8 @@ class LoanApplicationOut(BaseModel):
     client_engagement_model: Optional[str] = None
     cloned_from_id: Optional[str] = None
     referrer: Optional[ReferrerInfoOut] = None
+    # The referrer credited with this application (per application).
+    referrer_id: Optional[str] = None
     referred_by_contact_id: Optional[str] = None
     referred_by: Optional[ReferredByOut] = None
     additional_applicants: list[LoanApplicantOut] = []

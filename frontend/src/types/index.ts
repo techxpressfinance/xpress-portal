@@ -249,8 +249,10 @@ export interface LoanApplication {
   client_engagement_model: ClientEngagementModel | null;
   // Set when this application was started as a clone of another one
   cloned_from_id?: string | null;
-  // Referrer info (populated from referral data)
+  // The referrer partner credited with THIS application — per application, so
+  // a client's loans can each have a different referrer.
   referrer: ReferrerInfo | null;
+  referrer_id?: string | null;
   // Staff-only: the existing client (contact) credited with referring this deal.
   referred_by_contact_id?: string | null;
   referred_by?: ReferredBy | null;
@@ -551,6 +553,28 @@ export interface ReferrerInfo {
   email: string | null;
   phone: string | null;
   organization_name: string | null;
+}
+
+/** A referrer as the contact and entity pages show one. */
+export interface ReferrerRef {
+  id: string;
+  full_name: string | null;
+  organization_name?: string | null;
+}
+
+export type ReferrerChangeSource = 'created' | 'changed' | 'backfill';
+
+/** One step in an application's referrer history (staff only). */
+export interface ReferrerChange {
+  id: string;
+  application_id: string;
+  from_referrer: ReferrerRef | null;
+  to_referrer: ReferrerRef | null;
+  changed_by_name: string | null;
+  source: ReferrerChangeSource;
+  source_label: string;
+  note: string | null;
+  created_at: string;
 }
 
 export interface ExternalReferrerStats {
@@ -1588,6 +1612,11 @@ export interface QuoteInputParameters {
   non_taxable_charges: number;         // Lease only — non-taxable on-road charges
   luxury_car_tax: number;              // Lease only — luxury car tax
   fees_financed: boolean;              // true = fees added to loan amount, false = charged separately
+  // Per-fee choices (lib/feeOptions.ts): financed in or paid up front, and
+  // whether the figure was typed inc GST. Absent on older sheets.
+  fee_financed?: Partial<Record<'establishment_fee' | 'ppsr_fee' | 'origination_fee' | 'vir_fee', boolean>>;
+  fee_gst_inclusive?: Partial<Record<'establishment_fee' | 'ppsr_fee' | 'origination_fee' | 'vir_fee' | 'brokerage', boolean>>;
+  brokerage_financed?: boolean;
   custom_term_months?: number[];       // extra non-standard terms, e.g. [18, 19]
   terms_in_months?: true;              // migration marker — terms below are months, not years
   selected_terms?: number[];           // e.g. [60, 48, 36] — which terms (months) to show client
@@ -1663,6 +1692,9 @@ export interface LenderPricingInputs {
   vir_fee: number;                     // VIR — a fee like establishment: in total fees, financed with them
   monthly_account_fee: number;
   fees_financed: boolean;
+  fee_financed?: Partial<Record<'establishment_fee' | 'ppsr_fee' | 'origination_fee' | 'vir_fee', boolean>>;
+  fee_gst_inclusive?: Partial<Record<'establishment_fee' | 'ppsr_fee' | 'origination_fee' | 'vir_fee' | 'brokerage', boolean>>;
+  brokerage_financed?: boolean;
   non_taxable_charges: number;         // Lease only
   luxury_car_tax: number;              // Lease only
   interest_rate: number;
@@ -1714,6 +1746,8 @@ export interface ContactApplication {
   status: ApplicationStatus;
   business_name: string | null;
   business_abn: string | null;
+  /** The referrer credited with this application. */
+  referrer?: ReferrerRef | null;
   created_at: string;
   updated_at: string;
 }
@@ -2040,6 +2074,8 @@ export interface OrganizationApplicationLite {
   /** The application's owner — the creating broker on staff-created rows. */
   user_name: string | null;
   user_role: string | null;
+  /** The referrer credited with this application. */
+  referrer?: ReferrerRef | null;
 }
 
 /** Business facts as stated on the entity's newest application. */
@@ -2057,6 +2093,8 @@ export interface OrganizationDetail extends Organization {
   contacts: OrganizationContactLite[];
   applications: OrganizationApplicationLite[];
   trust_parties: TrustParty[];
+  /** Every referrer credit across the entity's applications, newest first. */
+  referrer_history?: ReferrerChange[];
 }
 
 export interface ContactDetail extends Contact {
@@ -2065,6 +2103,10 @@ export interface ContactDetail extends Contact {
   lending_history: LendingHistoryEntry[];
   /** The lead inquiries this contact was converted from. */
   leads: Lead[];
+  /** The partner who introduced this client — the default for new applications. */
+  introduced_by?: ReferrerRef | null;
+  /** Every referrer credit across this client's applications, newest first. */
+  referrer_history?: ReferrerChange[];
 }
 
 export type DuplicateConfidence = 'high' | 'review';
@@ -2322,11 +2364,16 @@ export type LedgerScope = 'summary' | 'deals' | 'income' | 'referrers' | 'invoic
 export type LedgerCategory = 'asset_finance' | 'consumer' | 'home_loan' | 'commercial';
 export type LedgerShareBase = 'brokerage' | 'total_income' | 'finance_amount';
 
+export type LedgerGstPart = 'ex' | 'gst' | 'inc';
+
 export interface LedgerColumn {
   key: string;
   label: string;
   kind: 'date' | 'bool' | 'text' | 'money';
   scope: LedgerScope;
+  /** Money columns that are one figure of an ex GST / GST / inc GST trio. */
+  gst_group?: string;
+  gst_part?: LedgerGstPart;
 }
 
 export interface LedgerAccessInfo {
@@ -2338,13 +2385,17 @@ export interface LedgerAccessInfo {
   categories?: Record<LedgerCategory, string>;
 }
 
-/** One settled deal. Fields outside the viewer's scopes are absent, not null. */
+/** One deal — settled, or (is_pipeline) still on its way to settlement, with
+ *  no settled date yet. Fields outside the viewer's scopes are absent, not null. */
 export interface LedgerDealRow {
   application_id: string;
-  settled_on: string;
-  month: string;
+  settled_on: string | null;
+  month: string | null;
   /** 1 = settled 1st–15th, 2 = after the 15th. */
-  half: 1 | 2;
+  half: 1 | 2 | null;
+  is_pipeline?: boolean;
+  /** "Settled", "Clawback", or the pipeline deal's stage on the board. */
+  deal_status?: string | null;
   /** A ledger-only deal (no portal application behind it). */
   is_manual?: boolean;
   broker_ids?: string[];
@@ -2367,13 +2418,18 @@ export interface LedgerDealRow {
   finance_amount: number;
   brokerage?: number;
   brokerage_gst?: number;
+  brokerage_inc_gst?: number;
   doc_fee?: number;
   doc_fee_gst?: number;
+  doc_fee_inc_gst?: number;
   origination_fee?: number;
   origination_gst?: number;
+  origination_inc_gst?: number;
   vir?: number;
   vir_gst?: number;
+  vir_inc_gst?: number;
   income_ex_gst?: number;
+  income_gst_amount?: number;
   income_inc_gst?: number;
   income_gst?: boolean;
   lender_name: string | null;
@@ -2387,6 +2443,11 @@ export interface LedgerDealRow {
   referrer_comms_ex_gst?: number;
   referrer_comms_gst?: number;
   referrer_comms_inc_gst?: number;
+  /** Team members paid a cut of the deal — kept apart from referrer comms. */
+  staff_name?: string | null;
+  staff_comms_ex_gst?: number;
+  staff_comms_gst?: number;
+  staff_comms_inc_gst?: number;
   volume_bonus?: number;
   net_profit?: number;
   /** The lender's VBI % used for the estimate (null = none), our tier share %, and the whole month's settled volume that set it. */
@@ -2410,8 +2471,52 @@ export interface LedgerDealsResponse {
   totals?: LedgerTotals;
   months?: LedgerReportMonth[];
   quarters?: LedgerReportPeriod[];
+  half_years?: LedgerReportPeriod[];
   years?: LedgerReportPeriod[];
+  show?: LedgerReportShow;
   deals?: LedgerDealRow[];
+  /** Asset-finance deals past "Started", not yet settled — in no total above. */
+  pipeline?: LedgerDealRow[];
+  pipeline_totals?: LedgerTotals;
+  extra_payments?: LedgerExtraPayment[];
+}
+
+/** Which roll-ups the range spans (a monthly report has no quarter total). */
+export interface LedgerReportShow {
+  quarters: boolean;
+  half_years: boolean;
+  years: boolean;
+}
+
+export type LedgerPaymentCategory = 'extra_service' | 'mandate_split' | 'staff_bonus' | 'other';
+export type LedgerPayeeKind = 'referrer' | 'staff';
+
+/** A payment outside a deal's agreed share, in the month of payment_date. */
+export interface LedgerExtraPayment {
+  id: string;
+  payee_key: string | null;
+  payee_id: string;
+  payee_name: string | null;
+  payee_organization: string | null;
+  payee_kind: LedgerPayeeKind;
+  payment_date: string;
+  month: string;
+  category: LedgerPaymentCategory;
+  category_label: string;
+  description: string | null;
+  deal_key: string | null;
+  deal_name: string | null;
+  amount_ex_gst: number;
+  gst_amount: number;
+  amount_inc_gst: number;
+  gst: boolean;
+  gst_set: boolean;
+  status?: 'unpaid' | 'scheduled' | 'paid';
+  scheduled_on?: string | null;
+  paid_on?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  notes?: string | null;
 }
 
 /** One month of the ledger report: its two halves (1st–15th, after the 15th)
@@ -2421,6 +2526,7 @@ export interface LedgerReportMonth {
   fy: number;
   quarter: 1 | 2 | 3 | 4;
   halves: { half: 1 | 2; label: string; application_ids: string[]; totals: LedgerTotals }[];
+  payment_ids?: string[];
   totals: LedgerTotals;
   vb_month_volume?: number | null;
   vb_share?: number | null;
@@ -2430,6 +2536,7 @@ export interface LedgerReportMonth {
 export interface LedgerReportPeriod {
   fy: number;
   quarter?: number;
+  half?: number;
   label: string;
   last_month: string;
   totals: LedgerTotals;
@@ -2438,7 +2545,9 @@ export interface LedgerReportPeriod {
 export interface LedgerReport {
   months: LedgerReportMonth[];
   quarters: LedgerReportPeriod[];
+  half_years: LedgerReportPeriod[];
   years: LedgerReportPeriod[];
+  show?: LedgerReportShow;
   totals?: LedgerTotals;
 }
 
@@ -2452,9 +2561,17 @@ export interface LedgerReferrerSummary {
   referrer_comms_gst: number;
   referrer_comms_inc_gst: number;
   unpaid_deals?: number;
+  unpaid_extra_payments?: number;
   unpaid_comms_inc_gst?: number;
-  /** A portal referrer (key "u:…") rather than an off-portal payee ("p:…"). */
+  /** A portal user (key "u:…") rather than an off-portal payee ("p:…"). */
   is_portal?: boolean;
+  payee_kind: LedgerPayeeKind;
+  extra_payments: number;
+  extra_payments_ex_gst: number;
+  extra_payments_gst: number;
+  extra_payments_inc_gst: number;
+  /** Their comms plus extra payments, inc GST. */
+  total_inc_gst: number;
 }
 
 export type LedgerShareStatus = 'unpaid' | 'scheduled' | 'paid' | 'not_payable';
@@ -2468,6 +2585,7 @@ export interface LedgerShare {
   user_id: string | null;
   payee_name: string | null;
   payee_organization: string | null;
+  payee_kind?: LedgerPayeeKind;
   share_percent: number | null;
   share_base: LedgerShareBase;
   share_amount: number | null;
@@ -2486,12 +2604,14 @@ export interface LedgerShare {
   saved: boolean;
 }
 
-/** Someone commission is paid to: a portal referrer or an off-portal payee. */
+/** Someone commission is paid to: a portal referrer, a team member (staff),
+ *  or an off-portal payee. */
 export interface LedgerPayee {
   key: string;
   payee_id: string | null;
   user_id: string | null;
   is_portal: boolean;
+  kind: LedgerPayeeKind;
   name: string | null;
   organization_name: string | null;
   gst_registered: boolean | null;
@@ -2545,6 +2665,8 @@ export interface LedgerReferrerOption {
 
 export interface LedgerInvoiceLine {
   application_id?: string;
+  /** An extra payment's line (no deal figures; the description says what for). */
+  payment_id?: string;
   settled_on?: string;
   customer_name?: string;
   entity_name?: string | null;
@@ -2574,6 +2696,8 @@ export interface LedgerInvoice {
   deal_count: number;
   /** Every deal on the invoice, including a single-figure one. */
   application_ids: string[];
+  /** Extra payments on the invoice (older invoices have none). */
+  payment_ids?: string[];
   supplier: {
     id: string;
     name: string;

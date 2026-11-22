@@ -6,6 +6,8 @@ import QuoteSheetComparison from './QuoteSheetComparison';
 import type { Lender, QuoteOption, QuoteSheet, QuoteSheetType, QuoteInputParameters } from '../types';
 import LenderCombobox from './LenderCombobox';
 import api from '../api/client';
+import { feeTotals, isBrokerageFinanced } from '../lib/feeOptions';
+import FeeOptionToggles, { BrokerageFinancedToggle, FeesFinancedSummary } from './FeeOptionToggles';
 import { useToast } from './Toast';
 import { downloadQuoteSheetPdf } from '../lib/pdfExport';
 import { getErrorMessage } from '../lib/utils';
@@ -166,8 +168,10 @@ function stampDutyRate(inputs: QuoteInputParameters): number {
 function computeFromInputs(inputs: QuoteInputParameters) {
   const deposit = inputs.deposit_amount != null ? inputs.deposit_amount : inputs.asset_price * (inputs.deposit_percent / 100);
   const amountBorrowed = inputs.asset_price - deposit;
-  const totalFees = inputs.establishment_fee + inputs.ppsr_fee + inputs.origination_fee + inputs.vir_fee;
-  const netAmount = inputs.fees_financed ? amountBorrowed + totalFees : amountBorrowed;
+  // Each fee is financed in or paid up front on its own (lib/feeOptions.ts).
+  const fees = feeTotals(inputs);
+  const totalFees = fees.total;
+  const netAmount = amountBorrowed + fees.financed;
 
   // Brokerage: dollar override or calculate from %
   const brokerageBase = inputs.brokerage_amount != null ? inputs.brokerage_amount : amountBorrowed * (inputs.brokerage_percent / 100);
@@ -180,12 +184,16 @@ function computeFromInputs(inputs: QuoteInputParameters) {
   // Amount financed: Excel C28 = C24 + C25 + C27
   // C24 = purchasePrice(with fees) - ITC - deposit, C25 = brokerage, C27 = admin fee (0 when fees already in C11)
   const subTotal = netAmount - itcBenefit;
-  const amountFinanced = subTotal + brokerage;
+  const brokerageFinanced = isBrokerageFinanced(inputs);
+  const amountFinanced = subTotal + (brokerageFinanced ? brokerage : 0);
 
   // Balloon base: total price or amount financed
   const balloonBase = inputs.balloon_on_total_price ? inputs.asset_price : amountFinanced;
 
-  return { deposit, amountBorrowed, netAmount, brokerage, brokerageBase, amountFinanced, balloonBase, totalFees, itcBenefit, subTotal };
+  return {
+    deposit, amountBorrowed, netAmount, brokerage, brokerageBase, brokerageFinanced, amountFinanced, balloonBase,
+    totalFees, financedFees: fees.financed, upfrontFees: fees.upfront, itcBenefit, subTotal,
+  };
 }
 
 type Scenario = {
@@ -946,26 +954,38 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
         <section className="border border-border rounded-xl p-4">
           <SectionHeader>Fees &amp; Charges</SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DollarInput
-              label="Establishment Fee"
-              value={inputs.establishment_fee || ''}
-              onChange={v => updateInput('establishment_fee', v)}
-            />
-            <DollarInput
-              label="PPSR"
-              value={inputs.ppsr_fee || ''}
-              onChange={v => updateInput('ppsr_fee', v)}
-            />
-            <DollarInput
-              label="Origination Fee"
-              value={inputs.origination_fee || ''}
-              onChange={v => updateInput('origination_fee', v)}
-            />
-            <DollarInput
-              label="Vehicle Inspection (VIR)"
-              value={inputs.vir_fee || ''}
-              onChange={v => updateInput('vir_fee', v)}
-            />
+            <div>
+              <DollarInput
+                label="Establishment Fee"
+                value={inputs.establishment_fee || ''}
+                onChange={v => updateInput('establishment_fee', v)}
+              />
+              <FeeOptionToggles inputs={inputs} fee="establishment_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarInput
+                label="PPSR"
+                value={inputs.ppsr_fee || ''}
+                onChange={v => updateInput('ppsr_fee', v)}
+              />
+              <FeeOptionToggles inputs={inputs} fee="ppsr_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarInput
+                label="Origination Fee"
+                value={inputs.origination_fee || ''}
+                onChange={v => updateInput('origination_fee', v)}
+              />
+              <FeeOptionToggles inputs={inputs} fee="origination_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
+            <div>
+              <DollarInput
+                label="Vehicle Inspection (VIR)"
+                value={inputs.vir_fee || ''}
+                onChange={v => updateInput('vir_fee', v)}
+              />
+              <FeeOptionToggles inputs={inputs} fee="vir_fee" gstPercent={inputs.gst_percent} onChange={setInputs} />
+            </div>
             <DollarInput
               label="Monthly Account Fee"
               value={inputs.monthly_account_fee || ''}
@@ -974,20 +994,12 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-border/40">
-            <div>
-              <label className={labelBase}>Fees Treatment</label>
-              <select
-                value={inputs.fees_financed ? 'financed' : 'non-financed'}
-                onChange={e => updateInput('fees_financed', e.target.value === 'financed')}
-                className={selectBase}
-              >
-                <option value="financed">Financed (added to loan)</option>
-                <option value="non-financed">Non-Financed (separate)</option>
-              </select>
-            </div>
+            <FeesFinancedSummary inputs={inputs} onChange={setInputs} labelClassName={labelBase} selectClassName={selectBase} />
             <CalcField
               label="Total Fees"
-              value={`${fmtCurrency(derived.totalFees)}${!inputs.fees_financed ? ' (sep.)' : ''}`}
+              value={derived.upfrontFees > 0
+                ? `${fmtCurrency(derived.totalFees)} (${fmtCurrency(derived.upfrontFees)} sep.)`
+                : fmtCurrency(derived.totalFees)}
             />
             {derived.itcBenefit > 0 ? (
               <CalcField
@@ -1082,7 +1094,8 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
                 inactiveLabel="Without GST"
                 onClick={() => updateInput('gst_on_brokerage', !inputs.gst_on_brokerage)}
               />
-              <CalcField label="Brokerage (incl. GST)" value={fmtCurrency(derived.brokerage)} />
+              <CalcField label="Brokerage (incl. GST)" value={`${fmtCurrency(derived.brokerage)}${derived.brokerageFinanced ? '' : ' (sep.)'}`} />
+              <BrokerageFinancedToggle inputs={inputs} onChange={setInputs} labelClassName={labelBase} />
             </div>
           </section>
 

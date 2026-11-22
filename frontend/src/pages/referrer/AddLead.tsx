@@ -1125,14 +1125,14 @@ export default function AddLead({ basePath = '/referrer/applications', title = '
           : await api.post('/applications', payload);
         appId = app.id;
 
-        // Credit the selected referrer for this lead (staff form only). The
-        // application must have resolved to a client-owned account to attribute.
-        // Clones inherit the client's existing attribution.
-        if (!cloneFromId && creditReferrerId && app.user_role === 'client' && app.user_id) {
+        // Credit the selected referrer on this application (staff form only).
+        // Credit is per application, so this never touches the client's other
+        // loans; a new app otherwise starts with the client's usual referrer.
+        if (creditReferrerId && creditReferrerId !== app.referrer_id) {
           try {
-            await api.post(`/users/${app.user_id}/referrer`, { referrer_id: creditReferrerId });
+            await api.put(`/applications/${app.id}/referrer`, { referrer_id: creditReferrerId, note: 'Chosen when the application was created' });
           } catch {
-            toast('Application created, but the referrer could not be linked — this client may already have one.', 'error');
+            toast('Application created, but the referrer could not be credited — set it from the application.', 'error');
           }
         }
       }

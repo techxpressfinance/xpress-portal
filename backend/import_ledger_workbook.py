@@ -15,6 +15,10 @@ A DRY RUN by default — it prints what it would do. Run with --apply to write.
     python3 import_ledger_workbook.py --tenant-slug default --file "/path/sidd's deals.xlsx"
     python3 import_ledger_workbook.py --tenant-slug default --file ... --apply
 
+Rows that pay a referrer with no deal behind them — no new-lead flag, no
+income, just a commission ("fuel card", "HL ben comms for Navare") — become
+EXTRA PAYMENTS to that payee in that month, not deals.
+
 Skipped, and listed in the report:
   * rows already imported (re-running is safe),
   * rows that look like a deal already settled in the portal that month
@@ -37,7 +41,7 @@ from sqlalchemy import inspect
 
 from app.database import SessionLocal, engine
 from app.models import Tenant, User
-from app.models.ledger import LedgerDeal, LedgerDealShare, LedgerMonth, LedgerPayee, LedgerSettings
+from app.models.ledger import LedgerDeal, LedgerDealShare, LedgerMonth, LedgerPayee, LedgerPayment, LedgerSettings
 from app.models.user import UserRole
 
 MONTHS = {m: i for i, m in enumerate(
@@ -155,8 +159,9 @@ def read_referrer_details(wb) -> dict[str, dict]:
     return out
 
 
-def read_deals(ws, fy_start: int) -> tuple[list[dict], dict[int, Decimal]]:
-    deals, received = [], {}
+def read_deals(ws, fy_start: int) -> tuple[list[dict], dict[int, Decimal], list[dict]]:
+    """(deal rows, volume bonus received by month, extra-payment rows)."""
+    deals, received, extras = [], {}, []
     month, half = None, 1
     for r in range(1, ws.max_row + 1):
         a = ws.cell(r, 1).value
@@ -176,6 +181,20 @@ def read_deals(ws, fy_start: int) -> tuple[list[dict], dict[int, Decimal]]:
                 received[MONTHS[m.group(1)[:3]]] = money(ws.cell(r, 27).value)
             continue
         if not (isinstance(a, str) and a.strip().lower() in ("yes", "no")):
+            # A commission paid with no deal behind it: an extra payment.
+            comms = money(ws.cell(r, 17).value)
+            referrer = str(ws.cell(r, 20).value or "").strip()
+            income = sum((money(ws.cell(r, c).value) for c in (5, 6, 8, 10, 12)), Decimal("0"))
+            is_total = isinstance(d, str) and d.strip().lower().startswith("total")
+            if month is not None and comms and income == 0 and referrer.lower() not in NO_PAYEE and not is_total:
+                what = " / ".join(dict.fromkeys(
+                    str(v).strip() for v in (ws.cell(r, 3).value, ws.cell(r, 4).value, ws.cell(r, 22).value)
+                    if v not in (None, "") and str(v).strip() not in ("-", "?")))
+                extras.append({
+                    "row": r, "date": fy_month_date(fy_start, month, 1 if half == 1 else 16), "referrer": referrer,
+                    "amount": comms, "gst": money(ws.cell(r, 18).value) != 0, "description": what or None,
+                    "method": str(ws.cell(r, 21).value or "").strip(), "note": str(ws.cell(r, 23).value or "").strip(),
+                })
             continue
         customer = ws.cell(r, 3).value
         if not customer or month is None:
@@ -203,7 +222,7 @@ def read_deals(ws, fy_start: int) -> tuple[list[dict], dict[int, Decimal]]:
             "clawback": figures["brokerage"] < 0 or figures["comms"] < 0,
             **figures,
         })
-    return deals, received
+    return deals, received, extras
 
 
 def main() -> int:
@@ -272,7 +291,7 @@ def main() -> int:
                 return 1
             broker_id = b.id
 
-        deals, received = read_deals(ws, fy_start)
+        deals, received, extra_rows = read_deals(ws, fy_start)
         details = read_referrer_details(wb)
         print(f"FY {fy_start}-{str(fy_start + 1)[2:]} · {len(deals)} deal rows on {args.sheet!r} · "
               f"{len(received)} months with a volume bonus received\n")
@@ -453,6 +472,32 @@ def main() -> int:
                     payment_notes=note,
                 ))
 
+        # Commissions paid with no deal behind them → extra payments.
+        existing_payment_tags = {p.notes for p in db.query(LedgerPayment).filter(LedgerPayment.tenant_id == tenant.id) if p.notes}
+        for x in extra_rows:
+            tag = TAG.format(sheet=args.sheet, row=x["row"])
+            if any(tag in t for t in existing_payment_tags):
+                report["extra payment already imported"].append(x)
+                continue
+            payee, how = payee_for(x["referrer"])
+            x["how"] = how
+            report["extra payment"].append(x)
+            if not args.apply:
+                continue
+            if payee.id is None:
+                db.add(payee)
+                db.flush()
+            pay = payment_from(x["note"], x["method"], x["amount"], x["date"])
+            status = pay["status"] if pay["status"] in ("unpaid", "scheduled", "paid") else "unpaid"
+            db.add(LedgerPayment(
+                tenant_id=tenant.id, payee_id=payee.id, payment_date=x["date"], category="other",
+                description=x["description"], amount=x["amount"], gst=x["gst"], status=status,
+                paid_on=pay["paid_on"] if status == "paid" else None,
+                scheduled_on=pay["scheduled_on"] if status == "scheduled" else None,
+                payment_method=pay["method"],
+                notes=f"{tag} Imported from the deals spreadsheet." + (f" Sheet note: {x['note']}." if x["note"] not in ("", "-") else ""),
+            ))
+
         # Volume bonus received per month.
         months_set = []
         for mo, amount in sorted(received.items(), key=lambda kv: (kv[0] < 7, kv[0])):
@@ -486,6 +531,12 @@ def main() -> int:
                 elif section.startswith("matches"):
                     line += f"  = portal deal {d['portal']}"
                 print(line)
+        for section in ("extra payment", "extra payment already imported"):
+            items = report.get(section, [])
+            print(f"== {section}: {len(items)}")
+            for x in items:
+                print(f"  row {x['row']:>4} {x['date']} {(x['description'] or '')[:34]:<34} ${x['amount']:>9,.2f}  {x['referrer']}"
+                      + (f" → {x['how']}" if x.get("how") else ""))
         print(f"\n== volume bonus received to set: {len(months_set)}"
               + ("" if args.import_vb_received else f" (not importing — {len(received)} months on the sheet; add --import-vb-received)"))
         for key, amount in months_set:

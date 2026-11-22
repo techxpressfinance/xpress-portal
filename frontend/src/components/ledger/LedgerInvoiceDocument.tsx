@@ -66,8 +66,16 @@ export function LedgerInvoiceDocument({ invoice, elementId }: { invoice: LedgerI
         </thead>
         <tbody>
           {invoice.lines.map((line, i) => (
-            <tr key={line.application_id ?? i}>
-              {breakdown ? (
+            <tr key={line.application_id ?? line.payment_id ?? i}>
+              {breakdown && line.payment_id ? (
+                <>
+                  <td style={cell}>{line.settled_on ? formatDate(line.settled_on) : ''}</td>
+                  <td style={cell} colSpan={3}>
+                    {line.description}
+                    {line.customer_name && <div style={{ color: '#555' }}>Re: {line.customer_name}</div>}
+                  </td>
+                </>
+              ) : breakdown ? (
                 <>
                   <td style={cell}>{line.settled_on ? formatDate(line.settled_on) : ''}</td>
                   <td style={cell}>
@@ -96,7 +104,12 @@ export function LedgerInvoiceDocument({ invoice, elementId }: { invoice: LedgerI
         </tbody>
       </table>
 
-      {breakdown && <div style={{ marginTop: 8, color: '#555' }}>{invoice.deal_count} settled deal{invoice.deal_count === 1 ? '' : 's'}.</div>}
+      {breakdown && (
+        <div style={{ marginTop: 8, color: '#555' }}>
+          {invoice.deal_count} settled deal{invoice.deal_count === 1 ? '' : 's'}
+          {invoice.payment_ids?.length ? ` and ${invoice.payment_ids.length} extra payment${invoice.payment_ids.length === 1 ? '' : 's'}` : ''}.
+        </div>
+      )}
 
       {hasBank && (
         <div style={{ marginTop: 28 }}>
@@ -141,15 +154,18 @@ export default function LedgerInvoiceModal({ invoice, isOwner, onClose, onPaid }
     setMarking(true);
     try {
       const ids = invoice.application_ids;
+      const extras = invoice.payment_ids ?? [];
       await api.post('/ledger/deals/mark-paid', {
         application_ids: ids,
+        payment_ids: extras,
         payee_key: invoicePayeeKey(invoice),
         status: 'paid',
         payment_reference: `Invoice ${invoice.number}`,
         paid_on: paidOn,
         payment_method: method,
       });
-      toast(`${ids.length} deal${ids.length === 1 ? '' : 's'} marked paid`, 'success');
+      const n = ids.length + extras.length;
+      toast(`${n} item${n === 1 ? '' : 's'} marked paid`, 'success');
       onPaid?.();
     } catch (err) {
       toast(getErrorMessage(err, 'Failed to mark paid'), 'error');
@@ -173,7 +189,7 @@ export default function LedgerInvoiceModal({ invoice, isOwner, onClose, onPaid }
               <select className="led-input !h-8 !w-auto text-[12.5px]" value={method} onChange={(e) => setMethod(e.target.value)}>
                 {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
               </select>
-              <Button size="sm" variant="secondary" onClick={markPaid} loading={marking}>Mark deals paid</Button>
+              <Button size="sm" variant="secondary" onClick={markPaid} loading={marking}>Mark invoice paid</Button>
             </div>
           )}
           <Button variant="secondary" onClick={onClose}>Close</Button>

@@ -50,8 +50,8 @@ export default function ContactLendingHistory({ contact, onAdd, onNotes, onEditL
       <span className="self-center text-sm text-muted-foreground">{filtered.length} records</span>
     </div>
     {!filtered.length ? <p className="py-8 text-sm text-muted-foreground text-center">{rows.length ? 'No records match these filters.' : 'No lending history yet. Start an application or add a historical loan.'}</p> : <div className="overflow-x-auto">
-      <table className="w-full text-sm text-left min-w-[760px]">
-        <thead><tr className="border-b border-border text-muted-foreground">{['Loan / lender', 'Amount', 'Role', 'Status', 'Date', 'Actions'].map(label => <th key={label} className="pb-3 pr-4 font-medium">{label}</th>)}</tr></thead>
+      <table className="w-full text-sm text-left min-w-[880px]">
+        <thead><tr className="border-b border-border text-muted-foreground">{['Loan / lender', 'Amount', 'Role', 'Referrer', 'Status', 'Date', 'Actions'].map(label => <th key={label} className="pb-3 pr-4 font-medium">{label}</th>)}</tr></thead>
         <tbody>{filtered.map(row => {
           // Settled applications open on a click anywhere in the row; the row's
           // own buttons and links keep their behaviour.
@@ -70,6 +70,10 @@ export default function ContactLendingHistory({ contact, onAdd, onNotes, onEditL
             {row.application?.business_name && <p className="text-xs text-muted-foreground mt-1">{row.application.business_name}</p>}
           </td>
           <td className="py-4 pr-4 whitespace-nowrap">{money(row.amount)}</td><td className="py-4 pr-4">{row.roles.join(', ')}</td>
+          {/* Credited per application — a client's loans can each come through a different referrer. */}
+          <td className="py-4 pr-4">{row.application?.referrer
+            ? <Link className="text-primary hover:underline" to={`/admin/referrers/${row.application.referrer.id}`}>{row.application.referrer.organization_name || row.application.referrer.full_name || 'Referrer'}</Link>
+            : <span className="text-muted-foreground">{row.application ? 'Direct' : '—'}</span>}</td>
           <td className="py-4 pr-4">{row.status === 'recorded' ? <span className="text-muted-foreground">Not recorded</span> : <Badge value={row.status} />}</td>
           <td className="py-4 pr-4 whitespace-nowrap">{row.date ? formatDate(row.date) : 'Not recorded'}<p className="text-xs text-muted-foreground">{row.loan ? 'Started' : row.application?.settled_at ? 'Settled' : row.source === 'settlement' ? 'Snapshot saved' : 'Created'}</p></td>
           <td className="py-4"><div className="flex gap-1">

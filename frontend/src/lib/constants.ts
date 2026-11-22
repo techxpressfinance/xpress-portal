@@ -163,6 +163,7 @@ export const ACTION_LABELS: Record<string, string> = {
   password_reset_sent: 'Sent password reset',
   referrer_attached: 'Linked referrer',
   referrer_detached: 'Unlinked referrer',
+  application_referrer_changed: 'Changed application referrer',
   client_referred: 'Added client contact',
   // Tasks
   task_created: 'Created task',

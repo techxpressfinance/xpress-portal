@@ -24,18 +24,16 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import FRONTEND_URL
 from app.models.document_request import DocumentRequest
-from app.models.external_referral import ExternalReferral
 from app.models.lead import Lead, LeadStatus
 from app.models.loan_application import LoanApplication
-from app.models.referral import Referral
 from app.models.tracking_link import TrackingLink
 from app.models.user import SETUP_PLACEHOLDER_HASHES, User, UserRole
 from app.services import journey
+from app.services.referrer_attribution import credited_application_filter
 from app.services.loan_category import application_asset_details, application_loan_category, application_sub_type
 
 KIND_REFERRER = "referrer"
@@ -145,60 +143,21 @@ def link_dict(link: TrackingLink) -> dict:
 
 
 def application_referrer(db: Session, application: LoanApplication) -> Optional[User]:
-    """The referrer partner credited with an application, or None.
-
-    In order: the owner themselves when a referrer submitted it; the owner's
-    client-level credit (an ExternalReferral, else a referrer-role Referral —
-    the same precedence as referrer_info_map); else the referrer tagged on the
-    lead it was converted from, since a converted lead's application is
-    staff-owned and carries no client-level credit."""
-    owner = db.query(User).filter(User.id == application.user_id).first()
-    if owner and owner.role == UserRole.referrer:
-        return owner
-    ext = (
-        db.query(ExternalReferral)
-        .filter(ExternalReferral.referred_client_id == application.user_id)
-        .first()
-    )
-    if ext and ext.referrer:
-        return ext.referrer
-    ref = db.query(Referral).filter(Referral.referred_user_id == application.user_id).first()
-    if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
-        return ref.referrer
-    lead = (
-        db.query(Lead)
-        .filter(Lead.converted_application_id == application.id, Lead.referrer_id.isnot(None))
-        .first()
-    )
-    return lead.referrer if lead else None
+    """The referrer partner credited with an application, or None. Credit is
+    per application (see services/referrer_attribution.py)."""
+    if not application.referrer_id:
+        return None
+    return db.query(User).filter(User.id == application.referrer_id).first()
 
 
 def referrer_deals(db: Session, tenant_id: str, referrer_id: str) -> tuple[list[LoanApplication], list[Lead]]:
     """Every live application and unconverted lead a referrer is credited with."""
-    ext_clients = db.query(ExternalReferral.referred_client_id).filter(
-        ExternalReferral.referrer_id == referrer_id,
-        ExternalReferral.referred_client_id.isnot(None),
-    )
-    ref_clients = db.query(Referral.referred_user_id).filter(
-        Referral.referrer_id == referrer_id,
-        Referral.referred_user_id.isnot(None),
-    )
-    lead_apps = db.query(Lead.converted_application_id).filter(
-        Lead.tenant_id == tenant_id,
-        Lead.referrer_id == referrer_id,
-        Lead.converted_application_id.isnot(None),
-    )
     applications = (
         db.query(LoanApplication)
         .filter(
             LoanApplication.tenant_id == tenant_id,
             LoanApplication.deleted_at.is_(None),
-            or_(
-                LoanApplication.user_id == referrer_id,
-                LoanApplication.user_id.in_(ext_clients),
-                LoanApplication.user_id.in_(ref_clients),
-                LoanApplication.id.in_(lead_apps),
-            ),
+            credited_application_filter(referrer_id),
         )
         .order_by(LoanApplication.created_at.desc())
         .all()

@@ -21,6 +21,7 @@ from app.models.contact import Contact
 from app.schemas.common import normalize_email
 from app.services.email import notify_admins_new_account, send_complete_application_email, send_setup_account_email
 from app.services.tenant_scope import get_tenant_id
+from app.services.referrer_attribution import stamp_initial_referrer
 
 router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
@@ -260,6 +261,7 @@ def start_application_for_client(
     )
     db.add(application)
     db.flush()
+    stamp_initial_referrer(db, application, current_user)
 
     db.add(ApplicationBroker(
         application_id=application.id,
@@ -372,6 +374,7 @@ def invite_new_client_with_application(
     )
     db.add(application)
     db.flush()
+    stamp_initial_referrer(db, application, current_user)
 
     db.add(ApplicationBroker(
         application_id=application.id,

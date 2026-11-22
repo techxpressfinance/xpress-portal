@@ -138,13 +138,18 @@ class LedgerDeal(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
 
 
-class LedgerPayee(Base):
-    """Someone the owner pays referral commission to.
+PAYEE_KINDS = ("referrer", "staff")
 
-    Either a portal referrer (user_id set — their billing details stay on the
-    User, this row only holds ledger-private extras) or someone who never had a
-    portal login (an accountant, a sub-contractor, a staff member): their
-    details live here. Ledger-private: nobody outside the ledger sees this."""
+
+class LedgerPayee(Base):
+    """Someone the owner pays commission to.
+
+    Either someone with a portal login (user_id set — a referrer, or a team
+    member paid a cut for making a deal happen; their details stay on the User,
+    this row only holds ledger-private extras) or someone who never had one (an
+    accountant, a sub-contractor, a former staff member): their details live
+    here. ``kind`` keeps staff commission apart from referrer commission in the
+    report. Ledger-private: nobody outside the ledger sees this."""
 
     __tablename__ = "ledger_payees"
     __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_ledger_payee_user"),)
@@ -152,6 +157,8 @@ class LedgerPayee(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    # "referrer" or "staff" (PAYEE_KINDS). A portal user's kind follows their role.
+    kind: Mapped[str] = mapped_column(String(20), default="referrer", server_default="referrer", nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -202,6 +209,40 @@ class LedgerDealShare(Base):
     payment_reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     payment_notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+PAYMENT_CATEGORIES = ("extra_service", "mandate_split", "staff_bonus", "other")
+
+
+class LedgerPayment(Base):
+    """A payment to a payee outside a deal's agreed share — paid above the
+    agreed comms for extra work (providing financials), the referrer's split
+    of a mandate fee the client paid us, a staff bonus. It belongs to the month
+    of ``payment_date`` and comes off that month's final profit. ``deal_key``
+    optionally says which deal it relates to (for the notes; it does not
+    change that deal's net profit)."""
+
+    __tablename__ = "ledger_payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    payee_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    payment_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(20), default="extra_service", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)  # ex GST
+    # None = follow the payee's GST registration.
+    gst: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    deal_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="unpaid", nullable=False)
+    scheduled_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    paid_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    payment_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    payment_reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(EncryptedString(), nullable=True)
+    created_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now, nullable=False)
 

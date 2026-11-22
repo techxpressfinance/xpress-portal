@@ -10,6 +10,7 @@ import TrustStructureSection from '../../components/TrustStructureSection';
 import ArrearsSection from '../../components/arrears/ArrearsSection';
 import CommitmentScheduleSection from '../../components/CommitmentScheduleSection';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
+import ReferrerHistory from '../../components/ReferrerHistory';
 import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
@@ -739,6 +740,7 @@ export default function CompanyDetail() {
                   <th className="pb-3 font-medium">Amount</th>
                   <th className="pb-3 font-medium">Status</th>
                   <th className="pb-3 font-medium">Client</th>
+                  <th className="pb-3 font-medium">Referrer</th>
                   <th className="pb-3 font-medium">Created</th>
                   <th className="pb-3 font-medium"></th>
                 </tr>
@@ -763,6 +765,13 @@ export default function CompanyDetail() {
                     <td className="py-3">${Number(a.amount).toLocaleString('en-AU')}</td>
                     <td className="py-3"><Badge value={a.status} /></td>
                     <td className="py-3 text-muted-foreground">{applicantName(a) || '—'}</td>
+                    <td className="py-3">
+                      {a.referrer ? (
+                        <Link to={`/admin/referrers/${a.referrer.id}`} className="text-primary hover:underline">
+                          {a.referrer.organization_name || a.referrer.full_name || 'Referrer'}
+                        </Link>
+                      ) : <span className="text-muted-foreground">Direct</span>}
+                    </td>
                     <td className="py-3 text-muted-foreground">{formatDate(a.created_at)}</td>
                     <td className="py-3">
                       <Link to={`/admin/applications/${a.id}`}>
@@ -775,6 +784,25 @@ export default function CompanyDetail() {
             </table>
           </div>
         )}
+      </Card>
+
+      {/* Who brought each of the entity's loans in, and how that changed. */}
+      <Card>
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">Referrers</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Each application is credited to its own referrer — the entity may have come to us through different referrers over time.
+            Change one from the application&rsquo;s Referrals box.
+          </p>
+        </div>
+        <ReferrerHistory
+          history={company.referrer_history ?? []}
+          applicationLabel={(appId) => {
+            const a = company.applications.find((x) => x.id === appId);
+            return a ? `${LOAN_TYPE_LABELS[a.loan_type] ?? a.loan_type} · $${Number(a.amount).toLocaleString('en-AU')}${applicantName(a) ? ` · ${applicantName(a)}` : ''}` : 'Application';
+          }}
+          emptyText="None of this entity's applications has been credited to a referrer."
+        />
       </Card>
 
       <CommitmentScheduleSection key={`cs-${company.id}`} holderType="organization" holderId={company.id} />

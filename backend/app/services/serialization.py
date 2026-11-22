@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from app.models.external_referral import ExternalReferral
 from app.models.contact import Contact, Organization
 from app.models.loan_application import LoanApplication
-from app.models.referral import Referral
 from app.models.user import UserRole
 from app.services.organizations import contact_organization_link
 
@@ -110,39 +108,11 @@ def _referrer_dict(user) -> dict:
     }
 
 
-def referrer_info_map(db: Session, user_ids: Iterable[Optional[str]]) -> dict[str, dict]:
-    """Batch-resolve referrer info for many application owners in two queries.
-
-    An ExternalReferral takes precedence over a Referral for the same owner,
-    matching the per-application lookup order in app_with_user.
-    """
-    ids = {uid for uid in user_ids if uid}
-    result: dict[str, dict] = {}
-    if not ids:
-        return result
-    ext_refs = (
-        db.query(ExternalReferral)
-        .options(joinedload(ExternalReferral.referrer))
-        .filter(ExternalReferral.referred_client_id.in_(ids))
-        .all()
-    )
-    for ext_ref in ext_refs:
-        if ext_ref.referrer and ext_ref.referred_client_id not in result:
-            result[ext_ref.referred_client_id] = _referrer_dict(ext_ref.referrer)
-    remaining = ids - result.keys()
-    if remaining:
-        refs = (
-            db.query(Referral)
-            .options(joinedload(Referral.referrer))
-            .filter(Referral.referred_user_id.in_(remaining))
-            .all()
-        )
-        for ref in refs:
-            # Referral rows are also written for admin/broker invite links —
-            # only a referrer-role user counts as an actual referrer.
-            if ref.referrer and ref.referrer.role == UserRole.referrer and ref.referred_user_id not in result:
-                result[ref.referred_user_id] = _referrer_dict(ref.referrer)
-    return result
+def referrer_info_map(db: Session, referrer_ids: Iterable[Optional[str]]) -> dict[str, dict]:
+    """Referrer info for many applications in one query, keyed by REFERRER id
+    (pass ``app.referrer_id`` for each app — credit is per application)."""
+    from app.services.referrer_attribution import referrer_users_map
+    return referrer_users_map(db, referrer_ids)
 
 
 def app_with_user(
@@ -204,25 +174,13 @@ def app_with_user(
         data["assigned_broker_id"] = None
         data["assigned_broker_name"] = None
     data["assigned_brokers"] = [{"id": b.id, "full_name": b.full_name} for b in app.brokers]
-    # Referrer info
+    # Referrer info — the partner credited with this application.
     referrer_info = None
-    if app.user and app.user.role.value == "referrer":
-        referrer_info = _referrer_dict(app.user)
-    elif app.user:
+    if app.referrer_id:
         if referrer_map is not None:
-            referrer_info = referrer_map.get(app.user_id)
-        else:
-            ext_ref = db.query(ExternalReferral).filter(
-                ExternalReferral.referred_client_id == app.user_id,
-            ).first()
-            if ext_ref and ext_ref.referrer:
-                referrer_info = _referrer_dict(ext_ref.referrer)
-            else:
-                ref = db.query(Referral).filter(
-                    Referral.referred_user_id == app.user_id,
-                ).first()
-                if ref and ref.referrer and ref.referrer.role == UserRole.referrer:
-                    referrer_info = _referrer_dict(ref.referrer)
+            referrer_info = referrer_map.get(app.referrer_id)
+        elif app.referrer is not None:
+            referrer_info = _referrer_dict(app.referrer)
     data["referrer"] = referrer_info
     data["referred_by"] = referred_by_dict(app.referred_by_contact) if app.referred_by_contact_id else None
     # Where the file is up to, for the viewers who are shown a journey rather
