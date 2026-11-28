@@ -21,6 +21,7 @@ from app.models.user import User
 from app.models.settled_deal_snapshot import SettledDealParty
 
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.entity_note import EntityNote
 from app.models.lead import Lead
 from app.models.lending_history_entry import LendingHistoryEntry
 from app.models.loan_applicant import ApplicationGuarantor, LoanApplicant
@@ -461,6 +462,10 @@ def merge_organizations(db: Session, primary: Organization, duplicates: list[Org
     # Trust structure: the duplicate's own parties come across, and any role it
     # held in someone else's trust now points at the primary.
     db.query(TrustParty).filter(TrustParty.organization_id.in_(dup_ids)).update(
+        {"organization_id": primary.id}, synchronize_session="fetch"
+    )
+    # Every duplicate's notes join the surviving entity's feed.
+    db.query(EntityNote).filter(EntityNote.organization_id.in_(dup_ids)).update(
         {"organization_id": primary.id}, synchronize_session="fetch"
     )
     db.query(TrustParty).filter(TrustParty.linked_organization_id.in_(dup_ids)).update(

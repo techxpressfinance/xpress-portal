@@ -44,6 +44,7 @@ import type {
   LedgerAccessInfo,
   LedgerBroker,
   LedgerCategory,
+  LedgerCategoryFilter,
   LedgerColumn,
   LedgerDealRow,
   LedgerDealsResponse,
@@ -72,6 +73,8 @@ export default function PrivateLedger() {
   const [brokers, setBrokers] = useState<LedgerBroker[]>([]);
   // Narrow the books to one team member's deals ('' = everyone's).
   const [brokerId, setBrokerId] = useState('');
+  // One category of the books — asset finance, home loans or commercial ('' = all).
+  const [category, setCategory] = useState<LedgerCategoryFilter | ''>('');
   const [addingDeal, setAddingDeal] = useState(false);
   const [editing, setEditing] = useState<LedgerDealRow | null>(null);
   // An extra payment being added ('new') or changed, from the deals table.
@@ -79,7 +82,7 @@ export default function PrivateLedger() {
   const [columnKeys, setColumnKeys] = useState<string[]>(() => loadColumnPref() ?? DEFAULT_LEDGER_COLUMNS);
   const [view, setView] = useState<ViewPref>(loadViewPref);
   const updateView = (patch: Partial<ViewPref>) => setView((v) => { const next = { ...v, ...patch }; saveViewPref(next); return next; });
-  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
+  const [exporting, setExporting] = useState<'xlsx' | 'split' | 'pdf' | null>(null);
   const [printing, setPrinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [invoices, setInvoices] = useState<LedgerInvoice[]>([]);
@@ -101,8 +104,11 @@ export default function PrivateLedger() {
   const can = (s: string) => isOwner || scopes.has(s as never);
 
   const params = useMemo(
-    () => ({ date_from: range.from || undefined, date_to: range.to || undefined, broker_id: brokerId || undefined }),
-    [range, brokerId],
+    () => ({
+      date_from: range.from || undefined, date_to: range.to || undefined,
+      broker_id: brokerId || undefined, category: category || undefined,
+    }),
+    [range, brokerId, category],
   );
 
   const load = useCallback(async () => {
@@ -174,12 +180,16 @@ export default function PrivateLedger() {
     saveColumnPref(next);
   };
 
-  const exportXlsx = async () => {
-    setExporting('xlsx');
+  /** ``split`` = one sheet per category (asset finance, home loans,
+   *  commercial) whatever the category filter on screen. */
+  const exportXlsx = async (split = false) => {
+    setExporting(split ? 'split' : 'xlsx');
     try {
       const res = await api.get('/ledger/export.xlsx', {
         params: {
           ...params,
+          category: split ? undefined : params.category,
+          split_categories: split || undefined,
           columns: shownColumns.map((c) => c.key).join(','),
           layout: view.layout,
           include_pipeline: view.showPipeline && !summary,
@@ -190,7 +200,8 @@ export default function PrivateLedger() {
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${reportName}${summary ? ' summary' : ''} ${range.from || 'start'} to ${range.to || 'today'}${brokerName ? ` - ${brokerName}` : ''}.xlsx`;
+      const slice = split ? ' by category' : categoryName ? ` - ${categoryName}` : '';
+      a.download = `${reportName}${summary ? ' summary' : ''}${slice} ${range.from || 'start'} to ${range.to || 'today'}${brokerName ? ` - ${brokerName}` : ''}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -210,7 +221,7 @@ export default function PrivateLedger() {
     try {
       // Let React paint the off-screen print table before html2pdf reads it.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      await downloadElementPdf('ledger-report', `${reportName}${summary ? ' summary' : ''} ${range.from || 'start'} to ${range.to || 'today'}.pdf`, 'landscape');
+      await downloadElementPdf('ledger-report', `${reportName}${summary ? ' summary' : ''}${categoryName ? ` - ${categoryName}` : ''} ${range.from || 'start'} to ${range.to || 'today'}.pdf`, 'landscape');
       api.post('/ledger/export-logged').catch(() => {});
     } catch (err) {
       toast(getErrorMessage(err, 'PDF download failed'), 'error');
@@ -243,6 +254,8 @@ export default function PrivateLedger() {
   }));
 
   const brokerName = brokers.find((b) => b.id === brokerId)?.full_name ?? '';
+  const categoryFilters = access.category_filters ?? { asset_finance: 'Asset finance', home_loan: 'Home loans', commercial: 'Commercial' };
+  const categoryName = category ? categoryFilters[category] : '';
 
   const onDeleted = (key: string) => {
     setData((prev) => prev && prev.deals ? { ...prev, deals: prev.deals.filter((d) => d.application_id !== key) } : prev);
@@ -331,6 +344,12 @@ export default function PrivateLedger() {
               <select className={filterCls} aria-label="Whose deals" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
                 <option value="">Everyone&rsquo;s deals</option>
                 {brokers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
+              </select>
+            )}
+            {tab === 'deals' && (
+              <select className={filterCls} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value as LedgerCategoryFilter | '')}>
+                <option value="">All categories</option>
+                {(Object.keys(categoryFilters) as LedgerCategoryFilter[]).map((k) => <option key={k} value={k}>{categoryFilters[k]}</option>)}
               </select>
             )}
           </div>
@@ -424,13 +443,18 @@ export default function PrivateLedger() {
                         {(close) => (
                           <>
                             <button type="button" disabled={Boolean(exporting)} className="block w-full rounded px-1.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--led-surface-2)]" onClick={() => { close(); exportXlsx(); }}>
-                              Excel workbook
+                              Excel workbook{categoryName ? ` — ${categoryName}` : ''}
+                            </button>
+                            <button type="button" disabled={Boolean(exporting)} className="block w-full rounded px-1.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--led-surface-2)]" onClick={() => { close(); exportXlsx(true); }}>
+                              Excel — a sheet per category
+                              <span className="block text-[11.5px] font-normal text-muted-foreground">Asset finance, home loans and commercial, separately</span>
                             </button>
                             <button type="button" disabled={Boolean(exporting)} className="block w-full rounded px-1.5 py-1.5 text-left text-[12.5px] font-medium hover:bg-[var(--led-surface-2)]" onClick={() => { close(); exportPdf(); }}>
                               PDF (landscape)
                             </button>
                             <p className="mt-1 border-t border-border px-1.5 pt-2 text-[11.5px] text-muted-foreground">
-                              Uses the period, layout, GST view and columns on screen.
+                              Uses the period, category, layout, GST view and columns on screen.
+                              {category && <> A single category has no volume bonus received or final profit — those belong to the whole month.</>}
                               {!summary && <> Excel also adds an extra-payments sheet{view.showPipeline ? ' and a pipeline sheet' : ''}.</>}
                             </p>
                           </>
@@ -475,7 +499,7 @@ export default function PrivateLedger() {
                             {CATEGORY_STYLE[k].label}
                           </span>
                         ))}
-                        <span className="text-[var(--led-danger)]">Red = clawback</span>
+                        <span className="text-[var(--led-danger)]">Red = clawback — at the bottom of the month it happened</span>
                         {isOwner && <span className="italic">Italic = from the application, not entered</span>}
                         {(data?.extra_payments?.length ?? 0) > 0 && (
                           <span className="inline-flex items-center gap-1.5">
@@ -603,7 +627,7 @@ export default function PrivateLedger() {
           <div id="ledger-report" style={{ background: '#fff', paddingBottom: 16, width: A4_PRINT_WIDTH_PX.landscape, overflow: 'hidden', fontFamily: 'Helvetica, Arial, sans-serif' }}>
             <XpressPrintHeader
               eyebrow="Private Ledger"
-              title={`${reportName}${summary ? ' — summary' : ''}${brokerName ? ` — ${brokerName}` : ''}`}
+              title={`${reportName}${summary ? ' — summary' : ''}${categoryName ? ` — ${categoryName}` : ''}${brokerName ? ` — ${brokerName}` : ''}`}
               subtitle={`${periodText} · ${data.deals?.length ?? 0} settled deal${data.deals?.length === 1 ? '' : 's'} · ${GST_VIEW_LABEL[view.gst]}`}
             />
             <div style={{ padding: `0 ${PRINT_INSET}px` }}>

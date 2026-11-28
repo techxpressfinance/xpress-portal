@@ -263,3 +263,6 @@ class PaginatedOrganizations(BaseModel):
     total: int
     page: int
     per_page: int
+    # How many entities each entity-type filter would show for the same search
+    # ("all", "sole_trader", "company", "trust", "partnership", "none").
+    type_counts: Optional[dict[str, int]] = None

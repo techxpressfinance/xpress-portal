@@ -254,6 +254,18 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
+// The list's type filters. Companies include corporate trustees; "Not set"
+// finds entities whose structure was never picked (fix them from the entity).
+type TypeFilter = '' | 'sole_trader' | 'company' | 'trust' | 'partnership' | 'none';
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'sole_trader', label: 'Sole traders' },
+  { value: 'company', label: 'Companies' },
+  { value: 'trust', label: 'Trusts' },
+  { value: 'partnership', label: 'Partnerships' },
+  { value: 'none', label: 'Not set' },
+];
+
 export default function Companies() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -264,30 +276,49 @@ export default function Companies() {
   const [total, setTotal] = useState(0);
   const [showNew, setShowNew] = useState(false);
   const [showDedupe, setShowDedupe] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('');
+  const [typeCounts, setTypeCounts] = useState<Partial<Record<TypeFilter | 'all', number>>>({});
   const perPage = 20;
 
-  const fetchCompanies = (p = page, q = search) => {
-    setLoading(true);
-    const params = new URLSearchParams({ page: String(p), per_page: String(perPage) });
-    if (q.trim()) params.set('search', q.trim());
-    api.get<PaginatedResponse<Organization>>(`/organizations?${params}`)
+  // What the list shows: the submitted search, the type filter and the page.
+  // Changing any of them (or bumping reloadKey) fetches again.
+  const [query, setQuery] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    if (query) params.set('search', query);
+    if (typeFilter) params.set('entity_type', typeFilter);
+    api.get<PaginatedResponse<Organization> & { type_counts?: Record<string, number> }>(`/organizations?${params}`)
       .then(({ data }) => {
+        if (cancelled) return;
         setCompanies(data.items);
         setTotal(data.total);
+        setTypeCounts(data.type_counts ?? {});
       })
-      .catch(() => toast('Failed to load entities', 'error'))
-      .finally(() => setLoading(false));
-  };
+      .catch(() => { if (!cancelled) toast('Failed to load entities', 'error'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [page, query, typeFilter, reloadKey, toast]);
 
-  useEffect(() => { fetchCompanies(); }, [page]);
+  const refetch = (changes: { page?: number; query?: string; type?: TypeFilter } = {}) => {
+    setLoading(true);
+    if (changes.page !== undefined) setPage(changes.page);
+    if (changes.query !== undefined) setQuery(changes.query);
+    if (changes.type !== undefined) setTypeFilter(changes.type);
+    setReloadKey((k) => k + 1);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setPage(1);
-    fetchCompanies(1, search);
+    refetch({ page: 1, query: search.trim() });
   };
 
+  const chooseType = (t: TypeFilter) => refetch({ page: 1, type: t });
+
   const totalPages = Math.ceil(total / perPage);
+  const filterLabel = TYPE_FILTERS.find((f) => f.value === typeFilter)?.label.toLowerCase();
 
   return (
     <div className="space-y-6">
@@ -313,6 +344,26 @@ export default function Companies() {
           <Button type="submit" size="sm">Search</Button>
         </form>
 
+        <div className="flex flex-wrap gap-1.5 mb-4" role="radiogroup" aria-label="Entity type">
+          {TYPE_FILTERS.filter((f) => f.value !== 'none' || (typeCounts.none ?? 0) > 0 || typeFilter === 'none').map((f) => {
+            const count = typeCounts[f.value || 'all'];
+            const on = typeFilter === f.value;
+            return (
+              <button
+                key={f.value || 'all'}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => chooseType(f.value)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors ${on ? 'border-foreground bg-foreground text-background' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/40'}`}
+              >
+                {f.label}
+                {count != null && <span className={`tabular-nums ${on ? 'opacity-80' : 'opacity-70'}`}>{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+
         {loading ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -322,8 +373,10 @@ export default function Companies() {
             </table>
           </div>
         ) : companies.length === 0 ? (
-          search ? (
-            <p className="text-center py-12 text-muted-foreground">No entities match your search.</p>
+          query || typeFilter ? (
+            <p className="text-center py-12 text-muted-foreground">
+              {typeFilter === 'none' ? 'Every entity has its structure set.' : `No ${filterLabel ?? 'entities'}${query ? ' match your search' : ' yet'}.`}
+            </p>
           ) : (
             <EmptyState title="No entities yet" description='Click "New Entity" to add one.' />
           )
@@ -376,8 +429,8 @@ export default function Companies() {
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">Page {page} of {totalPages}</p>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-                  <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+                  <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => refetch({ page: page - 1 })}>Previous</Button>
+                  <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => refetch({ page: page + 1 })}>Next</Button>
                 </div>
               </div>
             )}
@@ -389,7 +442,7 @@ export default function Companies() {
         <DuplicateReviewModal
           kind="organizations"
           onClose={() => setShowDedupe(false)}
-          onChanged={() => fetchCompanies(1, search)}
+          onChanged={() => refetch({ page: 1 })}
         />
       )}
 

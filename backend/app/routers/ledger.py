@@ -83,20 +83,27 @@ def _parse_range(date_from: Optional[str], date_to: Optional[str]) -> tuple[Opti
 
 
 def _report(db: Session, access: svc.LedgerAccess, rows: list[dict], referrer_id: Optional[str],
-            payments: list[dict] = (), start: Optional[date] = None, end: Optional[date] = None) -> dict:
+            payments: list[dict] = (), start: Optional[date] = None, end: Optional[date] = None,
+            category: Optional[str] = None) -> dict:
     """Months (with halves), FY quarters, half-years and years, and the period
-    total, redacted. Extra payments count only for a viewer who may see them."""
+    total, redacted. Extra payments count only for a viewer who may see them.
+    The volume bonus received is the whole month's, so a slice of the books —
+    one payee's, or one category's — leaves it (and final profit) off."""
     payments = list(payments) if access.can("referrers") else []
     months = [r["month"] for r in rows if r.get("month")] + [p["month"] for p in payments]
     records = svc.month_records(db, access.tenant_id, months)
-    rep = svc.report(rows, records, include_received=not referrer_id, payments=payments, date_from=start, date_to=end)
+    rep = svc.report(rows, records, include_received=not (referrer_id or category), payments=payments,
+                     date_from=start, date_to=end)
     return svc.redact_report(rep, access)
 
 
 def _payments(db: Session, access: svc.LedgerAccess, start, end, rows: list[dict],
-              referrer_id: Optional[str] = None, broker_id: Optional[str] = None) -> list[dict]:
-    """Extra payments in the range, narrowed like the deals: to one payee, or
-    to one broker's book (payments on their deals, or made to them)."""
+              referrer_id: Optional[str] = None, broker_id: Optional[str] = None,
+              category: Optional[str] = None) -> list[dict]:
+    """Extra payments in the range, narrowed like the deals: to one payee, to
+    one broker's book (payments on their deals, or made to them), or to one
+    category (payments linked to a deal of that category — a payment tied to
+    no deal belongs to no category)."""
     if not access.can("referrers"):
         return []
     out = svc.payment_rows(db, access.tenant_id, svc.payments_in_range(db, access.tenant_id, start, end))
@@ -106,6 +113,11 @@ def _payments(db: Session, access: svc.LedgerAccess, start, end, rows: list[dict
     if broker_id:
         keys = {r["application_id"] for r in rows}
         out = [p for p in out if (p["deal_key"] in keys) or p["payee_key"] == f"u:{broker_id}"]
+    if category:
+        cats = svc.CATEGORY_FILTERS[category][1]
+        linked = {p["deal_key"] for p in out if p["deal_key"]}
+        kinds = svc.deal_categories(db, access.tenant_id, linked)
+        out = [p for p in out if kinds.get(p["deal_key"] or "") in cats]
     return out
 
 
@@ -121,29 +133,41 @@ def _key(referrer_id: Optional[str]) -> Optional[str]:
     return referrer_id if referrer_id[:2] in ("u:", "p:") else f"u:{referrer_id}"
 
 
+def _category(value: Optional[str]) -> Optional[str]:
+    if value and value not in svc.CATEGORY_FILTERS:
+        raise HTTPException(status_code=400, detail="Unknown category")
+    return value or None
+
+
 def _rows(db: Session, access: svc.LedgerAccess, start, end, referrer_id: Optional[str] = None,
-          broker_id: Optional[str] = None, with_pipeline: bool = False) -> list[dict]:
+          broker_id: Optional[str] = None, with_pipeline: bool = False, category: Optional[str] = None) -> list[dict]:
     rows = svc.build_rows(
         db, access.tenant_id,
         svc.settled_applications(db, access.tenant_id, start, end),
         svc.manual_deals(db, access.tenant_id, start, end),
         svc.pipeline_applications(db, access.tenant_id) if with_pipeline and _pipeline_wanted(end) else (),
+        svc.clawbacks_in_range(db, access.tenant_id, start, end),
     )
     key = _key(referrer_id)
     if key:
         rows = [r for r in rows if key in r["referrer_keys"]]
     if broker_id:
         rows = [r for r in rows if broker_id in r["broker_ids"]]
+    if category:
+        rows = [r for r in rows if svc.in_category(r, category)]
     return rows
 
 
 def _one_row(db: Session, access: svc.LedgerAccess, key: str) -> dict:
     """The ledger row for one deal — a settled application, a ledger-only deal,
-    or a deal in the pipeline (its figures can be entered before it settles)."""
+    a clawback, or a deal in the pipeline (its figures can be entered before
+    it settles)."""
     apps = svc.settled_applications(db, access.tenant_id, None, None, [key])
     manual = svc.manual_deals(db, access.tenant_id, None, None, [key]) if not apps else []
-    pipeline = svc.pipeline_applications(db, access.tenant_id, [key]) if not apps and not manual else []
-    rows = svc.build_rows(db, access.tenant_id, apps, manual, pipeline)
+    clawbacks = svc.clawbacks_in_range(db, access.tenant_id, None, None, [key]) if not apps and not manual else []
+    pipeline = (svc.pipeline_applications(db, access.tenant_id, [key])
+                if not apps and not manual and not clawbacks else [])
+    rows = svc.build_rows(db, access.tenant_id, apps, manual, pipeline, clawbacks)
     if not rows:
         raise HTTPException(status_code=404, detail="Deal not found")
     return rows[0]
@@ -236,6 +260,7 @@ def get_access(access: Optional[svc.LedgerAccess] = Depends(_maybe_access)):
         "columns": svc.visible_columns(access),
         "scope_labels": svc.GRANT_SCOPES,
         "categories": svc.CATEGORY_KINDS,
+        "category_filters": {k: label for k, (label, _) in svc.CATEGORY_FILTERS.items()},
     }
 
 
@@ -248,24 +273,27 @@ def list_deals(
     date_to: Optional[str] = Query(None),
     referrer_id: Optional[str] = Query(None),
     broker_id: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     access: svc.LedgerAccess = Depends(ledger_access),
     db: Session = Depends(get_db),
 ):
     """Settled deals in the range, month subtotals and the period total.
     referrer_id narrows to one payee's deals (each row then carries
-    payee_share, their cut); broker_id to one team member's book."""
+    payee_share, their cut); broker_id to one team member's book; category to
+    asset finance, home loans or commercial."""
     if not (access.can("deals") or access.can("summary")):
         raise HTTPException(status_code=403, detail="Not shared with you")
     if referrer_id:
         access.require("referrers")
+    category = _category(category)
     start, end = _parse_range(date_from, date_to)
-    rows = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=access.can("deals"))
+    rows = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=access.can("deals"), category=category)
     settled = [r for r in rows if not r["is_pipeline"]]
     pipeline = [r for r in rows if r["is_pipeline"]]
-    payments = _payments(db, access, start, end, settled, referrer_id, broker_id)
-    out: dict = {"date_from": date_from, "date_to": date_to}
+    payments = _payments(db, access, start, end, settled, referrer_id, broker_id, category)
+    out: dict = {"date_from": date_from, "date_to": date_to, "category": category}
     if access.can("summary"):
-        out.update(_report(db, access, settled, referrer_id, payments, start, end))
+        out.update(_report(db, access, settled, referrer_id, payments, start, end, category))
     key = _key(referrer_id)
 
     def item_of(r: dict) -> dict:
@@ -469,7 +497,8 @@ def mark_paid(
     ids = list(dict.fromkeys(data.application_ids))
     apps = svc.settled_applications(db, access.tenant_id, None, None, ids)
     manual = svc.manual_deals(db, access.tenant_id, None, None, ids)
-    rows = svc.build_rows(db, access.tenant_id, apps, manual) if ids else []
+    clawbacks = svc.clawbacks_in_range(db, access.tenant_id, None, None, ids)
+    rows = svc.build_rows(db, access.tenant_id, apps, manual, clawbacks=clawbacks) if ids else []
     if len(rows) != len(ids):
         raise HTTPException(status_code=400, detail="Some of those deals are not settled deals of this tenant")
     target = _key(data.payee_key)
@@ -834,6 +863,8 @@ def export_xlsx(
     date_to: Optional[str] = Query(None),
     referrer_id: Optional[str] = Query(None),
     broker_id: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    split_categories: bool = Query(False),
     columns: Optional[str] = Query(None, max_length=2000),
     layout: str = Query("detailed", pattern="^(detailed|summary)$"),
     include_pipeline: bool = Query(False),
@@ -844,23 +875,39 @@ def export_xlsx(
     """The report as Excel: ``detailed`` lists every deal (the accountant's
     copy), ``summary`` only the fortnight / month / quarter / half-year / year
     totals (management's). Columns — and so which GST figures — are the
-    viewer's choice."""
+    viewer's choice. ``category`` limits it to asset finance, home loans or
+    commercial; ``split_categories`` gives one sheet per category instead."""
     access.require("export")
     access.require("deals")
     if referrer_id:
         access.require("referrers")
+    category = _category(category)
     start, end = _parse_range(date_from, date_to)
     cols = svc.pick_columns(columns, access)
-    raw = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=include_pipeline)
-    settled = [r for r in raw if not r["is_pipeline"]]
-    payments = _payments(db, access, start, end, settled, referrer_id, broker_id)
-    rep_ = _report(db, access, settled, referrer_id, payments, start, end)
-    rows = [svc.redact_row(r, access) for r in settled]
-    pipeline = [svc.redact_row(r, access) for r in raw if r["is_pipeline"]]
     heading = (title or "").strip() or "Settled deals"
-    content = svc.to_xlsx(rows, rep_, cols, f"{heading} — {svc.period_label(start, end)}", layout=layout,
-                          payments=[svc.redact_payment(p, access) for p in payments], pipeline=pipeline)
+    period = svc.period_label(start, end)
+
+    def part(cat: Optional[str]) -> dict:
+        raw = _rows(db, access, start, end, referrer_id, broker_id, with_pipeline=include_pipeline, category=cat)
+        settled = [r for r in raw if not r["is_pipeline"]]
+        payments = _payments(db, access, start, end, settled, referrer_id, broker_id, cat)
+        return {
+            "label": svc.CATEGORY_FILTERS[cat][0] if cat else "",
+            "rows": [svc.redact_row(r, access) for r in settled],
+            "rep": _report(db, access, settled, referrer_id, payments, start, end, cat),
+            "payments": [svc.redact_payment(p, access) for p in payments],
+            "pipeline": [svc.redact_row(r, access) for r in raw if r["is_pipeline"]],
+        }
+
+    if split_categories:
+        content = svc.to_xlsx_split([part(c) for c in svc.CATEGORY_FILTERS], cols, f"{heading} — {period}", layout=layout)
+    else:
+        one = part(category)
+        label = f"{heading} — {one['label']}" if category else heading
+        content = svc.to_xlsx(one["rows"], one["rep"], cols, f"{label} — {period}", layout=layout,
+                              payments=one["payments"], pipeline=one["pipeline"])
     svc.audit(db, access, "exported", {"format": "xlsx", "layout": layout, "from": start, "to": end,
+                                       "category": "split" if split_categories else category,
                                        "columns": [c["key"] for c in cols]})
     db.commit()
     stamp = "-".join(filter(None, [date_from, date_to])) or "all"
@@ -994,6 +1041,7 @@ def create_invoice(
         db, access.tenant_id,
         svc.settled_applications(db, access.tenant_id, None, None, ids),
         svc.manual_deals(db, access.tenant_id, None, None, ids),
+        clawbacks=svc.clawbacks_in_range(db, access.tenant_id, None, None, ids),
     ) if ids else []
     if len(rows) != len(ids):
         raise HTTPException(status_code=400, detail="Some of those deals are not settled deals of this tenant")

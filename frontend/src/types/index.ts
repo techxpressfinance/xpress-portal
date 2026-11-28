@@ -2383,7 +2383,11 @@ export interface LedgerAccessInfo {
   columns?: LedgerColumn[];
   scope_labels?: Record<string, string>;
   categories?: Record<LedgerCategory, string>;
+  /** The downloads the books split into (consumer goes with asset finance). */
+  category_filters?: Record<LedgerCategoryFilter, string>;
 }
+
+export type LedgerCategoryFilter = 'asset_finance' | 'home_loan' | 'commercial';
 
 /** One deal — settled, or (is_pipeline) still on its way to settlement, with
  *  no settled date yet. Fields outside the viewer's scopes are absent, not null. */
@@ -2391,8 +2395,8 @@ export interface LedgerDealRow {
   application_id: string;
   settled_on: string | null;
   month: string | null;
-  /** 1 = settled 1st–15th, 2 = after the 15th. */
-  half: 1 | 2 | null;
+  /** 1 = settled 1st–15th, 2 = after the 15th, 3 = the month's clawbacks. */
+  half: 1 | 2 | 3 | null;
   is_pipeline?: boolean;
   /** "Settled", "Clawback", or the pipeline deal's stage on the board. */
   deal_status?: string | null;
@@ -2455,6 +2459,11 @@ export interface LedgerDealRow {
   vb_share?: number;
   vb_month_volume?: number;
   is_clawback: boolean;
+  /** Set on a clawback recorded on the file: its id (the row's key), the
+   *  application it reverses, and why. */
+  clawback_id?: string | null;
+  clawback_of?: string | null;
+  clawback_reason?: string | null;
   paid_on?: string | null;
   payment_method?: string | null;
   payment_notes?: string | null;
@@ -2468,6 +2477,7 @@ export type LedgerTotals = { count: number } & Partial<Record<string, number>>;
 export interface LedgerDealsResponse {
   date_from: string | null;
   date_to: string | null;
+  category?: LedgerCategoryFilter | null;
   totals?: LedgerTotals;
   months?: LedgerReportMonth[];
   quarters?: LedgerReportPeriod[];
@@ -2525,7 +2535,7 @@ export interface LedgerReportMonth {
   month: string;
   fy: number;
   quarter: 1 | 2 | 3 | 4;
-  halves: { half: 1 | 2; label: string; application_ids: string[]; totals: LedgerTotals }[];
+  halves: { half: 1 | 2 | 3; label: string; application_ids: string[]; totals: LedgerTotals }[];
   payment_ids?: string[];
   totals: LedgerTotals;
   vb_month_volume?: number | null;
@@ -2764,4 +2774,69 @@ export interface LedgerAuditEntry {
   actor_name: string;
   detail: Record<string, unknown> | null;
   created_at: string;
+}
+
+/** Brokerage a lender clawed back on a settled loan — recorded by the team on
+ *  the file, raised as a client alert, and shown in the private ledger in the
+ *  month it happened. */
+export interface Clawback {
+  id: string;
+  application_id: string;
+  loan_label: string | null;
+  clawback_date: string;
+  /** Ex GST, positive. */
+  amount: number;
+  reason: string | null;
+  client_alert_id: string | null;
+  /** null when the alert has been deleted. */
+  alert_high_priority: boolean | null;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** One dated period on the register (to = null: still current). */
+export interface AbrPeriod {
+  from: string | null;
+  to: string | null;
+}
+
+/** The register's history of an entity's ABN (services/abr.parse_history). */
+export interface AbnHistory {
+  abn: string | null;
+  record_last_updated: string | null;
+  entity_type: string | null;
+  first_registered: string | null;
+  status_history: (AbrPeriod & { status: string | null })[];
+  gst_history: AbrPeriod[];
+  name_history: (AbrPeriod & { name: string })[];
+  trading_names: (AbrPeriod & { name: string })[];
+  business_names: (AbrPeriod & { name: string })[];
+  address_history: (AbrPeriod & { state: string | null; postcode: string | null })[];
+}
+
+export interface AbnHistoryResponse {
+  state: 'ok' | 'no_abn' | 'not_on_register' | 'unavailable';
+  message?: string;
+  history: AbnHistory | null;
+  checked_at: string | null;
+}
+
+export type EntityNoteCategory = 'general' | 'financials' | 'compliance' | 'relationship';
+
+/** A dated note on an entity, by a team member (staff-only). */
+export interface EntityNote {
+  id: string;
+  category: EntityNoteCategory;
+  content: string;
+  is_pinned: boolean;
+  author_id: string | null;
+  /** null = carried over from the entity's old single notes field. */
+  author_name: string | null;
+  created_at: string;
+  updated_at: string | null;
+  updated_by_name: string | null;
+  /** The author or an admin; anyone on the team may pin. */
+  can_edit: boolean;
 }

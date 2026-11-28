@@ -106,6 +106,8 @@ export default function LedgerDealEditor({ deal, payees, brokers, onClose, onSav
   const confirm = useConfirm();
   const prefilled = new Set(deal.prefilled ?? []);
   const manual = Boolean(deal.is_manual);
+  // A clawback recorded by the team on the file — always a clawback here.
+  const recorded = Boolean(deal.clawback_id);
 
   const initialMoney = Object.fromEntries(MONEY_FIELDS.map((key) => {
     const value = deal[key] ?? 0;
@@ -286,7 +288,8 @@ export default function LedgerDealEditor({ deal, payees, brokers, onClose, onSav
       subtitle={[
         manual ? 'Ledger-only deal' : null,
         deal.entity_name,
-        deal.is_pipeline ? `in the pipeline — ${deal.deal_status ?? 'not settled yet'}` : deal.settled_on ? `settled ${formatDate(deal.settled_on)}` : null,
+        deal.is_pipeline ? `in the pipeline — ${deal.deal_status ?? 'not settled yet'}`
+          : deal.settled_on ? `${recorded ? 'clawed back' : 'settled'} ${formatDate(deal.settled_on)}` : null,
       ].filter(Boolean).join(' · ')}
       onClose={onClose}
       wide
@@ -412,9 +415,14 @@ export default function LedgerDealEditor({ deal, payees, brokers, onClose, onSav
             <div className="flex flex-wrap gap-2">
               <ToggleChip on={newLead} onChange={setNewLead}>New lead this month</ToggleChip>
               <ToggleChip on={repeat} onChange={setRepeat}>Repeat customer</ToggleChip>
-              <ToggleChip on={clawback} onChange={setClawback} tone="danger">Clawback</ToggleChip>
+              {!recorded && <ToggleChip on={clawback} onChange={setClawback} tone="danger">Clawback</ToggleChip>}
             </div>
-            {clawback && <p className="mt-1.5 text-[11.5px] text-[var(--led-danger)]">Clawback — enter the figures above as negatives.</p>}
+            {recorded ? (
+              <p className="mt-1.5 text-[11.5px] text-[var(--led-danger)]">
+                Clawback recorded on the file{deal.clawback_reason ? ` — ${deal.clawback_reason}` : ''}. The brokerage starts as minus the amount
+                clawed back; enter any other figures as negatives.
+              </p>
+            ) : clawback && <p className="mt-1.5 text-[11.5px] text-[var(--led-danger)]">Clawback — enter the figures above as negatives.</p>}
           </div>
         </div>
       </Section>

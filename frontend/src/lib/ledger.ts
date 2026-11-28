@@ -251,23 +251,27 @@ export function reportItems(rows: LedgerDealRow[], report: LedgerReport, summary
   const items: ReportItem[] = [];
   for (const m of report.months) {
     if (!summary) items.push({ type: 'month', key: `m-${m.month}`, month: m });
-    for (const h of m.halves) {
+    // The month's clawbacks (half 3) go last, below its extra payments.
+    const clawbacks = m.halves.filter((h) => h.half === 3);
+    const pushHalf = (h: LedgerReportMonth['halves'][number]) => {
       const deals = h.application_ids.map((id) => byId.get(id)).filter((r): r is LedgerDealRow => Boolean(r));
-      if (!deals.length) continue;
+      if (!deals.length) return;
       if (summary) {
         // A month with one half needs no half line — the month total says it.
         if (m.halves.length > 1) items.push({ type: 'total', key: `ht-${m.month}-${h.half}`, label: `${formatMonth(m.month)} · ${h.label}`, totals: h.totals, level: 'half' });
-        continue;
+        return;
       }
       items.push({ type: 'half', key: `h-${m.month}-${h.half}`, label: h.label });
       for (const row of deals) items.push({ type: 'row', key: row.application_id, row });
       items.push({ type: 'total', key: `ht-${m.month}-${h.half}`, label: `Total ${h.label}`, totals: h.totals, level: 'half' });
-    }
+    };
+    m.halves.filter((h) => h.half !== 3).forEach(pushHalf);
     const extras = summary ? [] : (m.payment_ids ?? []).map((id) => paymentById.get(id)).filter((p): p is LedgerExtraPayment => Boolean(p));
     if (extras.length) {
       items.push({ type: 'half', key: `ep-${m.month}`, label: 'Extra payments' });
       for (const payment of extras) items.push({ type: 'payment', key: `p-${payment.id}`, payment });
     }
+    clawbacks.forEach(pushHalf);
     items.push({ type: 'total', key: `mt-${m.month}`, label: `TOTAL ${formatMonth(m.month)}`, totals: m.totals, level: 'month' });
     const q = quarterEnd.get(m.month);
     if (q) items.push({ type: 'total', key: `qt-${q.fy}-${q.quarter}`, label: `TOTAL ${q.label}`, totals: q.totals, level: 'quarter' });

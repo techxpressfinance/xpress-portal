@@ -58,7 +58,9 @@ export default function LedgerSummaryCards({ totals, periodText }: { totals: Led
           {totals.finance_amount != null ? money(totals.finance_amount) : totals.count}
         </p>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-          {totals.count} deal{totals.count === 1 ? '' : 's'} · {periodText}
+          {totals.count} deal{totals.count === 1 ? '' : 's'}
+          {(totals.clawbacks ?? 0) > 0 && <span className="text-[var(--led-danger)]"> · {totals.clawbacks} clawback{totals.clawbacks === 1 ? '' : 's'}</span>}
+          {' '}· {periodText}
         </p>
       </div>
       {cards.map((c) => {

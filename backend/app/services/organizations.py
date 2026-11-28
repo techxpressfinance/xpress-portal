@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import ABR_ENABLED
 from app.models.contact import ContactOrganization, Organization
-from app.services.abr import AbrRecord, AbrUnavailable, lookup_abn
+from app.services.abr import AbrRecord, AbrUnavailable, lookup_abn, lookup_abn_history
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,8 @@ ABR_FIELDS = (
     "abr_entity_type_name", "abn_status", "abn_active_from", "gst_registered",
     "gst_from", "trading_names", "abr_state", "abr_postcode", "abr_checked_at",
 )
+# The register's history of the ABN — fetched on its own (see abn_history).
+ABR_HISTORY_FIELDS = ("abr_history", "abr_history_abn", "abr_history_checked_at")
 
 
 def entity_type_from_abr(name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -64,6 +66,8 @@ def apply_abr_record(org: Organization, record: Optional[AbrRecord]) -> None:
         for field in ABR_FIELDS:
             if field != "abr_checked_at":
                 setattr(org, field, None)
+        for field in ABR_HISTORY_FIELDS:
+            setattr(org, field, None)
         return
 
     org.abr_entity_type_name = record.get("entity_type")
@@ -101,8 +105,34 @@ def refresh_from_abr(org: Organization) -> bool:
 
 
 def clear_abr(org: Organization) -> None:
-    for field in ABR_FIELDS:
+    for field in ABR_FIELDS + ABR_HISTORY_FIELDS:
         setattr(org, field, None)
+
+
+def abn_history(org: Organization, refresh: bool = False) -> dict:
+    """The register's history of the entity's ABN — kept on the entity once
+    fetched and re-read when asked (``refresh``) or when the ABN has changed
+    since. ``state`` says what the caller got: ok, no_abn, not_on_register,
+    or unavailable (ABR not configured / unreachable — any history already
+    kept is still returned)."""
+    digits = normalize_abn(org.abn)
+    if not digits:
+        return {"state": "no_abn", "history": None, "checked_at": None}
+    stored = json.loads(org.abr_history) if org.abr_history and org.abr_history_abn == digits else None
+    if stored is not None and not refresh:
+        return {"state": "ok", "history": stored, "checked_at": org.abr_history_checked_at}
+    try:
+        history = lookup_abn_history(digits)
+    except AbrUnavailable as exc:
+        logger.warning("ABN history skipped for organization %s: %s", org.id, exc)
+        return {"state": "unavailable", "message": str(exc), "history": stored,
+                "checked_at": org.abr_history_checked_at if stored is not None else None}
+    org.abr_history_abn = digits
+    org.abr_history_checked_at = datetime.now(timezone.utc)
+    org.abr_history = json.dumps(history) if history else None
+    if history is None:
+        return {"state": "not_on_register", "history": None, "checked_at": org.abr_history_checked_at}
+    return {"state": "ok", "history": history, "checked_at": org.abr_history_checked_at}
 
 
 def parse_trading_names(value: Optional[str]) -> list[str]:

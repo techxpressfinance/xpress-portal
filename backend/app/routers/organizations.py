@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import require_role
 from app.models.contact import Contact, ContactOrganization, Organization
+from app.models.entity_note import EntityNote
 from app.models.loan_applicant import ApplicationGuarantor
 from app.models.lending_history_entry import LendingHistoryEntry
 from app.models.loan_application import LoanApplication
@@ -32,7 +33,7 @@ from app.schemas.organization import (
     TrustPartyUpdate,
 )
 from app.config import ABR_ENABLED
-from app.constants import ENTITY_TYPES, TRUST_PARTY_ROLES
+from app.constants import TRUST_PARTY_ROLES
 from app.services import acn as acn_service
 from app.services import entity_parties
 from app.services.activity_log import log_activity
@@ -44,7 +45,7 @@ from app.services.dedupe import (
     merge_organizations,
     org_signals,
 )
-from app.services.organizations import clear_abr, parse_trading_names, refresh_from_abr
+from app.services.organizations import abn_history, clear_abr, parse_trading_names, refresh_from_abr
 from app.services.query_utils import escape_like
 from app.services.tenant_scope import get_tenant_id
 from app.services.referrer_attribution import referrer_history, referrer_users_map
@@ -187,31 +188,57 @@ def _trust_party_dict(party: TrustParty) -> dict:
     }
 
 
+# The Entities list's type filters. A corporate trustee is a company, so it
+# shows under Companies (and can still be picked on its own as "trustee").
+# "none" finds entities whose structure was never set.
+ENTITY_TYPE_FILTERS: dict[str, tuple[str, ...]] = {
+    "sole_trader": ("sole_trader",),
+    "company": ("company", "trustee"),
+    "trust": ("trust",),
+    "partnership": ("partnership",),
+    "trustee": ("trustee",),
+}
+
+
 @router.get("", response_model=PaginatedOrganizations)
 def list_organizations(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
-    entity_type: Optional[str] = Query(None, description="Filter to one entity type (see ENTITY_TYPES)"),
+    entity_type: Optional[str] = Query(
+        None, description="sole_trader, company (incl. trustee companies), trust, partnership, trustee, or none"
+    ),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role("admin", "broker")),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    query = db.query(Organization).filter(Organization.tenant_id == tenant_id)
-    if entity_type:
-        if entity_type not in ENTITY_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"entity_type must be one of: {', '.join(ENTITY_TYPES)}",
-            )
-        query = query.filter(Organization.entity_type == entity_type)
+    if entity_type and entity_type != "none" and entity_type not in ENTITY_TYPE_FILTERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"entity_type must be one of: {', '.join([*ENTITY_TYPE_FILTERS, 'none'])}",
+        )
+    base = db.query(Organization).filter(Organization.tenant_id == tenant_id)
     if search:
         safe = escape_like(search)
         digits = _normalize_abn(search)
         clauses = [Organization.name.ilike(f"%{safe}%", escape="\\")]
         if digits:
             clauses.append(Organization.abn.ilike(f"%{digits}%", escape="\\"))
-        query = query.filter(or_(*clauses))
+        base = base.filter(or_(*clauses))
+
+    # Counts for the filter chips, over the same search.
+    by_type = dict(
+        base.with_entities(Organization.entity_type, func.count(Organization.id)).group_by(Organization.entity_type).all()
+    )
+    type_counts = {"all": sum(by_type.values()), "none": by_type.get(None, 0)}
+    for key, types in ENTITY_TYPE_FILTERS.items():
+        type_counts[key] = sum(by_type.get(t, 0) for t in types)
+
+    query = base
+    if entity_type == "none":
+        query = query.filter(Organization.entity_type.is_(None))
+    elif entity_type:
+        query = query.filter(Organization.entity_type.in_(ENTITY_TYPE_FILTERS[entity_type]))
 
     total = query.count()
     items = (
@@ -225,6 +252,7 @@ def list_organizations(
         total=total,
         page=page,
         per_page=per_page,
+        type_counts=type_counts,
     )
 
 
@@ -391,7 +419,6 @@ def create_organization(
         acn=_normalize_acn(data.acn, abn, data.entity_type),
         industry=data.industry.strip() if data.industry else None,
         address=data.address.strip() if data.address else None,
-        notes=data.notes,
         trust_type=data.trust_type if data.entity_type == "trust" else None,
         no_abn_confirmed=confirmed_no_abn,
         no_abn_confirmed_at=datetime.now(timezone.utc) if confirmed_no_abn else None,
@@ -399,6 +426,11 @@ def create_organization(
     )
     refresh_from_abr(org)
     db.add(org)
+    db.flush()
+    # Notes typed when creating the entity start its notes feed.
+    if data.notes and data.notes.strip():
+        db.add(EntityNote(tenant_id=tenant_id, organization_id=org.id, author_id=current_user.id,
+                          content=data.notes.strip()))
     db.commit()
     db.refresh(org)
     return _org_with_counts(org, db)
@@ -700,9 +732,29 @@ def refresh_organization_from_abr(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="ABN Lookup is not configured on this server")
     if not refresh_from_abr(org):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="The Australian Business Register could not be reached — try again shortly")
+    # A kept history is re-read on its next view.
+    org.abr_history_checked_at = None
+    org.abr_history_abn = None
     db.commit()
     db.refresh(org)
     return _org_with_counts(org, db)
+
+
+@router.get("/{org_id}/abn-history")
+def get_abn_history(
+    org_id: str,
+    refresh: bool = Query(False),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role("admin", "broker")),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """The register's history of this entity's ABN: names, ABN status and GST
+    periods, trading and business names, and moves between states. Fetched
+    from ABR the first time (and on ``refresh``), then kept on the entity."""
+    org = _get_org_in_tenant(org_id, tenant_id, db)
+    out = abn_history(org, refresh=refresh)
+    db.commit()
+    return out
 
 
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -781,6 +833,7 @@ def delete_organization(
     ):
         db.delete(guarantor)
 
+    db.query(EntityNote).filter(EntityNote.organization_id == org_id).delete(synchronize_session=False)
     db.delete(org)
     db.commit()
 

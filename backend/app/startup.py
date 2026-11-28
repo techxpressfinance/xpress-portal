@@ -171,6 +171,7 @@ def purge_expired_tokens() -> None:
 def purge_soft_deleted_applications() -> None:
     """Permanently remove applications that have sat in the trash past retention."""
     from app.models.application_calculator import ApplicationCalculator
+    from app.models.application_clawback import ApplicationClawback
     from app.models.application_note import ApplicationNote
     from app.models.document import Document
     from app.models.document_request import DocumentRequest
@@ -194,6 +195,7 @@ def purge_soft_deleted_applications() -> None:
                         logger.warning("Could not delete stored file for purged document %s", doc.id)
                 db.delete(doc)
             db.query(ApplicationNote).filter(ApplicationNote.application_id == application.id).delete()
+            db.query(ApplicationClawback).filter(ApplicationClawback.application_id == application.id).delete()
             db.query(DocumentRequest).filter(DocumentRequest.application_id == application.id).delete()
             db.query(ApplicationCalculator).filter(ApplicationCalculator.application_id == application.id).delete()
             db.query(Task).filter(Task.application_id == application.id).update({"application_id": None})
