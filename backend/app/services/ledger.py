@@ -32,6 +32,17 @@ Volume bonus
   bonus". What the aggregator actually paid is entered per month
   (LedgerMonth, inc GST); final profit = net profit + that, ex GST.
 
+Clawbacks
+  Recorded by the team against the file (ApplicationClawback, see
+  services/clawbacks.py). Each is its own row, keyed by the clawback's id, in
+  the month the clawback happened — never the month the loan settled — and
+  sits in a "Clawbacks" section at the bottom of that month. Its brokerage is
+  prefilled as minus the amount clawed back and its payees default to the
+  file's referrer at their usual cut (so their commission reverses too); the
+  owner can enter over any of it, as on any deal. Older clawbacks entered
+  straight into the ledger (is_clawback on a LedgerDeal) land in the same
+  section.
+
 Report layout (screen, PDF and Excel alike, as the desk's spreadsheet)
   Each month splits into 1st–15th and after the 15th (work is reviewed
   fortnightly), each half with its total, then the month total carrying the
@@ -51,6 +62,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.application_clawback import ApplicationClawback
 from app.models.contact import Contact, Organization
 from app.models.ledger import (
     LedgerAuditEvent,
@@ -210,6 +222,17 @@ CATEGORY_KINDS = {
     "home_loan": "Home loan",
     "commercial": "Commercial",
 }
+# The three downloads the desk splits the books into — consumer deals are
+# asset finance to a person, so they go with asset finance.
+CATEGORY_FILTERS = {
+    "asset_finance": ("Asset finance", frozenset({"asset_finance", "consumer"})),
+    "home_loan": ("Home loans", frozenset({"home_loan"})),
+    "commercial": ("Commercial", frozenset({"commercial"})),
+}
+
+
+def in_category(row: dict, category: Optional[str]) -> bool:
+    return not category or row.get("category") in CATEGORY_FILTERS[category][1]
 
 
 # ── Access ───────────────────────────────────────────────────────────────
@@ -703,25 +726,54 @@ def is_staff_payee(payee: Optional[LedgerPayee], user: Optional[User]) -> bool:
     return bool(payee and payee.kind == "staff")
 
 
+def clawbacks_in_range(db: Session, tenant_id: str, date_from: Optional[date], date_to: Optional[date],
+                       ids: Optional[Iterable[str]] = None) -> list[ApplicationClawback]:
+    """Clawbacks dated in the range, on files that aren't in the trash."""
+    q = (
+        db.query(ApplicationClawback)
+        .join(LoanApplication, LoanApplication.id == ApplicationClawback.application_id)
+        .options(
+            joinedload(ApplicationClawback.application).joinedload(LoanApplication.contact),
+            joinedload(ApplicationClawback.application).joinedload(LoanApplication.business_organization),
+        )
+        .filter(ApplicationClawback.tenant_id == tenant_id, LoanApplication.deleted_at.is_(None))
+    )
+    if date_from:
+        q = q.filter(ApplicationClawback.clawback_date >= date_from)
+    if date_to:
+        q = q.filter(ApplicationClawback.clawback_date <= date_to)
+    if ids is not None:
+        q = q.filter(ApplicationClawback.id.in_(list(ids)))
+    return q.all()
+
+
 def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
-               manual: Iterable[LedgerDeal] = (), pipeline: Iterable[LoanApplication] = ()) -> list[dict]:
-    """Every figure for each deal — settled applications, ledger-only deals and
-    (``pipeline``) deals still on their way to settlement — unredacted, in
-    settled order with the pipeline last. See module docstring."""
+               manual: Iterable[LedgerDeal] = (), pipeline: Iterable[LoanApplication] = (),
+               clawbacks: Iterable[ApplicationClawback] = ()) -> list[dict]:
+    """Every figure for each deal — settled applications, ledger-only deals,
+    clawbacks and (``pipeline``) deals still on their way to settlement —
+    unredacted, in settled order with the pipeline last. See module docstring."""
     manual = list(manual)
+    clawbacks = list(clawbacks)
     pipeline_ids = {a.id for a in pipeline}
     apps = list(apps) + [a for a in pipeline if a.id not in {x.id for x in apps}]
-    if not apps and not manual:
+    if not apps and not manual and not clawbacks:
         return []
+    # The files clawed back: looked up like any deal's, but not rows themselves.
+    lookup_apps = list(apps)
+    for cb in clawbacks:
+        if cb.application_id not in {a.id for a in lookup_apps}:
+            lookup_apps.append(cb.application)
     today = date.today()
 
     def when(app: LoanApplication) -> date:
         # A pipeline deal has no settlement date yet; it is estimated as this month's.
         return today if app.id in pipeline_ids else settled_on(app)
 
-    ids = [a.id for a in apps]
+    ids = [a.id for a in lookup_apps]
+    entry_keys = [a.id for a in apps] + [cb.id for cb in clawbacks]
     entries = {e.application_id: e for e in db.query(LedgerDeal).filter(
-        LedgerDeal.tenant_id == tenant_id, LedgerDeal.application_id.in_(ids))} if ids else {}
+        LedgerDeal.tenant_id == tenant_id, LedgerDeal.application_id.in_(entry_keys))} if entry_keys else {}
     sheets: dict[str, QuoteSheet] = {}
     snapshot_lenders: dict = {}
     if ids:
@@ -744,11 +796,12 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
     tiers = vb_tiers(settings)
     volumes = month_volumes(
         db, tenant_id,
-        [when(a).replace(day=1) for a in apps] + [m.manual_settled_on.replace(day=1) for m in manual if m.manual_settled_on],
+        [when(a).replace(day=1) for a in apps] + [m.manual_settled_on.replace(day=1) for m in manual if m.manual_settled_on]
+        + [cb.clawback_date.replace(day=1) for cb in clawbacks],
     )
 
     # Payees and their shares of these deals.
-    deal_keys = ids + [m.application_id for m in manual]
+    deal_keys = entry_keys + [m.application_id for m in manual]
     shares_by_deal: dict[str, list[LedgerDealShare]] = {}
     for sh in (
         db.query(LedgerDealShare)
@@ -762,15 +815,15 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
     # The referrer credited with the application, as the rest of the app
     # attributes it — the payee a deal has until the owner says otherwise.
     user_ids = {e.referrer_id for e in list(entries.values()) + manual if e.referrer_set and e.referrer_id}
-    user_ids |= {a.referrer_id for a in apps if a.referrer_id}
+    user_ids |= {a.referrer_id for a in lookup_apps if a.referrer_id}
     user_ids |= set(payee_by_user)
-    app_brokers = _app_brokers(db, apps)
+    app_brokers = _app_brokers(db, lookup_apps)
     broker_ids = {b for bs in app_brokers.values() for b in bs} | {m.manual_broker_id for m in manual if m.manual_broker_id}
     users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids | broker_ids))} if (user_ids | broker_ids) else {}
 
     inquiry_dates, repeat_clients = _client_history(db, tenant_id, apps)
-    trust_names = _trust_display_names(db, apps)
-    directors = _director_names(db, apps)
+    trust_names = _trust_display_names(db, lookup_apps)
+    directors = _director_names(db, lookup_apps)
     stages = stage_titles(db, [a for a in apps if a.id in pipeline_ids])
 
     def share_out(*, share: Optional[LedgerDealShare], payee: Optional[LedgerPayee], user_id: Optional[str],
@@ -857,7 +910,8 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
                  kind: Optional[str], loan_type: str, sub_type: Optional[str], new_lead: bool, repeat: bool,
                  pricing: dict, app_amount, lender: Optional[str], lender_obj: Optional[Lender],
                  lender_prefilled: bool, default_user_id: Optional[str], brokers: list[str],
-                 broker_name: Optional[str], is_manual: bool, stage: Optional[str] = None) -> dict:
+                 broker_name: Optional[str], is_manual: bool, stage: Optional[str] = None,
+                 clawback: Optional[ApplicationClawback] = None) -> dict:
         is_pipeline = stage is not None
         prefilled: list[str] = ["lender_name"] if lender_prefilled else []
 
@@ -895,7 +949,7 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
         staff_gst = sum((_d(s["comms_gst"]) for s in staff_shares), ZERO)
         paid_dates = sorted(s["paid_on"] for s in shares if s["paid_on"])
 
-        is_clawback = bool(e and e.is_clawback)
+        is_clawback = clawback is not None or bool(e and e.is_clawback)
         income_gst_amount = (brokerage + doc_fee + origination + vir) * rate
         vb_rate = None if is_clawback else _vb_rate(lender_obj, sub_type, kind, repeat)
         month_volume = volumes.get(settled.strftime("%Y-%m"), ZERO)
@@ -912,8 +966,8 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "is_pipeline": is_pipeline,
             "settled_on": None if is_pipeline else settled.isoformat(),
             "month": None if is_pipeline else settled.strftime("%Y-%m"),
-            # 1 = settled 1st–15th, 2 = after the 15th.
-            "half": None if is_pipeline else (1 if settled.day <= 15 else 2),
+            # 1 = settled 1st–15th, 2 = after the 15th, 3 = the month's clawbacks.
+            "half": None if is_pipeline else (3 if is_clawback else 1 if settled.day <= 15 else 2),
             "deal_status": stage if is_pipeline else ("Clawback" if is_clawback else "Settled"),
             "customer_name": customer,
             "entity_name": entity,
@@ -963,6 +1017,10 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "vb_share": float(share),
             "vb_month_volume": _f(month_volume),
             "is_clawback": is_clawback,
+            # A clawback recorded on the file: the file it reverses, and why.
+            "clawback_id": clawback.id if clawback else None,
+            "clawback_of": clawback.application_id if clawback else None,
+            "clawback_reason": clawback.reason if clawback else None,
             "paid_on": paid_dates[-1] if paid_dates else None,
             "payment_method": ", ".join(dict.fromkeys(s["payment_method"] for s in shares if s["payment_method"])) or None,
             "payment_reference": ", ".join(dict.fromkeys(s["payment_reference"] for s in shares if s["payment_reference"])) or None,
@@ -976,27 +1034,34 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             "prefilled": prefilled,
         }
 
+    def lender_of(app: LoanApplication, e: Optional[LedgerDeal]) -> tuple[Optional[str], Optional[Lender], bool]:
+        """The deal's lender — the owner's entry, else the approval lender,
+        lender pricing or the settlement snapshot — and whether it is prefilled."""
+        lender = e.lender_name if e and e.lender_name else None
+        if lender:
+            return lender, lenders_by_name.get(_norm_name(lender)), False
+        pricing_sheet = sheets.get(app.id)
+        lender = (
+            app.approval_lender_name
+            or (lender_names.get(pricing_sheet.lender_id) if pricing_sheet and pricing_sheet.lender_id else None)
+            or lender_names.get(snapshot_lenders.get(app.id) or "")
+        )
+        if app.approval_lender_name:
+            lender_obj = lenders.get(app.approval_lender_id or "") or lenders_by_name.get(_norm_name(lender))
+        else:
+            lender_obj = lenders.get(
+                (pricing_sheet.lender_id if pricing_sheet else None) or snapshot_lenders.get(app.id) or ""
+            )
+        return lender, lender_obj, bool(lender)
+
+    def broker_names(brokers: list[str]) -> Optional[str]:
+        return ", ".join(users[b].full_name for b in brokers if b in users) or None
+
     rows = []
     for app in apps:
         e = entries.get(app.id)
         pricing = _pricing_figures(sheets.get(app.id))
-        lender = e.lender_name if e and e.lender_name else None
-        lender_obj: Optional[Lender] = lenders_by_name.get(_norm_name(lender)) if lender else None
-        lender_prefilled = False
-        if not lender:
-            pricing_sheet = sheets.get(app.id)
-            lender = (
-                app.approval_lender_name
-                or (lender_names.get(pricing_sheet.lender_id) if pricing_sheet and pricing_sheet.lender_id else None)
-                or lender_names.get(snapshot_lenders.get(app.id) or "")
-            )
-            if app.approval_lender_name:
-                lender_obj = lenders.get(app.approval_lender_id or "") or lenders_by_name.get(_norm_name(lender))
-            else:
-                lender_obj = lenders.get(
-                    (pricing_sheet.lender_id if pricing_sheet else None) or snapshot_lenders.get(app.id) or ""
-                )
-            lender_prefilled = bool(lender)
+        lender, lender_obj, lender_prefilled = lender_of(app, e)
         default_uid = app.referrer_id
         settled = when(app)
         derived_repeat = repeat_clients.get(app.id, False)
@@ -1010,8 +1075,24 @@ def build_rows(db: Session, tenant_id: str, apps: list[LoanApplication],
             repeat=e.repeat_customer if e and e.repeat_customer is not None else derived_repeat,
             pricing=pricing, app_amount=app.amount, lender=lender, lender_obj=lender_obj,
             lender_prefilled=lender_prefilled, default_user_id=default_uid, brokers=brokers,
-            broker_name=", ".join(users[b].full_name for b in brokers if b in users) or None, is_manual=False,
+            broker_name=broker_names(brokers), is_manual=False,
             stage=stages.get(app.id) if app.id in pipeline_ids else None,
+        ))
+    for cb in clawbacks:
+        app = cb.application
+        e = entries.get(cb.id)
+        lender, lender_obj, lender_prefilled = lender_of(app, e)
+        brokers = app_brokers.get(app.id, [])
+        rows.append(deal_row(
+            key=cb.id, e=e, settled=cb.clawback_date, customer=_customer_name(app, directors.get(app.id, ())),
+            entity=trust_names.get(app.business_organization_id or "") or _entity_name(app),
+            kind=category_kind(app), loan_type=app.loan_type.value, sub_type=application_sub_type(app),
+            new_lead=False, repeat=False,
+            # Brokerage reverses; no new volume.
+            pricing={"brokerage": -_d(cb.amount), "finance_amount": ZERO}, app_amount=None,
+            lender=lender, lender_obj=lender_obj, lender_prefilled=lender_prefilled,
+            default_user_id=app.referrer_id, brokers=brokers, broker_name=broker_names(brokers),
+            is_manual=False, clawback=cb,
         ))
     for m in manual:
         if not m.manual_settled_on:
@@ -1063,6 +1144,19 @@ def _deal_names(db: Session, tenant_id: str, keys: set[str]) -> dict[str, str]:
     for m in db.query(LedgerDeal).filter(LedgerDeal.tenant_id == tenant_id, LedgerDeal.is_manual.is_(True),
                                          LedgerDeal.application_id.in_(list(keys - set(out)))):
         out[m.application_id] = " — ".join(x for x in [m.manual_customer_name, m.manual_entity_name] if x)
+    return out
+
+
+def deal_categories(db: Session, tenant_id: str, keys: set[str]) -> dict[str, Optional[str]]:
+    """Each deal's category (the colour coding) by its key."""
+    if not keys:
+        return {}
+    out: dict[str, Optional[str]] = {}
+    for app in db.query(LoanApplication).filter(LoanApplication.tenant_id == tenant_id, LoanApplication.id.in_(list(keys))):
+        out[app.id] = category_kind(app)
+    for m in db.query(LedgerDeal).filter(LedgerDeal.tenant_id == tenant_id, LedgerDeal.is_manual.is_(True),
+                                         LedgerDeal.application_id.in_(list(keys - set(out)))):
+        out[m.application_id] = m.manual_category
     return out
 
 
@@ -1157,7 +1251,9 @@ def extra_totals(payments: list[dict]) -> dict:
 
 
 def totals(rows: list[dict]) -> dict:
-    out: dict = {"count": len(rows)}
+    # Clawbacks are counted apart: they aren't deals written.
+    clawed = sum(1 for r in rows if r.get("is_clawback"))
+    out: dict = {"count": len(rows) - clawed, "clawbacks": clawed}
     for key in TOTALLED:
         out[key] = float(_r(sum((_d(r.get(key)) for r in rows), ZERO)))
     return out
@@ -1175,7 +1271,7 @@ def months(rows: list[dict]) -> list[dict]:
 
 
 _QUARTER_MONTHS = {1: "Jul–Sep", 2: "Oct–Dec", 3: "Jan–Mar", 4: "Apr–Jun"}
-HALF_LABELS = {1: "1st – 15th", 2: "After 15th"}
+HALF_LABELS = {1: "1st – 15th", 2: "After 15th", 3: "Clawbacks"}
 
 
 def fy_of(month: str) -> tuple[int, int]:
@@ -1266,7 +1362,7 @@ def report(rows: list[dict], records: dict, include_received: bool = True, payme
     for key in sorted(by_month):
         rs = by_month[key]
         halves = []
-        for half in (1, 2):
+        for half in (1, 2, 3):
             hr = [r for r in rs if r.get("half") == half]
             if hr:
                 halves.append({"half": half, "label": HALF_LABELS[half], "application_ids": [r["application_id"] for r in hr], "totals": totals(hr)})
@@ -1404,7 +1500,7 @@ def referrer_summary(rows: list[dict], include_payments: bool, payments: Iterabl
             "referrer_organization": first["payee_organization"],
             "payee_kind": first["payee_kind"],
             "is_portal": key.startswith("u:"),
-            "deals": len(pairs),
+            "deals": sum(1 for r, _ in pairs if not r.get("is_clawback")),
             "finance_amount": float(_r(sum((_d(r["finance_amount"]) for r, _ in pairs), ZERO))),
             "referrer_comms_ex_gst": money("comms_ex_gst"),
             "referrer_comms_gst": money("comms_gst"),
@@ -1565,20 +1661,50 @@ _CATEGORY_FILLS = {"asset_finance": "C6EFCE", "consumer": "F8CBDE", "home_loan":
 
 def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str, layout: str = "detailed",
             payments: Iterable[dict] = (), pipeline: Iterable[dict] = ()) -> bytes:
+    """One report as a workbook — see _write_report."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    _write_report(wb, wb.active, rows, rep, columns, title, layout, payments, pipeline)
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def to_xlsx_split(parts: list[dict], columns: list[dict], title: str, layout: str = "detailed") -> bytes:
+    """One workbook with a report per category, each on its own sheet (with
+    its own extra-payments and pipeline sheets). ``parts`` are dicts of
+    label, rows, rep, payments and pipeline."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    for i, part in enumerate(parts):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        _write_report(wb, ws, part["rows"], part["rep"], columns, f"{part['label']} — {title}", layout,
+                      part.get("payments", ()), part.get("pipeline", ()), prefix=part["label"])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def _write_report(wb, ws, rows: list[dict], rep: dict, columns: list[dict], title: str, layout: str = "detailed",
+                  payments: Iterable[dict] = (), pipeline: Iterable[dict] = (), prefix: str = "") -> None:
     """The desk's spreadsheet layout. ``detailed`` (for the accountant): per
     month a 1st–15th and an after-15th section (header, deals, total), the
     month total with extra payments, the volume bonus received and final
     profit, then quarter, half-year and year totals where the range spans
     them, and the period total — plus an "Extra payments" sheet listing each
     one. ``summary`` (for management): the same totals, one line each, no
-    deals. Deals still in the pipeline go on a sheet of their own."""
-    from openpyxl import Workbook
+    deals. Deals still in the pipeline go on a sheet of their own. A month's
+    clawbacks sit in their own section after its two halves. ``prefix``
+    names the sheets when several reports share a workbook."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Settled deals" if layout != "summary" else "Summary"
+    def sheet_name(name: str) -> str:
+        return (f"{prefix} – {name.lower()}" if prefix else name)[:31]
+
+    ws.title = (prefix or "Settled deals")[:31] if layout != "summary" else sheet_name("Summary")
     bold = Font(bold=True)
     head_fill = PatternFill("solid", fgColor="1F2A44")
     fills = {
@@ -1735,7 +1861,7 @@ def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str, layout
 
         # Each extra payment, for the accountant.
         if payments:
-            ps = wb.create_sheet("Extra payments")
+            ps = wb.create_sheet(sheet_name("Extra payments"))
             pcols = [
                 {"key": "payment_date", "label": "Date", "kind": "date"},
                 {"key": "payee_name", "label": "Paid to", "kind": "text"},
@@ -1775,7 +1901,7 @@ def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str, layout
 
     # Deals on their way to settlement — not in any total above.
     if pipeline:
-        pl = wb.create_sheet("Pipeline")
+        pl = wb.create_sheet(sheet_name("Pipeline"))
         pcols = [c for c in columns if c["key"] not in PERIOD_ONLY and c["key"] not in ("settled_on", "paid_on")]
         if not any(c["key"] == "deal_status" for c in pcols):
             pcols.insert(0, {"key": "deal_status", "label": "Deal status", "kind": "text"})
@@ -1797,10 +1923,6 @@ def to_xlsx(rows: list[dict], rep: dict, columns: list[dict], title: str, layout
                 cell.number_format = fmt["money"]
                 cell.font = bold
         widen(pl, pcols)
-
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
 
 
 def pick_columns(keys: Optional[str], access: LedgerAccess) -> list[dict]:

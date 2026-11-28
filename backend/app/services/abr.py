@@ -212,3 +212,134 @@ def search_names(query: str, limit: int = 10) -> list[AbrNameMatch]:
         key=lambda m: (m.get("status") != "Active", -(m.get("score") or 0), m.get("name") or ""),
     )
     return matches[:limit]
+
+
+# ── History ──────────────────────────────────────────────────────────────
+
+ABR_XML_ENDPOINT = "https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/SearchByABNv202001"
+HISTORY_TIMEOUT_SECONDS = 10.0
+_NS = "{http://abr.business.gov.au/ABRXMLSearch/}"
+# The register's "no end date": the period is still current.
+_OPEN_ENDED = "0001-01-01"
+
+
+def _date(value: Optional[str]) -> Optional[str]:
+    value = (value or "").strip()
+    return None if not value or value == _OPEN_ENDED else value
+
+
+def _periods(entity, tag: str, value_of) -> list[dict]:
+    """Every <tag> period as {value…, from, to}, newest first (to=None = current)."""
+    out = []
+    for el in entity.findall(f"{_NS}{tag}"):
+        row = value_of(el)
+        if row is None:
+            continue
+        row["from"] = _date(el.findtext(f"{_NS}effectiveFrom"))
+        row["to"] = _date(el.findtext(f"{_NS}effectiveTo"))
+        out.append(row)
+    # Current periods first, then the rest newest first.
+    current = sorted((r for r in out if r["to"] is None), key=lambda r: r["from"] or "", reverse=True)
+    past = sorted((r for r in out if r["to"] is not None), key=lambda r: r["to"] or "", reverse=True)
+    return current + past
+
+
+def _join(periods: list[dict], same) -> list[dict]:
+    """Merge back-to-back periods the register split for no visible reason (an
+    Active period ending the day the next Active one starts). Newest first."""
+    out: list[dict] = []
+    for p in sorted(periods, key=lambda r: r["from"] or ""):
+        if out and same(out[-1], p) and out[-1]["to"] is not None and out[-1]["to"] == p["from"]:
+            out[-1]["to"] = p["to"]
+            continue
+        out.append(dict(p))
+    out.reverse()
+    return out
+
+
+def _org_name(el) -> Optional[dict]:
+    name = (el.findtext(f"{_NS}organisationName") or "").strip()
+    return {"name": name} if name else None
+
+
+def _person_name(el) -> Optional[dict]:
+    parts = [el.findtext(f"{_NS}{t}") for t in ("givenName", "otherGivenName", "familyName")]
+    name = " ".join(p.strip() for p in parts if p and p.strip())
+    return {"name": name} if name else None
+
+
+def parse_history(xml_text: str) -> Optional[dict]:
+    """The register's history of one ABN, from a SearchByABNv202001 response
+    with historical details. None when the register has no such ABN. Never
+    keeps the raw response — it echoes our GUID back."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        raise AbrUnavailable("ABN Lookup returned an unreadable response")
+    response = root.find(f"{_NS}response")
+    if response is None:
+        raise AbrUnavailable("ABN Lookup returned an unreadable response")
+    if response.find(f"{_NS}exception") is not None:
+        return None
+    entity = response.find(f"{_NS}businessEntity202001")
+    if entity is None:
+        return None
+
+    abn_el = entity.find(f"{_NS}ABN")
+    names = _periods(entity, "mainName", _org_name) + _periods(entity, "legalName", _person_name)
+    statuses = _join(
+        _periods(entity, "entityStatus", lambda el: {"status": (el.findtext(f"{_NS}entityStatusCode") or "").strip() or None}),
+        lambda a, b: a["status"] == b["status"],
+    )
+    gst = _join(_periods(entity, "goodsAndServicesTax", lambda el: {}), lambda a, b: True)
+    trading = _periods(entity, "mainTradingName", _org_name) + _periods(entity, "otherTradingName", _org_name)
+    business_names = _periods(entity, "businessName", _org_name)
+    addresses = _periods(entity, "mainBusinessPhysicalAddress", lambda el: {
+        "state": (el.findtext(f"{_NS}stateCode") or "").strip() or None,
+        "postcode": (el.findtext(f"{_NS}postcode") or "").strip() or None,
+    })
+    # The register re-dates an address on every edit; only real moves matter.
+    moves = _join(addresses, lambda a, b: (a["state"], a["postcode"]) == (b["state"], b["postcode"]))
+
+    # Collapse the same trading name registered more than once.
+    seen: set[tuple] = set()
+    trading = [t for t in trading if not ((t["name"].lower(), t["from"], t["to"]) in seen or seen.add((t["name"].lower(), t["from"], t["to"])))]
+
+    starts = [s["from"] for s in statuses if s["from"]]
+    return {
+        "abn": (abn_el.findtext(f"{_NS}identifierValue") or "").strip() if abn_el is not None else None,
+        "record_last_updated": _date(entity.findtext(f"{_NS}recordLastUpdatedDate")),
+        "entity_type": (entity.findtext(f"{_NS}entityType/{_NS}entityDescription") or "").strip() or None,
+        # When the ABN was first registered — the earliest status period.
+        "first_registered": min(starts) if starts else None,
+        "status_history": statuses,
+        "gst_history": gst,
+        "name_history": names,
+        "trading_names": trading,
+        "business_names": business_names,
+        "address_history": moves,
+    }
+
+
+def lookup_abn_history(abn: str) -> Optional[dict]:
+    """The register's full history of an ABN (names, status and GST periods,
+    trading and business names, state moves). None when the register has no
+    such ABN; AbrUnavailable when it can't be asked."""
+    if not ABR_ENABLED:
+        raise AbrUnavailable("ABN Lookup is not configured on this server")
+    digits = "".join(ch for ch in (abn or "") if ch.isdigit())
+    if len(digits) != 11:
+        return None
+    try:
+        resp = httpx.get(
+            ABR_XML_ENDPOINT,
+            params={"searchString": digits, "includeHistoricalDetails": "Y", "authenticationGuid": ABR_GUID},
+            timeout=HISTORY_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("ABR history lookup failed for %s: %s", digits, exc)
+        raise AbrUnavailable("ABN Lookup could not be reached") from exc
+    return parse_history(resp.text)

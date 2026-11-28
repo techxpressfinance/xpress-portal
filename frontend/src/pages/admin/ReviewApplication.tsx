@@ -31,6 +31,7 @@ import SettlementDeclarationsPanel from '../../components/SettlementDeclarations
 import ReferredByPicker from '../../components/ReferredByPicker';
 import ReferrerPicker, { type PickedReferrer } from '../../components/ReferrerPicker';
 import ReferrerHistory from '../../components/ReferrerHistory';
+import ClawbacksPanel from '../../components/ClawbacksPanel';
 import ProgressLink from '../../components/ProgressLink';
 import NoteFeed from '../../components/notes/NoteFeed';
 import StickyNote from '../../components/notes/StickyNote';
@@ -206,6 +207,10 @@ export default function ReviewApplication() {
   const [clientMessages, setClientMessages] = useState<ClientMessage[]>([]);
   const [referrerMessages, setReferrerMessages] = useState<ClientMessage[]>([]);
   const [alerts, setAlerts] = useState<ClientAlert[]>([]);
+  // The "this client has alerts" prompt shown on opening the file: the
+  // sessionStorage key and the alert set it was shown for, so it comes back
+  // only when the client's alerts change.
+  const [alertPrompt, setAlertPrompt] = useState<{ key: string; sig: string } | null>(null);
   const [newAlertContent, setNewAlertContent] = useState('');
   const [newAlertHighPriority, setNewAlertHighPriority] = useState(false);
   const [sendingAlert, setSendingAlert] = useState(false);
@@ -516,9 +521,7 @@ export default function ReviewApplication() {
       api.get(`/clients/${client.id}/messages`, { params: { application_id: id } })
         .then(({ data }) => setClientMessages(data))
         .catch(() => { });
-      api.get(`/clients/${client.id}/alerts`)
-        .then(({ data }) => setAlerts(data))
-        .catch(() => { });
+      reloadAlerts(client.id, true);
     }
     if (referrer?.id) {
       api.get(`/clients/${referrer.id}/messages`, { params: { application_id: id } })
@@ -526,6 +529,30 @@ export default function ReviewApplication() {
         .catch(() => { });
     }
   }, [client?.id, referrer?.id]);
+
+  /** Load the client's alerts. ``prompt`` (opening the file) asks the viewer
+   *  to look at them — once a session per file, unless the alerts change. */
+  function reloadAlerts(clientId: string | undefined = client?.id, prompt = false) {
+    if (!clientId) return;
+    api.get<ClientAlert[]>(`/clients/${clientId}/alerts`)
+      .then(({ data }) => {
+        setAlerts(data);
+        if (!prompt || !data.length || !id) return;
+        const key = `client-alerts-seen:${id}`;
+        const sig = data.map((a) => a.id).sort().join(',');
+        if (sessionStorage.getItem(key) !== sig) setAlertPrompt({ key, sig });
+      })
+      .catch(() => { });
+  }
+
+  const closeAlertPrompt = (review: boolean) => {
+    if (alertPrompt) sessionStorage.setItem(alertPrompt.key, alertPrompt.sig);
+    setAlertPrompt(null);
+    if (review) {
+      setActiveTab('notes');
+      setNoteTab('alerts');
+    }
+  };
 
   const refetchApplication = async () => {
     if (!id) return;
@@ -1535,6 +1562,19 @@ export default function ReviewApplication() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Ordinary alerts get a quiet strip (high ones have the banner above). */}
+      {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && alerts.some((a) => !a.is_high_priority) && (
+        <div className="mb-6 flex w-fit max-w-full items-center gap-3 rounded-xl border border-amber-400/30 bg-amber-50/60 px-4 py-2.5 dark:bg-amber-950/20">
+          <ExclamationTriangleIcon className="h-4.5 w-4.5 shrink-0 text-amber-500" strokeWidth={2} />
+          <p className="text-[13px] text-foreground">
+            {alerts.filter((a) => !a.is_high_priority).length === 1 ? 'This client has a note on file in client alerts.' : `This client has ${alerts.filter((a) => !a.is_high_priority).length} client alerts on file.`}
+          </p>
+          <button type="button" className="text-[13px] font-medium text-primary hover:underline" onClick={() => { setActiveTab('notes'); setNoteTab('alerts'); }}>
+            Review
+          </button>
         </div>
       )}
 
@@ -3425,6 +3465,10 @@ export default function ReviewApplication() {
                   </Card>
                 )}
 
+                {/* Clawbacks sit at the bottom of the file, for the whole team. */}
+                {(currentUser?.role === 'admin' || currentUser?.role === 'broker') && id && (
+                  <ClawbacksPanel applicationId={id} settled={application.status === 'settled'} onChanged={() => reloadAlerts()} />
+                )}
               </>
             )}
 
@@ -4610,6 +4654,31 @@ export default function ReviewApplication() {
           setSettlementChecklistOpen(false);
           setPendingStatus('settled');
         }}
+      />
+
+      <ConfirmDialog
+        open={!!alertPrompt && alerts.length > 0}
+        title={alerts.length === 1 ? 'This client has a client alert' : `This client has ${alerts.length} client alerts`}
+        message={
+          <div className="space-y-2">
+            <p>Check these before working on the file.</p>
+            <ul className="max-h-64 space-y-2 overflow-y-auto">
+              {[...alerts].sort((a, b) => Number(b.is_high_priority) - Number(a.is_high_priority)).slice(0, 4).map((a) => (
+                <li key={a.id} className={`rounded-lg border px-3 py-2 ${a.is_high_priority ? 'border-destructive/25 bg-destructive/5' : 'border-border bg-secondary/40'}`}>
+                  {a.is_high_priority && <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-destructive">High alert</span>}
+                  <span className="line-clamp-3 whitespace-pre-wrap text-[13px] text-foreground">{a.content}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{a.author_name || 'Staff'} · {formatDateTime(a.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+            {alerts.length > 4 && <p className="text-[12px]">+{alerts.length - 4} more in Client alerts.</p>}
+          </div>
+        }
+        confirmText="Review alerts"
+        cancelText="Dismiss"
+        variant={alerts.some((a) => a.is_high_priority) ? 'danger' : 'primary'}
+        onConfirm={() => closeAlertPrompt(true)}
+        onCancel={() => closeAlertPrompt(false)}
       />
 
       <ConfirmDialog

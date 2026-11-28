@@ -11,6 +11,9 @@ import ArrearsSection from '../../components/arrears/ArrearsSection';
 import CommitmentScheduleSection from '../../components/CommitmentScheduleSection';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import ReferrerHistory from '../../components/ReferrerHistory';
+import { ClawbackHistory } from '../../components/ClawbacksPanel';
+import AbnHistory from '../../components/AbnHistory';
+import EntityNotes from '../../components/EntityNotes';
 import { durationSince, formatDate, getErrorMessage } from '../../lib/utils';
 import { ENTITY_TYPES, ENTITY_TYPE_CONFIG, LOAN_TYPE_LABELS, TRUST_TYPES, hasAcn } from '../../lib/constants';
 import { applicantName } from '../../lib/applicantName';
@@ -26,7 +29,6 @@ interface EditForm {
   acn: string;
   industry: string;
   address: string;
-  notes: string;
 }
 
 function EditCompanyModal({ company, onClose, onSaved }: {
@@ -45,7 +47,6 @@ function EditCompanyModal({ company, onClose, onSaved }: {
     acn: company.acn ?? '',
     industry: company.industry ?? '',
     address: company.address ?? '',
-    notes: company.notes ?? '',
   });
   const nameRef = useRef<HTMLInputElement>(null);
   const abr = useAbrLookup(form.abn);
@@ -88,7 +89,6 @@ function EditCompanyModal({ company, onClose, onSaved }: {
         acn: showAcn ? form.acn.trim() || null : null,
         industry: form.industry.trim() || null,
         address: form.address.trim() || null,
-        notes: form.notes.trim() || null,
         ...(noAbnConfirmed && { no_abn_confirmed: true }),
       });
       toast('Entity updated', 'success');
@@ -204,10 +204,6 @@ function EditCompanyModal({ company, onClose, onSaved }: {
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Address</label>
             <Input {...field('address')} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
-            <textarea className="led-input w-full min-h-[60px] resize-y text-sm" {...field('notes')} />
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" size="md" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -461,12 +457,16 @@ export default function CompanyDetail() {
     }
   };
 
+  // Bumped after "Refresh from ABR" so the ABN history card re-reads too.
+  const [abnHistoryKey, setAbnHistoryKey] = useState(0);
+
   const handleAbrRefresh = async () => {
     if (!company) return;
     setRefreshingAbr(true);
     try {
       const { data } = await api.post(`/organizations/${company.id}/abr-refresh`);
       setCompany(prev => prev ? { ...prev, ...data } : prev);
+      setAbnHistoryKey((k) => k + 1);
       toast('Updated from the Australian Business Register', 'success');
     } catch (err) {
       toast(getErrorMessage(err, 'ABN Lookup failed'), 'error');
@@ -628,12 +628,6 @@ export default function CompanyDetail() {
               </button>
             </div>
           )}
-          {company.notes && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <p className="text-sm text-muted-foreground">Notes</p>
-              <p className="text-sm mt-1 whitespace-pre-wrap">{company.notes}</p>
-            </div>
-          )}
         </Card>
 
         <Card>
@@ -646,6 +640,10 @@ export default function CompanyDetail() {
           </dl>
         </Card>
       </div>
+
+      <EntityNotes organizationId={company.id} onLoanNotes={() => setShowNotesHistory(true)} />
+
+      <AbnHistory organizationId={company.id} abn={company.abn} refreshKey={abnHistoryKey} />
 
       {isTrust && (
         <TrustStructureSection
@@ -805,6 +803,7 @@ export default function CompanyDetail() {
         />
       </Card>
 
+      <ClawbackHistory key={`cb-${company.id}`} organizationId={company.id} />
       <CommitmentScheduleSection key={`cs-${company.id}`} holderType="organization" holderId={company.id} />
       <ArrearsSection organization={{ id: company.id, name: company.name }} />
 

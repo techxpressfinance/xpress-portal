@@ -14,6 +14,7 @@ import CommitmentScheduleSection from '../../components/CommitmentScheduleSectio
 import PortalAccess from '../../components/clients/PortalAccess';
 import ContactLendingHistory from '../../components/clients/ContactLendingHistory';
 import ReferrerHistory from '../../components/ReferrerHistory';
+import { ClawbackHistory } from '../../components/ClawbacksPanel';
 import StartContactApplication from '../../components/clients/StartContactApplication';
 import NotesHistoryModal from '../../components/notes/NotesHistoryModal';
 import { clearsApproval, LOAN_TYPE_LABELS, loanTypeOptions, ENTITY_TYPES, ENTITY_TYPE_CONFIG, TRUST_TYPES, LOAN_CATEGORIES, findLoanSubType } from '../../lib/constants';
@@ -1027,6 +1028,7 @@ export default function ContactDetail() {
       <section id="lending-history" className="scroll-mt-6">
         <ContactLendingHistory key={contact.id} contact={contact} onAdd={() => setLendingModal({ entry: null })} onNotes={() => setShowNotesHistory(true)} onEditLoan={entry => setLendingModal({ entry })} onDeleteLoan={handleDeleteLendingEntry} onEditApplication={setEditingApp} deletingId={deletingEntryId} />
       </section>
+      <ClawbackHistory key={`cb-${contact.id}`} contactId={contact.id} />
       {/* Who brought each of this client's loans in, and how that changed. */}
       <section id="referrers" className="scroll-mt-6"><Card>
         <div className="mb-4">

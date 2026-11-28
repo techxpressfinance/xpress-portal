@@ -23,7 +23,7 @@ from app import models as _models  # noqa: F401 — registers every model on Bas
 # Imported for its side effect: registers the before_flush hook that keeps each
 # client account linked to its contact profile.
 from app.services import client_identity as _client_identity  # noqa: F401
-from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, client_alerts, client_messages, commitment_schedules, contacts, dashboard, decline_reasons, documents, external_referrers, invitations, kanban, leads, ledger, lenders, lender_submissions, messages, notes_history, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, settlement_checklists, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
+from app.routers import activity_logs, application_calculators, application_notes, applications, arrears, auth, broker_analytics, broker_groups, clawbacks, client_alerts, client_messages, commitment_schedules, contacts, dashboard, decline_reasons, documents, entity_notes, external_referrers, invitations, kanban, leads, ledger, lenders, lender_submissions, messages, notes_history, organizations, public_apply, public_track, quote_sheets, referrals, referrer, search, service_requests, settled_deals_analytics, settlement_checklists, standalone_quote_sheets, super_admin, tasks, tax_invoices, tenants, tracking_links, users
 
 # Configure logging
 logging.basicConfig(
@@ -110,10 +110,12 @@ app.include_router(standalone_quote_sheets.router)
 app.include_router(tax_invoices.router)
 app.include_router(tax_invoices.sale_type_router)
 app.include_router(settlement_checklists.router)
+app.include_router(clawbacks.router)
 app.include_router(ledger.router)
 app.include_router(contacts.router)
 app.include_router(commitment_schedules.router)
 app.include_router(organizations.router)
+app.include_router(entity_notes.router)
 app.include_router(service_requests.router)
 app.include_router(application_calculators.router)
 app.include_router(arrears.router)

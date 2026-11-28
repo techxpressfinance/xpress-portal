@@ -59,6 +59,12 @@ class Organization(TenantScoped, Base):
     abr_postcode: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     # Null = never asked. Stamped on a found record and on a miss, not on an outage.
     abr_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # The register's history of the ABN (names, status and GST periods, trading
+    # and business names, state moves) as JSON from services/abr.parse_history,
+    # for the ABN in abr_history_abn — a changed ABN makes it stale.
+    abr_history: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    abr_history_abn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    abr_history_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Trust-only (entity_type == "trust"). A trust may legitimately have no ABN,
     # so the broker must tick the "checked with the accountant" acknowledgement

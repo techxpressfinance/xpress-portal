@@ -490,6 +490,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
   const [inputs, setInputs] = useState<QuoteInputParameters>(() => parseInputParams(quoteSheet));
   const [saving, setSaving] = useState(false);
   const [customTermInput, setCustomTermInput] = useState('');
+  // Balloons are typed as a % of the base or as dollars — one switch for the
+  // whole table rather than two boxes per cell.
+  const [balloonEntry, setBalloonEntry] = useState<'percent' | 'amount'>('percent');
+  const [showAllBalloonTerms, setShowAllBalloonTerms] = useState(false);
   // The lender book, loaded only once the desk opts to name a lender.
   const [lenderBook, setLenderBook] = useState<Lender[] | null>(null);
   const wantsLender = !!inputs.show_lender;
@@ -671,6 +675,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
     : Math.min(inputs.preferred_balloon_index ?? 0, Math.max(preferredBalloons.length - 1, 0));
 
   const balloonRows = 1 + extraBalloonRows(inputs);
+  // The balloon table lists the terms on the client quote; the rest fold away.
+  const clientTerms = inputs.selected_terms ?? terms;
+  const hiddenTermCount = terms.filter(t => !clientTerms.includes(t)).length;
+  const balloonTerms = showAllBalloonTerms || hiddenTermCount === terms.length ? terms : terms.filter(t => clientTerms.includes(t));
 
   const isStandalone = !applicationId;
   const baseUrl = isStandalone ? '/quote-sheets' : `/applications/${applicationId}/quote-sheets`;
@@ -1027,11 +1035,10 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
           )}
         </section>
 
-        {/* ── SECTION 3: Rate & Brokerage + Balloon ──────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ── SECTION 3: Rate & Brokerage ──────────────────────── */}
           <section className="border border-border rounded-xl p-4">
             <SectionHeader>Rate &amp; Brokerage</SectionHeader>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className={labelBase}>Lender Interest Rate</label>
                 <div className="relative">
@@ -1099,94 +1106,149 @@ export default function QuoteSheetEditor({ applicationId, quoteSheet, sheetType,
             </div>
           </section>
 
-          <section className="border border-border rounded-xl p-4">
-            <SectionHeader>Balloon Settings</SectionHeader>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <ToggleButton
-                label="Balloon calculated on"
-                active={inputs.balloon_on_total_price}
-                activeLabel="Total Price"
-                inactiveLabel="Amount Financed"
-                onClick={() => updateInput('balloon_on_total_price', !inputs.balloon_on_total_price)}
-              />
-              <CalcField label="Balloon Base" value={fmtCurrency(derived.balloonBase)} />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className={labelBase}>Balloon % / $ per Term</label>
-                <button
-                  type="button"
-                  onClick={applyStandardResiduals}
-                  className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
-                >
-                  Auto-fill standard
-                </button>
+
+        {/* ── SECTION 4: Balloon — terms down, balloon options across ── */}
+        <section className="border border-border rounded-xl p-4">
+          <SectionHeader>Balloon</SectionHeader>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3 text-[12px]">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Calculated on</span>
+              <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Balloon calculated on">
+                {([[true, 'Total price'], [false, 'Amount financed']] as const).map(([on, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={inputs.balloon_on_total_price === on}
+                    onClick={() => updateInput('balloon_on_total_price', on)}
+                    className={`h-7 px-2.5 rounded-md font-semibold transition-colors ${inputs.balloon_on_total_price === on ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              {Array.from({ length: balloonRows }, (_, row) => (
-                <div key={row} className={row > 0 ? 'mt-3 pt-3 border-t border-border/60' : 'mt-1'}>
-                  {balloonRows > 1 && (
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Balloon option {row + 1}</span>
-                      {row > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => removeBalloonRow(row - 1)}
-                          className="text-[10px] font-semibold text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                    {terms.map(t => {
+              <span className="tabular-nums text-muted-foreground">{fmtCurrency(derived.balloonBase)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Enter as</span>
+              <div className="inline-flex rounded-lg border border-border p-0.5" role="radiogroup" aria-label="Enter balloons as">
+                {(['percent', 'amount'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={balloonEntry === mode}
+                    onClick={() => setBalloonEntry(mode)}
+                    className={`h-7 w-9 rounded-md font-semibold transition-colors ${balloonEntry === mode ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {mode === 'percent' ? '%' : '$'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button type="button" onClick={applyStandardResiduals} className="ml-auto font-semibold text-primary hover:text-primary/80">
+              Fill ATO residuals
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="text-[12px]">
+              <thead>
+                <tr className="text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  <th className="pb-2 pr-3 w-20">Term</th>
+                  {Array.from({ length: balloonRows }, (_, row) => (
+                    <th key={row} className="pb-2 pr-3 min-w-[150px]">
+                      <span className="inline-flex items-center gap-1.5">
+                        {balloonRows > 1 ? `Option ${row + 1}` : 'Balloon'}
+                        {row > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => removeBalloonRow(row - 1)}
+                            title={`Remove balloon option ${row + 1}`}
+                            aria-label={`Remove balloon option ${row + 1}`}
+                            className="text-[14px] leading-none text-muted-foreground/70 hover:text-destructive"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="pb-2 pl-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={addBalloonRow}
+                      className="h-7 px-2.5 rounded-lg border border-dashed border-border text-[11px] font-semibold normal-case tracking-normal text-muted-foreground hover:text-primary hover:border-primary/40"
+                    >
+                      + Option
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {balloonTerms.map(t => (
+                  <tr key={t} className="border-t border-border/50">
+                    <td className={`py-1.5 pr-3 font-semibold whitespace-nowrap ${clientTerms.includes(t) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {termLabelShort(t)}
+                    </td>
+                    {Array.from({ length: balloonRows }, (_, row) => {
                       const b = balloonsOf(inputs, t)[row] ?? { percent: 0, amount: null };
-                      const computedAmt = fmt2(derived.balloonBase * (b.percent / 100));
+                      const amount = b.amount ?? fmt2(derived.balloonBase * (b.percent / 100));
+                      const off = b.percent <= 0 && !(b.amount && b.amount > 0);
                       return (
-                        <div key={t} className="space-y-1">
-                          {/* Term headings sit once above the first row when the
-                              terms fit on one line; otherwise every cell is labelled. */}
-                          <div className={`text-center text-[10px] text-muted-foreground font-semibold mb-1 ${row > 0 && terms.length <= 7 ? 'lg:hidden' : ''}`}>{termLabelShort(t)}</div>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              step="0.5"
-                              min="0"
-                              value={b.percent}
-                              onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0, row)}
-                              className={`${fieldBase} px-2 pr-5 text-center`}
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                        <td key={row} className="py-1.5 pr-3">
+                          <div className="flex items-center gap-2">
+                            {balloonEntry === 'percent' ? (
+                              <div className="relative w-20 shrink-0">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  aria-label={`${termLabel(t)} balloon %${balloonRows > 1 ? `, option ${row + 1}` : ''}`}
+                                  value={b.percent || ''}
+                                  placeholder="0"
+                                  onChange={e => updateBalloonPct(String(t), Math.max(0, parseFloat(e.target.value)) || 0, row)}
+                                  className={`${fieldBase} h-8 px-2 pr-6 text-right`}
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">%</span>
+                              </div>
+                            ) : (
+                              <div className="relative w-28 shrink-0">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[11px]">$</span>
+                                <MoneyInput
+                                  aria-label={`${termLabel(t)} balloon amount${balloonRows > 1 ? `, option ${row + 1}` : ''}`}
+                                  placeholder={amount > 0 ? formatMoney(Math.round(amount)) : '0'}
+                                  value={b.amount ?? ''}
+                                  allowNull
+                                  onChange={amt => updateBalloonAmount(String(t), amt, row)}
+                                  className={`${fieldBase} h-8 pl-5 pr-2 text-right`}
+                                />
+                              </div>
+                            )}
+                            <span className="tabular-nums text-[11px] text-muted-foreground whitespace-nowrap">
+                              {off ? 'not quoted' : balloonEntry === 'percent'
+                                ? <>{fmtCurrency(amount)}{b.amount != null && <span className="ml-1 font-semibold text-foreground/70" title="A fixed dollar balloon — typing a % replaces it">fixed $</span>}</>
+                                : `${fmt2(b.percent)}%`}
+                            </span>
                           </div>
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">$</span>
-                            <MoneyInput
-                              placeholder={computedAmt > 0 ? formatMoney(Math.round(computedAmt)) : ''}
-                              value={b.amount ?? ''}
-                              allowNull
-                              onChange={amt => updateBalloonAmount(String(t), amt, row)}
-                              className={`${fieldBase} pl-5 pr-1 text-center text-[11px]`}
-                            />
-                          </div>
-                        </div>
+                        </td>
                       );
                     })}
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addBalloonRow}
-                className="mt-3 w-full h-8 rounded-lg border border-dashed border-border text-[11px] font-semibold text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
-              >
-                + Add another balloon option
+                    <td />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-foreground">
+            <span>A term left at 0 isn&rsquo;t quoted with that balloon.{balloonRows > 1 ? ' Each option is quoted alongside the others.' : ' Add an option to quote a second balloon (e.g. 30% and 15%).'}</span>
+            {hiddenTermCount > 0 && (
+              <button type="button" onClick={() => setShowAllBalloonTerms(v => !v)} className="font-semibold text-primary hover:text-primary/80">
+                {showAllBalloonTerms ? 'Only terms on the client quote' : `Show ${hiddenTermCount} term${hiddenTermCount === 1 ? '' : 's'} not on the client quote`}
               </button>
-              <p className="text-[10px] text-muted-foreground mt-2">
-                Each option is quoted alongside the others, e.g. 5 years at 30% and at 15%. Leave a term at 0 to skip it for that option.
-              </p>
-            </div>
-          </section>
-        </div>
+            )}
+          </div>
+        </section>
 
         {/* ── Terms to Show Client ─────────────────────────────── */}
         <section className="border border-border rounded-xl p-4">
